@@ -167,6 +167,7 @@ mdi_history_save_filename =\
     inifile.find('DISPLAY', 'MDI_HISTORY_FILE') or "~/.axis_mdi_history"
 
 hal_joghandlers = []
+hal_scalehandlers = []
 
 feedrate_blackout = 0
 rapidrate_blackout = 0
@@ -881,6 +882,8 @@ class LivePlotter:
                      root_window.tk.call("pause_image_override")
                  else:
                      root_window.tk.call("pause_image_normal")
+            for handler in hal_scalehandlers:
+                handler.process()
             if (comp["jog.disable"] or
                     self.stat.task_state != linuxcnc.STATE_ON or
                     self.stat.interp_state != linuxcnc.INTERP_IDLE):
@@ -1007,6 +1010,92 @@ class HalJogHandler:
                  commands.jog_minus()
              else:
                  jog_off(self.axis)
+
+class HalScaleHandler:
+    def __init__(self, pin, widget):
+        self.locked = False
+        self.pin = pin
+        self.widget = widget
+        self.do_init = True
+        self.last_count = 0
+        self.last_scale = 0
+        self.accu = 0
+        self.abs_pin = pin + "-abs"
+        self.last_absval = 0
+        self.last_scale_abs = 0
+        self.abs_locked = False
+
+        comp.newpin(self.pin, hal.HAL_S32, hal.HAL_IN)
+        comp.newpin(self.abs_pin, hal.HAL_S32, hal.HAL_IN)
+
+    def process(self):
+        if self.locked:
+            return;
+
+        count = comp[self.pin]
+        if self.do_init:
+            curr = self.widget.get()
+            self.do_init = False
+            self.last_count = count
+            self.last_scale = curr
+            self.accu = 0
+            self.last_absval = comp[self.abs_pin]
+            self.last_scale_abs = curr
+            self.abs_locked = False
+            return
+
+        fr = self.widget.cget("from")
+        to = self.widget.cget("to")
+
+        diff = count - self.last_count
+        self.last_count = count
+        if diff != 0:
+            curr = self.widget.get()
+            if self.last_scale != curr:
+                self.last_scale = curr
+                self.accu = 0
+
+            scale = (to - fr) * comp["sliders.scale"]
+            self.accu += diff * scale
+
+            new = curr + self.accu
+            if new > to:
+                self.accu = 0
+                new = to
+            if new < fr:
+                self.accu = 0
+                new = fr
+            self.widget_set(new)
+
+        absval = comp[self.abs_pin]
+        if self.last_absval != absval:
+            curr = self.widget.get()
+            if self.last_scale_abs != curr:
+                self.last_scale_abs = curr
+                self.abs_locked = False
+
+            scale = (to - fr) * comp["sliders.scale-abs"]
+            new = fr + (absval * scale)
+            old = fr + (self.last_absval * scale)
+            self.last_absval = absval
+
+            if not self.abs_locked:
+                self.abs_locked = (new >= curr and old < curr) or (new <= curr and old > curr)
+
+            if self.abs_locked:
+                if new > to:
+                    new = to
+                if new < fr:
+                    new = fr
+                self.widget_set(new)
+                self.last_scale_abs = self.widget.get()
+
+    def widget_set(self, val):
+            self.locked = True;
+            self.widget.set(val)
+            self.widget.update()
+            self.locked = False;
+
 
 def running(do_poll=True):
     if do_poll: s.poll()
@@ -1412,6 +1501,10 @@ widget_list=[
        ("jogplus", Checkbutton, tabs_manual + ".jogf.jog.jogplus"),
 
        ("ajogspeed", Entry, pane_top + ".ajogspeed"),
+
+       ("ajogspeed_scale", Scale, pane_top + ".ajogspeed.s"),
+       ("jogspeed_scale", Scale, pane_top + ".jogspeed.s"),
+       ("maxvel_scale", Scale, pane_top + ".maxvel.s"),
 
        ("coolant", Label, tabs_manual + ".coolant"),
        ("flood", Checkbutton, tabs_manual + ".flood"),
@@ -3970,6 +4063,15 @@ if hal_present == 1 :
     comp.newpin("resume-inhibit",hal.HAL_BIT,hal.HAL_IN)
     comp.newpin("error", hal.HAL_BIT, hal.HAL_OUT)
     comp.newpin("abort", hal.HAL_BIT, hal.HAL_OUT)
+
+    comp.newpin("sliders.scale", hal.HAL_FLOAT, hal.HAL_IN)
+    comp.newpin("sliders.scale-abs", hal.HAL_FLOAT, hal.HAL_IN)
+    hal_scalehandlers.append(HalScaleHandler("sliders.spinoverride", widgets.spinoverride))
+    hal_scalehandlers.append(HalScaleHandler("sliders.feedoverride", widgets.feedoverride))
+    hal_scalehandlers.append(HalScaleHandler("sliders.rapidoverride", widgets.rapidoverride))
+    hal_scalehandlers.append(HalScaleHandler("sliders.ajogspeed", widgets.ajogspeed_scale))
+    hal_scalehandlers.append(HalScaleHandler("sliders.jogspeed", widgets.jogspeed_scale))
+    hal_scalehandlers.append(HalScaleHandler("sliders.maxvel", widgets.maxvel_scale))
 
     for i, a in enumerate("xyzabcuvw"):
         hal_joghandlers.append(HalJogHandler(a))
