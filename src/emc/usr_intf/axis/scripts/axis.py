@@ -166,6 +166,7 @@ mdi_history_max_entries = 1000
 mdi_history_save_filename =\
     inifile.find('DISPLAY', 'MDI_HISTORY_FILE') or "~/.axis_mdi_history"
 
+hal_joghandlers = []
 
 feedrate_blackout = 0
 rapidrate_blackout = 0
@@ -880,6 +881,16 @@ class LivePlotter:
                      root_window.tk.call("pause_image_override")
                  else:
                      root_window.tk.call("pause_image_normal")
+            if (comp["jog.disable"] or
+                    self.stat.task_state != linuxcnc.STATE_ON or
+                    self.stat.interp_state != linuxcnc.INTERP_IDLE):
+                widgets.jogminus.configure(state="disabled")
+                widgets.jogplus.configure(state="disabled")
+            else:
+                widgets.jogminus.configure(state="normal")
+                widgets.jogplus.configure(state="normal")
+            for handler in hal_joghandlers:
+                handler.process()
         vupdate(vars.task_mode, self.stat.task_mode)
         vupdate(vars.task_state, self.stat.task_state)
         vupdate(vars.task_paused, self.stat.task_paused)
@@ -959,6 +970,43 @@ class LivePlotter:
     def clear(self):
         self.logger.clear()
         o.redraw_soon()
+
+class HalJogHandler:
+    def __init__(self, axis):
+        self.axis = axis
+        self.pin_plus = "jog.%s-plus" % (axis)
+        self.pin_minus = "jog.%s-minus" % (axis)
+        self.jog_plus = False
+        self.jog_minus = False
+
+        comp.newpin(self.pin_plus, hal.HAL_BIT, hal.HAL_IN)
+        comp.newpin(self.pin_minus, hal.HAL_BIT, hal.HAL_IN)
+
+    def process(self):
+        if comp["jog.disable"]:
+            jog_plus = False
+            jog_minus = False
+        else:
+            jog_plus = comp[self.pin_plus]
+            jog_minus = comp[self.pin_minus]
+
+        if self.jog_plus != jog_plus:
+             self.jog_plus = jog_plus
+             if jog_plus:
+                 vars.current_axis.set(self.axis)
+                 commands.axis_activated()
+                 commands.jog_plus()
+             else:
+                 jog_off(self.axis)
+
+        if self.jog_minus != jog_minus:
+             self.jog_minus = jog_minus
+             if jog_minus:
+                 vars.current_axis.set(self.axis)
+                 commands.axis_activated()
+                 commands.jog_minus()
+             else:
+                 jog_off(self.axis)
 
 def running(do_poll=True):
     if do_poll: s.poll()
@@ -1359,6 +1407,9 @@ widget_list=[
        ("axis_w", Radiobutton, tabs_manual + ".axes.axisw"),
        ("jogincr", Entry, tabs_manual + ".jogf.jog.jogincr"),
        ("override", Checkbutton, tabs_manual + ".jogf.override"),
+
+       ("jogminus", Checkbutton, tabs_manual + ".jogf.jog.jogminus"),
+       ("jogplus", Checkbutton, tabs_manual + ".jogf.jog.jogplus"),
 
        ("ajogspeed", Entry, pane_top + ".ajogspeed"),
 
@@ -3912,12 +3963,16 @@ if hal_present == 1 :
     comp.newpin("jog.v", hal.HAL_BIT, hal.HAL_OUT)
     comp.newpin("jog.w", hal.HAL_BIT, hal.HAL_OUT)
     comp.newpin("jog.increment", hal.HAL_FLOAT, hal.HAL_OUT)
+    comp.newpin("jog.disable", hal.HAL_BIT, hal.HAL_IN)
     comp.newpin("notifications-clear",hal.HAL_BIT,hal.HAL_IN)
     comp.newpin("notifications-clear-info",hal.HAL_BIT,hal.HAL_IN)
     comp.newpin("notifications-clear-error",hal.HAL_BIT,hal.HAL_IN)
     comp.newpin("resume-inhibit",hal.HAL_BIT,hal.HAL_IN)
     comp.newpin("error", hal.HAL_BIT, hal.HAL_OUT)
     comp.newpin("abort", hal.HAL_BIT, hal.HAL_OUT)
+
+    for i, a in enumerate("xyzabcuvw"):
+        hal_joghandlers.append(HalJogHandler(a))
 
     vars.has_ladder.set(hal.component_exists('classicladder_rt'))
 
