@@ -324,6 +324,9 @@ class Notification(Tkinter.Frame):
         self.cache = []
         Tkinter.Frame.__init__(self, master)
 
+    def has_items(self):
+        return (len(self.widgets) > 0)
+
     def clear(self,iconname=None):
         if iconname:
             cpy = self.widgets[:]
@@ -883,6 +886,7 @@ class LivePlotter:
                      root_window.tk.call("pause_image_override")
                  else:
                      root_window.tk.call("pause_image_normal")
+            comp["has-notifications"] = notifications.has_items()
             for handler in hal_scalehandlers:
                 handler.process()
             if (comp["jog.disable"] or
@@ -4062,6 +4066,7 @@ if hal_present == 1 :
     comp.newpin("notifications-clear",hal.HAL_BIT,hal.HAL_IN)
     comp.newpin("notifications-clear-info",hal.HAL_BIT,hal.HAL_IN)
     comp.newpin("notifications-clear-error",hal.HAL_BIT,hal.HAL_IN)
+    comp.newpin("has-notifications",hal.HAL_BIT,hal.HAL_OUT)
     comp.newpin("resume-inhibit",hal.HAL_BIT,hal.HAL_IN)
     comp.newpin("error", hal.HAL_BIT, hal.HAL_OUT)
     comp.newpin("abort", hal.HAL_BIT, hal.HAL_OUT)
