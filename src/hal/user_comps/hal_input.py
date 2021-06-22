@@ -195,7 +195,7 @@ for f in sys.argv[1:]:
         parts = f[1:]
     else:
         try:
-            d.append(HalInputDevice(w, i, f, parts))
+            d.append(HalInputDevice(w, i, f.replace('"',''), parts))
         except LookupError, detail:
             raise SystemExit, detail
         parts = 'KRAL'
