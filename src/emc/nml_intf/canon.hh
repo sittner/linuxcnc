@@ -945,6 +945,9 @@ extern int GET_EXTERNAL_DIGITAL_INPUT(int index, int def);
 extern double GET_EXTERNAL_ANALOG_INPUT(int index, double def);
 /* returns current value of the analog input selected by index.*/
 
+extern double GET_USER_DEFINED_RESULT();
+/* returns result of user defined function */
+
 // Returns the mask of axes present in the system
 extern int GET_EXTERNAL_AXIS_MASK();
 

@@ -331,6 +331,7 @@ int emcSystemCmd(char *s)
 	}
     }
 
+    emcStatus->task.user_defined_result = 0.0;
     emcSystemCmdPid = fork();
 
     if (-1 == emcSystemCmdPid) {
@@ -2545,6 +2546,10 @@ static int emcTaskExecute(void)
     int retval = 0;
     int status;			// status of child from EMC_SYSTEM_CMD
     pid_t pid;			// pid returned from waitpid()
+    double end;
+
+#define TERM_RETRY_TIME 5.0
+#define TERM_RETRY_INTERVAL 0.02
 
     // first check for an abandoned system command and abort it
     if (emcSystemCmdPid != 0 &&
@@ -2555,6 +2560,16 @@ static int emcTaskExecute(void)
 		      emcSystemCmdPid);
 	}
 	kill(emcSystemCmdPid, SIGINT);
+	end = TERM_RETRY_TIME;
+	while (waitpid(emcSystemCmdPid, &status, WNOHANG) == 0) {
+	    esleep(TERM_RETRY_INTERVAL);
+	    end -= TERM_RETRY_INTERVAL;
+	    if (end <= 0.0) {
+		kill(emcSystemCmdPid, SIGKILL);
+		waitpid(emcSystemCmdPid, &status, 0);
+		break;
+	    }
+	}
 	emcSystemCmdPid = 0;
     }
 
@@ -2830,8 +2845,9 @@ static int emcTaskExecute(void)
 	}
 	// else child has finished
 	if (WIFEXITED(status)) {
-	    if (0 == WEXITSTATUS(status)) {
+	    if (0 == WEXITSTATUS(status) || (WEXITSTATUS(status) >= 32 && WEXITSTATUS(status) < 64)) {
 		// child exited normally
+		emcStatus->task.user_defined_result = (double)WEXITSTATUS(status);
 		emcSystemCmdPid = 0;
 		emcStatus->task.execState = EMC_TASK_EXEC_DONE;
 		emcTaskEager = 1;

@@ -3663,6 +3663,7 @@ if (IS_USER_MCODE(block,settings,10) && ONCE_M(10)) {
       CHKS(1, NCE_UNKNOWN_M_CODE_USED,index);
     }
     enqueue_M_USER_COMMAND(index,block->p_number,block->q_number);
+    settings->user_defined_flag = true;
   }
   return INTERP_OK;
 }

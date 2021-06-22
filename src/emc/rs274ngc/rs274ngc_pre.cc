@@ -1189,6 +1189,7 @@ int Interp::init()
 //_setup.plane set in Interp::synch
   _setup.probe_flag = false;
   _setup.toolchange_flag = false;
+  _setup.user_defined_flag = false;
   _setup.input_flag = false;
   _setup.input_index = -1;
   _setup.input_digital = false;
@@ -1468,6 +1469,13 @@ int Interp::read_inputs(setup_pointer settings)
 	}
 	settings->input_flag = false;
     }
+
+    if (settings->user_defined_flag) {
+	CHKS((GET_EXTERNAL_QUEUE_EMPTY() == 0),
+	     _("Queue is not empty after user defined function"));
+	settings->parameters[5399] = GET_USER_DEFINED_RESULT();
+	settings->user_defined_flag = false;
+    }
     return INTERP_OK;
 }
 
@@ -1542,6 +1550,12 @@ int Interp::_read(const char *command)  //!< may be NULL or a string to read
 	    GET_EXTERNAL_ANALOG_INPUT(_setup.input_index, _setup.parameters[5399]);
     }
     _setup.input_flag = false;
+  }
+  if (_setup.user_defined_flag) {
+    CHKS((GET_EXTERNAL_QUEUE_EMPTY() == 0),
+         _("Queue is not empty after user defined function"));
+    _setup.parameters[5399] = GET_USER_DEFINED_RESULT();
+    _setup.user_defined_flag = false;
   }
 #endif
 
@@ -2635,6 +2649,7 @@ int Interp::on_abort(int reason, const char *message)
     _setup.toolchange_flag = false;
     _setup.probe_flag = false;
     _setup.input_flag = false;
+    _setup.user_defined_flag = false;
 
     if (_setup.on_abort_command == NULL) {
 	return -1;

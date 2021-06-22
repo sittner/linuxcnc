@@ -704,6 +704,7 @@ static bool check_abort() {
 }
 
 USER_DEFINED_FUNCTION_TYPE USER_DEFINED_FUNCTION[USER_DEFINED_FUNCTION_NUM];
+double GET_USER_DEFINED_RESULT() { return 0.0; }
 
 CANON_MOTION_MODE motion_mode;
 void SET_MOTION_CONTROL_MODE(CANON_MOTION_MODE mode, double tolerance) { motion_mode = mode; }
