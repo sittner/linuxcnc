@@ -3347,8 +3347,10 @@ extensions = tuple([(v, tuple(k.split(","))) for k, v in extensions])
 postgui_halfile = inifile.findall("HAL", "POSTGUI_HALFILE") or None
 max_feed_override = float(inifile.find("DISPLAY", "MAX_FEED_OVERRIDE") or 1.0)
 max_spindle_override = float(inifile.find("DISPLAY", "MAX_SPINDLE_OVERRIDE") or max_feed_override)
+min_spindle_override = float(inifile.find("DISPLAY", "MIN_SPINDLE_OVERRIDE") or 0)
 max_feed_override = int(max_feed_override * 100 + 0.5)
 max_spindle_override = int(max_spindle_override * 100 + 0.5)
+min_spindle_override = int(min_spindle_override * 100 + 0.5)
 default_spindle_speed = int(inifile.find("DISPLAY", "DEFAULT_SPINDLE_SPEED") or 1)
 geometry = inifile.find("DISPLAY", "GEOMETRY") or "XYZABCUVW"
 geometry = re.split(" *(-?[XYZABCUVW])", geometry.upper())
@@ -3480,7 +3482,7 @@ root_window.tk.eval("${pane_top}.ajogspeed.s set [setval $jog_aspeed $max_aspeed
 root_window.tk.eval("${pane_top}.maxvel.s set [setval $maxvel_speed $max_maxvel]")
 widgets.feedoverride.configure(to=max_feed_override)
 widgets.rapidoverride.configure(to=100)
-widgets.spinoverride.configure(to=max_spindle_override)
+widgets.spinoverride.configure(from_=min_spindle_override, to=max_spindle_override)
 nmlfile = inifile.find("EMC", "NML_FILE")
 if nmlfile:
     linuxcnc.nmlfile = os.path.join(os.path.dirname(sys.argv[2]), nmlfile)
