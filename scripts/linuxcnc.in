@@ -90,6 +90,12 @@ else
 fi
 export PYTHONPATH
 
+if [ -z "$TCLLIBPATH" ]; then
+    TCLLIBPATH=$LINUXCNC_HOME/tcl
+else
+    TCLLIBPATH=$LINUXCNC_HOME/tcl:$TCLLIBPATH
+fi
+export TCLLIBPATH
 
 MODULE_EXT=@MODEXT@ # module extension, used when insmod'ing
 
