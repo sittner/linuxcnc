@@ -859,6 +859,7 @@ class LivePlotter:
         vupdate(vars.interp_state, self.stat.interp_state)
         vupdate(vars.queued_mdi_commands, self.stat.queued_mdi_commands)
         if hal_present == 1:
+            comp["is-running"] = 1
             notifications_clear = comp["notifications-clear"]
             if self.notifications_clear != notifications_clear:
                  self.notifications_clear = notifications_clear
@@ -4046,6 +4047,7 @@ t.configure(state="disabled")
 
 if hal_present == 1 :
     comp = hal.component("axisui")
+    comp.newpin("is-running", hal.HAL_BIT, hal.HAL_OUT)
     comp.newpin("jog.x", hal.HAL_BIT, hal.HAL_OUT)
     comp.newpin("jog.y", hal.HAL_BIT, hal.HAL_OUT)
     comp.newpin("jog.z", hal.HAL_BIT, hal.HAL_OUT)
