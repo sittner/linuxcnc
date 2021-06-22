@@ -81,12 +81,14 @@ parser Hal:
                 | "true" {{ return 1 }} | "false" {{ return 0 }}  
                 | "TRUE" {{ return 1 }} | "FALSE" {{ return 0 }}  
                 | NAME {{ return NAME }}
+                | STRING {{ return STRING.replace('"', '') }}
                 | FPNUMBER {{ return float(FPNUMBER.rstrip("f")) }}
                 | NUMBER {{ return int(NUMBER,0) }}
     rule SValue: "yes" {{ return "yes" }} | "no" {{ return "no" }}  
                 | "true" {{ return "true" }} | "false" {{ return "false" }}  
                 | "TRUE" {{ return "TRUE" }} | "FALSE" {{ return "FALSE" }}  
                 | NAME {{ return NAME }}
+                | STRING {{ return STRING.replace('"', '') }}
                 | FPNUMBER {{ return FPNUMBER }}
                 | NUMBER {{ return NUMBER }}
     rule OptValue: Value {{ return Value }}
