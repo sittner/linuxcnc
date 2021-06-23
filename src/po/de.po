@@ -5702,34 +5702,36 @@ msgstr "Speichern"
 
 #: tcl/ngcgui.tcl:443 tcl/ngcgui.tcl:850
 msgid "Need non-null file name"
-msgstr ""
+msgstr "Dateiname muss gefüllt sein"
 
 #: tcl/ngcgui.tcl:487
 msgid "Disallowed use of ngcgui generated file as Subfile"
-msgstr ""
+msgstr "Unerlaubte Benutzung einer NGCGUI-generierten Datei als Unterdatei"
 
 #: tcl/ngcgui.tcl:493
 msgid ""
 "marked (not_a_subfile)\n"
 "Not intended for use as a subfile"
 msgstr ""
+"markiert mit (not_a_subfile)\n"
+"Nicht zur Benutzung als Unterdatei bestimmt"
 
 #: tcl/ngcgui.tcl:507 tcl/ngcgui.tcl:526 tcl/ngcgui.tcl:548 tcl/ngcgui.tcl:561
 #: tcl/ngcgui.tcl:581 tcl/ngcgui.tcl:686
 msgid "bogus"
-msgstr ""
+msgstr "Fehlerhaft"
 
 #: tcl/ngcgui.tcl:509
 msgid "can not include subroutines within ngcgui subfile"
-msgstr ""
+msgstr "Unterprogramme können nicht in ngcgui Unterdateien eingebunden werden"
 
 #: tcl/ngcgui.tcl:517
 msgid "Multiple subroutines in file not allowed"
-msgstr ""
+msgstr "Mehrere Unterprogramme in einer Datei nicht erlaubt"
 
 #: tcl/ngcgui.tcl:528
 msgid "sub label"
-msgstr ""
+msgstr "SUB Marke"
 
 #: tcl/ngcgui.tcl:528 tcl/ngcgui.tcl:583
 #, fuzzy
@@ -5738,23 +5740,23 @@ msgstr "Zu viele Ebenen für die Unterfunktion"
 
 #: tcl/ngcgui.tcl:543 tcl/ngcgui.tcl:544
 msgid "ignoring M2 after endsub"
-msgstr ""
+msgstr "ignoriere M2 nach ENDSUB"
 
 #: tcl/ngcgui.tcl:549
 msgid "file contains lines after subend"
-msgstr ""
+msgstr "Datei beinhaltet Zeilen nach ENDSUB"
 
 #: tcl/ngcgui.tcl:562
 msgid "file contains lines before sub"
-msgstr ""
+msgstr "Datei beinhaltet Zeilen vor SUB"
 
 #: tcl/ngcgui.tcl:583
 msgid "endsub label"
-msgstr ""
+msgstr "ENDSUB Marke"
 
 #: tcl/ngcgui.tcl:688
 msgid "out of sequence positional parameter"
-msgstr ""
+msgstr "Positionsparameter nicht in korrekter Reihenfolge"
 
 #: tcl/ngcgui.tcl:688
 msgid "expected"
@@ -5762,23 +5764,23 @@ msgstr "erwartet"
 
 #: tcl/ngcgui.tcl:739
 msgid "no sub found in file"
-msgstr ""
+msgstr "Kein SUB in Datei gefunden"
 
 #: tcl/ngcgui.tcl:742
 msgid "no endsub found in file"
-msgstr ""
+msgstr "Kein ENDSUB in Datei gefunden"
 
 #: tcl/ngcgui.tcl:805
 msgid "Cannot find gcmc executable"
-msgstr ""
+msgstr "gcmc Programm nicht gefunden"
 
 #: tcl/ngcgui.tcl:806
 msgid "Please Install in path"
-msgstr ""
+msgstr "Bitte in Suchpfad installieren"
 
 #: tcl/ngcgui.tcl:814
 msgid "not embedded, deriving outdir from:"
-msgstr ""
+msgstr "nicht eingebettet, leite Ausgabeverzeichnis ab von:"
 
 #: tcl/ngcgui.tcl:1042
 msgid "Choose Files"
@@ -5787,7 +5789,7 @@ msgstr "Dateien auswählen"
 #: tcl/ngcgui.tcl:1182
 #, fuzzy
 msgid "Controls"
-msgstr "Strg-M"
+msgstr "Einstellungen"
 
 #: tcl/ngcgui.tcl:1191
 msgid "Preamble"
@@ -5799,33 +5801,33 @@ msgstr "Unterdatei"
 
 #: tcl/ngcgui.tcl:1216
 msgid "Postamble"
-msgstr ""
+msgstr "Postambel"
 
 #: tcl/ngcgui.tcl:1233
 msgid "Retain values on Subfile read"
-msgstr ""
+msgstr "Werte beim Laden merken"
 
 #: tcl/ngcgui.tcl:1241
 #, fuzzy
 msgid "Expand subroutine"
-msgstr "Menübaum aufklappen"
+msgstr "Unterprogramm auflösen"
 
 #: tcl/ngcgui.tcl:1251 tcl/ngcgui.tcl:2583
 msgid "Autosend"
-msgstr ""
+msgstr "Automatisch übertragen"
 
 #: tcl/ngcgui.tcl:1261
 msgid "Verbose ngcfile"
-msgstr ""
+msgstr "Ausführliche NGC-Datei"
 
 #: tcl/ngcgui.tcl:1271 tcl/ngcgui.tcl:2405 tcl/ngcgui.tcl:2428
 #: tcl/ngcgui.tcl:2458
 msgid "Create Feature"
-msgstr ""
+msgstr "Form erzeugen"
 
 #: tcl/ngcgui.tcl:1277 tcl/ngcgui.tcl:3070
 msgid "MakeFile"
-msgstr ""
+msgstr "Datei erzeugen"
 
 #: tcl/ngcgui.tcl:1278 tcl/ngcgui.tcl:3067
 msgid "Finalize"
@@ -5833,23 +5835,23 @@ msgstr "Abschließen"
 
 #: tcl/ngcgui.tcl:1295
 msgid "Reread"
-msgstr ""
+msgstr "Neu laden"
 
 #: tcl/ngcgui.tcl:1304 src/emc/usr_intf/gscreen/gscreen.glade:4017
 msgid "Restart"
-msgstr "Anfang an"
+msgstr "Neustart"
 
 #: tcl/ngcgui.tcl:1314
 msgid "SendFileToAxis"
-msgstr ""
+msgstr "an Axis senden"
 
 #: tcl/ngcgui.tcl:1357
 msgid "Unrecoverable problem"
-msgstr ""
+msgstr "Unbehebbarer Fehler"
 
 #: tcl/ngcgui.tcl:1435
 msgid "Postamble file"
-msgstr ""
+msgstr "Postambel Datei"
 
 #: tcl/ngcgui.tcl:1485
 msgid "Subroutine file"
@@ -5869,7 +5871,7 @@ msgstr "Noch keine Parameter"
 
 #: tcl/ngcgui.tcl:1709
 msgid "Missing value for parm"
-msgstr ""
+msgstr "Wert für Parameter fehlt"
 
 #: tcl/ngcgui.tcl:1730
 msgid "Output file"
@@ -5877,15 +5879,15 @@ msgstr "Ausgabedatei"
 
 #: tcl/ngcgui.tcl:1845
 msgid "Multiple Tabs with Features"
-msgstr ""
+msgstr "Mehrere Reiter mit Formen"
 
 #: tcl/ngcgui.tcl:1846
 msgid "Finalize all Tabs?"
-msgstr ""
+msgstr "Alle Reiter abschließen?"
 
 #: tcl/ngcgui.tcl:1846
 msgid "Order"
-msgstr ""
+msgstr "Reihenfolge"
 
 #: tcl/ngcgui.tcl:1848
 msgid "No, just this page"
@@ -5893,7 +5895,7 @@ msgstr "Nein, nur diese Seite"
 
 #: tcl/ngcgui.tcl:1862
 msgid "Axis is not responding"
-msgstr "Achse reagiert nicht"
+msgstr "Axis reagiert nicht"
 
 #: tcl/ngcgui.tcl:1863
 msgid "Error: "
@@ -5901,15 +5903,15 @@ msgstr "Fehler: "
 
 #: tcl/ngcgui.tcl:1865
 msgid "Autosend disabled, Ctrl-A toggles autosend"
-msgstr ""
+msgstr "Automatisches Übertragen aus, Strg+A zum einschalten"
 
 #: tcl/ngcgui.tcl:1867
 msgid "File saving enabled -- Finalize to save"
-msgstr ""
+msgstr "Speichern aktiviert -- zum Speichern bitte abschließen"
 
 #: tcl/ngcgui.tcl:1883
 msgid "Require .ngc suffix for filename"
-msgstr ""
+msgstr "Dateiendung .ngc für Dateiname erforderlich"
 
 #: tcl/ngcgui.tcl:1893
 msgid "Disallowed overwrite of"
@@ -5917,15 +5919,15 @@ msgstr "Unzulässiges Überschreiben von"
 
 #: tcl/ngcgui.tcl:1921
 msgid "FEATURE"
-msgstr ""
+msgstr "FORM"
 
 #: tcl/ngcgui.tcl:1928
 msgid "feature line added"
-msgstr ""
+msgstr "Form Zeile zugefügt"
 
 #: tcl/ngcgui.tcl:1932
 msgid "remaining_features line added"
-msgstr ""
+msgstr "remaining_features Zeile hinzugefügt"
 
 #: tcl/ngcgui.tcl:1944
 msgid "line added"
@@ -5937,11 +5939,11 @@ msgstr "aktiviert"
 
 #: tcl/ngcgui.tcl:1946
 msgid "restores"
-msgstr ""
+msgstr "setzt zurück"
 
 #: tcl/ngcgui.tcl:1985
 msgid "NOTREACHED mode"
-msgstr ""
+msgstr "NOTREACHED modus"
 
 #: tcl/ngcgui.tcl:2001
 msgid "Positional parameters for"
@@ -5949,7 +5951,7 @@ msgstr "Positionsbezogene Parameter für"
 
 #: tcl/ngcgui.tcl:2009
 msgid "expanded file"
-msgstr ""
+msgstr "aufgelöste Datei"
 
 #: tcl/ngcgui.tcl:2023
 msgid "call subroutine file"
@@ -5957,31 +5959,31 @@ msgstr "Unterprogrammdatei aufrufen"
 
 #: tcl/ngcgui.tcl:2406
 msgid "Enter parms for 1st feature"
-msgstr ""
+msgstr "Parameter für erste Form eingeben"
 
 #: tcl/ngcgui.tcl:2413
 msgid "New Outfile"
-msgstr ""
+msgstr "Neue Ausgabedatei"
 
 #: tcl/ngcgui.tcl:2415
 msgid "Ready to make New Outfile"
-msgstr ""
+msgstr "Bereit um neue Ausgabedatei zu erstellen"
 
 #: tcl/ngcgui.tcl:2431 tcl/ngcgui.tcl:2464
 msgid "Enter parms for feature "
-msgstr ""
+msgstr "Parameter für Form eingeben"
 
 #: tcl/ngcgui.tcl:2451
 msgid "feature"
-msgstr ""
+msgstr "Form"
 
 #: tcl/ngcgui.tcl:2456
 msgid "Create Next"
-msgstr ""
+msgstr "Nächste erzeugen"
 
 #: tcl/ngcgui.tcl:2461
 msgid "Created feature "
-msgstr ""
+msgstr "Form erzeugen"
 
 #: tcl/ngcgui.tcl:2485
 msgid "option"
@@ -5993,35 +5995,35 @@ msgstr "Fehlende Parameter"
 
 #: tcl/ngcgui.tcl:2500
 msgid "Parse Error"
-msgstr ""
+msgstr "Syntaxfehler"
 
 #: tcl/ngcgui.tcl:2507
 msgid "Null Preamble"
-msgstr ""
+msgstr "Keine Präambel"
 
 #: tcl/ngcgui.tcl:2512
 msgid "Read Preamble"
-msgstr ""
+msgstr "Präambel lesen"
 
 #: tcl/ngcgui.tcl:2516
 msgid "Preamble Error"
-msgstr ""
+msgstr "Fehler Präambel"
 
 #: tcl/ngcgui.tcl:2521
 msgid "Null Postamble"
-msgstr ""
+msgstr "Keine Postambel"
 
 #: tcl/ngcgui.tcl:2526
 msgid "Read Postamble"
-msgstr ""
+msgstr "Postambel lesen"
 
 #: tcl/ngcgui.tcl:2530
 msgid "Postamble Error"
-msgstr ""
+msgstr "Fehler Postambel"
 
 #: tcl/ngcgui.tcl:2535
 msgid "Read Subfile"
-msgstr ""
+msgstr "Unterdatei lesen"
 
 #: tcl/ngcgui.tcl:2540
 #, fuzzy
@@ -6030,11 +6032,11 @@ msgstr "Fehler"
 
 #: tcl/ngcgui.tcl:2544
 msgid "Outfile set"
-msgstr ""
+msgstr "Ausgabedatei gesetzt"
 
 #: tcl/ngcgui.tcl:2549
 msgid "Finished"
-msgstr ""
+msgstr "Fertig"
 
 #: tcl/ngcgui.tcl:2554
 msgid "Canceled"
@@ -6046,20 +6048,20 @@ msgstr "Gesendet"
 
 #: tcl/ngcgui.tcl:2564
 msgid "SendFileToAxis failed"
-msgstr ""
+msgstr "Konvertierung fehlgeschlagen"
 
 #: tcl/ngcgui.tcl:2568
 msgid "Ctrl-k for Key bindings"
-msgstr ""
+msgstr "Strg+K für Tastenkürzel"
 
 #: tcl/ngcgui.tcl:2572
 #, fuzzy
 msgid "Expand sub"
-msgstr "Pins aufklappen"
+msgstr "Unterprogramm auflösen"
 
 #: tcl/ngcgui.tcl:2576
 msgid "Retain values"
-msgstr ""
+msgstr "Werte merken"
 
 #: tcl/ngcgui.tcl:2580
 msgid "Verbose"
@@ -6067,7 +6069,7 @@ msgstr "Ausführlich"
 
 #: tcl/ngcgui.tcl:2586
 msgid "Finalize Canceled"
-msgstr ""
+msgstr "Abschluss abgebrochen"
 
 #: tcl/ngcgui.tcl:2723 tcl/ngcgui.tcl:2879 tcl/tooledit.tcl:885
 msgid "Dismiss"
@@ -6075,19 +6077,19 @@ msgstr "Ablehnen"
 
 #: tcl/ngcgui.tcl:2728
 msgid "ngcgui Error"
-msgstr "ngcgui-Fehler"
+msgstr "NGCGUI-Fehler"
 
 #: tcl/ngcgui.tcl:2751
 msgid "Declining support for tk send bug in ngcgui"
-msgstr ""
+msgstr "Keine Unterstützung für TK Sendefehler in NGCGUI"
 
 #: tcl/ngcgui.tcl:2752
 msgid "You should upgrade linuxcnc to >= linuxcnc2.5"
-msgstr ""
+msgstr "Bitte auf LinuxCNC >= linuxcnc2.5 aktualisieren"
 
 #: tcl/ngcgui.tcl:2796
 msgid "pre2.4_send_file_to_axis:error"
-msgstr ""
+msgstr "SendFileToAxis vor Version 2.4 nicht unterstützt"
 
 #: tcl/ngcgui.tcl:2990 share/axis/tcl/axis.tcl:1789
 msgid "OFF"
@@ -6095,7 +6097,7 @@ msgstr "AUS"
 
 #: tcl/ngcgui.tcl:2993
 msgid "Toggle autosend"
-msgstr ""
+msgstr "Automatisches Übertragen umschalten"
 
 #: tcl/ngcgui.tcl:2994 tcl/ngcgui.tcl:3201
 msgid "Clear entries"
@@ -6107,51 +6109,51 @@ msgstr "Einträge auf Standardwerte festlegen"
 
 #: tcl/ngcgui.tcl:2996 tcl/ngcgui.tcl:3010 tcl/ngcgui.tcl:3012
 msgid "Open editor specified by"
-msgstr ""
+msgstr "Öffne Editor festgelegt durch"
 
 #: tcl/ngcgui.tcl:2997
 msgid "on last outfile"
-msgstr ""
+msgstr "bei letzter Ausgabedatei"
 
 #: tcl/ngcgui.tcl:2998
 msgid "toggle expand subroutines"
-msgstr ""
+msgstr "Auflösen der Unterprogramme umschalten"
 
 #: tcl/ngcgui.tcl:2999
 msgid "Create feature"
-msgstr ""
+msgstr "Form erzeugen"
 
 #: tcl/ngcgui.tcl:3000
 msgid "Finalize (AUTO send is"
-msgstr ""
+msgstr "Abschiessen (Automatisches Übertragen ist"
 
 #: tcl/ngcgui.tcl:3001
 msgid "Show key bindings"
-msgstr ""
+msgstr "Zeige Tastenkürzel"
 
 #: tcl/ngcgui.tcl:3002
 msgid "Restart (cancel pending)"
-msgstr ""
+msgstr "Neustart (ausstehende abbrechen)"
 
 #: tcl/ngcgui.tcl:3003
 msgid "(re)Read Preamble"
-msgstr ""
+msgstr "(neu)laden der Präambel"
 
 #: tcl/ngcgui.tcl:3004
 msgid "(re)Read Postamble"
-msgstr ""
+msgstr "(neu)laden der Postambel"
 
 #: tcl/ngcgui.tcl:3005
 msgid "(re)Read Subfile"
-msgstr ""
+msgstr "(neu)laden der Unterdatei"
 
 #: tcl/ngcgui.tcl:3006
 msgid "toggle retain values"
-msgstr ""
+msgstr "Werte merken umschalten"
 
 #: tcl/ngcgui.tcl:3007
 msgid "toggle output file verbosity"
-msgstr ""
+msgstr "Ausführliche NGC-Datei umschalten"
 
 #: tcl/ngcgui.tcl:3008
 msgid "Show status"
@@ -6159,7 +6161,7 @@ msgstr "Status anzeigen"
 
 #: tcl/ngcgui.tcl:3009
 msgid "Show full status (debug info)"
-msgstr ""
+msgstr "Debug-Informationen anzeigen"
 
 #: tcl/ngcgui.tcl:3011
 msgid "on current subfile"
@@ -6167,19 +6169,19 @@ msgstr "in der aktuellen Unterdatei"
 
 #: tcl/ngcgui.tcl:3013
 msgid "on current preamble"
-msgstr ""
+msgstr "in der aktuellen Datei"
 
 #: tcl/ngcgui.tcl:3016
 msgid " Escape Return to Preview page"
-msgstr ""
+msgstr " Zurück zur Voransicht"
 
 #: tcl/ngcgui.tcl:3093
 msgid "Editing requires setting for environmental variable VISUAL"
-msgstr ""
+msgstr "Bearbeiten erfordert das setzen der Umgebunsvariable VISUAL"
 
 #: tcl/ngcgui.tcl:3094
 msgid "Trying gedit"
-msgstr ""
+msgstr "Versuche gedit zu starten"
 
 #: tcl/ngcgui.tcl:3107
 msgid "No file available for editing yet"
@@ -6195,11 +6197,11 @@ msgstr "Statusmeldungen"
 
 #: tcl/ngcgui.tcl:3155
 msgid "All-page opt items"
-msgstr ""
+msgstr "Globale Optionen"
 
 #: tcl/ngcgui.tcl:3161
 msgid "any-items"
-msgstr ""
+msgstr "Reiteroptionen"
 
 #: tcl/ngcgui.tcl:3194
 msgid "Set defaults"
@@ -6223,7 +6225,7 @@ msgstr "entfernen"
 
 #: tcl/ngcgui.tcl:3602 tcl/ngcgui.tcl:3608
 msgid "move"
-msgstr ""
+msgstr "verschieben"
 
 #: tcl/ngcgui.tcl:3716 src/emc/usr_intf/pncconf/pncconf.py:3859
 #: src/emc/usr_intf/pncconf/pncconf.py:3965
@@ -6233,19 +6235,19 @@ msgstr "Benutzerdefiniert"
 
 #: tcl/ngcgui.tcl:3742
 msgid "Problem creating page"
-msgstr ""
+msgstr "Seite kann nicht erzeugt werden"
 
 #: tcl/ngcgui.tcl:3749
 msgid "entrykeybindings not available"
-msgstr ""
+msgstr "Tastenkürzel nicht verfügbar"
 
 #: tcl/ngcgui.tcl:3793
 msgid "Found multiple matches for"
-msgstr ""
+msgstr "Mehrere Übereinstimmungen gefunden für"
 
 #: tcl/ngcgui.tcl:3794
 msgid "using path"
-msgstr ""
+msgstr "benutze Pfad"
 
 #: tcl/ngcgui.tcl:3802 src/emc/usr_intf/axis/scripts/axis.py:2617
 #: src/emc/usr_intf/axis/scripts/axis.py:2644
@@ -6254,15 +6256,15 @@ msgstr "Warnung"
 
 #: tcl/ngcgui.tcl:3803
 msgid "File absolute path specifier conflicts with searchpath result"
-msgstr ""
+msgstr "Absoluter Pfad der Datei entspricht nicht dem Suchpfad-Ergebnis"
 
 #: tcl/ngcgui.tcl:3804
 msgid "Absolute Specifier"
-msgstr ""
+msgstr "Absoluter Pfad"
 
 #: tcl/ngcgui.tcl:3805
 msgid "Using Search Result"
-msgstr ""
+msgstr "Benutze Suchergebnis"
 
 #: tcl/ngcgui.tcl:3810
 msgid "File not in Search Path"
@@ -6294,12 +6296,12 @@ msgstr "in INI-Datei"
 
 #: tcl/ngcgui.tcl:3829
 msgid "(Restart required after fixing ini file)"
-msgstr ""
+msgstr "(Neustart noch Korrektur der INI-Datei erforderlich)"
 
 #: tcl/ngcgui.tcl:3844
 #, fuzzy
 msgid "Try to Continue"
-msgstr "Fortsetzen"
+msgstr "Versuche fortzufahren"
 
 #: tcl/ngcgui.tcl:3849
 msgid "Ngcgui Configuration File Not Found"
@@ -6311,7 +6313,7 @@ msgstr "Fehlendes Tcl-Paket Img"
 
 #: tcl/ngcgui.tcl:3930
 msgid "Please install Img"
-msgstr ""
+msgstr "Bitte Img installieren"
 
 #: tcl/ngcgui.tcl:4134
 msgid "ini file"
@@ -6327,19 +6329,19 @@ msgstr ""
 
 #: tcl/ngcgui_ttt.tcl:70
 msgid "Note truetype-tracer v4 is required"
-msgstr ""
+msgstr "Hinweis: TrueType-Tracer V4 erforderlich"
 
 #: tcl/ngcgui_ttt.tcl:71
 msgid "Note: truetype-tracer v4 is required"
-msgstr ""
+msgstr "Hinweis: TrueType-Tracer V4 erforderlich"
 
 #: tcl/ngcgui_ttt.tcl:81
 msgid "ngcgui_app.tcl must be loaded before"
-msgstr ""
+msgstr "ngcgui_app.tcl muss zuerst geladen werden"
 
 #: tcl/ngcgui_ttt.tcl:89
 msgid "Create a subroutine file from truetype-tracer (V4 reqd)"
-msgstr ""
+msgstr "Unterprogramm per TrueType-Tracer erzeugen (V4 erforderlich)"
 
 #: tcl/ngcgui_ttt.tcl:102 tcl/ngcgui_ttt.tcl:115
 msgid "problem with"
@@ -6351,15 +6353,15 @@ msgstr "Kein Eintrag für"
 
 #: tcl/ngcgui_ttt.tcl:109
 msgid "wrong version of truetype-tracer"
-msgstr ""
+msgstr "Falsche Version des TrueType-Tracers"
 
 #: tcl/ngcgui_ttt.tcl:125
 msgid "not writable, using"
-msgstr ""
+msgstr "nicht schreibbar, benutze"
 
 #: tcl/ngcgui_ttt.tcl:125
 msgid "and setting expandsub"
-msgstr ""
+msgstr "und setzte Unterprogramm auflösen"
 
 #: tcl/ngcgui_ttt.tcl:161 src/emc/usr_intf/pncconf/external.glade:721
 msgid "Text"
@@ -6379,7 +6381,7 @@ msgstr ""
 
 #: tcl/ngcgui_ttt.tcl:199
 msgid "default"
-msgstr "Standard"
+msgstr "Standartwerte"
 
 #: tcl/ngcgui_ttt.tcl:239
 msgid "Mode"
@@ -6391,7 +6393,7 @@ msgstr "normal"
 
 #: tcl/ngcgui_ttt.tcl:248
 msgid "date"
-msgstr ""
+msgstr "Datum"
 
 #: tcl/ngcgui_ttt.tcl:249
 msgid "fontname"
@@ -6399,7 +6401,7 @@ msgstr "Schriftname"
 
 #: tcl/ngcgui_ttt.tcl:262
 msgid "Switches"
-msgstr ""
+msgstr "Optionen"
 
 #: tcl/ngcgui_ttt.tcl:270
 msgid "Unicode"
@@ -6411,19 +6413,19 @@ msgstr "Drehung erlauben"
 
 #: tcl/ngcgui_ttt.tcl:295
 msgid "Make ngcgui-compatible subfile and new tab page"
-msgstr ""
+msgstr "Erzeuge NGCGUI-kompatiebles Unterprogramm und neuen Reiter"
 
 #: tcl/ngcgui_ttt.tcl:353
 msgid "Null text"
-msgstr ""
+msgstr "Kein Text"
 
 #: tcl/ngcgui_ttt.tcl:384
 msgid "Using truetype-tracer default font"
-msgstr ""
+msgstr "TrueType-Tracer Standartzeichensatz benutzen"
 
 #: tcl/ngcgui_ttt.tcl:388
 msgid "no such file"
-msgstr "keine solche Datei"
+msgstr "Datei nicht gefunden"
 
 #: tcl/ngcgui_ttt.tcl:393
 msgid "file not readable"
@@ -6431,7 +6433,7 @@ msgstr "Datei ist nicht lesbar"
 
 #: tcl/ngcgui_ttt.tcl:507
 msgid "Creating new tab page"
-msgstr ""
+msgstr "Neue Reiterseite anlegen"
 
 #: tcl/ngcgui_app.tcl:25
 msgid ""
@@ -9378,7 +9380,7 @@ msgstr "Schritt"
 #: src/emc/usr_intf/gscreen/gscreen.glade:4087
 #, fuzzy
 msgid "Start"
-msgstr "Anfang an"
+msgstr "Anfang"
 
 #: src/emc/usr_intf/stepconf/stepconf.py:140
 #: src/emc/usr_intf/pncconf/private_data.py:40
@@ -17613,7 +17615,7 @@ msgstr "AXIS Manueller Werkzeugwechsel"
 #: src/emc/usr_intf/gmoccapy/dialogs.py:126
 #: src/emc/usr_intf/gmoccapy/dialogs.py:140
 msgid "Operator Message"
-msgstr ""
+msgstr "Bediener Nachricht"
 
 #: src/emc/usr_intf/gscreen/gscreen.py:3774
 #: src/emc/usr_intf/gscreen/gscreen.py:3778
@@ -17621,7 +17623,7 @@ msgstr ""
 #: src/emc/usr_intf/gmoccapy/dialogs.py:182
 #, fuzzy
 msgid "Restart Entry"
-msgstr "Anfang an"
+msgstr "Neustart Eintrag"
 
 #: src/emc/usr_intf/gscreen/gscreen.py:3787
 #: src/emc/usr_intf/gmoccapy/dialogs.py:194
