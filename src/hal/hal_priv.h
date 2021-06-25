@@ -228,6 +228,22 @@ typedef struct {
     char name[HAL_NAME_LEN + 1];	/* pin name */
 } hal_pin_t;
 
+/** HAL signal flags.
+    Addditional flags for signals (i.e. retain)
+    Values are used as bitmask and can be or'ed
+*/
+
+typedef enum {
+    HAL_SIGFLAG_RETAIN = 1
+} hal_sig_flags_t;
+
+typedef union {
+  hal_bit_t bit;
+  hal_u32_t u32;
+  hal_s32_t s32;
+  hal_float_t flt;
+} hal_sig_val_t;
+
 /** HAL 'signal' data structure.
     This structure contains information about a 'signal' object.
 */
@@ -238,6 +254,8 @@ typedef struct {
     int readers;		/* number of input pins linked */
     int writers;		/* number of output pins linked */
     int bidirs;			/* number of I/O pins linked */
+    int flags;			/* flag (e.g. HAL_FLAG_RETAIN) */
+    hal_sig_val_t retain_val;	/* value for retain change tracking */
     char name[HAL_NAME_LEN + 1];	/* signal name */
 } hal_sig_t;
 

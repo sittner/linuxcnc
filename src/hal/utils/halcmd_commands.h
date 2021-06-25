@@ -85,6 +85,8 @@ extern int do_loadusr_cmd(char *args[]);
 extern int do_waitusr_cmd(char *comp_name);
 extern int do_save_cmd(char *type, char *filename);
 extern int do_setexact_cmd(void);
+extern int do_retain_cmd(char *name);
+extern int do_unretain_cmd(char *name);
 
 pid_t hal_systemv_nowait(char *const argv[]);
 int hal_systemv(char *const argv[]);
