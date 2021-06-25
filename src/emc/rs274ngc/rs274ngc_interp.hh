@@ -661,6 +661,7 @@ int read_inputs(setup_pointer settings);
     int py_execute(const char *cmd, bool as_file = false); // for (py, ....) comments
     int py_reload();
     FILE *find_ngc_file(setup_pointer settings,const char *basename, char *foundhere = NULL);
+    FILE *find_file(setup_pointer settings,char *filename, char *foundhere = NULL);
 
     const char *getSavedError();
     // set error message text without going through printf format interpretation
@@ -681,6 +682,15 @@ int read_inputs(setup_pointer settings);
     // the Python introspection module
 
  FILE *log_file;
+
+ // internationalization stuff
+ pcre *i18n_re;
+ std::map<std::string, std::string> i18n_map;
+
+ void i18n_init();
+ void i18n_cleanup();
+ int i18n_translate(const char *from, char *to, int to_len);
+ char *i18n_map_token(const pcre *code, char *subject, int length, int *offset);
 
 /* Internal arrays */
  static const int _gees[];

@@ -1460,7 +1460,8 @@ int Interp::convert_comment(char *comment, bool enqueue)       //!< string with 
 
   // compare with MSG, SYSTEM, DEBUG, PRINT
   if (startswith(lc, MSG_STR)) {
-    MESSAGE(comment + start + strlen(MSG_STR));
+    i18n_translate(comment + start + strlen(MSG_STR), expanded, EX_SIZE);
+    MESSAGE(expanded);
     return INTERP_OK;
   }
   else if (startswith(lc, DEBUG_STR))

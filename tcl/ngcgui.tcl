@@ -429,6 +429,61 @@ if {"" == [info command "_"]} {
   proc _ {s} {return [::msgcat::mc $s]}
 }
 
+proc ::ngcgui::i18n_init {} {
+  # check if already initialized
+  if [info exists ::ngc(any,i18n,initialized)] { return }
+  set ::ngc(any,i18n,initialized) ""
+
+  # extract lang part from LANG env variable
+  if ![info exists ::env(LANG)] { return }
+  set lang [split $::env(LANG) "."]
+  if { [llength $lang] == 0 } { return }
+  set lang [split [lindex $lang 0] "_"]
+  if { [llength $lang] == 0 } { return }
+  set lang [lindex $lang 0]
+  if { "$lang" == "" } { return }
+
+  # search language file
+  set fname ""
+  foreach path $::ngc(any,paths) {
+    set tmp "$path/lang.$lang"
+    if [file exists $tmp] {
+      set fname $tmp
+      break
+    }
+  }
+  if { "$fname" == "" } { return }
+
+  ## create expression map
+  set fp [open $fname r]
+  while { [gets $fp line] >= 0 } {
+     set tok [regexp -all -inline {(?:[^\s"]+|\"[^"]*\")} $line]
+     if { [llength $tok] >= 2 } {
+       set from [string trim [lindex $tok 0] "\""]
+       set to [string trim [lindex $tok 1] "\""]
+       set ::ngc(any,i18n,$from) $to
+     }
+  }
+  close $fp
+}
+
+proc ::ngcgui::i18n_translate {comment} {
+  foreach {tok} [lsort -unique [regexp -all -inline {_\{[^\}]*\}} $comment]] {
+    set from [string range $tok 2 [expr [string length $tok] - 2]]
+    set to ""
+    if [info exists ::ngc(any,i18n,$from)] {
+      set to $::ngc(any,i18n,$from)
+    } else {
+      if ![string match "_*" $from] {
+        set to $from
+      }
+    }
+    set comment [string map [list $tok $to] $comment]
+  }
+
+  return $comment
+}
+
 #-----------------------------------------------------------------------
 proc ::ngcgui::parse_ngc {hdl ay_name filename args} {
   # return 1 for ok
@@ -498,7 +553,7 @@ proc ::ngcgui::parse_ngc {hdl ay_name filename args} {
       if {[string first "(info:"  $theline] >= 0} {
         set idx [string first : $theline]
         set info [string range $theline [expr $idx +1] end]
-        set ay($hdl,info) [string trim $info " )"]
+        set ay($hdl,info) [i18n_translate [string trim $info " )"]]
       }
     }
 
@@ -697,9 +752,9 @@ proc ::ngcgui::parse_ngc {hdl ay_name filename args} {
           if [regexp -nocase "= *(\\+*-*\[0-9.\]*)(.*)" \
                  $cmt V(match) V(dvalue) V(comment)] {
             set ay($hdl,arg,dvalue,$num02)  $V(dvalue)
-            set ay($hdl,arg,comment,$num02) [string trim $V(comment)]
+            set ay($hdl,arg,comment,$num02) [i18n_translate [string trim $V(comment)]]
           } else {
-            set ay($hdl,arg,comment,$num02) $cmt
+            set ay($hdl,arg,comment,$num02) [i18n_translate $cmt]
           }
         }
 
@@ -1076,6 +1131,7 @@ proc ::ngcgui::gui {hdl mode args} {
     }
     create {
       if {"$hdl" == ""} {return -code error "hdl is null"}
+      i18n_init
       # mandatory arg for mode==create is a frame
       # caller packs/unpacks wframe which must be a valid name
       # but not exist yet
