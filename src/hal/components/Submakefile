@@ -72,6 +72,14 @@ USERSRCS += $(HALSAMPLERSRCS)
 	$(Q)$(CC) $(LDFLAGS) -o $@ $^
 TARGETS += ../bin/halsampler
 
+RETAINUSRSRC = hal/components/retain_usr.c
+USERSRCS += $(RETAINUSRSRC)
+
+../bin/retain_usr: $(call TOOBJS, $(RETAINUSRSRC)) ../lib/liblinuxcnchal.so.0
+	$(ECHO) Linking $(notdir $@)
+	$(Q)$(CC) $(LDFLAGS) -o $@ $^ -lrt
+TARGETS += ../bin/retain_usr
+
 PYSAMPLERSRCS := hal/components/panelui.c
 USERSRCS += $(PYSAMPLERSRCS)
 PYFLAGS := $(PYTHON_EXTRA_LDFLAGS) $(BOOST_PYTHON_LIB) $(PYTHON_LIBS) $(PYTHON_EXTRA_LIBS) -lrt

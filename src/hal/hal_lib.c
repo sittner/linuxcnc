@@ -1001,15 +1001,19 @@ with the C standard.
     switch (type) {
     case HAL_BIT:
 	*((hal_bit_t *) data_addr) = 0;
+	new->retain_val.bit = 0;
 	break;
     case HAL_S32:
 	*((hal_s32_t *) data_addr) = 0;
+	new->retain_val.s32 = 0;
         break;
     case HAL_U32:
 	*((hal_u32_t *) data_addr) = 0;
+	new->retain_val.u32 = 0;
         break;
     case HAL_FLOAT:
 	*((hal_float_t *) data_addr) = 0.0;
+	new->retain_val.flt = 0.0;
 	break;
     case HAL_PORT:
 	*((int *) data_addr) = 0;
@@ -1182,6 +1186,14 @@ int hal_link(const char *pin_name, const char *sig_name)
     rtapi_print_msg(RTAPI_MSG_ERR,
         "HAL: ERROR: signal '%s' is a port and cannot have I/O pin(s)\n", sig_name);
     return -EINVAL;
+    }
+    /* linking output pin to retain sig? */
+    if ((pin->dir == HAL_OUT) && (sig->flags & HAL_SIGFLAG_RETAIN)) {
+	/* yes, can't do that */
+	rtapi_mutex_give(&(hal_data->mutex));
+	rtapi_print_msg(RTAPI_MSG_ERR,
+	    "HAL: ERROR: retain signal '%s' can not have output pin(s)\n", sig_name);
+	return -EINVAL;
     }
     /* linking bidir pin to sig that already has output pin? */
     if ((pin->dir == HAL_IO) && (sig->writers > 0)) {

@@ -70,7 +70,7 @@ static void print_funct_info(char **patterns);
 static void print_thread_info(char **patterns);
 static void print_comp_names(char **patterns);
 static void print_pin_names(char **patterns);
-static void print_sig_names(char **patterns);
+static void print_sig_names(char **patterns, int flags);
 static void print_param_names(char **patterns);
 static void print_funct_names(char **patterns);
 static void print_thread_names(char **patterns);
@@ -383,13 +383,14 @@ int do_delf_cmd(char *func, char *thread) {
 }
 
 static int preflight_net_cmd(char *signal, hal_sig_t *sig, char *pins[]) {
-    int i, type=-1, writers=0, bidirs=0, pincnt=0;
+    int i, type=-1, writers=0, bidirs=0, pincnt=0, retain=0;
     char *writer_name=0, *bidir_name=0;
     /* if signal already exists, use its info */
     if (sig) {
 	type = sig->type;
 	writers = sig->writers;
 	bidirs = sig->bidirs;
+	retain = sig->flags & HAL_SIGFLAG_RETAIN;
     }
 
     if(writers || bidirs) 
@@ -443,6 +444,12 @@ static int preflight_net_cmd(char *signal, hal_sig_t *sig, char *pins[]) {
                         signal, pin_data_dir(pin->dir), pin->name,
                         bidir_name ? pin_data_dir(HAL_IO):pin_data_dir(HAL_OUT),
                         bidir_name ? bidir_name : writer_name);
+                return -EINVAL;
+            }
+            if(retain) {
+                halcmd_error(
+                    "Retain signal '%s' can not add %s pin '%s'\n",
+                        signal, pin_data_dir(pin->dir), pin->name);
                 return -EINVAL;
             }
             writer_name = pin->name;
@@ -1044,9 +1051,9 @@ int do_list_cmd(char *type, char **patterns)
     } else if (strcmp(type, "pin") == 0) {
 	print_pin_names(patterns);
     } else if (strcmp(type, "sig") == 0) {
-	print_sig_names(patterns);
+	print_sig_names(patterns, 0);
     } else if (strcmp(type, "signal") == 0) {
-	print_sig_names(patterns);
+	print_sig_names(patterns, 0);
     } else if (strcmp(type, "param") == 0) {
 	print_param_names(patterns);
     } else if (strcmp(type, "parameter") == 0) {
@@ -1057,6 +1064,8 @@ int do_list_cmd(char *type, char **patterns)
 	print_funct_names(patterns);
     } else if (strcmp(type, "thread") == 0) {
 	print_thread_names(patterns);
+    } else if (strcmp(type, "retain") == 0) {
+	print_sig_names(patterns, HAL_SIGFLAG_RETAIN);
     } else {
 	halcmd_error("Unknown 'list' type '%s'\n", type);
 	return -1;
@@ -2067,7 +2076,7 @@ static void print_pin_names(char **patterns)
     halcmd_output("\n");
 }
 
-static void print_sig_names(char **patterns)
+static void print_sig_names(char **patterns, int flags)
 {
     SHMFIELD(hal_sig_t) next;
     hal_sig_t *sig;
@@ -2076,7 +2085,7 @@ static void print_sig_names(char **patterns)
     next = hal_data->sig_list_ptr;
     while (next != 0) {
 	sig = SHMPTR(next);
-	if ( match(patterns, sig->name) ) {
+	if ( match(patterns, sig->name) && (sig->flags & flags) == flags ) {
 	    halcmd_output("%s ", sig->name);
 	}
 	next = sig->next_ptr;
@@ -2821,6 +2830,52 @@ int do_setexact_cmd() {
     }
     rtapi_mutex_give(&(hal_data->mutex));
     return retval;
+}
+
+int do_retain_cmd(char *name)
+{
+    hal_sig_t *sig;
+    rtapi_print_msg(RTAPI_MSG_DBG, "setting retain flag of signal '%s'\n", name);
+    /* get mutex before accessing shared data */
+    rtapi_mutex_get(&(hal_data->mutex));
+    /* search signal list for name */
+    sig = halpr_find_sig_by_name(name);
+    if (sig == 0) {
+	rtapi_mutex_give(&(hal_data->mutex));
+	halcmd_error("Signal '%s' not found\n", name);
+	return -EINVAL;
+    }
+    /* found it - does it have a writer? */
+    if (sig->writers > 0) {
+	rtapi_mutex_give(&(hal_data->mutex));
+	halcmd_error("Signal '%s' already has writer\n", name);
+	return -EINVAL;
+    }
+    /* set retain flag */
+    sig->flags |= HAL_SIGFLAG_RETAIN;
+    halcmd_info("Signal '%s' retain flag set\n", name);
+    rtapi_mutex_give(&(hal_data->mutex));
+    return 0;
+}
+
+int do_unretain_cmd(char *name)
+{
+    hal_sig_t *sig;
+    rtapi_print_msg(RTAPI_MSG_DBG, "resetting retain flag of signal '%s'\n", name);
+    /* get mutex before accessing shared data */
+    rtapi_mutex_get(&(hal_data->mutex));
+    /* search signal list for name */
+    sig = halpr_find_sig_by_name(name);
+    if (sig == 0) {
+	rtapi_mutex_give(&(hal_data->mutex));
+	halcmd_error("Signal '%s' not found\n", name);
+	return -EINVAL;
+    }
+    /* reset retain flag */
+    sig->flags &= ~HAL_SIGFLAG_RETAIN;
+    halcmd_info("Signal '%s' retain flag reset\n", name);
+    rtapi_mutex_give(&(hal_data->mutex));
+    return 0;
 }
 
 int do_help_cmd(char *command)

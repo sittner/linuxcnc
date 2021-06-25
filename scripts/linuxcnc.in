@@ -971,13 +971,37 @@ while [ -n "$HALCOMMAND" ] ; do
     HALCOMMAND=`$INIVAR -ini "$INIFILE" -var HALCMD -sec HAL -num $NUM 2> /dev/null`
 done
 
-# 4.3.9. start the realtime stuff ticking
+# 4.3.9. load retain stuff if retained signals are found
+if $HALCMD list retain | grep -q '.'; then
+    echo "Loading retain"
+
+    # load realtime part for syncing
+    $HALCMD loadrt retain
+    RETAIN_SYNC_THREAD=`$INIVAR -ini "$INIFILE" -var SYNC_THREAD -sec RETAIN 2> /dev/null`
+    if [ -z "$RETAIN_VAR_FILE" ]; then
+	RETAIN_SYNC_THREAD="servo-thread"
+    fi
+    $HALCMD addf retain.sync $RETAIN_SYNC_THREAD
+
+    # load user space part for file I/O
+    RETAIN_VAR_FILE=`$INIVAR -ini "$INIFILE" -var VAR_FILE -sec RETAIN 2> /dev/null`
+    if [ -z "$RETAIN_VAR_FILE" ]; then
+	RETAIN_VAR_FILE="retain.var"
+    fi
+    if [ ! "${CFGFILE:0:1}" = "/" ] ; then
+	RETAIN_VAR_FILE="$(dirname $INIFILE)/$RETAIN_VAR_FILE"
+    fi
+    RETAIN_POLL_PERIOD=`$INIVAR -ini "$INIFILE" -var POLL_PERIOD -sec RETAIN 2> /dev/null`
+    $HALCMD loadusr -W retain_usr "$RETAIN_VAR_FILE" "$RETAIN_POLL_PERIOD"
+fi
+
+# 4.3.10. start the realtime stuff ticking
 $HALCMD start
 
-# 4.3.10. run other applications
+# 4.3.11. run other applications
 run_applications
 
-# 4.3.11. Run display in foreground
+# 4.3.12. Run display in foreground
 echo "Starting DISPLAY program: $EMCDISPLAY" >>$PRINT_FILE
 result=0
 case $EMCDISPLAY in

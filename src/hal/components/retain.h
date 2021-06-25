@@ -1,0 +1,6 @@
+#define RETAIN_ACTION_PARAM "retain.action"
+
+#define RETAIN_ACTION_NOOP 0
+#define RETAIN_ACTION_READ 1
+#define RETAIN_ACTION_STORE 2
+
