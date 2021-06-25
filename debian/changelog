@@ -1,3 +1,9 @@
+linuxcnc (1:2.8.1~mds1) buster; urgency=low
+
+  * added modusoft patches
+
+ -- Sascha Ittner <sascha.ittner@modusoft.de>  Fri, 25 Jun 2021 13:07:16 +0200
+
 linuxcnc (1:2.8.1) buster; urgency=low
 
  * Docs: Updated Chinese "Getting Started"
