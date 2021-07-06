@@ -126,6 +126,7 @@ static int save_vars(const char *file_name) {
         ret = fprintf(f, "%s %.6f\n", sig->name, sig->retain_val.flt);
         break;
       default:
+        ret = 0;
         break;
     }
 

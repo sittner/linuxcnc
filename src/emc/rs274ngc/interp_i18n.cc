@@ -37,7 +37,7 @@ void Interp::i18n_init() {
     if ((p = strchr(lpart, '.')) != NULL) *p = 0;
     if ((p = strchr(lpart, '_')) != NULL) *p = 0;
 
-    char fname[PATH_MAX+1];
+    char fname[PATH_MAX+5+1];
     snprintf(fname, sizeof(fname), "lang.%s", lpart);
     fname[sizeof(lpart) - 1] = 0;
 
