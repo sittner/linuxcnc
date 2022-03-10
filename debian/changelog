@@ -1,38 +1,82 @@
-linuxcnc (1:2.8.1~mds1) buster; urgency=low
+linuxcnc (1:2.8.2~mds1) buster; urgency=low
 
   * added modusoft patches
 
- -- Sascha Ittner <sascha.ittner@modusoft.de>  Fri, 25 Jun 2021 13:07:16 +0200
+ -- Sascha Ittner <sascha.ittner@modusoft.de>  Thu, 10 Mar 2022 09:03:57 +0100
+
+linuxcnc (1:2.8.2) buster; urgency=low
+
+  * gladevcp: Numerous Updates
+  * qtvcp -cam_align panel: allow selection of camera number
+  * gmoccapy_3_1_3_8 - many updates
+  * Typo correction Axis.py "Geometry reading" XYZBCUVW > XYZABCUVW
+  * Docs add info on loading halscope
+  * update 2.8 from master for xhc-whb04b-6
+  * Merge pull request #1024 from kiall/2.8-axis-error-pin
+  * translations - fixed moccapy / gmoccapy errors
+  * Update hostmot2.9
+  * Fix: update manual SSI
+  * Update abs_encoder.c
+  * add info on installing mesaflash
+  * rx_mode typo in hm2_uart_setup
+  * Docs: Many updates
+  * flipflop: Add an inverted output pin, like the classic D-type latch
+  * pncconf -fix inverting of steppers, in the tune axis test
+  * qtvcp -qtaxis: change controls for lathe configs
+  * pyui -fix commands for joints/axis changes
+  * Docs: Correct pin direction 14 in the parallel port docs
+  * gmoccapy_translations - new translation files
+  * interp_o_word.cc: mdi-opened files leak #1088
+  * command.c: use consistent external offset epsilon
+  * sendkeys: A HAL component to send keystrokes and UI events
+  * plasmac: fix material verter for sheetcam update
+  * fix halcompile singleton option on userspace components
+  * pncconf -fix internal description of 7i73 mode 1
+  * pncconf -fix sserial number when parcing XML
+  * pncconf -fix sserial channel number for the 7i96
+  * Docs: Update URL to updated Pi SD card image. Also document limitations.
+  * Merge pull request #1052 from Hans470/2.8-restructure-hal-doc
+  * pncconf -many uodates
+  * Added new version of Raspberry Pi4 and Raspberry Pi 400
+  * AXIS: Add an axisui.error pin
+  * qtvcp -qtDragon docs: add a bit of information about probing.
+  * Update near.comp add {} for syntax coherence
+  * PlasmaC: Many Updates
+  * hal_glib -fix check_for_modes always failing
+  * emccanon.cc GET_EXTERNAL_TOOL_SLOT hdl bogus request
+  * Revert bad change inside driver XHC-WHB04B-6 lcnc 2.8
+
+ -- andypugh <andy@bodgesoc.org>  Sun, 20 Jun 2021 18:48:30 +0100
 
 linuxcnc (1:2.8.1) buster; urgency=low
 
- * Docs: Updated Chinese "Getting Started"
- * plasmac: fix conversational path error
- * hostmot2: Add support for Mesa 7i95, 7i97 and 7c80
- * qtvcp -qtdragon: updates
- * plasmac: Bugfixes
- * qtvcp -many updates
- * Forgot to add source file to Makefile
- * Fix for pre-c99 compilers
- * hm2_rpspi: remove and reinstate the kernel spi driver at startup/shutdown
- * plasmac: Don't pierce spotting operations + many others updates
- * changed pocket_number to mod_pocket in direction logic
- * motion.9 motion.feed-inhibit gcode only (not jogs)
- * command.c for consistency, allow jogs if feedhold
- * control.c joint jogs inhibition if feedhold
- * userkins.comp (new) userkins using halcompile
- * gs2_vfd: Fixes how many registers that is written to Closes #506
- * Update internal names after file renaming in 2004 Closes #922
- * Fix gpio and pin relationship on rpi2 and later Closes #955
- * qtvcp -update camview
- * pncconf -allow different home switch offsets on tandem axes
- * added hal pin to allow preview refresh
- * pncconf -raise spinbox limits in tune test
- * pncconf -fix PID maxerror setting in the tune test fo rmetric machines
- * Docs: Pi links should be http not https
- * Docs: Add links to the Raspberry Pi SD card image to the install docs
- * dbounce.comp (new) alternative debounce component
- * docs: plasmac user guide update
+  * Docs: Updated Chinese "Getting Started"
+  * plasmac: fix conversational path error
+  * hostmot2: Add support for Mesa 7i95, 7i97 and 7c80
+  * qtvcp -qtdragon: updates
+  * plasmac: Bugfixes
+  * qtvcp -many updates
+  * Forgot to add source file to Makefile
+  * Fix for pre-c99 compilers
+  * hm2_rpspi: remove and reinstate the kernel spi driver at startup/shutdown
+  * plasmac: Don't pierce spotting operations and many other updates
+  * changed pocket_number to mod_pocket in direction logic
+  * motion.9 motion.feed-inhibit gcode only (not jogs)
+  * command.c for consistency, allow jogs if feedhold
+  * control.c joint jogs inhibition if feedhold
+  * userkins.comp (new) userkins using halcompile
+  * gs2_vfd: Fixes how many registers that is written to Closes #506
+  * Update internal names after file renaming in 2004 Closes #922
+  * Fix gpio and pin relationship on rpi2 and later Closes #955
+  * qtvcp -update camview
+  * pncconf -allow different home switch offsets on tandem axes
+  * added hal pin to allow preview refresh
+  * pncconf -raise spinbox limits in tune test
+  * pncconf -fix PID maxerror setting in the tune test fo rmetric machines
+  * Docs: Pi links should be http not https
+  * Docs: Add links to the Raspberry Pi SD card image to the install docs
+  * dbounce.comp (new) alternative debounce component
+  * docs: plasmac user guide update
 
  -- andypugh <andy@bodgesoc.org>  Sun, 29 Nov 2020 14:43:33 +0000
 
