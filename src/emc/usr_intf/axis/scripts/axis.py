@@ -982,6 +982,7 @@ class LivePlotter:
 class HalJogHandler:
     def __init__(self, axis):
         self.axis = axis
+        self.idx = "xyzabcuvw".index(axis)
         self.pin_plus = "jog.%s-plus" % (axis)
         self.pin_minus = "jog.%s-minus" % (axis)
         self.jog_plus = False
@@ -1001,20 +1002,16 @@ class HalJogHandler:
         if self.jog_plus != jog_plus:
              self.jog_plus = jog_plus
              if jog_plus:
-                 vars.current_axis.set(self.axis)
-                 commands.axis_activated()
-                 commands.jog_plus()
+                 jog_on(self.idx, get_jog_speed(self.idx))
              else:
-                 jog_off(self.axis)
+                 jog_off(self.idx)
 
         if self.jog_minus != jog_minus:
              self.jog_minus = jog_minus
              if jog_minus:
-                 vars.current_axis.set(self.axis)
-                 commands.axis_activated()
-                 commands.jog_minus()
+                 jog_on(self.idx, -get_jog_speed(self.idx))
              else:
-                 jog_off(self.axis)
+                 jog_off(self.idx)
 
 class HalScaleHandler:
     def __init__(self, pin, widget):
