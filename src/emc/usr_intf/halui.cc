@@ -53,6 +53,8 @@ static int axis_mask = 0;
 #endif
 
 #define HAL_FIELDS \
+    FIELD(hal_u32_t,cycle_count) /* pin current halui cycle count */ \
+\
     FIELD(hal_bit_t,machine_on) /* pin for setting machine On */ \
     FIELD(hal_bit_t,machine_off) /* pin for setting machine Off */ \
     FIELD(hal_bit_t,machine_is_on) /* pin for machine is On/Off */ \
@@ -531,6 +533,18 @@ int halui_export_pin_IN_s32(hal_s32_t **pin, const char *name)
     return 0;
 }
 
+int halui_export_pin_OUT_u32(hal_u32_t **pin, const char *name)
+{
+    int retval;
+    retval = hal_pin_u32_new(name, HAL_OUT, pin, comp_id);
+    if (retval < 0) {
+	rtapi_print_msg(RTAPI_MSG_ERR,"HALUI: ERROR: halui pin %s export failed with err=%i\n", name, retval);
+	hal_exit(comp_id);
+	return -1;
+    }
+    return 0;
+}
+
 int halui_export_pin_IN_float(hal_float_t **pin, const char *name)
 {
     int retval;
@@ -590,6 +604,10 @@ int halui_hal_init(void)
     }
 
     /* STEP 3a: export the out-pin(s) */
+
+    retval = halui_export_pin_OUT_u32(&(halui_data->cycle_count), "halui.cycle-count");
+    if (retval < 0) return retval;
+    *halui_data->cycle_count = 0;
 
     retval =  hal_pin_float_newf(HAL_OUT, &(halui_data->units_per_mm), comp_id, "halui.machine.units-per-mm");
     if (retval < 0) return retval;
@@ -2303,6 +2321,8 @@ static void modify_hal_pins()
     *(halui_data->joint_on_hard_max_limit[num_joints]) = emcStatus->motion.joint[*(halui_data->joint_selected)].maxHardLimit;
     *(halui_data->joint_has_fault[num_joints]) = emcStatus->motion.joint[*(halui_data->joint_selected)].fault;
 
+    // increment cycle count
+    (*halui_data->cycle_count)++;
 }
 
 
