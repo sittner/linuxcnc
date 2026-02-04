@@ -9,31 +9,39 @@
 
 // RTAPI logging wrappers
 static void rtapi_log_error(const char *fmt, ...) {
+    char buf[256];
     va_list args;
     va_start(args, fmt);
-    rtapi_print_msg(RTAPI_MSG_ERR, fmt, args);
+    rtapi_vsnprintf(buf, sizeof(buf), fmt, args);
     va_end(args);
+    rtapi_print_msg(RTAPI_MSG_ERR, "%s", buf);
 }
 
 static void rtapi_log_warning(const char *fmt, ...) {
+    char buf[256];
     va_list args;
     va_start(args, fmt);
-    rtapi_print_msg(RTAPI_MSG_WARN, fmt, args);
+    rtapi_vsnprintf(buf, sizeof(buf), fmt, args);
     va_end(args);
+    rtapi_print_msg(RTAPI_MSG_WARN, "%s", buf);
 }
 
 static void rtapi_log_info(const char *fmt, ...) {
+    char buf[256];
     va_list args;
     va_start(args, fmt);
-    rtapi_print_msg(RTAPI_MSG_INFO, fmt, args);
+    rtapi_vsnprintf(buf, sizeof(buf), fmt, args);
     va_end(args);
+    rtapi_print_msg(RTAPI_MSG_INFO, "%s", buf);
 }
 
 static void rtapi_log_debug(const char *fmt, ...) {
+    char buf[256];
     va_list args;
     va_start(args, fmt);
-    rtapi_print_msg(RTAPI_MSG_DBG, fmt, args);
+    rtapi_vsnprintf(buf, sizeof(buf), fmt, args);
     va_end(args);
+    rtapi_print_msg(RTAPI_MSG_DBG, "%s", buf);
 }
 
 // Static platform configuration using RTAPI
