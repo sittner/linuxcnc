@@ -57,3 +57,5 @@ position.txt
 *.*-stamp
 # Ignore VSCode settings
 .vscode/settings.json
+
+/_codeql_detected_source_root
