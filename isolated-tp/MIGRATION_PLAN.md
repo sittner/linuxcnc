@@ -1,5 +1,12 @@
 # TP Isolation Migration Plan
 
+## Base Commit
+
+This migration is based on **LinuxCNC master @ aef0cfa51b2892484fbcd6dd8242c7aafe9a282b**
+- Includes complete S-curve implementation
+- Includes all 2025-2026 bug fixes
+- Config system already integrated
+
 ## Executive Summary
 
 ### Overall Feasibility: MODERATE to HIGH
@@ -9,7 +16,49 @@ The LinuxCNC trajectory planner (TP) can be successfully isolated into a standal
 - **Already modular components**: posemath library, blendmath, spherical_arc, tcq
 - **Well-defined interface**: existing callback system (tpMotFunctions/tpMotData)
 - **Self-contained logic**: TP algorithms don't deeply depend on motion controller internals
-- **Manageable size**: ~7,000 LOC in 6 core files
+- **Manageable size**: ~8,610 LOC in 6 core files
+
+### Files to Port (6 files, ~8,610 lines)
+
+1. **blendmath.c** (~1,860 lines)
+   - Circular arc blend calculations
+   - Velocity/acceleration planning
+   - S-curve integration points
+
+2. **tp.c** (~4,100 lines)
+   - Main trajectory planner logic
+   - Queue management
+   - Blend arc creation
+   - S-curve velocity calculations
+
+3. **tc.c** (~1,200 lines)
+   - Trajectory component implementation
+   - Segment execution
+   - Progress tracking
+
+4. **spherical_arc.c** (~200 lines)
+   - 3D arc geometry
+   - SLERP interpolation
+
+5. **tcq.c** (~250 lines)
+   - TC queue operations
+   - FIFO management
+
+6. **sp_scurve.c** (~1,000 lines) ← NEW
+   - S-curve trajectory planning
+   - Jerk-limited motion
+   - Cubic equation solver
+   - Integration with main TP
+
+Total: ~8,610 lines of C code
+
+### External Headers Required
+
+1. **motion.h** - Motion system types + S-curve config
+2. **rtapi_math.h** - Math functions (sin, cos, sqrt, fma, etc.)
+3. **posemath.h** - Geometry operations
+4. **sp_scurve.h** - S-curve API (self-contained)
+5. **mot_priv.h** - Motion internals (emcmotStatus for planner type)
 
 **Key Challenges**:
 - RTAPI dependencies (headers, math functions, logging)
@@ -23,7 +72,24 @@ The LinuxCNC trajectory planner (TP) can be successfully isolated into a standal
 - Several modules (blendmath, tcq, spherical_arc) are already quite isolated
 - Strong motivation for improved testability
 
-### Estimated Effort: 6-10 weeks
+### Estimated Effort: 5-6 days (File Porting Approach)
+
+**Alternative: Direct File Porting**
+
+If porting files directly to create isolated library:
+
+| Task | Duration | Complexity |
+|------|----------|------------|
+| Port sp_scurve.c (with abstractions) | 1 day | Low-Moderate |
+| Port blendmath.c | 1 day | Moderate |
+| Port spherical_arc.c, tc.c, tcq.c | 1 day | Low |
+| Port tp.c | 1 day | Moderate |
+| Testing & Integration | 1-2 days | Moderate |
+| **Total** | **5-6 days** | **Moderate** |
+
+**Traditional Approach: In-Place Refactoring**
+
+For comparison, the traditional refactoring approach:
 
 | Phase | Duration | Complexity |
 |-------|----------|------------|
@@ -68,6 +134,48 @@ The trajectory planner is a critical component that implements complex motion al
 
 Isolating the TP addresses all these issues while preserving full backward compatibility with existing LinuxCNC code.
 
+## S-Curve Integration
+
+### In blendmath.c:
+```c
+#include "sp_scurve.h"
+
+// Called from blend calculations:
+double findSCurveVSpeed(double distance, double a_max, double j_max, double *v_req);
+double calcSCurveSpeedWithT(double a, double j, double t);
+```
+
+### In tp.c:
+```c
+extern emcmot_status_t *emcmotStatus;
+
+#define GET_TRAJ_PLANNER_TYPE() (emcmotStatus->planner_type)
+// Returns: 0 = trapezoidal, 1 = S-curve
+```
+
+### Abstraction Strategy:
+- Create `tp_platform.h` with planner type getter
+- Wrap S-curve functions with `tp_` prefix
+- Make `emcmotStatus` access optional via callbacks
+
+## Timeline Revision
+
+### Current Estimate (Based on Master aef0cfa)
+- Phase 1: 3-4 days (6 files, S-curve included)
+- Phase 2: Testing - 2 days
+- **Total: 5-6 days**
+
+**Savings:** 3-4 days eliminated by using master's S-curve implementation!
+
+### What We Don't Need to Port
+
+✅ **Already in Master:**
+- S-curve INI parameter parsing (`[TRAJ] PLANNER_TYPE`, `MAX_JERK`)
+- HAL pin integration for jerk limits
+- S-curve unit tests
+- Configuration validation
+- Documentation for S-curve usage
+
 ---
 
 ## Migration Phases
@@ -76,7 +184,64 @@ Isolating the TP addresses all these issues while preserving full backward compa
 
 **Goal**: Introduce abstraction headers that decouple TP from RTAPI and motion module specifics, without changing existing TP code behavior.
 
-### Tasks
+### Alternative Approach: Direct File Porting
+
+If taking the direct file porting approach instead of in-place refactoring:
+
+#### Step 1: Setup Isolated TP Directory
+
+Create new directory structure:
+```
+isolated-tp/
+├── src/
+│   ├── sp_scurve.c
+│   ├── blendmath.c
+│   ├── tc.c
+│   ├── tcq.c
+│   ├── spherical_arc.c
+│   └── tp.c
+├── include/
+│   ├── sp_scurve.h
+│   ├── tp_platform.h
+│   └── tp_config.h
+└── tests/
+```
+
+#### Step 2: Port Files in Order
+
+**Order changed to handle dependencies:**
+
+1. **sp_scurve.c** (Day 1, 6 hours)
+   - Self-contained math library
+   - Minimal dependencies
+   - Refactor math functions to tp_platform.h
+   - Remove mot_priv.h dependency
+
+2. **blendmath.c** (Day 1-2, 6 hours)
+   - Depends on: sp_scurve.h (now available)
+   - Remove motion.h includes
+   - Wrap S-curve calls
+
+3. **spherical_arc.c** (Day 2, 2 hours)
+   - Minimal dependencies
+   - Straightforward port
+
+4. **tc.c** (Day 2-3, 4 hours)
+   - Segment implementation
+   - Minimal external dependencies
+
+5. **tcq.c** (Day 3, 2 hours)
+   - Simple queue operations
+   - No S-curve dependencies
+
+6. **tp.c** (Day 3-4, 8 hours)
+   - Main planner logic
+   - S-curve integration
+   - Depends on all above
+
+**Total Porting Time:** 3-4 days for 6 files
+
+### Traditional Approach: Tasks
 
 #### 1.1 Create `tp_platform.h` (2-3 days)
 

@@ -70,6 +70,13 @@ typedef struct tp_platform_config {
     double (*hypot)(double x, double y);
     
     // ========================================
+    // S-curve additions
+    // ========================================
+    double (*fma)(double x, double y, double z);  // Fused multiply-add
+    double (*exp)(double x);
+    double (*log)(double x);
+    
+    // ========================================
     // Logging
     // ========================================
     // Log levels: ERR = critical, WARN = warning, 
@@ -108,6 +115,11 @@ typedef struct tp_platform_config {
 #define TP_CEIL(x)     (tp->platform->ceil(x))
 #define TP_FMOD(x,y)   (tp->platform->fmod(x,y))
 #define TP_HYPOT(x,y)  (tp->platform->hypot(x,y))
+
+// S-curve additions
+#define TP_FMA(x,y,z)  (tp->platform->fma(x,y,z))
+#define TP_EXP(x)      (tp->platform->exp(x))
+#define TP_LOG(x)      (tp->platform->log(x))
 
 #define TP_LOG_ERR(...)   (tp->platform->log_error(__VA_ARGS__))
 #define TP_LOG_WARN(...)  (tp->platform->log_warning(__VA_ARGS__))
@@ -545,6 +557,138 @@ typedef struct {
 ```
 
 **Testing**: Compile successfully. No functional impact yet.
+
+---
+
+## Task 1.5: Create tp_config.h - Runtime Configuration
+
+**Duration**: 1 day
+
+**Objective**: Provide configuration interface for planner type and S-curve parameters
+
+#### File to Create
+
+**Location**: `src/emc/tp/tp_config.h`
+
+**Content**:
+```c
+/********************************************************************
+* Description: tp_config.h
+*   Runtime configuration for trajectory planner
+*   Provides callback-based configuration access
+*
+* Author: LinuxCNC Contributors
+* License: GPL Version 2
+* System: Linux
+********************************************************************/
+#ifndef TP_CONFIG_H
+#define TP_CONFIG_H
+
+// Planner type access
+typedef int (*tp_get_planner_type_fn)(void);
+typedef double (*tp_get_max_jerk_fn)(void);
+
+// Set configuration getters
+void tp_set_planner_type_getter(tp_get_planner_type_fn fn);
+void tp_set_max_jerk_getter(tp_get_max_jerk_fn fn);
+
+// Get current planner configuration
+int tp_get_planner_type(void);      // Returns 0=trapezoid, 1=S-curve
+double tp_get_max_jerk(void);       // Returns jerk limit
+
+#endif // TP_CONFIG_H
+```
+
+#### Usage in Isolated TP
+
+```c
+// In blendmath.c:
+#include "tp_platform.h"
+#include "sp_scurve.h"
+
+double findSCurveVPeak(double a, double j, double dist) {
+    if (tp_get_planner_type() == 1) {
+        // Use S-curve
+        double req_v;
+        findSCurveVSpeed(dist, a, j, &req_v);
+        return req_v;
+    } else {
+        // Use trapezoidal
+        return findVPeak(a, dist);
+    }
+}
+```
+
+---
+
+## S-Curve Integration Details
+
+### File Porting Order (Updated)
+
+When porting files to isolated TP, handle S-curve integration:
+
+#### 1. sp_scurve.c (NEW - First priority)
+
+**Why first:**
+- Self-contained math library
+- No TP-internal dependencies
+- Needed by blendmath.c
+
+**Refactoring needed:**
+```diff
+-#include "rtapi_math.h"
+-#include "mot_priv.h"
++#include "tp_platform.h"
+
+-    result = fabs(x);
++    result = TP_FABS(x);
+
+-    y = sqrt(disc);
++    y = TP_SQRT(disc);
+
+-    z = fma(a, b, c);
++    z = TP_FMA(a, b, c);
+
+-    w = exp(x);
++    w = TP_EXP(x);
+
+-    v = log(y);
++    v = TP_LOG(y);
+```
+
+**Functions to export:**
+- `findSCurveVSpeed()` - Core S-curve calculation
+- `calcSCurveSpeedWithT()` - Time-constrained speed
+- `solve_cubic()` - Cubic equation solver (internal)
+- 12+ other S-curve functions
+
+#### 2. blendmath.c
+
+**S-curve integration:**
+```c
+#include "sp_scurve.h"
+
+// In blendParamKinematics():
+double findSCurveVPeak(double a_t_max, double j_t_max, double distance) {
+    double req_v;
+    int result = findSCurveVSpeed(distance, a_t_max, j_t_max, &req_v);
+    if (result != 1) {
+        return findVPeak(a_t_max, distance);  // Fallback
+    }
+    return TP_FMIN(req_v, findVPeak(a_t_max, distance));
+}
+```
+
+#### 3. tp.c
+
+**S-curve velocity calculations:**
+```c
+// In tpComputeBlendSCurveVelocity():
+*v_blend_this = TP_FMIN(v_reachable_this, 
+                        calcSCurveSpeedWithT(acc_this, jerk, t_blend));
+*v_blend_next = TP_FMIN(v_reachable_next, 
+                        calcSCurveSpeedWithT(acc_next, jerk, t_blend));
+```
 
 ---
 

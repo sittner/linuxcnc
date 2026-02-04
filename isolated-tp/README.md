@@ -1,5 +1,19 @@
 # TP (Trajectory Planner) Isolation Project
 
+## Goal
+
+Create a standalone TP library that can be:
+- Used outside LinuxCNC
+- Tested independently
+- Integrated into other motion controllers
+- Maintained separately
+
+## Status
+
+**Phase:** Documentation complete, porting in progress
+
+**Base commit:** LinuxCNC master @ aef0cfa51b2892484fbcd6dd8242c7aafe9a282b
+
 ## Purpose
 
 This directory contains comprehensive documentation for isolating LinuxCNC's trajectory planner (TP) code into a standalone, testable library. The goal is to decouple the TP from the motion controller module, making it:
@@ -28,10 +42,38 @@ This is currently a **documentation and planning effort**. No code changes have 
     ├── phase1-abstraction-layer.md         # Phase 1 implementation details
     ├── phase2-refactoring.md               # Phase 2 implementation details
     ├── phase3-library-extraction.md        # Phase 3 implementation details
-    └── phase4-testing.md                   # Phase 4 implementation details
+    ├── phase4-testing.md                   # Phase 4 implementation details
+    └── sp_scurve_integration.md            # S-curve porting guide (NEW)
 ```
 
-## Key Documents
+## Files to Port
+
+1. **blendmath.c** (~1,860 lines)
+2. **tp.c** (~4,100 lines)
+3. **tc.c** (~1,200 lines)
+4. **spherical_arc.c** (~200 lines)
+5. **tcq.c** (~250 lines)
+6. **sp_scurve.c** (~1,000 lines) ← NEW
+
+**Total:** ~8,610 lines
+
+## Timeline
+
+- Phase 1: 3-4 days (6 files)
+- Phase 2: 2 days (testing)
+- **Total: 5-6 days**
+
+**Savings:** 3-4 days eliminated by using master's S-curve implementation!
+
+## Key Features
+
+- ✅ S-curve trajectory planning (jerk-limited motion)
+- ✅ Circular arc blending
+- ✅ Spherical arc interpolation (SLERP)
+- ✅ Velocity/acceleration planning
+- ✅ Queue management
+
+## Documentation
 
 ### [MIGRATION_PLAN.md](MIGRATION_PLAN.md)
 The master plan document describing the overall strategy, timeline, phases, risks, and success criteria.
@@ -44,6 +86,22 @@ Proposed public API for the isolated TP library, including structures, functions
 
 ### Phase Documentation
 Each phase has a detailed document in the `docs/` directory with specific tasks, code examples, testing approaches, and completion checklists.
+
+### [docs/sp_scurve_integration.md](docs/sp_scurve_integration.md)
+Dedicated guide for porting S-curve implementation to isolated TP, including:
+- Function mapping and refactoring
+- Dependencies to abstract
+- Integration with blendmath.c and tp.c
+- Testing strategy
+
+## Dependencies
+
+Requires implementation of:
+- Math functions (sin, cos, sqrt, fma, exp, log, acos, etc.)
+- Platform abstractions (printing, assertions)
+- Configuration callbacks (planner type, jerk limits)
+
+See [docs/phase1-abstraction-layer.md](docs/phase1-abstraction-layer.md) for details.
 
 ## How to Contribute
 
@@ -75,6 +133,13 @@ This migration follows these core principles:
 5. **Documented**: Each change is well-documented with rationale
 
 ## Timeline
+
+**File Porting Approach:**
+- Phase 1: 3-4 days (6 files including S-curve)
+- Phase 2: 2 days (testing)
+- **Total: 5-6 days**
+
+**Traditional In-Place Refactoring Approach:**
 
 Estimated total effort: **6-10 weeks** of focused development time
 
