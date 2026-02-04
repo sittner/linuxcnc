@@ -19,6 +19,7 @@
 
 #include "tcq.h"
 #include <stddef.h>
+#include "tp_platform.h"
 
 /** Return 0 if queue is valid, -1 if not */
 static inline int tcqCheck(TC_QUEUE_STRUCT const * const tcq)

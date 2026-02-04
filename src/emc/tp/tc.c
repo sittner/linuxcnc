@@ -23,6 +23,7 @@
 #include "tp_types.h"
 #include "spherical_arc.h"
 #include "motion_types.h"
+#include "tp_platform.h"
 
 //Debug output
 #include "tp_debug.h"
@@ -49,13 +50,13 @@ double tcGetMaxTargetVel(TC_STRUCT const * const tc,
     }
 
     // Clip maximum velocity by the segment's own maximum velocity
-    return fmin(v_max_target, tc->maxvel);
+    return tp_fmin(v_max_target, tc->maxvel);
 }
 
 double tcGetOverallMaxAccel(const TC_STRUCT *tc)
 {
     // Handle any acceleration reduction due to an approximate-tangent "blend" with the previous or next segment
-    double a_scale = (1.0 - fmax(tc->kink_accel_reduce, tc->kink_accel_reduce_prev));
+    double a_scale = (1.0 - tp_fmax(tc->kink_accel_reduce, tc->kink_accel_reduce_prev));
 
     // Parabolic blending conditions: If the next segment or previous segment
     // has a parabolic blend with this one, acceleration is scaled down by 1/2
@@ -89,8 +90,8 @@ int tcSetKinkProperties(TC_STRUCT *prev_tc, TC_STRUCT *tc, double kink_vel, doub
 {
   prev_tc->kink_vel = kink_vel;
   //
-  prev_tc->kink_accel_reduce = fmax(accel_reduction, prev_tc->kink_accel_reduce);
-  tc->kink_accel_reduce_prev = fmax(accel_reduction, tc->kink_accel_reduce_prev);
+  prev_tc->kink_accel_reduce = tp_fmax(accel_reduction, prev_tc->kink_accel_reduce);
+  tc->kink_accel_reduce_prev = tp_fmax(accel_reduction, tc->kink_accel_reduce_prev);
 
   return 0;
 }
@@ -288,7 +289,7 @@ int tcGetStartTangentUnitVector(TC_STRUCT const * const tc, PmCartesian * const 
             pmCircleTangentVector(&tc->coords.circle.xyz, 0.0, out);
             break;
         default:
-            rtapi_print_msg(RTAPI_MSG_ERR, "Invalid motion type %d!\n",tc->motion_type);
+            TP_LOG_ERR("Invalid motion type %d!\n",tc->motion_type);
             return -1;
     }
     return 0;
@@ -311,7 +312,7 @@ int tcGetEndTangentUnitVector(TC_STRUCT const * const tc, PmCartesian * const ou
                     tc->coords.circle.xyz.angle, out);
             break;
         default:
-            rtapi_print_msg(RTAPI_MSG_ERR, "Invalid motion type %d!\n",tc->motion_type);
+            TP_LOG_ERR("Invalid motion type %d!\n",tc->motion_type);
             return -1;
     }
     return 0;
@@ -553,10 +554,10 @@ int tcFindBlendTolerance(TC_STRUCT const * const prev_tc,
     if (T2 == 0) {
         T2 = tc->nominal_length * tolerance_ratio;
     }
-    *nominal_tolerance = fmin(T1,T2);
+    *nominal_tolerance = tp_fmin(T1,T2);
     //Blend tolerance is the limit of what we can reach by blending alone,
     //consuming half a segment or less (parabolic equivalent)
-    double blend_tolerance = fmin(fmin(*nominal_tolerance, 
+    double blend_tolerance = tp_fmin(tp_fmin(*nominal_tolerance, 
                 prev_tc->nominal_length * tolerance_ratio),
             tc->nominal_length * tolerance_ratio);
     *T_blend = blend_tolerance;
@@ -699,7 +700,7 @@ int pmLine9Init(PmLine9 * const line9,
     int uvw_fail = pmCartLineInit(&line9->uvw, &start_uvw, &end_uvw);
 
     if (xyz_fail || abc_fail || uvw_fail) {
-        rtapi_print_msg(RTAPI_MSG_ERR,"Failed to initialize Line9, err codes %d, %d, %d\n",
+        TP_LOG_ERR("Failed to initialize Line9, err codes %d, %d, %d\n",
                 xyz_fail,abc_fail,uvw_fail);
         return TP_ERR_FAIL;
     }
@@ -728,7 +729,7 @@ int pmCircle9Init(PmCircle9 * const circ9,
     int res_fit = findSpiralArcLengthFit(&circ9->xyz,&circ9->fit);
 
     if (xyz_fail || abc_fail || uvw_fail || res_fit) {
-        rtapi_print_msg(RTAPI_MSG_ERR,"Failed to initialize Circle9, err codes %d, %d, %d, %d\n",
+        TP_LOG_ERR("Failed to initialize Circle9, err codes %d, %d, %d, %d\n",
                 xyz_fail, abc_fail, uvw_fail, res_fit);
         return TP_ERR_FAIL;
     }
@@ -800,7 +801,7 @@ int tcClampVelocityByLength(TC_STRUCT * const tc)
     //Assume that cycle time is valid here
     double sample_maxvel = tc->target / tc->cycle_time;
     tp_debug_print("sample_maxvel = %f\n",sample_maxvel);
-    tc->maxvel = fmin(tc->maxvel, sample_maxvel);
+    tc->maxvel = tp_fmin(tc->maxvel, sample_maxvel);
     return TP_ERR_OK;
 }
 
@@ -881,14 +882,14 @@ int tcSetCircleXYZ(TC_STRUCT * const tc, PmCircle const * const circ)
         return TP_ERR_FAIL;
     }
     if (!tc->coords.circle.abc.tmag_zero || !tc->coords.circle.uvw.tmag_zero) {
-        rtapi_print_msg(RTAPI_MSG_ERR, "SetCircleXYZ does not supportABC or UVW motion\n");
+        TP_LOG_ERR("SetCircleXYZ does not supportABC or UVW motion\n");
         return TP_ERR_FAIL;
     }
 
     // Store the new circular segment (or use the current one)
 
     if (!circ) {
-        rtapi_print_msg(RTAPI_MSG_ERR, "SetCircleXYZ missing new circle definition\n");
+        TP_LOG_ERR("SetCircleXYZ missing new circle definition\n");
         return TP_ERR_FAIL;
     }
 
