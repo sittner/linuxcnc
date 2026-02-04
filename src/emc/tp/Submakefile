@@ -1,5 +1,13 @@
 INCLUDES += emc/tp
 
+# Phase 1 Abstraction Layer - new sources
+TPLIBSRCS := \
+    emc/tp/tp_platform_rtapi.c \
+    emc/tp/tp_platform_standard.c \
+    emc/tp/tp_config.c
+
+USERSRCS += $(TPLIBSRCS)
+
 $(patsubst ./emc/tp/%,../include/%,$(wildcard ./emc/tp/*.h)): ../include/%.h: ./emc/tp/%.h
 	cp $^ $@
 $(patsubst ./emc/tp/%,../include/%,$(wildcard ./emc/tp/*.hh)): ../include/%.hh: ./emc/tp/%.hh

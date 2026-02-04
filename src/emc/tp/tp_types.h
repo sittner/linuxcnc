@@ -20,6 +20,12 @@
 
 #include <rtapi_bool.h>
 
+// Phase 1 abstraction layer includes
+// Note: These headers use forward declarations of TP_STRUCT to avoid circular dependencies
+#include "tp_platform.h"
+#include "tp_motion_interface.h"
+#include "tp_callbacks.h"
+
 #define TP_DEFAULT_QUEUE_SIZE 32
 /* Minimum length of a segment in cycles (must be greater than 1 to ensure each
  * segment is hit at least once.) */
@@ -134,6 +140,25 @@ typedef struct {
 
 
     syncdio_t syncdio; //record tpSetDout's here
+
+    // ========================================
+    // Phase 1 Abstraction Layer Fields
+    // ========================================
+    // Note: These fields are added but not yet used by existing TP code.
+    // They will be used in Phase 2 when TP is refactored to use the abstraction layer.
+    
+    // Platform abstraction (math, logging, etc.)
+    // Will point to either RTAPI or standard C implementation
+    tp_platform_config_t *platform;
+    
+    // Callbacks to motion controller
+    tp_callbacks_t callbacks;
+    
+    // Motion controller status (snapshot taken each cycle)
+    tp_motion_status_t motion_status;
+    
+    // Motion controller configuration
+    tp_motion_config_t motion_config;
 
 } TP_STRUCT;
 

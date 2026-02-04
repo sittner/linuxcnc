@@ -1235,6 +1235,11 @@ tpmod-objs += emc/tp/tcq.o
 tpmod-objs += emc/tp/tp.o
 tpmod-objs += emc/tp/spherical_arc.o
 tpmod-objs += emc/tp/blendmath.o
+# Phase 1 Abstraction Layer
+tpmod-objs += emc/tp/tp_platform_rtapi.o
+tpmod-objs += emc/tp/tp_platform_standard.o
+tpmod-objs += emc/tp/tp_config.o
+# End Phase 1
 tpmod-objs += emc/nml_intf/emcpose.o
 tpmod-objs += libnml/posemath/_posemath.o
 tpmod-objs += libnml/posemath/sincos.o $(MATHSTUB)

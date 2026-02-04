@@ -156,6 +156,113 @@ static inline double tp_fmax(double x, double y) {
     rtapi_print_msg(RTAPI_MSG_DBG, fmt, ##__VA_ARGS__)
 
 /***********************************************************************
+*                    STRUCT-BASED PLATFORM ABSTRACTION                 *
+************************************************************************/
+
+/**
+ * Platform abstraction configuration (Phase 1 addition)
+ * 
+ * Provides function pointers for platform-specific operations.
+ * For RTAPI: pointers to rtapi_sin, rtapi_cos, etc.
+ * For standard C: pointers to sin, cos, etc.
+ * For custom: pointers to custom implementations.
+ * 
+ * This struct-based approach complements the existing inline functions
+ * and enables runtime platform selection for standalone builds.
+ */
+
+#include <stddef.h>  // for size_t
+#include <stdarg.h>  // for va_list
+
+typedef struct tp_platform_config {
+    // ========================================
+    // Math Functions
+    // ========================================
+    double (*sin)(double x);
+    double (*cos)(double x);
+    double (*tan)(double x);
+    double (*sqrt)(double x);
+    double (*fabs)(double x);
+    double (*atan2)(double y, double x);
+    double (*asin)(double x);
+    double (*acos)(double x);
+    double (*pow)(double x, double y);
+    double (*fmax)(double x, double y);
+    double (*fmin)(double x, double y);
+    double (*floor)(double x);
+    double (*ceil)(double x);
+    double (*fmod)(double x, double y);
+    double (*hypot)(double x, double y);
+    
+    // ========================================
+    // S-curve additions
+    // ========================================
+    double (*fma)(double x, double y, double z);  // Fused multiply-add
+    double (*exp)(double x);
+    double (*log)(double x);
+    
+    // ========================================
+    // Logging
+    // ========================================
+    // Log levels: ERR = critical, WARN = warning, 
+    //             INFO = informational, DBG = debug
+    void (*log_error)(const char *fmt, ...);
+    void (*log_warning)(const char *fmt, ...);
+    void (*log_info)(const char *fmt, ...);
+    void (*log_debug)(const char *fmt, ...);
+    
+    // ========================================
+    // Memory Allocation (Reserved)
+    // ========================================
+    // Currently unused (TP doesn't do dynamic allocation)
+    // Reserved for future use
+    void* (*malloc)(size_t size);
+    void  (*free)(void *ptr);
+    
+} tp_platform_config_t;
+
+/**
+ * Convenience macros for TP code using struct-based platform
+ * These require 'tp' to be a pointer to TP_STRUCT with valid platform field
+ */
+#define TP_SIN(x)      (tp->platform->sin(x))
+#define TP_COS(x)      (tp->platform->cos(x))
+#define TP_TAN(x)      (tp->platform->tan(x))
+#define TP_SQRT(x)     (tp->platform->sqrt(x))
+#define TP_FABS(x)     (tp->platform->fabs(x))
+#define TP_ATAN2(y,x)  (tp->platform->atan2(y,x))
+#define TP_ASIN(x)     (tp->platform->asin(x))
+#define TP_ACOS(x)     (tp->platform->acos(x))
+#define TP_POW(x,y)    (tp->platform->pow(x,y))
+#define TP_FMAX(x,y)   (tp->platform->fmax(x,y))
+#define TP_FMIN(x,y)   (tp->platform->fmin(x,y))
+#define TP_FLOOR(x)    (tp->platform->floor(x))
+#define TP_CEIL(x)     (tp->platform->ceil(x))
+#define TP_FMOD(x,y)   (tp->platform->fmod(x,y))
+#define TP_HYPOT(x,y)  (tp->platform->hypot(x,y))
+
+// S-curve additions
+#define TP_FMA(x,y,z)  (tp->platform->fma(x,y,z))
+#define TP_EXP(x)      (tp->platform->exp(x))
+#define TP_LOG(x)      (tp->platform->log(x))
+
+/**
+ * Get RTAPI platform configuration
+ * 
+ * Returns platform config using RTAPI implementations.
+ * For use in LinuxCNC real-time context.
+ */
+tp_platform_config_t* tp_get_rtapi_platform(void);
+
+/**
+ * Get standard C library platform configuration
+ * 
+ * Returns platform config using standard C library.
+ * For use in tests and standalone applications.
+ */
+tp_platform_config_t* tp_get_standard_platform(void);
+
+/***********************************************************************
 *                         FUTURE EXPANSION NOTES                       *
 ************************************************************************/
 

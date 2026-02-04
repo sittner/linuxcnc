@@ -94,6 +94,74 @@ void tpMotData(emcmot_status_t *pstatus
 }
 //=========================================================
 
+//=========================================================
+// Phase 1 Abstraction Layer Adapter Functions
+//=========================================================
+
+#include "tp_motion_interface.h"
+#include "tp_callbacks.h"
+
+void tp_motion_populate_status(void *tp_void, void *emcmot_status_void) {
+    TP_STRUCT *tp = (TP_STRUCT *)tp_void;
+    emcmot_status_t *emcmot_status = (emcmot_status_t *)emcmot_status_void;
+    
+    // Extract needed fields from motion status
+    tp->motion_status.stepping = emcmot_status->stepping;
+    tp->motion_status.carte_pos_cmd = emcmot_status->carte_pos_cmd;
+    tp->motion_status.on_soft_limit = emcmot_status->on_soft_limit;
+    
+    // Extract spindle status
+    for (int i = 0; i < EMCMOT_MAX_SPINDLES; i++) {
+        tp->motion_status.spindle[i].speed = emcmot_status->spindle_status[i].speed;
+        tp->motion_status.spindle[i].revs = emcmot_status->spindle_status[i].spindleRevs;
+        tp->motion_status.spindle[i].at_speed = emcmot_status->spindle_status[i].at_speed;
+        tp->motion_status.spindle[i].index_enable = emcmot_status->spindle_status[i].spindle_index_enable;
+        tp->motion_status.spindle[i].direction = emcmot_status->spindle_status[i].direction;
+    }
+}
+
+void tp_motion_set_config(void *tp_void, void *emcmot_config_void) {
+    TP_STRUCT *tp = (TP_STRUCT *)tp_void;
+    emcmot_config_t *emcmot_config = (emcmot_config_t *)emcmot_config_void;
+    
+    // Extract needed config fields
+    tp->motion_config.trajCycleTime = emcmot_config->trajCycleTime;
+    tp->motion_config.numJoints = emcmot_config->numJoints;
+    tp->motion_config.kinematics_type = emcmot_config->kinType;
+    
+    // Max values (may also be set via tpSetVmax/tpSetAmax)
+    tp->motion_config.max_velocity = emcmot_config->limitVel;
+    tp->motion_config.max_acceleration = 0.0;  // Not directly in config, set via tpSetAmax
+    tp->motion_config.maxFeedScale = emcmot_config->maxFeedScale;
+    
+    // Arc blend configuration
+    tp->motion_config.arcBlendOptDepth = emcmot_config->arcBlendOptDepth;
+    tp->motion_config.arcBlendEnable = emcmot_config->arcBlendEnable;
+    tp->motion_config.arcBlendFallbackEnable = emcmot_config->arcBlendFallbackEnable;
+    tp->motion_config.arcBlendGapCycles = emcmot_config->arcBlendGapCycles;
+    tp->motion_config.arcBlendRampFreq = emcmot_config->arcBlendRampFreq;
+    tp->motion_config.arcBlendTangentKinkRatio = emcmot_config->arcBlendTangentKinkRatio;
+    
+    // DIO/AIO configuration
+    tp->motion_config.numDIO = emcmot_config->numDIO;
+    tp->motion_config.numAIO = emcmot_config->numAIO;
+}
+
+int tp_set_callbacks(void *tp_void, const tp_callbacks_t *callbacks) {
+    TP_STRUCT *tp = (TP_STRUCT *)tp_void;
+    
+    if (!tp || !callbacks) {
+        return -1;
+    }
+    
+    // Copy callbacks into TP structure
+    tp->callbacks = *callbacks;
+    
+    return 0;
+}
+
+//=========================================================
+
 /** static function primitives (ugly but less of a pain than moving code around)*/
 STATIC int tpComputeBlendVelocity(
         TC_STRUCT const *tc,
