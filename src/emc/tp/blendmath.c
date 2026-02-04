@@ -16,6 +16,7 @@
 #include "tc.h"
 #include "tp_types.h"
 #include "rtapi_math.h"
+#include "tp_platform.h"
 #include "spherical_arc.h"
 #include "blendmath.h"
 #include "tp_debug.h"
@@ -60,7 +61,7 @@ double findKinkAccel(double kink_angle, double v_plan, double cycle_time)
     if (dx > 0.0) {
         return (dx * kink_angle);
     } else {
-        rtapi_print_msg(RTAPI_MSG_ERR, "dx < 0 in KinkAccel\n");
+        TP_LOG_ERR("dx < 0 in KinkAccel\n");
         return 0;
     }
 }
@@ -256,7 +257,7 @@ static inline double findTrimAngle(PmCartesian const * const P,
 
     double dot;
     pmCartCartDot(&u_arccenter, &u_P, &dot);
-    double dphi = acos(saturate(dot,1.0));
+    double dphi = tp_acos(saturate(dot,1.0));
     tp_debug_print(" dphi = %g\n",dphi);
     return dphi;
 }
@@ -282,7 +283,7 @@ int checkTangentAngle(PmCircle const * const circ, SphericalArc const * const ar
     // Find angle between tangent unit vectors
     double dot;
     pmCartCartDot(&u_circ, &u_arc, &dot);
-    double blend_angle = acos(saturate(dot,1.0));
+    double blend_angle = tp_acos(saturate(dot,1.0));
 
     // Check against the maximum allowed tangent angle for the given velocity and acceleration
     double angle_max = findMaxTangentAngle(param->v_plan, param->a_max, cycle_time);
@@ -407,7 +408,7 @@ int findIntersectionAngle(PmCartesian const * const u1,
         sat_inplace(&dot,1.0);
     }
 
-    *theta = acos(-dot)/2.0;
+    *theta = tp_acos(-dot)/2.0;
     return TP_ERR_OK;
 }
 
@@ -415,7 +416,7 @@ int findIntersectionAngle(PmCartesian const * const u1,
 /** Calculate the minimum of the three values in a PmCartesian. */
 double pmCartMin(PmCartesian const * const in)
 {
-    return fmin(fmin(in->x,in->y),in->z);
+    return tp_fmin(tp_fmin(in->x,in->y),in->z);
 }
 
 
@@ -437,7 +438,7 @@ int calculateInscribedDiameter(PmCartesian const * const normal,
 
     double n_mag;
     pmCartMagSq(normal, &n_mag);
-    double mag_err = fabs(1.0 - n_mag);
+    double mag_err = tp_fabs(1.0 - n_mag);
     if (mag_err > pmSqrt(TP_POS_EPSILON)) {
         /*rtapi_print_msg(RTAPI_MSG_ERR,"normal vector <%.12g,%.12f,%.12f> has magnitude error = %e\n",*/
                 /*normal->x,*/
@@ -470,9 +471,9 @@ int calculateInscribedDiameter(PmCartesian const * const normal,
     pmCartAbs(&planar_z, &planar_z);
 
     // Crude way to prevent divide-by-zero-error
-    planar_x.x = fmax(planar_x.x,TP_POS_EPSILON);
-    planar_y.y = fmax(planar_y.y,TP_POS_EPSILON);
-    planar_z.z = fmax(planar_z.z,TP_POS_EPSILON);
+    planar_x.x = tp_fmax(planar_x.x,TP_POS_EPSILON);
+    planar_y.y = tp_fmax(planar_y.y,TP_POS_EPSILON);
+    planar_z.z = tp_fmax(planar_z.z,TP_POS_EPSILON);
 
     double x_scale, y_scale, z_scale;
     pmCartMag(&planar_x, &x_scale);
@@ -491,17 +492,17 @@ int calculateInscribedDiameter(PmCartesian const * const normal,
     }
 
     // Find the highest value to start from
-    *diameter = fmax(fmax(x_extent, y_extent),z_extent);
+    *diameter = tp_fmax(tp_fmax(x_extent, y_extent),z_extent);
 
     // Only for active axes, find the minimum extent
     if (bounds->x != 0) {
-        *diameter = fmin(*diameter, x_extent);
+        *diameter = tp_fmin(*diameter, x_extent);
     }
     if (bounds->y != 0) {
-        *diameter = fmin(*diameter, y_extent);
+        *diameter = tp_fmin(*diameter, y_extent);
     }
     if (bounds->z != 0) {
-        *diameter = fmin(*diameter, z_extent);
+        *diameter = tp_fmin(*diameter, z_extent);
     }
 
     return TP_ERR_OK;
@@ -523,18 +524,18 @@ int findAccelScale(PmCartesian const * const acc,
 
     // Find the scale of acceleration vs. machine accel bounds
     if (bounds->x != 0) {
-    scale->x = fabs(acc->x / bounds->x);
+    scale->x = tp_fabs(acc->x / bounds->x);
     } else {
         scale->x = 0;
     }
     if (bounds->y != 0) {
-    scale->y = fabs(acc->y / bounds->y);
+    scale->y = tp_fabs(acc->y / bounds->y);
     } else {
         scale->y = 0;
     }
 
     if (bounds->z != 0) {
-    scale->z = fabs(acc->z / bounds->z);
+    scale->z = tp_fabs(acc->z / bounds->z);
     } else {
         scale->z = 0;
     }
@@ -661,10 +662,10 @@ int blendParamKinematics(BlendGeom3 * const geom,
     double v_req_prev = tcGetMaxTargetVel(prev_tc, 1.0);
     double v_req_this = tcGetMaxTargetVel(tc, 1.0);
     tp_debug_print("vr_prev = %f, vr_this = %f\n", v_req_prev, v_req_this);
-    param->v_req = fmax(v_req_prev, v_req_this);
+    param->v_req = tp_fmax(v_req_prev, v_req_this);
 
     // Find the worst-case velocity we should reach for either segment
-    param->v_goal = fmax(tcGetMaxTargetVel(prev_tc, maxFeedScale),
+    param->v_goal = tp_fmax(tcGetMaxTargetVel(prev_tc, maxFeedScale),
             tcGetMaxTargetVel(tc, maxFeedScale));
 
     // Calculate the maximum planar velocity
@@ -674,16 +675,16 @@ int blendParamKinematics(BlendGeom3 * const geom,
     tp_debug_print("v_planar_max = %f\n", v_planar_max);
 
     // Clip the angle at a reasonable value (less than 90 deg), to prevent div by zero
-    double phi_effective = fmin(param->phi, PM_PI * 0.49);
+    double phi_effective = tp_fmin(param->phi, PM_PI * 0.49);
 
     // Copy over maximum velocities, clipping velocity to place altitude within base
-    double v_max1 = fmin(prev_tc->maxvel, tc->maxvel / cos(phi_effective));
-    double v_max2 = fmin(tc->maxvel, prev_tc->maxvel / cos(phi_effective));
+    double v_max1 = tp_fmin(prev_tc->maxvel, tc->maxvel / tp_cos(phi_effective));
+    double v_max2 = tp_fmin(tc->maxvel, prev_tc->maxvel / tp_cos(phi_effective));
 
     tp_debug_print("v_max1 = %f, v_max2 = %f\n", v_max1, v_max2);
 
     // Get "altitude"
-    double v_area = v_max1 * v_max2 / 2.0 * sin(param->phi);
+    double v_area = v_max1 * v_max2 / 2.0 * tp_sin(param->phi);
     tp_debug_print("phi = %f\n", param->phi);
     tp_debug_print("v_area = %f\n", v_area);
 
@@ -704,10 +705,10 @@ int blendParamKinematics(BlendGeom3 * const geom,
     }
 
     tp_debug_print("v_max_alt = %f\n", v_max_alt);
-    double v_max = fmax(v_max_alt, v_planar_max);
+    double v_max = tp_fmax(v_max_alt, v_planar_max);
 
     tp_debug_print("v_max = %f\n", v_max);
-    param->v_goal = fmin(param->v_goal, v_max);
+    param->v_goal = tp_fmin(param->v_goal, v_max);
 
     tp_debug_print("v_goal = %f, max scale = %f\n", param->v_goal, maxFeedScale);
 
@@ -760,7 +761,7 @@ int blendInit3FromLineArc(BlendGeom3 * const geom, BlendParameters * const param
     // TODO better name?
     double blend_angle_2 = param->convex2 ? geom->theta_tan : PM_PI / 2.0;
 
-    param->phi2_max = fmin(tc->coords.circle.xyz.angle / 3.0, blend_angle_2);
+    param->phi2_max = tp_fmin(tc->coords.circle.xyz.angle / 3.0, blend_angle_2);
     param->theta = geom->theta_tan;
 
     if (param->convex2) {
@@ -773,7 +774,7 @@ int blendInit3FromLineArc(BlendGeom3 * const geom, BlendParameters * const param
         pmCartCartSub(&blend_point, &geom->P,  &geom->u2);
         pmCartUnitEq(&geom->u2);
         //Reduce theta proportionally to the angle between the secant and the normal
-        param->theta = fmin(param->theta, geom->theta_tan - param->phi2_max / 4.0);
+        param->theta = tp_fmin(param->theta, geom->theta_tan - param->phi2_max / 4.0);
     }
 
     tp_debug_print("phi2_max = %f\n", param->phi2_max);
@@ -792,11 +793,11 @@ int blendInit3FromLineArc(BlendGeom3 * const geom, BlendParameters * const param
 
     param->phi = (PM_PI - param->theta * 2.0);
 
-    param->L1 = fmin(prev_tc->target, prev_tc->nominal_length / 2.0);
+    param->L1 = tp_fmin(prev_tc->target, prev_tc->nominal_length / 2.0);
 
     if (param->convex2) {
         //use half of the length of the chord
-        param->L2 = sin(param->phi2_max/4.0) * geom->radius2;
+        param->L2 = tp_sin(param->phi2_max/4.0) * geom->radius2;
     } else {
         param->L2 = param->phi2_max * geom->radius2;
     }
@@ -846,7 +847,7 @@ int blendInit3FromArcLine(BlendGeom3 * const geom, BlendParameters * const param
     // TODO better name?
     double blend_angle_1 = param->convex1 ? geom->theta_tan : PM_PI / 2.0;
 
-    param->phi1_max = fmin(prev_tc->coords.circle.xyz.angle * 2.0 / 3.0, blend_angle_1);
+    param->phi1_max = tp_fmin(prev_tc->coords.circle.xyz.angle * 2.0 / 3.0, blend_angle_1);
     param->theta = geom->theta_tan;
 
     // Build the correct unit vector for the linear approximation
@@ -861,7 +862,7 @@ int blendInit3FromArcLine(BlendGeom3 * const geom, BlendParameters * const param
         pmCartUnitEq(&geom->u1);
 
         //Reduce theta proportionally to the angle between the secant and the normal
-        param->theta = fmin(param->theta, geom->theta_tan - param->phi1_max / 4.0);
+        param->theta = tp_fmin(param->theta, geom->theta_tan - param->phi1_max / 4.0);
     }
 
     blendGeom3Print(geom);
@@ -884,7 +885,7 @@ int blendInit3FromArcLine(BlendGeom3 * const geom, BlendParameters * const param
 
     if (param->convex1) {
         //use half of the length of the chord
-        param->L1 = sin(param->phi1_max/4.0) * geom->radius1;
+        param->L1 = tp_sin(param->phi1_max/4.0) * geom->radius1;
     }
     tp_debug_print("L1 = %f, L2 = %f\n", param->L1, param->L2);
 
@@ -965,8 +966,8 @@ int blendInit3FromArcArc(BlendGeom3 * const geom, BlendParameters * const param,
     double blend_angle_1 = param->convex1 ? geom->theta_tan : PM_PI / 2.0;
     double blend_angle_2 = param->convex2 ? geom->theta_tan : PM_PI / 2.0;
 
-    param->phi1_max = fmin(prev_tc->coords.circle.xyz.angle * 2.0 / 3.0, blend_angle_1);
-    param->phi2_max = fmin(tc->coords.circle.xyz.angle / 3.0, blend_angle_2);
+    param->phi1_max = tp_fmin(prev_tc->coords.circle.xyz.angle * 2.0 / 3.0, blend_angle_1);
+    param->phi2_max = tp_fmin(tc->coords.circle.xyz.angle / 3.0, blend_angle_2);
 
     param->theta = geom->theta_tan;
 
@@ -982,7 +983,7 @@ int blendInit3FromArcArc(BlendGeom3 * const geom, BlendParameters * const param,
         pmCartUnitEq(&geom->u1);
 
         //Reduce theta proportionally to the angle between the secant and the normal
-        param->theta = fmin(param->theta, geom->theta_tan - param->phi1_max / 4.0);
+        param->theta = tp_fmin(param->theta, geom->theta_tan - param->phi1_max / 4.0);
 
     }
 
@@ -997,7 +998,7 @@ int blendInit3FromArcArc(BlendGeom3 * const geom, BlendParameters * const param,
         pmCartUnitEq(&geom->u2);
 
         //Reduce theta proportionally to the angle between the secant and the normal
-        param->theta = fmin(param->theta, geom->theta_tan - param->phi2_max / 4.0);
+        param->theta = tp_fmin(param->theta, geom->theta_tan - param->phi2_max / 4.0);
     }
     blendGeom3Print(geom);
 
@@ -1021,11 +1022,11 @@ int blendInit3FromArcArc(BlendGeom3 * const geom, BlendParameters * const param,
 
     if (param->convex1) {
         //use half of the length of the chord
-        param->L1 = sin(param->phi1_max/4.0) * geom->radius1;
+        param->L1 = tp_sin(param->phi1_max/4.0) * geom->radius1;
     }
     if (param->convex2) {
         //use half of the length of the chord
-        param->L2 = sin(param->phi2_max/4.0) * geom->radius2;
+        param->L2 = tp_sin(param->phi2_max/4.0) * geom->radius2;
     }
     tp_debug_print("L1 = %f, L2 = %f\n", param->L1, param->L2);
     tp_debug_print("phi1_max = %f\n",param->phi1_max);
@@ -1080,7 +1081,7 @@ int blendInit3FromLineLine(BlendGeom3 * const geom, BlendParameters * const para
     blendGeom3Print(geom);
 
     //Nominal length restriction prevents gobbling too much of parabolic blends
-    param->L1 = fmin(prev_tc->target, prev_tc->nominal_length * BLEND_DIST_FRACTION);
+    param->L1 = tp_fmin(prev_tc->target, prev_tc->nominal_length * BLEND_DIST_FRACTION);
     param->L2 = tc->target * BLEND_DIST_FRACTION;
     tp_debug_print("prev. nominal length = %f, next nominal_length = %f\n",
             prev_tc->nominal_length, tc->nominal_length);
@@ -1133,23 +1134,23 @@ int blendComputeParameters(BlendParameters * const param)
 {
 
     // Find maximum distance h from arc center to intersection point
-    double h_tol = param->tolerance / (1.0 - sin(param->theta));
+    double h_tol = param->tolerance / (1.0 - tp_sin(param->theta));
 
     // Find maximum distance along lines allowed by tolerance
-    double d_tol = cos(param->theta) * h_tol;
+    double d_tol = tp_cos(param->theta) * h_tol;
     tp_debug_print(" d_tol = %f\n", d_tol);
 
     // Find minimum distance by blend length constraints
-    double d_lengths = fmin(param->L1, param->L2);
-    double d_geom = fmin(d_lengths, d_tol);
+    double d_lengths = tp_fmin(param->L1, param->L2);
+    double d_geom = tp_fmin(d_lengths, d_tol);
     // Find radius from the limiting length
-    double R_geom = tan(param->theta) * d_geom;
+    double R_geom = tp_tan(param->theta) * d_geom;
 
     // Find maximum velocity allowed by accel and radius
     double v_normal = pmSqrt(param->a_n_max * R_geom);
     tp_debug_print("v_normal = %f\n", v_normal);
 
-    param->v_plan = fmin(v_normal, param->v_goal);
+    param->v_plan = tp_fmin(v_normal, param->v_goal);
 
     /*Get the limiting velocity of the equivalent parabolic blend. We use the
      * time it would take to do a "stock" parabolic blend as a metric for how
@@ -1161,12 +1162,12 @@ int blendComputeParameters(BlendParameters * const param)
      * */
     double a_parabolic = param->a_max * 0.5;
     double v_triangle = pmSqrt(2.0 * a_parabolic  * d_geom);
-    double t_blend = fmin(v_triangle, param->v_plan) / (a_parabolic);
+    double t_blend = tp_fmin(v_triangle, param->v_plan) / (a_parabolic);
     double s_blend = t_blend * param->v_plan;
-    double R_blend = fmin(s_blend / param->phi, R_geom);   //Clamp by limiting radius
+    double R_blend = tp_fmin(s_blend / param->phi, R_geom);   //Clamp by limiting radius
 
-    param->R_plan = fmax(pmSq(param->v_plan) / param->a_n_max, R_blend);
-    param->d_plan = param->R_plan / tan(param->theta);
+    param->R_plan = tp_fmax(pmSq(param->v_plan) / param->a_n_max, R_blend);
+    param->d_plan = param->R_plan / tp_tan(param->theta);
 
     tp_debug_print("v_plan = %f\n", param->v_plan);
     tp_debug_print("R_plan = %f\n", param->R_plan);
@@ -1240,7 +1241,7 @@ int blendFindPoints3(BlendPoints3 * const points, BlendGeom3 const * const geom,
         BlendParameters const * const param)
 {
     // Find center of blend arc along normal vector
-    double center_dist = param->R_plan / sin(param->theta);
+    double center_dist = param->R_plan / tp_sin(param->theta);
     tp_debug_print("center_dist = %f\n", center_dist);
 
     pmCartScalMult(&geom->normal, center_dist, &points->arc_center);
@@ -1321,7 +1322,7 @@ int blendLineArcPostProcess(BlendPoints3 * const points, BlendPoints3 const * co
 
     tp_debug_print("root0 = %f, root1 = %f\n", root0,
             root1);
-    d_L = fmin(fabs(root0),fabs(root1));
+    d_L = tp_fmin(tp_fabs(root0),tp_fabs(root1));
     if (d_L < 0) {
         tp_debug_print("d_L can't be < 0, aborting...\n");
         return TP_ERR_FAIL;
@@ -1408,7 +1409,7 @@ int blendArcLinePostProcess(BlendPoints3 * const points,
 
     tp_debug_print("root0 = %f, root1 = %f\n", root0,
             root1);
-    d_L = fmin(fabs(root0),fabs(root1));
+    d_L = tp_fmin(tp_fabs(root0),tp_fabs(root1));
     if (d_L < 0) {
         tp_debug_print("d_L can't be < 0, aborting...\n");
         return TP_ERR_FAIL;
@@ -1633,7 +1634,7 @@ int blendPoints3Print(BlendPoints3 const * const points)
 
 double pmCartAbsMax(PmCartesian const * const v)
 {
-    return fmax(fmax(fabs(v->x),fabs(v->y)),fabs(v->z));
+    return tp_fmax(tp_fmax(tp_fabs(v->x),tp_fabs(v->y)),tp_fabs(v->z));
 }
 
 
@@ -1645,7 +1646,7 @@ PmCircleLimits pmCircleActualMaxVel(PmCircle const * circle,
 
     double eff_radius = pmCircleEffectiveMinRadius(circle);
     // Find the acceleration necessary to reach the maximum velocity
-    double a_n_vmax = pmSq(v_max) / fmax(eff_radius, DOUBLE_FUZZ);
+    double a_n_vmax = pmSq(v_max) / tp_fmax(eff_radius, DOUBLE_FUZZ);
     // Find the maximum velocity that still obeys our desired tangential / total acceleration ratio
     double v_max_cutoff = pmSqrt(a_n_max_cutoff * eff_radius);
 
@@ -1701,7 +1702,7 @@ static int pmCircleAngleFromParam(PmCircle const * const circle,
 
     double disc = pmSq(B) - 4.0 * A * C ;
     if (disc < 0) {
-        rtapi_print_msg(RTAPI_MSG_ERR, "discriminant %f is negative in angle calculation\n",disc);
+        TP_LOG_ERR("discriminant %f is negative in angle calculation\n",disc);
         return TP_ERR_FAIL;
     }
 
@@ -1798,16 +1799,14 @@ int findSpiralArcLengthFit(PmCircle const * const circle,
     int res_angle = pmCircleAngleFromParam(circle, fit, 1.0, &angle_end_chk);
     if (res_angle != TP_ERR_OK) {
         //TODO better error message
-        rtapi_print_msg(RTAPI_MSG_ERR,
-                "Spiral fit failed\n");
+        TP_LOG_ERR("Spiral fit failed\n");
         return TP_ERR_FAIL;
     }
 
     // Check fit against angle
     double fit_err = angle_end_chk - circle->angle;
-    if (fabs(fit_err) > TP_ANGLE_EPSILON) {
-        rtapi_print_msg(RTAPI_MSG_ERR,
-                "Spiral fit angle difference is %e, maximum allowed is %e\n",
+    if (tp_fabs(fit_err) > TP_ANGLE_EPSILON) {
+        TP_LOG_ERR("Spiral fit angle difference is %e, maximum allowed is %e\n",
                 fit_err,
                 TP_ANGLE_EPSILON);
         return TP_ERR_FAIL;
