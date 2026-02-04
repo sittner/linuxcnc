@@ -63,3 +63,5 @@ docs/help/vi/*
 docs/help/zh_CN/*
 configs/**/*.tbl.bak
 configs/**/halshow.preferences
+
+/_codeql_detected_source_root
