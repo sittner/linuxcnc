@@ -47,8 +47,16 @@ static void std_log_debug(const char *fmt, ...) {
 }
 
 // Software fallback for FMA if not available
+// Note: This is a simple fallback that lacks the precision guarantees of
+// hardware FMA. The separate multiply and add operations can introduce
+// intermediate rounding errors that true FMA (fused multiply-add) avoids.
+// This is acceptable for the TP which already handles floating-point
+// precision issues, but users requiring exact FMA semantics should ensure
+// their platform provides hardware FMA support.
 #ifndef FP_FAST_FMA
 static double software_fma(double x, double y, double z) {
+    // Simple software fallback: x * y + z
+    // Lacks precision of hardware FMA but sufficient for TP
     return x * y + z;
 }
 #endif

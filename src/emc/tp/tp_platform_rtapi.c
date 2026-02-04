@@ -8,8 +8,12 @@
 #include <stdarg.h>
 
 // RTAPI logging wrappers
+// Note: Buffer size chosen to match typical RTAPI message lengths.
+// Longer messages will be truncated but this is acceptable for TP logging.
+#define TP_LOG_BUF_SIZE 512
+
 static void rtapi_log_error(const char *fmt, ...) {
-    char buf[256];
+    char buf[TP_LOG_BUF_SIZE];
     va_list args;
     va_start(args, fmt);
     rtapi_vsnprintf(buf, sizeof(buf), fmt, args);
@@ -18,7 +22,7 @@ static void rtapi_log_error(const char *fmt, ...) {
 }
 
 static void rtapi_log_warning(const char *fmt, ...) {
-    char buf[256];
+    char buf[TP_LOG_BUF_SIZE];
     va_list args;
     va_start(args, fmt);
     rtapi_vsnprintf(buf, sizeof(buf), fmt, args);
@@ -27,7 +31,7 @@ static void rtapi_log_warning(const char *fmt, ...) {
 }
 
 static void rtapi_log_info(const char *fmt, ...) {
-    char buf[256];
+    char buf[TP_LOG_BUF_SIZE];
     va_list args;
     va_start(args, fmt);
     rtapi_vsnprintf(buf, sizeof(buf), fmt, args);
@@ -36,7 +40,7 @@ static void rtapi_log_info(const char *fmt, ...) {
 }
 
 static void rtapi_log_debug(const char *fmt, ...) {
-    char buf[256];
+    char buf[TP_LOG_BUF_SIZE];
     va_list args;
     va_start(args, fmt);
     rtapi_vsnprintf(buf, sizeof(buf), fmt, args);
