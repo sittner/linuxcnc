@@ -22,7 +22,8 @@
 
 #include "rtapi.h"
 #include "rtapi_math.h"
-#include <math.h>
+/* Note: rtapi_math.h includes <math.h> in user space, and provides
+ * declarations for kernel space, so no need to include <math.h> directly */
 
 /***********************************************************************
 *                         MATH FUNCTION ABSTRACTIONS                   *
