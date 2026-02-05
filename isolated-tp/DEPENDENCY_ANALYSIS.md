@@ -12,13 +12,13 @@ The trajectory planner consists of 6 core C files and their headers:
 
 | File | LOC | Purpose | Self-Contained? |
 |------|-----|---------|----------------|
-| `tp.c` | 3,697 | Main trajectory planner logic | No - many dependencies |
+| `tp.c` | 4,172 | Main trajectory planner logic | No - many dependencies |
 | `tc.c` | 918 | Trajectory component (segment) implementation | No - moderate dependencies |
 | `tcq.c` | 354 | Trajectory component queue | Mostly - minimal dependencies |
 | `blendmath.c` | 1,860 | Blend calculation algorithms | Mostly - self-contained math |
 | `spherical_arc.c` | 201 | Spherical arc calculations | Mostly - self-contained math |
 | `tpmod.c` | 47 | Module interface stub | Minimal - just interface |
-| **Total** | **7,077** | | |
+| **Total** | **7,552** | | |
 
 ### Header Files
 
@@ -191,6 +191,44 @@ bool some_flag;
 - Use standard C `<limits.h>` and `<float.h>`
 - These are portable across all C99 compilers
 
+#### stdio.h
+**Usage**: Standard I/O (included in tp.c)
+```c
+#include <stdio.h>
+```
+
+**Frequency**: Currently included but usage is minimal/conditional
+
+**Isolation Strategy**:
+- Verify actual usage in the codebase
+- If only for debugging, can be removed or made conditional
+- If needed, standard C library is acceptable for isolated TP
+
+### Optional HAL Pin Support
+
+**Status**: Currently disabled by default
+
+**Code** (in tp.c):
+```c
+#define MAKE_TP_HAL_PINS
+#undef  MAKE_TP_HAL_PINS  // Currently disabled
+
+#ifdef MAKE_TP_HAL_PINS
+#include "hal.h"
+// ... hal_pin_u32_newf, etc.
+#endif
+```
+
+**Description**: TP has provisions for creating HAL pins for debugging/monitoring, but this feature is currently disabled. When enabled, it would create additional dependencies on the HAL library.
+
+**Isolation Strategy**:
+- Keep as optional compile-time feature
+- Document as conditional dependency
+- For isolated TP: provide callback interface for HAL pin creation
+- Default implementation: no-op stubs when HAL not available
+
+**Impact**: LOW (currently disabled, can remain optional)
+
 ### Isolation Approach
 
 **Phase 1**: Create abstraction layer
@@ -222,6 +260,8 @@ TP directly accesses motion module data structures through global pointers. This
 ```c
 static emcmot_status_t *emcmotStatus;  // Motion controller status
 static emcmot_config_t *emcmotConfig;  // Motion controller config
+emcmot_command_t *emcmotCommand;       // Motion controller command (declared but usage needs verification)
+emcmot_hal_data_t *emcmot_hal_data;    // Motion controller HAL data (declared but usage needs verification)
 
 // Set via:
 void tpMotData(emcmot_status_t *pstatus, emcmot_config_t *pconfig) {
@@ -229,6 +269,8 @@ void tpMotData(emcmot_status_t *pstatus, emcmot_config_t *pconfig) {
     emcmotConfig = pconfig;
 }
 ```
+
+**Note:** `emcmotCommand` and `emcmot_hal_data` are declared as global pointers in tp.c but their actual usage throughout the codebase needs verification. They may be unused or accessed only in conditional compilation paths.
 
 ### What TP Reads from Motion Module
 
@@ -1021,9 +1063,9 @@ The TP already follows some good practices:
 
 | Metric | Value |
 |--------|-------|
-| Total TP LOC | 7,077 |
+| Total TP LOC | 7,552 |
 | External includes | 15+ headers |
-| Global variables | 8 (motion pointers + callbacks) |
+| Global variables | 10 (motion pointers + callbacks) |
 | RTAPI calls | 200+ |
 | Motion module accesses | 50+ |
 | Unit test coverage | < 10% |
@@ -1032,7 +1074,7 @@ The TP already follows some good practices:
 
 | Metric | Value |
 |--------|-------|
-| Total TP LOC | ~7,500 (includes abstractions) |
+| Total TP LOC | ~8,000 (includes abstractions) |
 | External includes | 3 (posemath, emcpose, standard C) |
 | Global variables | 0 (all in TP_STRUCT) |
 | RTAPI calls | 0 (via abstraction) |
