@@ -55,7 +55,9 @@ tp_cos(), tp_sin(), tp_floor(), tp_ceil(), tp_fmax(), tp_fmin()
 #include "simple_tp.h"
 ```
 
-**Recommendation:** Disable `getNext()` in isolated TP - only used by simple planner, not main TP.
+**Current Status**: This dependency is not yet optional in the actual code. Making it optional via `#ifdef` is a **pending code change** that needs to be implemented during the porting process.
+
+**Recommendation:** Add `#ifdef SIMPLE_TP_ENABLED` guard around `simple_tp.h` include and related code. Disable `getNext()` in isolated TP - only used by simple planner, not main TP.
 
 ### 3. mot_priv.h (Remove)
 ```c
@@ -114,7 +116,8 @@ int planner_type = tp_get_planner_type();  // 0=trapezoid, 1=S-curve
 - [ ] Add math function wrappers to `tp_platform.h`
 - [ ] Replace all math calls with `TP_` prefix
 - [ ] Remove `#include "mot_priv.h"`
-- [ ] Make `simple_tp.h` optional (`#ifdef SIMPLE_TP_ENABLED`)
+- [ ] Add `#ifdef SIMPLE_TP_ENABLED` guard around `simple_tp.h` include (code change needed)
+- [ ] Disable or conditionally compile `getNext()` function that depends on simple_tp.h
 - [ ] Test cubic equation solver with unit tests
 - [ ] Test S-curve velocity calculations
 - [ ] Verify integration with `blendmath.c`
@@ -164,7 +167,7 @@ int planner_type = tp_get_planner_type();  // 0=trapezoid, 1=S-curve
 
 3. **simple_tp Dependency**
    - `getNext()` function is not used by main TP
-   - Safe to disable with `#ifdef`
+   - **Pending code change**: Add `#ifdef SIMPLE_TP_ENABLED` guard to make this dependency optional (not yet implemented in actual code)
 
 4. **Planner Type Access**
    - Must provide `tp_get_planner_type()` callback

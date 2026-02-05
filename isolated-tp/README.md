@@ -10,7 +10,7 @@ Create a standalone TP library that can be:
 
 ## Status
 
-**Phase:** Documentation complete, porting in progress
+**Current Phase:** Planning and Documentation
 
 **Base commit:** LinuxCNC master @ aef0cfa51b2892484fbcd6dd8242c7aafe9a282b
 
@@ -24,9 +24,9 @@ This directory contains comprehensive documentation for isolating LinuxCNC's tra
 - **Easier to maintain**: Reduced coupling and improved modularity
 - **More portable**: Fewer platform-specific dependencies
 
-## Current Status: Planning Phase
+## Implementation Status
 
-This is currently a **documentation and planning effort**. No code changes have been made yet. The documents here represent a comprehensive roadmap for incremental refactoring that can be executed in multiple smaller PRs.
+This is currently a **documentation and planning effort**. No code changes have been made yet to the actual TP source code. The documents here represent a comprehensive roadmap for incremental refactoring that can be executed in multiple smaller PRs.
 
 ## Documentation Structure
 
@@ -49,13 +49,15 @@ This is currently a **documentation and planning effort**. No code changes have 
 ## Files to Port
 
 1. **blendmath.c** (~1,860 lines)
-2. **tp.c** (~4,100 lines)
+2. **tp.c** (~4,172 lines)
 3. **tc.c** (~1,200 lines)
 4. **spherical_arc.c** (~200 lines)
 5. **tcq.c** (~250 lines)
 6. **sp_scurve.c** (~1,000 lines) ← NEW
 
-**Total:** ~8,610 lines
+**Total:** ~8,682 lines
+
+**Note:** Line counts verified from actual source files at base commit. Additional dependencies discovered during analysis (see DEPENDENCY_ANALYSIS.md).
 
 ## Timeline
 
