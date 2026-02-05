@@ -52,7 +52,10 @@
 #define TP_LOG(x)       log(x)
 #define TP_POW(x, y)    pow(x, y)
 
-/* Fused multiply-add (x * y + z) - use expression since fma may not be available */
+/* Fused multiply-add (x * y + z) - fallback implementation
+ * Note: This uses the standard expression form rather than fma() function,
+ * which may not be available in kernel builds. This fallback lacks the
+ * numerical precision and performance benefits of a true FMA operation. */
 #define TP_FMA(x, y, z) ((x) * (y) + (z))
 
 /* Min/max functions */
