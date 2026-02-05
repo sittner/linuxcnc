@@ -40,10 +40,12 @@ extern double atan2(double, double);
 extern double asin(double);
 extern double acos(double);
 extern double exp(double);
+extern double log(double);
 extern double pow(double, double);
 extern double fmin(double, double);
 extern double fmax(double, double);
 extern double fmod(double, double);
+extern double copysign(double, double);
 
 extern double round(double);
 extern double ceil(double);
