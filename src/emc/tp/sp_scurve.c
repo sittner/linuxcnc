@@ -14,6 +14,7 @@
 ********************************************************************/
 #include "sp_scurve.h"
 #include "rtapi_math.h"
+#include "tp_platform.h"
 #include "mot_priv.h" 
 #ifndef __KERNEL__
 #include <stdio.h>
@@ -37,7 +38,7 @@ double solute( double a, double b, double c, double d, double num){
     f1 = ( 3*a*x0 + 2*b )*x0 + c;
     x = x0 - f / f1;
     //cnt++;
-  } while ( fabs( x - x0 ) > 1e-6 );
+  } while ( TP_FABS( x - x0 ) > 1e-6 );
 
   //printf( "the value is %.14f \r\n", x );
   return( x );
@@ -59,9 +60,9 @@ int solve_cubic(double a, double b, double c, double d, double res[3], int* len)
     const double NEAR_ZERO = 1e-10;
     
     // Handle special cases (linear and quadratic equations)
-    if (fabs(a) < EPSILON) {
-        if (fabs(b) < EPSILON) {
-            if (fabs(c) < EPSILON) {
+    if (TP_FABS(a) < EPSILON) {
+        if (TP_FABS(b) < EPSILON) {
+            if (TP_FABS(c) < EPSILON) {
                 *len = 0;
                 return 0;  // No solution
             }
@@ -74,14 +75,14 @@ int solve_cubic(double a, double b, double c, double d, double res[3], int* len)
         double A = b;
         double B = c;
         double C = d;
-        double disc = fma(B, B, -4.0*A*C);  // B*B - 4*A*C
+        double disc = TP_FMA(B, B, -4.0*A*C);  // B*B - 4*A*C
         
         if (disc < 0) {
             *len = 0;
             return 0;  // No real solutions
         }
         
-        double sqrt_disc = sqrt(disc);
+        double sqrt_disc = TP_SQRT(disc);
         res[0] = (-B + sqrt_disc) / (2.0 * A);
         res[1] = (-B - sqrt_disc) / (2.0 * A);
         *len = 2;
@@ -89,29 +90,29 @@ int solve_cubic(double a, double b, double c, double d, double res[3], int* len)
     }
     
     // Normalize coefficients for better numerical stability
-    double norm = fabs(a);
+    double norm = TP_FABS(a);
     double a_norm = a / norm;
     double b_norm = b / norm;
     double c_norm = c / norm;
     double d_norm = d / norm;
     
     // Calculate intermediate values using fma for better precision
-    double A = fma(b_norm, b_norm, -3.0*a_norm*c_norm);
-    double B = fma(b_norm, c_norm, -9.0*a_norm*d_norm);
-    double C = fma(c_norm, c_norm, -3.0*b_norm*d_norm);
-    double f = fma(B, B, -4.0*A*C);
+    double A = TP_FMA(b_norm, b_norm, -3.0*a_norm*c_norm);
+    double B = TP_FMA(b_norm, c_norm, -9.0*a_norm*d_norm);
+    double C = TP_FMA(c_norm, c_norm, -3.0*b_norm*d_norm);
+    double f = TP_FMA(B, B, -4.0*A*C);
     
     *len = 0;
     
     // Handle different cases based on discriminant
-    if (fabs(A) < NEAR_ZERO && fabs(B) < NEAR_ZERO) {
+    if (TP_FABS(A) < NEAR_ZERO && TP_FABS(B) < NEAR_ZERO) {
         // Triple root case
         double root = -b_norm / (3.0 * a_norm);
         res[(*len)++] = root;
         res[(*len)++] = root;
         res[(*len)++] = root;
     }
-    else if (fabs(f) < NEAR_ZERO) {
+    else if (TP_FABS(f) < NEAR_ZERO) {
         // Double root case
         double K = B / A;
         res[(*len)++] = -b_norm/a_norm + K;
@@ -120,35 +121,35 @@ int solve_cubic(double a, double b, double c, double d, double res[3], int* len)
     }
     else if (f > NEAR_ZERO) {
         // One real root and two complex conjugate roots
-        double Y1 = fma(A, b_norm, 3.0*a_norm*(-B + sqrt(f))/2.0);
-        double Y2 = fma(A, b_norm, 3.0*a_norm*(-B - sqrt(f))/2.0);
+        double Y1 = TP_FMA(A, b_norm, 3.0*a_norm*(-B + TP_SQRT(f))/2.0);
+        double Y2 = TP_FMA(A, b_norm, 3.0*a_norm*(-B - TP_SQRT(f))/2.0);
         
         // Use more stable cube root calculation
         double Y1_value = (Y1 == 0.0) ? 0.0 : 
-            (Y1 > 0.0 ? exp(log(Y1) / 3.0) : -exp(log(-Y1) / 3.0));
+            (Y1 > 0.0 ? TP_EXP(TP_LOG(Y1) / 3.0) : -TP_EXP(TP_LOG(-Y1) / 3.0));
         double Y2_value = (Y2 == 0.0) ? 0.0 : 
-            (Y2 > 0.0 ? exp(log(Y2) / 3.0) : -exp(log(-Y2) / 3.0));
+            (Y2 > 0.0 ? TP_EXP(TP_LOG(Y2) / 3.0) : -TP_EXP(TP_LOG(-Y2) / 3.0));
         
         res[(*len)++] = (-b_norm - Y1_value - Y2_value) / (3.0 * a_norm);
         
         // Handle near-real complex roots
-        double i_value = sqrt(3.0)/2.0 * (Y1_value - Y2_value) / (3.0 * a_norm);
-        if (fabs(i_value) < 1e-1) {
+        double i_value = TP_SQRT(3.0)/2.0 * (Y1_value - Y2_value) / (3.0 * a_norm);
+        if (TP_FABS(i_value) < 1e-1) {
             res[(*len)++] = (-b_norm + 0.5*(Y1_value + Y2_value)) / (3.0 * a_norm);
         }
     }
     else {
         // Three distinct real roots
-        double T = (2.0*A*b_norm - 3.0*a_norm*B) / (2.0*A*sqrt(A));
+        double T = (2.0*A*b_norm - 3.0*a_norm*B) / (2.0*A*TP_SQRT(A));
         // Ensure T is within valid range for acos
-        T = fmax(-1.0, fmin(1.0, T));
-        double S = acos(T);
+        T = TP_FMAX(-1.0, TP_FMIN(1.0, T));
+        double S = TP_ACOS(T);
         
         // Pre-calculate common values
-        double cos_S3 = cos(S/3.0);
-        double sin_S3 = sin(S/3.0);
-        double sqrt_A = sqrt(A);
-        double sqrt_3 = sqrt(3.0);
+        double cos_S3 = TP_COS(S/3.0);
+        double sin_S3 = TP_SIN(S/3.0);
+        double sqrt_A = TP_SQRT(A);
+        double sqrt_3 = TP_SQRT(3.0);
         
         // Calculate roots
         res[(*len)++] = (-b_norm - 2.0*sqrt_A*cos_S3) / (3.0 * a_norm);
@@ -170,11 +171,11 @@ if(S < 0){
   Ac = -Ac;
 }
 
-S = fabs(S);
-double N1 = fabs(Vm - Vc) / (Jm * T * T); //fabs(Vm - Vs) / (Jm * T * T);
-double N2 = fabs(Vm - Ve) / (Jm * T * T);
+S = TP_FABS(S);
+double N1 = TP_FABS(Vm - Vc) / (Jm * T * T); //TP_FABS(Vm - Vs) / (Jm * T * T);
+double N2 = TP_FABS(Vm - Ve) / (Jm * T * T);
 
-n[0] = floor(Am / (Jm * T));
+n[0] = TP_FLOOR(Am / (Jm * T));
 n[1] = 0;
 double rn2;
 double rn6;
@@ -183,18 +184,18 @@ double rn6;
 n[1] = n[5] = 0;
 
 if(N1 > n[0] * (n[0] + 1)){ // Constant acceleration phase exists
-  n[1] = floor((N1 - n[0] * (n[0] + 1)) / n[0]);
+  n[1] = TP_FLOOR((N1 - n[0] * (n[0] + 1)) / n[0]);
 }else{
-  n[0] = n[2] = floor(sqrt(N1 + 1 / 4) - 1 / 2);
+  n[0] = n[2] = TP_FLOOR(TP_SQRT(N1 + 1 / 4) - 1 / 2);
 }
 
 rn2 = n[2] = n[0];
-rn6 = n[6] = n[4] = floor(Am / (Jm * T));
+rn6 = n[6] = n[4] = TP_FLOOR(Am / (Jm * T));
 
 if(N2 > n[4] * (n[4] + 1)){ // Constant deceleration phase exists
-  n[5] = floor((N2 - n[4] * (n[4] + 1)) / n[4]);
+  n[5] = TP_FLOOR((N2 - n[4] * (n[4] + 1)) / n[4]);
 }else{
-  n[4] = n[6] = floor(sqrt(N2 + 1 / 4) - 1 / 2);
+  n[4] = n[6] = TP_FLOOR(TP_SQRT(N2 + 1 / 4) - 1 / 2);
 }
 
 double Y1 = N1 - n[0] * (n[0] + 1) - n[0] * n[1];
@@ -259,7 +260,7 @@ double At2 = At1;
 double xgmxgmk = (rn2 * (rn2 + 1) * (2 * rn2 + 1)) / (2.0 * 6.0) -
              ((2 * rn2 + 1) * rn2 * (rn2 + 1)) / (2.0 * 2.0) +
               (rn2 * (rn2 * rn2 + rn2)) / 2.0;
-S2 = rn2 * Vm * T - T * fabs(*J2) * T * T * xgmxgmk;
+S2 = rn2 * Vm * T - T * TP_FABS(*J2) * T * T * xgmxgmk;
 
 double Vt3 = Vm;
 double At3 = 0;
@@ -288,18 +289,18 @@ double At6 = At5;
 // May need to increase by one period
 //S6 = ∑(Ve + ∑(k * j4 * Tp^2)) * Tp
 //double x = tp->n0 + tp->n1 + tp->n2 + tp->n3 + tp->n4 + tp->n5 + tp->n6 - n;
-//cal_v = tp->v7 + fabs(tp->j4) * T * T *  x * (x + 1) / 2.0;
+//cal_v = tp->v7 + TP_FABS(tp->j4) * T * T *  x * (x + 1) / 2.0;
 xgmxgmk = (rn6 * (rn6 + 1) * (2 * rn6 + 1)) / (2.0 * 6.0) -
              ((2 * rn6 + 1) * rn6 * (rn6 + 1)) / (2.0 * 2.0) +
               (rn6 * (rn6 * rn6 + rn6)) / 2.0;
-S6 =  rn6 * Ve * T + T * fabs(*J4) * T * T * xgmxgmk;
+S6 =  rn6 * Ve * T + T * TP_FABS(*J4) * T * T * xgmxgmk;
 
 double Vt7 = Ve;
 double At7 = 0;
 
 double Sb = S4 + S5 + S6; // Deceleration distance
 double Sc = S - Sa - Sb;  // Constant velocity phase distance
-n[3] = floor(Sc / (Vm * T));
+n[3] = TP_FLOOR(Sc / (Vm * T));
 double RSc = n[3] * Vm * T;
 double Serr = Sc - RSc;    // Residual length of constant velocity segment
 double Verr = Serr / T;    // This velocity needs to be inserted at appropriate location
@@ -308,8 +309,8 @@ double Verr = Serr / T;    // This velocity needs to be inserted at appropriate 
 //double A = Am * T * T / 6.0;
 //double B = Ve * T;
 //double C = -(Am * T * T / 6.0 + (S6 + Serr));
-//double B4AC = sqrt(B * B - 4 * A * C);
-//double tmpN1 = ceil((-B + B4AC) / (2 * A));
+//double B4AC = TP_SQRT(B * B - 4 * A * C);
+//double tmpN1 = TP_CEIL((-B + B4AC) / (2 * A));
 //printf("ORG N6 : %f  Now N6: %f  \n", rn6, tmpN1);
 //rn6 = tmpN1;
 //
@@ -374,7 +375,7 @@ double total_n;
 double verr;
 double J2;
 double J4;
-double S = fabs(tp->pos_cmd - tp->curr_pos);
+double S = TP_FABS(tp->pos_cmd - tp->curr_pos);
 
 double tn[8];
 double ta[8];
@@ -386,7 +387,7 @@ double tJ4;
 
 int time = 0;
 double TVmax = Vm;
-double TVmax1 = fmax(Vc, Ve);
+double TVmax1 = TP_FMAX(Vc, Ve);
 //double Vmax = Vm;
 do{ // Use bisection method to find optimal Vmax
   int res = calcSCurve(S, Vc, Ve, TVmax, Ac, Am, Jm, T, tn, ta, tv, &ttotal_n, &tverr, &tJ2, &tJ4);
@@ -520,7 +521,7 @@ double nextSpeed(double v, double a, double t, double targetV, double maxA, doub
 double stoppingDist(double v, double a, double maxA, double maxJ/*, int* phase*/) {
     // Already stopped
     //*phase = 0;
-    if (fabs(v) < 0.0001) return 0;
+    if (TP_FABS(v) < 0.0001) return 0;
     // Handle negative velocity
     if (v < 0) {
     v = -v;
@@ -559,9 +560,9 @@ double stoppingDist(double v, double a, double maxA, double maxJ/*, int* phase*/
     // Amax^2 = 2 * J * v + a^2 - Amax^2
     // 2 * Amax^2 = 2 * J * v + a^2
     // Amax^2 = v * J + 0.5 * a * a
-    double maxDeccel = -sqrt(v * maxJ + 0.5 * a * a);
+    double maxDeccel = -TP_SQRT(v * maxJ + 0.5 * a * a);
     if (maxDeccel < -maxA) maxDeccel = -maxA;
-    //double maxDeccel = -fabs(maxA);
+    //double maxDeccel = -TP_FABS(maxA);
 
     // Compute distance and velocity change to max deccel
     // a * t + 1/2 * j * t^2
@@ -604,7 +605,7 @@ double finishWithSpeedDist(double v, double ve, double a, double maxA, double ma
     }
 
     // Velocity difference too small, no accel/decel needed
-    if (fabs(v - ve) < 0.0001 && fabs(a) < 0.0001) {
+    if (TP_FABS(v - ve) < 0.0001 && TP_FABS(a) < 0.0001) {
         return 0;
     }
 
@@ -624,7 +625,7 @@ double finishWithSpeedDist(double v, double ve, double a, double maxA, double ma
         // Amax^2 = (ve - v) * maxJ + 0.5 * a * a
         double sqrt_arg = (ve - v) * maxJ + 0.5 * a * a;
         if (sqrt_arg < 0) sqrt_arg = 0;
-        double maxAccel = sqrt(sqrt_arg);
+        double maxAccel = TP_SQRT(sqrt_arg);
         if (maxAccel > maxA) maxAccel = maxA;
 
         // Phase 2: Increase a from current value to maxAccel
@@ -668,7 +669,7 @@ double finishWithSpeedDist(double v, double ve, double a, double maxA, double ma
     // Amax^2 = (v - ve) * maxJ + 0.5 * a * a
     double sqrt_arg = (v - ve) * maxJ + 0.5 * a * a;
     if (sqrt_arg < 0) sqrt_arg = 0;
-    double maxDeccel = -sqrt(sqrt_arg);
+    double maxDeccel = -TP_SQRT(sqrt_arg);
     if (maxDeccel < -maxA) maxDeccel = -maxA;
 
     // Phase 2: Decrease a from current value to maxDeccel
@@ -729,9 +730,9 @@ double nextAccel(double t, double targetV, double v, double a, double maxA,
   // PT = P0 + V0 * T + 0.5 * A0 * T^2 + J * T^3 / 6
   // VT = V0 + A0 * T + J * T^2 /2
   // AT = A0 + J * T
-  double deltaV = fabs(targetV - v);
-  double targetA = sqrt(2 * deltaV * maxJ);
-  //double targetA = fabs((((targetV - v) * 2) / t) - a);
+  double deltaV = TP_FABS(targetV - v);
+  double targetA = TP_SQRT(2 * deltaV * maxJ);
+  //double targetA = TP_FABS((((targetV - v) * 2) / t) - a);
 
   if (maxA < targetA) targetA = maxA;
 
@@ -761,10 +762,10 @@ double nextAccel(double t, double targetV, double v, double a, double maxA,
   vel_err = targetV - v;
   if (vel_err > tiny_da){
     acc_req = -max_da +
-              sqrt(2.0 * maxJ * vel_err + max_da * max_da);
+              TP_SQRT(2.0 * maxJ * vel_err + max_da * max_da);
   }else if (vel_err < -tiny_da){
     acc_req = max_da -
-              sqrt(-2.0 * maxJ * vel_err + max_da * max_da);
+              TP_SQRT(-2.0 * maxJ * vel_err + max_da * max_da);
   }else{
     /* within 'tiny_da' of desired pos, no need to move */
     acc_req = 0.0;
@@ -813,7 +814,7 @@ double delta_accel(double t, double j) {return j * t;}
 // Optimized efficient calculation version
 double calculate_t2_optimized(double Ve, double distence, double maxA, double maxJ) {
     // 1. Fast path: check simple cases
-    if (fabs(maxA) < 1e-10 || fabs(maxJ) < 1e-10) {
+    if (TP_FABS(maxA) < 1e-10 || TP_FABS(maxJ) < 1e-10) {
         return 0.0;
     }
 
@@ -824,7 +825,7 @@ double calculate_t2_optimized(double Ve, double distence, double maxA, double ma
     //const double maxJ_squared = maxJ * maxJ;      // Reuse
 
     // 3. Use more efficient expressions
-    // Original: 2.0*distence*maxA + Ve*Ve + pow(maxA,4.0)/(4.0*maxJ*maxJ) - (maxA*maxA*Ve)/maxJ
+    // Original: 2.0*distence*maxA + Ve*Ve + TP_POW(maxA,4.0)/(4.0*maxJ*maxJ) - (maxA*maxA*Ve)/maxJ
     // Optimized: use pre-calculated values and multiplication instead of division
     const double term1 = 2.0 * distence * maxA;
     const double term2 = Ve * Ve;
@@ -832,9 +833,9 @@ double calculate_t2_optimized(double Ve, double distence, double maxA, double ma
     const double term4 = maxA_squared * Ve * maxJ_inv;
 
     // 4. Use fma to optimize multiply-add operations
-    double sqrt_term = fma(term1, 1.0, term2);
-    sqrt_term = fma(term3, 1.0, sqrt_term);
-    sqrt_term = fma(-term4, 1.0, sqrt_term);
+    double sqrt_term = TP_FMA(term1, 1.0, term2);
+    sqrt_term = TP_FMA(term3, 1.0, sqrt_term);
+    sqrt_term = TP_FMA(-term4, 1.0, sqrt_term);
 
     // 5. Quick check if square root calculation is needed
     if (sqrt_term <= 0.0) {
@@ -842,7 +843,7 @@ double calculate_t2_optimized(double Ve, double distence, double maxA, double ma
     }
 
     // 6. Use more efficient square root calculation
-    const double sqrt_result = sqrt(sqrt_term);
+    const double sqrt_result = TP_SQRT(sqrt_term);
 
     // 7. Optimize final calculation
     // Original: -(2.0*Ve ± 2.0*sqrt_result + (3.0*maxA_squared)/maxJ)/(2.0*maxA)
@@ -851,8 +852,8 @@ double calculate_t2_optimized(double Ve, double distence, double maxA, double ma
     const double factor = 0.5 * maxA_inv;  // 1/(2*maxA)
 
     // 8. Use fma to optimize final calculation
-    double t2_1 = fma(-(2.0 * Ve - 2.0 * sqrt_result + common_term), factor, 0.0);
-    double t2_2 = fma(-(2.0 * Ve + 2.0 * sqrt_result + common_term), factor, 0.0);
+    double t2_1 = TP_FMA(-(2.0 * Ve - 2.0 * sqrt_result + common_term), factor, 0.0);
+    double t2_2 = TP_FMA(-(2.0 * Ve + 2.0 * sqrt_result + common_term), factor, 0.0);
 
     // 9. Quickly select valid solution
     return (t2_1 > 0.0) ? t2_1 : ((t2_2 > 0.0) ? t2_2 : 0.0);
@@ -862,7 +863,7 @@ int findSCurveVSpeedWithEndSpeed(double distence, double Ve, double maxA, double
   // Solve cubic equation: 2 * ve * t + j * t^3 = D
   //    j*t^3 + 2 * ve * t - D = 0
   //    A*t^3 + B*t^2 + C*t^1 + D = 0
-  if(fabs(Ve) <= TP_VEL_EPSILON)
+  if(TP_FABS(Ve) <= TP_VEL_EPSILON)
     return findSCurveVSpeed(distence, maxA, maxJ, req_v);
 
   distence = distence / 2.0;
@@ -888,10 +889,10 @@ int findSCurveVSpeedWithEndSpeed(double distence, double Ve, double maxA, double
   for (; i < len; i++)
   {
     if(i == 0)continue;
-    t1 = fmax(xo[i], t1);
+    t1 = TP_FMAX(xo[i], t1);
   }
 
-  //t1 = fmax(fmax(x1, x2), x3);
+  //t1 = TP_FMAX(TP_FMAX(x1, x2), x3);
   //if(x1>x2) temp=x1,x1=x2,x2=temp;
   //if(x2>x3) temp=x2,x2=x3,x3=temp;
   //if(x1>x2) temp=x1,x1=x2,x2=temp;
@@ -914,8 +915,8 @@ int findSCurveVSpeedWithEndSpeed(double distence, double Ve, double maxA, double
   }else{
       // t2_1 = -(2*ve - 2*(2*D*a2 + ve^2 + a2^4/(4*jerk^2) - (a2^2*ve)/jerk)^(1/2) + (3*a2^2)/jerk)/(2*a2)
       // t2_2 = -(2*ve + 2*(2*D*a2 + ve^2 + a2^4/(4*jerk^2) - (a2^2*ve)/jerk)^(1/2) + (3*a2^2)/jerk)/(2*a2)
-      //double t2_1 = -(2*Ve-2*sqrt(2*distence*maxA+Ve*Ve+pow(maxA,4)/(4*maxJ*maxJ)-(maxA*maxA*Ve)/maxJ)+(3*maxA*maxA)/maxJ)/(2*maxA);
-      //double t2_2 = -(2*Ve+2*sqrt(2*distence*maxA+Ve*Ve+pow(maxA,4)/(4*maxJ*maxJ)-(maxA*maxA*Ve)/maxJ)+(3*maxA*maxA)/maxJ)/(2*maxA);
+      //double t2_1 = -(2*Ve-2*TP_SQRT(2*distence*maxA+Ve*Ve+TP_POW(maxA,4)/(4*maxJ*maxJ)-(maxA*maxA*Ve)/maxJ)+(3*maxA*maxA)/maxJ)/(2*maxA);
+      //double t2_2 = -(2*Ve+2*TP_SQRT(2*distence*maxA+Ve*Ve+TP_POW(maxA,4)/(4*maxJ*maxJ)-(maxA*maxA*Ve)/maxJ)+(3*maxA*maxA)/maxJ)/(2*maxA);
       //if(t2_1 > 0)
       //    t2 = t2_1;
       //else
@@ -943,15 +944,15 @@ int findSCurveVSpeed(double distence,/* double maxV,*/ double maxA, double maxJ,
     distence = distence / 2.0;
 
     //rtai
-    t1 = pow(distence / maxJ, 1.0/3.0);
+    t1 = TP_POW(distence / maxJ, 1.0/3.0);
     //uspace rt-preempt
     //t1 = cbrt(distence/ maxJ);
     a1 = maxJ * t1;
     if(a1 < maxA){ // S2 segment does not exist, S1 => S3
         Vs = maxJ * t1 * t1;
     }else{
-        //double t2_1 = (2* sqrt((maxA*(8*distence + pow(maxA, 3)/pow(maxJ, 2)))/4) - (3 * pow(maxA, 2))/ maxJ)/(2 * maxA);
-        //double t2_2 = - (2 * sqrt((maxA*(8*distence + pow(maxA, 3)/pow(maxJ, 2)))/4) + (3*pow(maxA, 2))/maxJ)/(2 * maxA);
+        //double t2_1 = (2* TP_SQRT((maxA*(8*distence + TP_POW(maxA, 3)/TP_POW(maxJ, 2)))/4) - (3 * TP_POW(maxA, 2))/ maxJ)/(2 * maxA);
+        //double t2_2 = - (2 * TP_SQRT((maxA*(8*distence + TP_POW(maxA, 3)/TP_POW(maxJ, 2)))/4) + (3*TP_POW(maxA, 2))/maxJ)/(2 * maxA);
         //if(t2_1 > 0)
         //    t2 = t2_1;
         //else
@@ -970,12 +971,12 @@ int findSCurveVSpeed(double distence,/* double maxV,*/ double maxA, double maxJ,
 }
 
 double calcDecelerateTimes(double v, double amax, double jerk, double* t1, double* t2){
-  v = fabs(v);
+  v = TP_FABS(v);
   double T1 = amax / jerk;
   double T2 = 0;
   double V1 = jerk * T1 * T1 / 2;
   if(V1 >= v / 2){ // Handle case where jerk is small, causing T2 and T6 segments to not exist
-    T1 = sqrt(v / jerk);
+    T1 = TP_SQRT(v / jerk);
   }
   if(V1 < v / 2){
      T2 = (v / amax) - T1;
@@ -994,9 +995,9 @@ double calcSCurveSpeedWithT(double amax, double jerk, double T) {
     }
 
     // Use more stable calculation method
-    const double T1 = fmin(amax / jerk, T / 2.0);  // Avoid T2 being negative
+    const double T1 = TP_FMIN(amax / jerk, T / 2.0);  // Avoid T2 being negative
     const double T2 = T - 2.0 * T1;
 
     // Use fma to optimize multiply-add operations, improving numerical stability
-    return fma(jerk * T1, T1 + T2, 0.0);
+    return TP_FMA(jerk * T1, T1 + T2, 0.0);
 }

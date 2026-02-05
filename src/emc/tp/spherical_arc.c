@@ -15,6 +15,7 @@
 #include "spherical_arc.h"
 #include "tp_types.h"
 #include "rtapi_math.h"
+#include "tp_platform.h"
 
 #include "tp_debug.h"
 
@@ -64,7 +65,7 @@ int arcInitFromPoints(SphericalArc * const arc, PmCartesian const * const start,
     // Find arc angle
     double dot;
     pmCartCartDot(&u0, &u1, &dot);
-    arc->angle = acos(dot);
+    arc->angle = TP_ACOS(dot);
     tp_debug_print("spherical arc angle = %f\n", arc->angle);
 
     // Store spiral factor as radial difference. Archimedean spiral coef. a = spiral / angle
@@ -78,7 +79,7 @@ int arcInitFromPoints(SphericalArc * const arc, PmCartesian const * const start,
     }
 
     // Store sin of arc angle since it is reused many times for SLERP
-    arc->Sangle = sin(arc->angle);
+    arc->Sangle = TP_SIN(arc->angle);
 
     return TP_ERR_OK;
 }
@@ -97,8 +98,8 @@ int arcPoint(SphericalArc const * const arc, double progress, PmCartesian * cons
     } else {
         double angle_in = net_progress / arc->radius;
         tc_debug_print("angle_in = %f, angle_total = %f\n", angle_in, arc->angle);
-        double scale0 = sin(arc->angle - angle_in) / arc->Sangle;
-        double scale1 = sin(angle_in) / arc->Sangle;
+        double scale0 = TP_SIN(arc->angle - angle_in) / arc->Sangle;
+        double scale1 = TP_SIN(angle_in) / arc->Sangle;
 
         PmCartesian interp0,interp1;
         pmCartScalMult(&arc->rStart, scale0, &interp0);

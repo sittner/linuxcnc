@@ -16,6 +16,7 @@
 
 #include "rtapi.h"		/* rtapi_print_msg */
 #include "rtapi_math.h"
+#include "tp_platform.h"
 #include "posemath.h"
 #include "blendmath.h"
 #include "emcpose.h"
@@ -58,13 +59,13 @@ double tcGetMaxTargetVel(TC_STRUCT const * const tc,
     }
 
     // Clip maximum velocity by the segment's own maximum velocity
-    return fmin(v_max_target, tc->maxvel);
+    return TP_FMIN(v_max_target, tc->maxvel);
 }
 
 double tcGetOverallMaxAccel(const TC_STRUCT *tc)
 {
     // Handle any acceleration reduction due to an approximate-tangent "blend" with the previous or next segment
-    double a_scale = (1.0 - fmax(tc->kink_accel_reduce, tc->kink_accel_reduce_prev));
+    double a_scale = (1.0 - TP_FMAX(tc->kink_accel_reduce, tc->kink_accel_reduce_prev));
 
     // Parabolic blending conditions: If the next segment or previous segment
     // has a parabolic blend with this one, acceleration is scaled down by 1/2
@@ -98,8 +99,8 @@ int tcSetKinkProperties(TC_STRUCT *prev_tc, TC_STRUCT *tc, double kink_vel, doub
 {
   prev_tc->kink_vel = kink_vel;
   //
-  prev_tc->kink_accel_reduce = fmax(accel_reduction, prev_tc->kink_accel_reduce);
-  tc->kink_accel_reduce_prev = fmax(accel_reduction, tc->kink_accel_reduce_prev);
+  prev_tc->kink_accel_reduce = TP_FMAX(accel_reduction, prev_tc->kink_accel_reduce);
+  tc->kink_accel_reduce_prev = TP_FMAX(accel_reduction, tc->kink_accel_reduce_prev);
 
   return 0;
 }
@@ -594,10 +595,10 @@ int tcFindBlendTolerance(TC_STRUCT const * const prev_tc,
     if (T2 == 0) {
         T2 = tc->nominal_length * tolerance_ratio;
     }
-    *nominal_tolerance = fmin(T1,T2);
+    *nominal_tolerance = TP_FMIN(T1,T2);
     //Blend tolerance is the limit of what we can reach by blending alone,
     //consuming half a segment or less (parabolic equivalent)
-    double blend_tolerance = fmin(fmin(*nominal_tolerance, 
+    double blend_tolerance = TP_FMIN(TP_FMIN(*nominal_tolerance, 
                 prev_tc->nominal_length * tolerance_ratio),
             tc->nominal_length * tolerance_ratio);
     *T_blend = blend_tolerance;
@@ -866,7 +867,7 @@ int tcUpdateArcLimits(TC_STRUCT * tc)
         // j_entry = (v²/R) / cycle_time ≤ j_max
         double v_max_jerk_entry = pmSqrt(jerk * radius * tc->cycle_time);
 
-        double v_max_jerk = fmin(fmin(v_max_jerk_steady, v_max_jerk_tan), v_max_jerk_entry);
+        double v_max_jerk = TP_FMIN(TP_FMIN(v_max_jerk_steady, v_max_jerk_tan), v_max_jerk_entry);
 
         tp_debug_print("tcUpdateArcLimits: type=%d R=%f phi=%f j=%f\n",
                        tc->motion_type, radius, angle, jerk);
@@ -936,7 +937,7 @@ int tcClampVelocityByLength(TC_STRUCT * const tc)
     //Assume that cycle time is valid here
     double sample_maxvel = tc->target / tc->cycle_time;
     tp_debug_print("sample_maxvel = %f\n",sample_maxvel);
-    tc->maxvel = fmin(tc->maxvel, sample_maxvel);
+    tc->maxvel = TP_FMIN(tc->maxvel, sample_maxvel);
     return TP_ERR_OK;
 }
 
