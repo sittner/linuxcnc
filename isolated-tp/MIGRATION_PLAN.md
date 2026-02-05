@@ -134,6 +134,422 @@ The trajectory planner is a critical component that implements complex motion al
 
 Isolating the TP addresses all these issues while preserving full backward compatibility with existing LinuxCNC code.
 
+## Safe In-Place Migration Strategy (RECOMMENDED)
+
+This section documents the **safest, most reviewable approach** for migrating LinuxCNC's trajectory planner code. While the document describes multiple approaches (Direct File Porting and Traditional In-Place Refactoring), this strategy ensures LinuxCNC remains fully buildable and functional at every single commit.
+
+### Core Principles
+
+**Every commit must keep LinuxCNC fully buildable and functional.** This is the golden rule that guides all migration work.
+
+1. **Change one thing at a time**: Each PR should have a single, clear purpose
+2. **Add before removing**: Introduce new code first, then migrate usage, never remove before replacing
+3. **Test at each step**: Validate changes immediately to catch regressions early
+4. **Make changes reversible**: Each PR should be independently revertable without breaking the build
+5. **Verify behavior preservation**: Use assertions and tests to confirm no behavior changes during refactoring
+
+### Step-by-Step Granularity Example
+
+To illustrate the atomic granularity required, here's how to break down adding `tp_platform.h`:
+
+#### Step 1: Create Empty Abstraction Header (Zero Behavior Change)
+
+Create `tp_platform.h` that initially just wraps existing RTAPI functions:
+
+```c
+// tp_platform.h - Platform abstraction layer
+#ifndef TP_PLATFORM_H
+#define TP_PLATFORM_H
+
+#include "rtapi_math.h"
+
+// Math function aliases - currently identical to RTAPI
+#define TP_SQRT(x)      rtapi_sqrt(x)
+#define TP_SIN(x)       rtapi_sin(x)
+#define TP_COS(x)       rtapi_cos(x)
+#define TP_ATAN2(y, x)  rtapi_atan2(y, x)
+#define TP_FABS(x)      rtapi_fabs(x)
+#define TP_FMA(x, y, z) rtapi_fma(x, y, z)
+
+#endif // TP_PLATFORM_H
+```
+
+**Verification**:
+```bash
+cd src && make clean && make
+# Expected: Compiles successfully, no behavior change
+```
+
+**Commit**: "Add tp_platform.h with RTAPI aliases (no functional change)"
+
+#### Step 2: Include Header in ONE File (No Usage Yet)
+
+Add the include to `spherical_arc.c` but don't use any macros yet:
+
+```c
+// spherical_arc.c
+#include "rtapi_math.h"
+#include "tp_platform.h"  // Include but don't use yet - preparing for migration
+
+// ... rest of file unchanged ...
+```
+
+**Verification**:
+```bash
+cd src && make clean && make
+# Expected: Compiles successfully, identical behavior
+```
+
+**Commit**: "Include tp_platform.h in spherical_arc.c (no functional change)"
+
+#### Step 3: Replace ONE Function Call
+
+Replace a single call in `spherical_arc.c`:
+
+```c
+// Before:
+double mag = rtapi_sqrt(x*x + y*y + z*z);
+
+// After:
+double mag = TP_SQRT(x*x + y*y + z*z);
+```
+
+**Verification**:
+```bash
+cd src && make clean && make
+cd tests && ./runtests spherical_arc
+# Expected: All tests pass, identical behavior
+```
+
+**Commit**: "Use TP_SQRT in spherical_arc.c (no functional change)"
+
+#### Step 4: Systematically Replace Remaining Calls
+
+Continue replacing each RTAPI math call with TP_* equivalent in `spherical_arc.c`:
+
+```c
+// Replace rtapi_sin -> TP_SIN
+// Replace rtapi_cos -> TP_COS
+// Replace rtapi_atan2 -> TP_ATAN2
+// etc.
+```
+
+**Verification** (after each small batch):
+```bash
+cd src && make clean && make
+cd tests && ./runtests spherical_arc
+```
+
+**Commit**: "Complete TP_* macro migration in spherical_arc.c"
+
+#### Step 5: Move to Next File
+
+Repeat steps 2-4 for `blendmath.c`, then `tc.c`, then `tcq.c`, then `tp.c`, then `sp_scurve.c`.
+
+**Key Insight**: Each step is so small that if something breaks, you know exactly what caused it.
+
+### Verification Strategy
+
+During migration, add temporary verification code to ensure behavioral equivalence:
+
+#### Example 1: Verifying State Synchronization
+
+When adding `tp_sync_motion_state()` to copy global state:
+
+```c
+// In tp.c
+static void tp_sync_motion_state(TP_STRUCT *tp) {
+    // Copy state from global emcmotStatus to tp->motion_state
+    tp->motion_state.stepping = emcmotStatus->stepping;
+    tp->motion_state.maxFeedScale = emcmotStatus->maxFeedScale;
+    tp->motion_state.planner_type = emcmotStatus->planner_type;
+    // ... copy all required fields ...
+    
+    // TEMPORARY VERIFICATION: Confirm our copy matches the original
+    #ifdef TP_MIGRATION_VERIFY
+    assert(tp->motion_state.stepping == emcmotStatus->stepping);
+    assert(tp->motion_state.maxFeedScale == emcmotStatus->maxFeedScale);
+    assert(tp->motion_state.planner_type == emcmotStatus->planner_type);
+    // This assert fires if we miss a field or copy incorrectly
+    #endif
+}
+```
+
+**Usage**:
+```bash
+# Build with verification enabled during migration
+cd src && make EXTRA_CFLAGS="-DTP_MIGRATION_VERIFY" clean all
+cd tests && ./runtests
+
+# Once verified, build without verification for production
+cd src && make clean all
+```
+
+**Remove verification code** only after the migration is complete and stable for several releases.
+
+#### Example 2: Verifying Callback Equivalence
+
+When migrating from direct global access to callbacks:
+
+```c
+// Old code:
+double max_vel = emcmotStatus->vel;
+
+// New code with verification:
+double max_vel = tp->callbacks.get_max_velocity(tp->user_data);
+
+#ifdef TP_MIGRATION_VERIFY
+double old_max_vel = emcmotStatus->vel;
+assert(fabs(max_vel - old_max_vel) < 1e-10);  // Should be identical
+#endif
+```
+
+#### Example 3: Numerical Equivalence Checks
+
+For math function replacements:
+
+```c
+// Verify TP_SQRT matches rtapi_sqrt
+#ifdef TP_MIGRATION_VERIFY
+double test_val = 16.0;
+double old_result = rtapi_sqrt(test_val);
+double new_result = TP_SQRT(test_val);
+assert(old_result == new_result);  // Should be bitwise identical
+#endif
+```
+
+### PR Strategy Table
+
+Break the migration into small, reviewable pull requests. Each PR should take 30-60 minutes to review.
+
+| PR # | Description | Risk Level | Lines Changed | What to Test | Est. Time |
+|------|-------------|------------|---------------|--------------|-----------|
+| 1 | Add `tp_platform.h` (RTAPI aliases only) | None | +20 | Compiles | 15 min |
+| 2 | Include header in `spherical_arc.c` | None | +1 | Compiles | 10 min |
+| 3 | Use `TP_*` macros in `spherical_arc.c` | Very Low | ~15 | Full test suite | 1 hour |
+| 4 | Include header in `blendmath.c` | None | +1 | Compiles | 10 min |
+| 5 | Use `TP_*` macros in `blendmath.c` | Low | ~30 | Full test suite | 1 hour |
+| 6 | Include header in `tcq.c` | None | +1 | Compiles | 10 min |
+| 7 | Use `TP_*` macros in `tcq.c` | Very Low | ~10 | Full test suite | 45 min |
+| 8 | Include header in `tc.c` | None | +1 | Compiles | 10 min |
+| 9 | Use `TP_*` macros in `tc.c` | Low | ~20 | Full test suite | 1 hour |
+| 10 | Include header in `sp_scurve.c` | None | +1 | Compiles | 10 min |
+| 11 | Use `TP_*` macros in `sp_scurve.c` | Low | ~25 | Full test suite + S-curve tests | 1.5 hours |
+| 12 | Include header in `tp.c` | None | +1 | Compiles | 10 min |
+| 13 | Use `TP_*` macros in `tp.c` (batch 1) | Low | ~40 | Full test suite | 1.5 hours |
+| 14 | Use `TP_*` macros in `tp.c` (batch 2) | Low | ~40 | Full test suite | 1.5 hours |
+| 15 | Create `tp_motion_interface.h` | None | +50 | Compiles | 30 min |
+| 16 | Add motion state struct to `TP_STRUCT` | Very Low | +15 | Compiles | 30 min |
+| 17 | Implement `tp_sync_motion_state()` with verification | Low | +30 | Full test suite | 2 hours |
+| 18 | Migrate first global pointer access to state struct | Moderate | ~20 | Full test suite | 2 hours |
+| ... | Continue incremental migration | ... | ... | ... | ... |
+
+**Total PRs**: Approximately 40-50 for complete migration  
+**Review Effort**: 10-15 minutes per PR on average  
+**Testing Effort**: 1 hour per PR with code changes
+
+**Key Benefits**:
+- Small PRs are easy to review and understand
+- Each PR can be reverted independently
+- Test failures clearly point to the change that caused them
+- Reviewers can give feedback early and often
+- Reduces risk of large merge conflicts
+
+### Testing Checklist
+
+For each PR that changes code (not just headers), run this complete checklist:
+
+#### 1. Compile Check
+```bash
+cd /home/runner/work/linuxcnc/linuxcnc/src
+make clean
+make
+# Expected: Clean build with no new warnings
+```
+
+#### 2. Unit Tests (if applicable)
+```bash
+cd /home/runner/work/linuxcnc/linuxcnc/unit_tests
+./run_tests.py
+# Expected: All tests pass, no new failures
+```
+
+#### 3. Integration Tests
+```bash
+cd /home/runner/work/linuxcnc/linuxcnc/tests
+./runtests
+# Expected: All tests pass
+# Note: Run specific subsystem tests for targeted changes:
+./runtests tp           # For TP-related changes
+./runtests trajectory   # For trajectory changes
+./runtests blend        # For blending changes
+```
+
+#### 4. Smoke Test (Manual Verification)
+```bash
+# Start LinuxCNC simulator
+linuxcnc configs/sim/axis/axis.ini
+
+# Perform basic operations:
+# 1. Machine home (all axes)
+# 2. Manual jog (X, Y, Z axes)
+# 3. MDI: G0 X10 Y10 (rapid move)
+# 4. MDI: G1 X0 Y0 F100 (feed move)
+# 5. Run simple G-code program (e.g., ngc_files/examples/circle.ngc)
+# 6. Verify smooth motion, no jerks or unusual behavior
+```
+
+#### 5. Performance Check (for changes to hot paths)
+```bash
+# Run performance-sensitive test cases
+cd /home/runner/work/linuxcnc/linuxcnc/tests
+./runtests performance
+
+# Monitor timing:
+# - Trajectory cycle time should remain consistent
+# - No new latency spikes in real-time thread
+```
+
+#### 6. Regression Check
+```bash
+# Compare behavior with baseline commit
+git checkout <baseline-commit>
+# Run test program, save output
+./save_baseline_results.sh
+
+git checkout <your-branch>
+# Run same test program, compare output
+./compare_with_baseline.sh
+# Expected: Identical trajectory output
+```
+
+### Rollback Procedure
+
+Each PR must be independently revertable. Follow this procedure if issues are discovered:
+
+#### 1. Identify the Problem PR
+
+```bash
+# Check recent commits
+git log --oneline -10
+
+# Identify which PR introduced the issue
+# Use git bisect if necessary
+git bisect start
+git bisect bad HEAD
+git bisect good <known-good-commit>
+# ... follow bisect process ...
+```
+
+#### 2. Verify Revert is Safe
+
+```bash
+# Create a test revert on a branch
+git checkout -b test-revert
+git revert <problem-commit-sha>
+
+# Verify the revert compiles and tests pass
+cd src && make clean && make
+cd tests && ./runtests
+
+# If successful, the revert is safe
+```
+
+#### 3. Perform the Revert
+
+```bash
+# Switch to main branch
+git checkout main
+git pull
+
+# Revert the problematic commit
+git revert <problem-commit-sha>
+
+# Push the revert
+git push origin main
+```
+
+#### 4. Document and Investigate
+
+```markdown
+## Revert Reason
+
+**Reverted commit**: <sha> - "Description"
+**Reason**: <detailed explanation of the problem>
+**Symptoms**: <what broke, test failures, etc.>
+**Next steps**: 
+- [ ] Investigate root cause
+- [ ] Create fix
+- [ ] Re-apply with fix in new PR
+```
+
+#### 5. Prevention for Future PRs
+
+- **Run full test suite** before submitting PR
+- **Test on multiple configurations** (different machines, real hardware if possible)
+- **Let PR sit for 24 hours** before merging to allow for additional review
+- **Monitor CI/CD results** carefully
+- **Keep PRs small** to make reverts less disruptive
+
+### Migration Phase Breakdown
+
+Apply this strategy to each phase of the migration:
+
+#### Phase 0: Preparation (Before Any Code Changes)
+1. Document current test coverage
+2. Establish baseline performance metrics
+3. Set up CI/CD for automated testing
+4. Create feature branch
+
+#### Phase 1: Platform Abstraction Layer (PRs 1-14)
+- `tp_platform.h` creation and migration
+- Risk: Very Low
+- Duration: 2-3 weeks (with review cycles)
+
+#### Phase 2: Motion Interface Abstraction (PRs 15-25)
+- `tp_motion_interface.h` creation
+- State structure migration
+- Risk: Low-Moderate
+- Duration: 3-4 weeks
+
+#### Phase 3: Callback System Migration (PRs 26-35)
+- Replace global pointers with callbacks
+- Risk: Moderate
+- Duration: 3-4 weeks
+
+#### Phase 4: Final Isolation (PRs 36-45)
+- Extract to standalone library
+- Update build system
+- Risk: Low
+- Duration: 2-3 weeks
+
+**Total Duration**: 10-14 weeks with thorough testing and review
+
+### Success Criteria
+
+A migration step is successful when:
+
+- ✅ LinuxCNC compiles without new warnings
+- ✅ All existing tests pass
+- ✅ Manual smoke test shows normal operation
+- ✅ Code review approved by at least one maintainer
+- ✅ No performance regression (< 1% change in cycle time)
+- ✅ Documentation updated (if applicable)
+- ✅ Commit message clearly describes the change and rationale
+
+### Why This Approach Succeeds
+
+1. **Psychological Safety**: Developers can make changes confidently knowing each step is validated
+2. **Easy Debugging**: Problems are immediately obvious because changes are minimal
+3. **Continuous Integration**: The codebase is always in a working state
+4. **Reviewable**: Small PRs are actually reviewed thoroughly, catching issues early
+5. **Recoverable**: Any step can be reverted without cascading failures
+6. **Measurable**: Progress is clear and quantifiable
+
+**Remember**: The goal is not to go fast—it's to go safely and never break the build.
+
+---
+
 ## S-Curve Integration
 
 ### In blendmath.c:
