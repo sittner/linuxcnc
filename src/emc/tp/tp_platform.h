@@ -23,44 +23,47 @@
 /*
  * Math function abstractions
  * 
- * These macros wrap RTAPI math functions. Currently they are direct
- * aliases, but this abstraction allows:
- * 1. Future replacement with standard library functions for testing
- * 2. Platform-specific optimizations
+ * These macros wrap standard math functions provided by rtapi_math.h.
+ * This abstraction allows:
+ * 1. Platform-independent code (works in both kernel and userspace)
+ * 2. Future platform-specific optimizations if needed
  * 3. Easier identification of math dependencies in TP code
  *
- * Usage: Replace rtapi_sqrt(x) with TP_SQRT(x), etc.
+ * Usage: Use TP_SQRT(x), TP_SIN(x), etc. instead of calling math functions directly.
  */
 
 /* Basic math functions */
-#define TP_SQRT(x)      rtapi_sqrt(x)
-#define TP_FABS(x)      rtapi_fabs(x)
-#define TP_CEIL(x)      rtapi_ceil(x)
-#define TP_FLOOR(x)     rtapi_floor(x)
+#define TP_SQRT(x)      sqrt(x)
+#define TP_FABS(x)      fabs(x)
+#define TP_CEIL(x)      ceil(x)
+#define TP_FLOOR(x)     floor(x)
 
 /* Trigonometric functions */
-#define TP_SIN(x)       rtapi_sin(x)
-#define TP_COS(x)       rtapi_cos(x)
-#define TP_TAN(x)       rtapi_tan(x)
-#define TP_ASIN(x)      rtapi_asin(x)
-#define TP_ACOS(x)      rtapi_acos(x)
-#define TP_ATAN(x)      rtapi_atan(x)
-#define TP_ATAN2(y, x)  rtapi_atan2(y, x)
+#define TP_SIN(x)       sin(x)
+#define TP_COS(x)       cos(x)
+#define TP_TAN(x)       tan(x)
+#define TP_ASIN(x)      asin(x)
+#define TP_ACOS(x)      acos(x)
+#define TP_ATAN(x)      atan(x)
+#define TP_ATAN2(y, x)  atan2(y, x)
 
 /* Exponential and logarithmic functions */
-#define TP_EXP(x)       rtapi_exp(x)
-#define TP_LOG(x)       rtapi_log(x)
-#define TP_POW(x, y)    rtapi_pow(x, y)
+#define TP_EXP(x)       exp(x)
+#define TP_LOG(x)       log(x)
+#define TP_POW(x, y)    pow(x, y)
 
-/* Fused multiply-add (x * y + z) - important for numerical precision */
-#define TP_FMA(x, y, z) rtapi_fma(x, y, z)
+/* Fused multiply-add (x * y + z) - fallback implementation
+ * Note: This uses the standard expression form rather than fma() function,
+ * which may not be available in kernel builds. This fallback lacks the
+ * numerical precision and performance benefits of a true FMA operation. */
+#define TP_FMA(x, y, z) ((x) * (y) + (z))
 
 /* Min/max functions */
-#define TP_FMIN(x, y)   rtapi_fmin(x, y)
-#define TP_FMAX(x, y)   rtapi_fmax(x, y)
+#define TP_FMIN(x, y)   fmin(x, y)
+#define TP_FMAX(x, y)   fmax(x, y)
 
 /* Copy sign: returns x with sign of y */
-#define TP_COPYSIGN(x, y) rtapi_copysign(x, y)
+#define TP_COPYSIGN(x, y) copysign(x, y)
 
 /*
  * Future additions (not yet implemented):
