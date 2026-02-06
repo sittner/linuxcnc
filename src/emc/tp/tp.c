@@ -65,7 +65,7 @@ emcmot_command_t *emcmotCommand;
 emcmot_hal_data_t *emcmot_hal_data;
 
 #ifndef GET_TRAJ_PLANNER_TYPE
-#define GET_TRAJ_PLANNER_TYPE() (emcmotStatus->planner_type)
+#define GET_TRAJ_PLANNER_TYPE() TP_GET_PLANNER_TYPE()
 
 #define SET_TRAK_PLANNER_TYPE(tp) (emcmotStatus->planner_type = tp)
 

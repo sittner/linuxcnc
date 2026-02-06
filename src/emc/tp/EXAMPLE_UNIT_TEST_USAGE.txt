@@ -1,0 +1,71 @@
+/********************************************************************
+* Example: Unit Test Usage of Motion Interface
+*
+* This file demonstrates how to use tpMotionInterfaceSet() to
+* provide mock implementations for unit testing the TP in isolation.
+*
+* This is NOT part of the production code - it's just documentation.
+********************************************************************/
+
+#include "tp_motion_interface.h"
+
+/* Example mock state for testing */
+typedef struct {
+    int planner_type;
+    double jerk_limit;
+    double distance_to_go;
+    double current_vel;
+    unsigned int enables_new;
+} mock_motion_state_t;
+
+static mock_motion_state_t mock_state;
+
+/* Mock getter implementations */
+static int mock_get_planner_type(void) {
+    return mock_state.planner_type;
+}
+
+static double mock_get_jerk_limit(void) {
+    return mock_state.jerk_limit;
+}
+
+static unsigned int mock_get_enables_new(void) {
+    return mock_state.enables_new;
+}
+
+/* Mock setter implementations */
+static void mock_set_distance_to_go(double distance) {
+    mock_state.distance_to_go = distance;
+}
+
+static void mock_set_current_vel(double vel) {
+    mock_state.current_vel = vel;
+}
+
+/* ... other mock setters ... */
+
+/*
+ * Example test setup:
+ *
+ * void setup_mock_motion_interface(void) {
+ *     // Initialize mock state
+ *     mock_state.planner_type = 1;  // S-curve planner
+ *     mock_state.jerk_limit = 1000.0;
+ *     mock_state.enables_new = 0xFF;
+ *     
+ *     // Create custom interface with mock functions
+ *     tp_motion_interface_t test_interface = {0};
+ *     test_interface.get_planner_type = mock_get_planner_type;
+ *     test_interface.get_jerk_limit = mock_get_jerk_limit;
+ *     test_interface.get_enables_new = mock_get_enables_new;
+ *     test_interface.set_distance_to_go = mock_set_distance_to_go;
+ *     test_interface.set_current_vel = mock_set_current_vel;
+ *     // ... set other function pointers ...
+ *     
+ *     // Replace the default interface with our test interface
+ *     tpMotionInterfaceSet(&test_interface);
+ * }
+ *
+ * Now TP code will use the mock functions instead of accessing
+ * emcmotStatus directly, allowing isolated unit testing.
+ */
