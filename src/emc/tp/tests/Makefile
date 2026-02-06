@@ -125,13 +125,24 @@ help:
 	@echo ""
 	@echo "Targets:"
 	@echo "  all    - Build the test executable (default)"
+	@echo "  test   - Build and run the test"
 	@echo "  clean  - Remove build artifacts"
 	@echo "  show   - Show source files that will be compiled"
 	@echo "  help   - Show this help message"
 	@echo ""
 	@echo "Usage:"
 	@echo "  make          # Build the test"
+	@echo "  make test     # Build and run the test"
 	@echo "  make clean    # Clean up"
-	@echo "  ./$(TARGET)   # Run the test"
+	@echo "  ./$(TARGET)   # Run the test directly"
 
-.PHONY: all clean show help
+# Test target - build and run
+test: $(TARGET)
+	@echo ""
+	@echo "==========================================  "
+	@echo "Running TP Standalone Tests"
+	@echo "=========================================="
+	@echo ""
+	@./$(TARGET)
+
+.PHONY: all clean show help test
