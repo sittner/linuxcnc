@@ -1,0 +1,10 @@
+# Ignore build artifacts
+test_tp_standalone
+*.o
+*.a
+*.so
+
+# Ignore backup files
+*~
+*.bak
+*.swp
