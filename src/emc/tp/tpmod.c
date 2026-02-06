@@ -8,7 +8,7 @@
 */
 #include "rtapi.h"
 #include "rtapi_app.h"
-#include "hal.h"
+#include "tp_hal_interface.h"
 #include "tp_rtapi_interface.h"
 MODULE_LICENSE("GPL");
 
@@ -29,20 +29,20 @@ int rtapi_app_main(void)
 #endif
 
     char* emsg;
-    tpmod_id = hal_init("tpmod"); // dlopen(".../tpmod.so")
-    if (tpmod_id < 0) {emsg="hal_init()"; goto error;}
+    tpmod_id = tp_hal_init("tpmod"); // dlopen(".../tpmod.so")
+    if (tpmod_id < 0) {emsg="tp_hal_init()"; goto error;}
 
-    hal_ready(tpmod_id);
+    tp_hal_ready(tpmod_id);
     return 0;
 
 error:
     TP_PRINT_MSG(TP_MSG_ERR,"\ntpmod FAIL:<%s>\n",emsg);
-    hal_exit(tpmod_id);
+    tp_hal_exit(tpmod_id);
     return -1;
 }
 
 void rtapi_app_exit(void)
 {
-    hal_exit(tpmod_id);
+    tp_hal_exit(tpmod_id);
     return;
 }

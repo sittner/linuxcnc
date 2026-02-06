@@ -7,10 +7,43 @@ This directory contains a standalone test build for the LinuxCNC Trajectory Plan
 ## Purpose
 
 This standalone build serves multiple purposes:
-1. **Validation** - Proves the abstraction layers (`tp_platform.h`, `tp_motion_interface.h`, `tp_rtapi_interface.h`) work as intended
+1. **Validation** - Proves the abstraction layers (`tp_platform.h`, `tp_motion_interface.h`, `tp_rtapi_interface.h`, `tp_hal_interface.h`) work as intended
 2. **Documentation** - Identifies remaining dependencies that still couple TP to LinuxCNC infrastructure
 3. **Foundation** - Provides a basis for future unit testing of the TP module
 4. **Exploration** - Reveals what additional abstractions may be needed for full decoupling
+
+## Abstraction Layers
+
+The TP module uses several abstraction layers to enable standalone compilation:
+
+### 1. Platform Abstraction (`tp_platform.h`)
+- Abstracts math functions (sin, cos, sqrt, etc.)
+- Maps to standard C math library in standalone mode
+- Maps to RTAPI functions in kernel mode
+
+### 2. RTAPI Print Interface (`tp_rtapi_interface.h`)
+- Abstracts logging and print functions
+- Uses `TP_PRINT()` and `TP_PRINT_MSG()` macros
+- Maps to `printf()` in standalone mode
+- Maps to RTAPI print functions in kernel mode
+
+### 3. Motion Interface (`tp_motion_interface.h`)
+- Abstracts access to motion module parameters
+- Provides callbacks for reading/writing motion status
+- Fully stubbed for standalone testing
+
+### 4. HAL Interface (`tp_hal_interface.h`) ⭐ **NEW in Phase 6**
+- Abstracts HAL (Hardware Abstraction Layer) functions
+- Used primarily by `tpmod.c` for component initialization
+- Provides stub implementations in standalone mode
+- Maps to real HAL functions in normal LinuxCNC builds
+- Key functions:
+  - `tp_hal_init()` - Initialize HAL component
+  - `tp_hal_ready()` - Signal component is ready
+  - `tp_hal_exit()` - Cleanup HAL component
+  - Pin/parameter creation functions (for future use)
+
+**Note**: The core TP files (`tp.c`, `tc.c`, etc.) do not depend on HAL. Only `tpmod.c` (the HAL wrapper module) uses HAL functions. This clean separation means the core TP logic can compile standalone while `tpmod.c` provides the HAL integration for LinuxCNC.
 
 ## Files
 
@@ -211,6 +244,13 @@ The following dependencies have been successfully abstracted through the interfa
    - Access to motion module parameters (planner type, jerk limit, cycle time)
    - Writing motion status (velocity, acceleration, distance to go)
    - Fully stubbed for standalone testing
+
+4. **HAL Interface** (via `tp_hal_interface.h`) ⭐ **NEW in Phase 6**
+   - HAL component initialization and lifecycle management
+   - Pin and parameter creation functions
+   - Stub implementations for standalone builds
+   - Only used by `tpmod.c` (the HAL wrapper), not core TP files
+   - Enables `tpmod.c` to compile in standalone mode
 
 ### Remaining Dependencies
 
