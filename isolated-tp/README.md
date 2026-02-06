@@ -1,202 +1,158 @@
-# TP (Trajectory Planner) Isolation Project
+# Isolated TP (Trajectory Planner) Module
 
-## Goal
+## Overview
 
-Create a standalone TP library that can be:
-- Used outside LinuxCNC
-- Tested independently
-- Integrated into other motion controllers
-- Maintained separately
+This directory contains a **completely self-contained, isolated version** of the LinuxCNC Trajectory Planner (TP) module. It can be built and tested without any dependencies on the LinuxCNC source tree.
 
-## Status
+The TP module is responsible for trajectory planning, motion blending, and S-curve velocity profiling for CNC machine tool control.
 
-**Current Phase:** Planning and Documentation
+## Features
 
-**Base commit:** LinuxCNC master @ aef0cfa51b2892484fbcd6dd8242c7aafe9a282b
+- ✅ **Zero LinuxCNC Dependencies**: Builds standalone without requiring the LinuxCNC source tree
+- ✅ **Abstraction Layers**: Clean interfaces for platform, RTAPI, motion, and HAL interactions
+- ✅ **Comprehensive Tests**: Includes test suite for validation
+- ✅ **Portable**: Can be copied and used independently
+- ✅ **Easy Integration**: Well-defined API for embedding in other projects
 
-## Purpose
+## Quick Start
 
-This directory contains comprehensive documentation for isolating LinuxCNC's trajectory planner (TP) code into a standalone, testable library. The goal is to decouple the TP from the motion controller module, making it:
+### Build and Test
 
-- **More testable**: Unit tests without requiring full RTAPI/HAL infrastructure
-- **More reusable**: Usable in other projects or external modules
-- **Better architected**: Clear interfaces and separation of concerns
-- **Easier to maintain**: Reduced coupling and improved modularity
-- **More portable**: Fewer platform-specific dependencies
-
-## Implementation Status
-
-This is currently a **documentation and planning effort**. No code changes have been made yet to the actual TP source code. The documents here represent a comprehensive roadmap for incremental refactoring that can be executed in multiple smaller PRs.
-
-## Documentation Structure
-
-```
-/isolated-tp/
-├── README.md                               # This file - project overview
-├── MIGRATION_PLAN.md                       # Complete migration strategy with phases
-├── DEPENDENCY_ANALYSIS.md                  # Detailed dependency analysis
-├── API_DESIGN.md                           # Proposed library API design
-├── BENEFITS.md                             # Benefits and justification
-├── COMPATIBILITY.md                        # Compatibility and migration strategy
-└── docs/
-    ├── phase1-abstraction-layer.md         # Phase 1 implementation details
-    ├── phase2-refactoring.md               # Phase 2 implementation details
-    ├── phase3-library-extraction.md        # Phase 3 implementation details
-    ├── phase4-testing.md                   # Phase 4 implementation details
-    └── sp_scurve_integration.md            # S-curve porting guide (NEW)
+```bash
+cd isolated-tp
+make clean    # Clean build artifacts
+make          # Build the TP library and tests
+make test     # Build and run tests
 ```
 
-## Files to Port
+### Expected Output
 
-1. **blendmath.c** (~1,860 lines)
-2. **tp.c** (~4,172 lines)
-3. **tc.c** (~1,200 lines)
-4. **spherical_arc.c** (~200 lines)
-5. **tcq.c** (~250 lines)
-6. **sp_scurve.c** (~1,000 lines) ← NEW
+```
+==========================================
+All tests PASSED
+==========================================
+```
 
-**Total:** ~8,682 lines
+## Build Requirements
 
-**Note:** Line counts verified from actual source files at base commit. Additional dependencies discovered during analysis (see DEPENDENCY_ANALYSIS.md).
+- **GCC** or compatible C compiler
+- **make** build tool
+- **Standard C libraries** (math, stdio, stdlib, etc.)
+- **Linux/Unix-like system** (uses standard POSIX headers)
 
-## Timeline
+No LinuxCNC installation required!
 
-- Phase 1: 3-4 days (6 files)
-- Phase 2: 2 days (testing)
-- **Total: 5-6 days**
+## Directory Structure
 
-**Savings:** 3-4 days eliminated by using master's S-curve implementation!
+```
+isolated-tp/
+├── Makefile                      # Top-level build system
+├── README.md                     # This file
+├── src/
+│   ├── tp/                       # Core TP implementation
+│   ├── interfaces/               # Abstraction layer headers
+│   ├── posemath/                 # Position/orientation mathematics
+│   ├── nml_intf/                 # NML interface types
+│   ├── motion/                   # Motion controller interfaces
+│   ├── kinematics/               # Kinematics support
+│   ├── rtapi/                    # RTAPI compatibility layer
+│   └── stubs/                    # Standalone mode stubs
+└── tests/                        # Test suite
+```
 
-## Key Features
+## Usage Example
 
-- ✅ S-curve trajectory planning (jerk-limited motion)
-- ✅ Circular arc blending
-- ✅ Spherical arc interpolation (SLERP)
-- ✅ Velocity/acceleration planning
+```c
+#define TP_STANDALONE
+#include "tp.h"
+
+// Create and initialize TP
+TP_STRUCT tp;
+tpCreate(&tp, DEFAULT_TC_QUEUE_SIZE, DEFAULT_TC_QUEUE_SIZE);
+tpInit(&tp);
+
+// Configure motion parameters
+tpSetCycleTime(&tp, 0.001);  // 1ms cycle time
+tpSetVmax(&tp, 100.0, 0.0);  // 100 units/sec max velocity
+tpSetAmax(&tp, 1000.0);      // 1000 units/sec^2 max accel
+
+// Set initial position and add motion
+EmcPose start_pos = {{0, 0, 0}, 0, 0, 0, 0, 0, 0};
+tpSetPos(&tp, start_pos);
+
+EmcPose end_pos = {{100, 0, 0}, 0, 0, 0, 0, 0, 0};
+tpAddLine(&tp, end_pos, EMC_MOTION_TYPE_FEED, 50.0, 0, 1, 0, -1);
+
+// Run motion cycles
+while (!tpIsDone(&tp)) {
+    EmcPose current_pos;
+    tpRunCycle(&tp, 0, 0);
+    tpGetPos(&tp, &current_pos);
+}
+```
+
+## Abstraction Layers
+
+1. **Platform Abstraction** (`tp_platform.h`) - Math macros, optimizations
+2. **RTAPI Interface** (`tp_rtapi_interface.h`) - Print/logging functions  
+3. **Motion Interface** (`tp_motion_interface.h`) - Motion controller state
+4. **HAL Interface** (`tp_hal_interface.h`) - Hardware abstraction
+
+## Components
+
+### Core TP Files
+
+- **tp.c/h**: Main trajectory planner
+- **tc.c/h**: Trajectory segment (TC)
+- **tcq.c/h**: TC queue management
+- **blendmath.c/h**: Blend calculations
+- **spherical_arc.c/h**: Spherical arc interpolation
+- **sp_scurve.c/h**: S-curve velocity profiling
+
+### Test Suite
+
+Validates:
+- ✅ Basic TP initialization and configuration
+- ✅ S-curve velocity and distance calculations
+- ✅ Blend math utilities
+- ✅ Trajectory segment operations
 - ✅ Queue management
+- ✅ Multi-segment motion integration
+- ✅ Circular arc motion
+- ✅ Edge cases and error handling
+
+## Integration into Other Projects
+
+1. Copy the entire `isolated-tp` directory
+2. Include TP headers with `#define TP_STANDALONE`
+3. Link against the TP objects
+4. Implement motion interface callbacks (see `tp_motion_interface.h`)
+
+## License
+
+GPL Version 2 or later
+
+Copyright (c) 2004-2025 LinuxCNC Developers
+
+## Credits
+
+Original LinuxCNC developers:
+- Fred Proctor & Will Shackleford
+- Robert W. Ellenberg (S-curve, blend improvements)
+- Jeff Epler, Chris Radek
+- Many other contributors
 
 ## Documentation
 
-### [MIGRATION_PLAN.md](MIGRATION_PLAN.md)
-The master plan document describing the overall strategy, timeline, phases, risks, and success criteria.
+Additional documentation in parent directory:
+- `API_DESIGN.md` - Detailed API design
+- `DEPENDENCY_ANALYSIS.md` - Dependency analysis
+- `MIGRATION_PLAN.md` - Migration strategy
 
-### [DEPENDENCY_ANALYSIS.md](DEPENDENCY_ANALYSIS.md)
-Detailed analysis of all current dependencies, categorized by complexity and impact. Essential reading before starting any refactoring work.
+## Support
 
-### [API_DESIGN.md](API_DESIGN.md)
-Proposed public API for the isolated TP library, including structures, functions, and migration compatibility layer.
-
-### Phase Documentation
-Each phase has a detailed document in the `docs/` directory with specific tasks, code examples, testing approaches, and completion checklists.
-
-### [docs/sp_scurve_integration.md](docs/sp_scurve_integration.md)
-Dedicated guide for porting S-curve implementation to isolated TP, including:
-- Function mapping and refactoring
-- Dependencies to abstract
-- Integration with blendmath.c and tp.c
-- Testing strategy
-
-## Dependencies
-
-Requires implementation of:
-- Math functions (sin, cos, sqrt, fma, exp, log, acos, etc.)
-- Platform abstractions (printing, assertions)
-- Configuration callbacks (planner type, jerk limits)
-
-See [docs/phase1-abstraction-layer.md](docs/phase1-abstraction-layer.md) for details.
-
-## How to Contribute
-
-### For Reviewers
-1. Start with [MIGRATION_PLAN.md](MIGRATION_PLAN.md) for the big picture
-2. Review [DEPENDENCY_ANALYSIS.md](DEPENDENCY_ANALYSIS.md) to understand current coupling
-3. Evaluate [API_DESIGN.md](API_DESIGN.md) for the proposed interface
-4. Provide feedback on approach, timeline, and priorities
-
-### For Implementers
-1. Read all documentation in this directory
-2. Pick a phase to work on (preferably in order: Phase 1 → 2 → 3 → 4)
-3. Create a PR targeting a specific subset of tasks from that phase
-4. Keep PRs small and focused (e.g., "Create tp_platform.h abstraction")
-5. Ensure full backward compatibility
-6. Add tests for your changes
-
-### For Users/Integrators
-See [COMPATIBILITY.md](COMPATIBILITY.md) to understand how existing code will continue to work during and after the migration.
-
-## Principles
-
-This migration follows these core principles:
-
-1. **Incremental**: Can be done in small, reviewable PRs
-2. **Non-breaking**: Maintains full backward compatibility throughout
-3. **Testable**: Each phase includes verification steps
-4. **Reversible**: Changes can be rolled back if issues arise
-5. **Documented**: Each change is well-documented with rationale
-
-## Timeline
-
-**File Porting Approach:**
-- Phase 1: 3-4 days (6 files including S-curve)
-- Phase 2: 2 days (testing)
-- **Total: 5-6 days**
-
-**Traditional In-Place Refactoring Approach:**
-
-Estimated total effort: **6-10 weeks** of focused development time
-
-- Phase 1 (Abstraction Layer): 1-2 weeks
-- Phase 2 (Refactoring): 2-3 weeks
-- Phase 3 (Library Extraction): 1-2 weeks
-- Phase 4 (Unit Testing): 2-3 weeks
-
-These are estimates for a single developer working on this full-time. Actual timeline will depend on review cycles, testing, and coordination with the broader LinuxCNC project.
-
-## Success Criteria
-
-The migration will be considered successful when:
-
-1. TP code compiles as a standalone library with minimal dependencies
-2. Library can be used without RTAPI/HAL infrastructure
-3. Unit tests achieve target coverage (60%+ for core TP code)
-4. All existing LinuxCNC integration tests pass
-5. No measurable performance regression
-6. External modules (like tpcomp.comp) continue to work
-7. Documentation is complete and maintained
-
-## Related Issues and Discussions
-
-*(Add links to relevant GitHub issues, mailing list discussions, or forum threads here)*
-
-- Issue: [To be created] - TP Isolation Tracking Issue
-- Discussion: [Link to mailing list thread if applicable]
-
-## References
-
-### Current TP Code Location
-- Main TP source: `src/emc/tp/`
-- Core files: tp.c, tc.c, tcq.c, blendmath.c, spherical_arc.c
-- Headers: tp.h, tc.h, tcq.h, blendmath.h, spherical_arc.h, tp_types.h, tc_types.h
-- Tests: `unit_tests/tp/` (currently minimal)
-
-### Dependencies
-- Posemath library: `src/libnml/posemath/` (already modular)
-- Motion module: `src/emc/motion/`
-- RTAPI: `src/rtapi/`
-
-### External Resources
-- LinuxCNC Developer Documentation: [link]
-- Trajectory Planning Overview: [link to docs]
-- RTAPI Documentation: [link]
-
-## Questions?
-
-For questions about this migration plan:
-1. Check the documentation in this directory
-2. Review the dependency analysis for specific technical questions
-3. Post on the LinuxCNC developer mailing list
-4. Open a GitHub issue with the `trajectory-planner` label
+For LinuxCNC: https://linuxcnc.org | https://forum.linuxcnc.org
 
 ---
 
-**Note**: This is a living document that will be updated as the migration progresses. All documentation should be kept current with actual implementation status.
+**Based on LinuxCNC master branch (2025)**

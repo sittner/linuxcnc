@@ -1,0 +1,3 @@
+# Test build artifacts
+test_tp_standalone
+*.o
