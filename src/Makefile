@@ -1243,6 +1243,7 @@ tpmod-objs += emc/tp/tcq.o
 tpmod-objs += emc/tp/tp.o
 tpmod-objs += emc/tp/spherical_arc.o
 tpmod-objs += emc/tp/blendmath.o
+tpmod-objs += emc/tp/tp_motion_interface.o
 tpmod-objs += emc/nml_intf/emcpose.o
 tpmod-objs += libnml/posemath/_posemath.o
 tpmod-objs += emc/tp/sp_scurve.o

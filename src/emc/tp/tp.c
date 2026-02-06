@@ -23,6 +23,7 @@
 #include "spherical_arc.h"
 #include "blendmath.h"
 #include "axis.h"
+#include "tp_motion_interface.h"
 //KLUDGE Don't include all of emc.hh here, just hand-copy the TERM COND
 //definitions until we can break the emc constants out into a separate file.
 //#include "emc.hh"
@@ -819,7 +820,7 @@ STATIC double tpCalculateSCurveVel(TC_STRUCT const *tc) {
         // blending may remove up to 1/2 of the segment
         length /= 2.0;
     }
-    return findSCurveVPeak(acc_scaled, emcmotStatus->jerk, length);
+    return findSCurveVPeak(acc_scaled, TP_GET_JERK_LIMIT(), length);
 }
 
 /**
@@ -833,7 +834,7 @@ STATIC double tpCalculateSCurveVel(TC_STRUCT const *tc) {
 STATIC double tpCalculateOptimizationSCurveInitialVel(TP_STRUCT const * const tp, TC_STRUCT * const tc)
 {
     double acc_scaled = tcGetTangentialMaxAccel(tc);
-    double scurve_vel = findSCurveVPeak(acc_scaled, emcmotStatus->jerk,  tc->target);//findVPeak(acc_scaled, tc->target);
+    double scurve_vel = findSCurveVPeak(acc_scaled, TP_GET_JERK_LIMIT(),  tc->target);//findVPeak(acc_scaled, tc->target);
     double max_vel = tpGetMaxTargetVel(tp, tc);
     tp_debug_json_start(tpCalculateOptimizationSCurveInitialVel);
     tp_debug_json_double(scurve_vel);
@@ -1748,7 +1749,7 @@ STATIC int tpComputeOptimalVelocity(TP_STRUCT const * const tp, TC_STRUCT * cons
         // Starting from finalvel, maximum starting speed achievable within distance tc->target
         // During actual execution, tpCalculateSCurveAccel will adjust dynamically based on current state (including current acceleration)
         // Use minimum of segment's max jerk and system max jerk to ensure limits are not exceeded
-        double maxjerk = TP_FMIN(tc->maxjerk, emcmotStatus->jerk);
+        double maxjerk = TP_FMIN(tc->maxjerk, TP_GET_JERK_LIMIT());
         if(findSCurveVSpeedWithEndSpeed(tc->target, tc->finalvel, acc_this, maxjerk, &vs_back) != 1){
             // S-curve calculation failed, use conservative estimate (at least maintain finalvel)
             vs_back = tc->finalvel;
@@ -2407,7 +2408,7 @@ STATIC int tpComputeBlendSCurveVelocity(
     double v_reachable_next = TP_FMIN(tpCalculateSCurveVel(nexttc), target_vel_next);
 
     //double maxjerk = tc->maxjerk;
-    double maxjerk = TP_FMIN(tc->maxjerk, emcmotStatus->jerk);
+    double maxjerk = TP_FMIN(tc->maxjerk, TP_GET_JERK_LIMIT());
     /* Compute the maximum allowed blend time for each segment.
      * This corresponds to the minimum acceleration that will just barely reach
      * max velocity as we are 1/2 done the segment.
@@ -2422,8 +2423,8 @@ STATIC int tpComputeBlendSCurveVelocity(
     double t_min_blend_next;
     double t1_this, t2_this;
     double t1_next, t2_next;
-    t_min_blend_this = calcDecelerateTimes(v_reachable_this, acc_this, emcmotStatus->jerk, &t1_this, &t2_this);
-    t_min_blend_next = calcDecelerateTimes(v_reachable_next, acc_next, emcmotStatus->jerk, &t1_next, &t2_next);
+    t_min_blend_this = calcDecelerateTimes(v_reachable_this, acc_this, TP_GET_JERK_LIMIT(), &t1_this, &t2_this);
+    t_min_blend_next = calcDecelerateTimes(v_reachable_next, acc_next, TP_GET_JERK_LIMIT(), &t1_next, &t2_next);
 
 
     double t_max_blend = TP_FMAX(t_min_blend_this, t_min_blend_next);
@@ -2431,8 +2432,8 @@ STATIC int tpComputeBlendSCurveVelocity(
     double t_blend = TP_FMIN(t_max_reachable, t_max_blend);
 
     // Now, use this blend time to find the best acceleration / velocity for each segment
-    *v_blend_this = TP_FMIN(v_reachable_this, calcSCurveSpeedWithT(acc_this, emcmotStatus->jerk, t_blend)); //t_blend * acc_this);
-    *v_blend_next = TP_FMIN(v_reachable_next, calcSCurveSpeedWithT(acc_next, emcmotStatus->jerk, t_blend)); //t_blend * acc_next);
+    *v_blend_this = TP_FMIN(v_reachable_this, calcSCurveSpeedWithT(acc_this, TP_GET_JERK_LIMIT(), t_blend)); //t_blend * acc_this);
+    *v_blend_next = TP_FMIN(v_reachable_next, calcSCurveSpeedWithT(acc_next, TP_GET_JERK_LIMIT(), t_blend)); //t_blend * acc_next);
 
     double theta;
 
@@ -2772,7 +2773,7 @@ int tpCalculateSCurveAccel(TP_STRUCT const * const tp, TC_STRUCT * const tc, TC_
     double req_v, req_a, req_j;
     double maxnewvel, maxnewacc, maxnewjerk;
     //tc->maxjerk = emcmotStatus->jerk;
-    double maxjerk = TP_FMIN(tc->maxjerk, emcmotStatus->jerk);
+    double maxjerk = TP_FMIN(tc->maxjerk, TP_GET_JERK_LIMIT());
     if(maxjerk <= 1){
         maxjerk = 1;
         //rtapi_print_msg(RTAPI_MSG_ERR,
@@ -2975,18 +2976,16 @@ STATIC int tpUpdateMovementStatus(TP_STRUCT * const tp, TC_STRUCT const * const 
 
     if (!tc) {
         // Assume that we have no active segment, so we should clear out the status fields
-        emcmotStatus->distance_to_go = 0;
-        emcmotStatus->enables_queued = emcmotStatus->enables_new;
-        emcmotStatus->requested_vel = 0;
-        emcmotStatus->current_vel = 0;
-        emcmotStatus->spindleSync = 0;
+        TP_SET_DISTANCE_TO_GO(0);
+        TP_SET_ENABLES_QUEUED(TP_GET_ENABLES_NEW());
+        TP_SET_REQUESTED_VEL(0);
+        TP_SET_CURRENT_VEL(0);
+        TP_SET_SPINDLE_SYNC(0);
 
         // Clear S-curve motion state
-        emcmotStatus->current_acc = 0;
-        emcmotStatus->current_jerk = 0;
-        emcmotStatus->current_dir.x = 0;
-        emcmotStatus->current_dir.y = 0;
-        emcmotStatus->current_dir.z = 0;
+        TP_SET_CURRENT_ACC(0);
+        TP_SET_CURRENT_JERK(0);
+        TP_SET_CURRENT_DIR(0, 0, 0);
 
         emcPoseZero(&emcmotStatus->dtg);
 
@@ -3002,26 +3001,24 @@ STATIC int tpUpdateMovementStatus(TP_STRUCT * const tp, TC_STRUCT const * const 
             tc->id, tc->canon_motion_type, tc->motion_type);
     tp->motionType = tc->canon_motion_type;
     tp->activeDepth = tc->active_depth;
-    emcmotStatus->distance_to_go = tc->target - tc->progress;
-    emcmotStatus->enables_queued = tc->enables;
+    TP_SET_DISTANCE_TO_GO(tc->target - tc->progress);
+    TP_SET_ENABLES_QUEUED(tc->enables);
     // report our line number to the guis
     tp->execId = tc->id;
-    emcmotStatus->requested_vel = tc->reqvel;
-    emcmotStatus->current_vel = tc->currentvel;
+    TP_SET_REQUESTED_VEL(tc->reqvel);
+    TP_SET_CURRENT_VEL(tc->currentvel);
 
     // Output accurate S-curve motion state (for accurate jerk calculation)
-    emcmotStatus->current_acc = tc->currentacc;
-    emcmotStatus->current_jerk = tc->currentjerk;
+    TP_SET_CURRENT_ACC(tc->currentacc);
+    TP_SET_CURRENT_JERK(tc->currentjerk);
 
     // Get current motion direction unit vector (precise tangent at current progress)
     PmCartesian dir;
     if (tcGetCurrentTangentUnitVector(tc, &dir) == 0) {
-        emcmotStatus->current_dir = dir;
+        TP_SET_CURRENT_DIR(dir.x, dir.y, dir.z);
     } else {
         // If direction unavailable, use zero vector
-        emcmotStatus->current_dir.x = 0;
-        emcmotStatus->current_dir.y = 0;
-        emcmotStatus->current_dir.z = 0;
+        TP_SET_CURRENT_DIR(0, 0, 0);
     }
 
     emcPoseSub(&tc_pos, &tp->currentPos, &emcmotStatus->dtg);

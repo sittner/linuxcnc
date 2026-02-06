@@ -22,11 +22,10 @@
 #include "tp_debug.h"
 #include "motion.h"
 #include "sp_scurve.h"
-
-extern emcmot_status_t *emcmotStatus;
+#include "tp_motion_interface.h"
 
 #ifndef GET_TRAJ_PLANNER_TYPE
-#define GET_TRAJ_PLANNER_TYPE() (emcmotStatus->planner_type)
+#define GET_TRAJ_PLANNER_TYPE() TP_GET_PLANNER_TYPE()
 #endif
 
 /** @section utilityfuncs Utility functions */
@@ -1159,7 +1158,7 @@ int blendComputeParameters(BlendParameters * const param)
     double v_normal;
 
     if(GET_TRAJ_PLANNER_TYPE() == 1){
-        v_normal = findSCurveVPeak(param->a_n_max, emcmotStatus->jerk, R_geom);
+        v_normal = findSCurveVPeak(param->a_n_max, TP_GET_JERK_LIMIT(), R_geom);
     }else{
     v_normal = pmSqrt(param->a_n_max * R_geom);
     }
@@ -1184,14 +1183,14 @@ int blendComputeParameters(BlendParameters * const param)
     // For circular motion: j = v³/R² (worst case at corner transitions)
     // Therefore: R_min = v^(3/2) / sqrt(j_max)
     double R_jerk_min = 0.0;
-    if (GET_TRAJ_PLANNER_TYPE() == 1 && emcmotStatus->jerk > TP_POS_EPSILON) {
+    if (GET_TRAJ_PLANNER_TYPE() == 1 && TP_GET_JERK_LIMIT() > TP_POS_EPSILON) {
         // R_min = v^(3/2) / sqrt(j)
         double v_32 = pmSqrt(param->v_plan) * param->v_plan;  // v^(3/2)
-        double j_sqrt = pmSqrt(emcmotStatus->jerk);
+        double j_sqrt = pmSqrt(TP_GET_JERK_LIMIT());
         R_jerk_min = v_32 / j_sqrt;
 
         tp_debug_print("R_jerk_min = %f (for v=%f, j=%f)\n",
-                       R_jerk_min, param->v_plan, emcmotStatus->jerk);
+                       R_jerk_min, param->v_plan, TP_GET_JERK_LIMIT());
     }
 
     // Calculate radius from acceleration constraint
