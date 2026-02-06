@@ -169,6 +169,20 @@ The expanded test suite now includes comprehensive tests for:
 - Running TP cycles
 - Clearing queue after execution
 
+### 7. Circular Arc Tests (`test_circular_arc`)
+- `tpAddCircle()` - Add circular arc segment
+- Quarter circle motion in XY plane
+- TP execution with arc segments
+- Tests normal vector and center point handling
+
+### 8. Edge Cases and Error Handling (`test_edge_cases`)
+- Zero velocity stopping distance
+- Very small distance S-curve calculations (0.001mm)
+- Empty queue handling (`tpIsDone`)
+- Zero-length move handling (degenerate case)
+- TP abort functionality
+- Ensures robust error handling without crashes
+
 ### Test Helper Macros
 
 The test suite includes helper macros for assertions:

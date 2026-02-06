@@ -589,6 +589,139 @@ int test_integration_multisegment(void) {
 }
 
 /*
+ * Test circular arc motion
+ */
+int test_circular_arc(void) {
+    TP_STRUCT tp;
+    EmcPose start_pos, end_pos;
+    PmCartesian center, normal;
+    struct state_tag_t tag = {0};
+    int result;
+    
+    printf("Test: Circular arc motion\n");
+    
+    /* Create and initialize TP */
+    result = tpCreate(&tp, TP_DEFAULT_QUEUE_SIZE, 1);
+    ASSERT_EQ(result, 0, "tpCreate should succeed");
+    
+    result = tpInit(&tp);
+    ASSERT_EQ(result, 0, "tpInit should succeed");
+    
+    result = tpSetCycleTime(&tp, 0.001);
+    ASSERT_EQ(result, 0, "tpSetCycleTime should succeed");
+    
+    result = tpSetVmax(&tp, 100.0, 200.0);
+    ASSERT_EQ(result, 0, "tpSetVmax should succeed");
+    
+    result = tpSetAmax(&tp, 1000.0);
+    ASSERT_EQ(result, 0, "tpSetAmax should succeed");
+    
+    /* Set starting position */
+    ZERO_EMC_POSE(start_pos);
+    start_pos.tran.x = 10.0;
+    start_pos.tran.y = 0.0;
+    result = tpSetPos(&tp, &start_pos);
+    ASSERT_EQ(result, 0, "tpSetPos should succeed");
+    printf("  PASS: TP initialization for arc\n");
+    
+    /* Add a circular arc - quarter circle in XY plane */
+    ZERO_EMC_POSE(end_pos);
+    end_pos.tran.x = 0.0;
+    end_pos.tran.y = 10.0;
+    
+    /* Center of circle at origin */
+    center.x = 0.0;
+    center.y = 0.0;
+    center.z = 0.0;
+    
+    /* Normal pointing up (Z axis) */
+    normal.x = 0.0;
+    normal.y = 0.0;
+    normal.z = 1.0;
+    
+    result = tpAddCircle(&tp, end_pos, center, normal, 1, /* turn */
+                        EMC_MOTION_TYPE_ARC,
+                        50.0,    /* vel */
+                        100.0,   /* ini_maxvel */
+                        500.0,   /* acc */
+                        5000.0,  /* ini_maxjerk */
+                        0xFF,    /* enables */
+                        0,       /* atspeed */
+                        tag);
+    ASSERT_EQ(result, 0, "tpAddCircle should succeed");
+    printf("  PASS: Added circular arc to queue\n");
+    
+    /* Run a few cycles */
+    for (int i = 0; i < 5; i++) {
+        result = tpRunCycle(&tp, 0);
+        ASSERT_EQ(result, 0, "tpRunCycle should succeed for arc");
+    }
+    printf("  PASS: Executed TP cycles with arc\n");
+    
+    /* Clear queue */
+    result = tpClear(&tp);
+    ASSERT_EQ(result, 0, "tpClear should succeed");
+    
+    printf("Test: Circular arc motion - PASSED\n\n");
+    return 0;
+}
+
+/*
+ * Test edge cases and error conditions
+ */
+int test_edge_cases(void) {
+    TP_STRUCT tp;
+    EmcPose pos;
+    struct state_tag_t tag = {0};
+    int result;
+    double dist;
+    
+    printf("Test: Edge cases and error handling\n");
+    
+    /* Test zero distance stopping */
+    dist = stoppingDist(0.0, 0.0, 1000.0, 10000.0);
+    ASSERT_NEAR(dist, 0.0, 1e-6, "Zero velocity stopping distance should be zero");
+    printf("  PASS: Zero velocity stopping distance\n");
+    
+    /* Test very small distance S-curve */
+    double req_v;
+    result = findSCurveVSpeed(0.001, 1000.0, 10000.0, &req_v);
+    ASSERT_EQ(result, 1, "findSCurveVSpeed should handle tiny distance");
+    ASSERT_TRUE(req_v >= 0.0, "Velocity should be non-negative");
+    printf("  PASS: S-curve with very small distance (d=0.001mm, v=%.4f mm/s)\n", req_v);
+    
+    /* Test TP with zero queue size edge case - create TP first */
+    result = tpCreate(&tp, 10, 1);
+    ASSERT_EQ(result, 0, "tpCreate with small queue should succeed");
+    
+    result = tpInit(&tp);
+    ASSERT_EQ(result, 0, "tpInit should succeed");
+    
+    /* Test tpIsDone on empty queue */
+    ASSERT_TRUE(tpIsDone(&tp), "Empty TP should be done");
+    printf("  PASS: tpIsDone on empty queue\n");
+    
+    /* Test adding move with zero length (degenerate case) */
+    ZERO_EMC_POSE(pos);
+    result = tpSetPos(&tp, &pos);
+    ASSERT_EQ(result, 0, "tpSetPos should succeed");
+    
+    /* Try to add line with same start and end (zero length) */
+    result = tpAddLine(&tp, pos, EMC_MOTION_TYPE_FEED,
+                      50.0, 100.0, 500.0, 5000.0, 0xFF, 0, -1, tag);
+    /* This might fail or succeed depending on implementation - just ensure it doesn't crash */
+    printf("  PASS: Zero-length move handling (result=%d)\n", result);
+    
+    /* Test queue depth after abort */
+    tpAbort(&tp);
+    ASSERT_TRUE(tpIsDone(&tp), "TP should be done after abort");
+    printf("  PASS: tpAbort\n");
+    
+    printf("Test: Edge cases - PASSED\n\n");
+    return 0;
+}
+
+/*
  * Main test program
  */
 int main(int argc, char *argv[]) {
@@ -656,6 +789,18 @@ int main(int argc, char *argv[]) {
     
     /* Run integration tests */
     if (test_integration_multisegment() != 0) {
+        printf("\nTEST FAILED\n");
+        return 1;
+    }
+    
+    /* Run circular arc tests */
+    if (test_circular_arc() != 0) {
+        printf("\nTEST FAILED\n");
+        return 1;
+    }
+    
+    /* Run edge case tests */
+    if (test_edge_cases() != 0) {
         printf("\nTEST FAILED\n");
         return 1;
     }
