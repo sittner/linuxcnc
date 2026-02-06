@@ -187,7 +187,22 @@ The build demonstrates:
 - TP can run in userspace with stub interfaces
 - No kernel dependencies at runtime
 
-## Future Work
+## Related Testing
+
+### Unit Tests
+LinuxCNC also has unit tests in `unit_tests/tp/` which test individual TP functions using the "greatest" testing framework. Those tests focus on:
+- Testing specific math functions in isolation
+- Numerical accuracy and edge cases
+- Individual component behavior
+
+### Integration Testing
+This standalone test (`src/emc/tp/tests/`) serves a different purpose:
+- Tests the full TP module integration
+- Validates abstraction layers work end-to-end
+- Provides a foundation for testing TP behavior without full LinuxCNC
+- Demonstrates TP can be compiled independently
+
+Both approaches are valuable and complement each other.
 
 ### Potential Improvements
 
