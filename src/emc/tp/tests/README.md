@@ -45,6 +45,8 @@ The TP module uses several abstraction layers to enable standalone compilation:
 
 **Note**: The core TP files (`tp.c`, `tc.c`, etc.) do not depend on HAL. Only `tpmod.c` (the HAL wrapper module) uses HAL functions. This clean separation means the core TP logic can compile standalone while `tpmod.c` provides the HAL integration for LinuxCNC.
 
+**Future Consideration**: The file `tp.c` contains optional HAL pin/parameter code (currently disabled via `#undef MAKE_TP_HAL_PINS`). If this feature is ever enabled in the future, those HAL calls should be updated to use `tp_hal_*` macros and `TP_HAL_*` constants for consistency.
+
 ## Files
 
 ### Test Infrastructure
