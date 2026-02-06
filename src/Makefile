@@ -1231,6 +1231,7 @@ motmod-objs += emc/motion/emcmotutil.o
 motmod-objs += emc/motion/stashf.o
 motmod-objs += emc/motion/dbuf.o
 motmod-objs += emc/tp/sp_scurve.o
+motmod-objs += emc/tp/tp_motion_interface.o
 
 obj-m += homemod.o
 homemod-objs := emc/motion/homemod.o
