@@ -9,6 +9,7 @@
 #include "rtapi.h"
 #include "rtapi_app.h"
 #include "hal.h"
+#include "tp_rtapi_interface.h"
 MODULE_LICENSE("GPL");
 
 #define TPMOD_DEBUG
@@ -23,7 +24,7 @@ int rtapi_app_main(void)
 {
 #ifdef TPMOD_DEBUG
     if (tp_parms) {
-        rtapi_print("%s:%s: tp_parms=%s\n",__FILE__,__FUNCTION__,tp_parms);
+        TP_PRINT("%s:%s: tp_parms=%s\n",__FILE__,__FUNCTION__,tp_parms);
     }
 #endif
 
@@ -35,7 +36,7 @@ int rtapi_app_main(void)
     return 0;
 
 error:
-    rtapi_print_msg(RTAPI_MSG_ERR,"\ntpmod FAIL:<%s>\n",emsg);
+    TP_PRINT_MSG(TP_MSG_ERR,"\ntpmod FAIL:<%s>\n",emsg);
     hal_exit(tpmod_id);
     return -1;
 }

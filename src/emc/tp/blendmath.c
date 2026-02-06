@@ -17,6 +17,7 @@
 #include "tp_types.h"
 #include "rtapi_math.h"
 #include "tp_platform.h"
+#include "tp_rtapi_interface.h"
 #include "spherical_arc.h"
 #include "blendmath.h"
 #include "tp_debug.h"
@@ -68,7 +69,7 @@ double findKinkAccel(double kink_angle, double v_plan, double cycle_time)
     if (dx > 0.0) {
         return (dx * kink_angle);
     } else {
-        rtapi_print_msg(RTAPI_MSG_ERR, "dx < 0 in KinkAccel\n");
+        TP_PRINT_MSG(TP_MSG_ERR, "dx < 0 in KinkAccel\n");
         return 0;
     }
 }
@@ -1720,7 +1721,7 @@ static int pmCircleAngleFromParam(PmCircle const * const circle,
 
     double disc = pmSq(B) - 4.0 * A * C ;
     if (disc < 0) {
-        rtapi_print_msg(RTAPI_MSG_ERR, "discriminant %f is negative in angle calculation\n",disc);
+        TP_PRINT_MSG(TP_MSG_ERR, "discriminant %f is negative in angle calculation\n",disc);
         return TP_ERR_FAIL;
     }
 
@@ -1818,7 +1819,7 @@ int findSpiralArcLengthFit(PmCircle const * const circle,
     int res_angle = pmCircleAngleFromParam(circle, fit, 1.0, &angle_end_chk);
     if (res_angle != TP_ERR_OK) {
         //TODO better error message
-        rtapi_print_msg(RTAPI_MSG_ERR,
+        TP_PRINT_MSG(TP_MSG_ERR,
                 "Spiral fit failed\n");
         return TP_ERR_FAIL;
     }
@@ -1826,7 +1827,7 @@ int findSpiralArcLengthFit(PmCircle const * const circle,
     // Check fit against angle
     double fit_err = angle_end_chk - circle->angle;
     if (TP_FABS(fit_err) > TP_ANGLE_EPSILON) {
-        rtapi_print_msg(RTAPI_MSG_ERR,
+        TP_PRINT_MSG(TP_MSG_ERR,
                 "Spiral fit angle difference is %e, maximum allowed is %e\n",
                 fit_err,
                 TP_ANGLE_EPSILON);

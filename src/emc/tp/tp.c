@@ -10,11 +10,11 @@
 *
 * Copyright (c) 2004 All rights reserved.
 ********************************************************************/
-#include "rtapi.h"              /* rtapi_print_msg */
 #include "posemath.h"           /* Geometry types & functions */
 #include "emcpose.h"
 #include "rtapi_math.h"
 #include "tp_platform.h"
+#include "tp_rtapi_interface.h"
 #include "motion.h"
 #include "mot_priv.h"
 #include "tp.h"
@@ -407,10 +407,10 @@ static int makepins(int id) {
     res += hal_param_float_newf(HAL_RO, &tp_haldata->param_ro,id,"%s.param-ro",HAL_PREFIX);
 
     if (res) goto error;
-    rtapi_print("@@@ %s:%s: ok\n",__FILE__,__FUNCTION__);
+    TP_PRINT("@@@ %s:%s: ok\n",__FILE__,__FUNCTION__);
     return 0;  // caller issues hal_ready()
 error:
-    rtapi_print("\n!!! %s:%s: failed res=%d\n\n",__FILE__,__FUNCTION__,res);
+    TP_PRINT("\n!!! %s:%s: failed res=%d\n\n",__FILE__,__FUNCTION__,res);
     return -1;
 #undef HAL_PREFIX
 }
@@ -521,7 +521,7 @@ int tpInit(TP_STRUCT * const tp)
     PmCartesian acc_bound;
     //FIXME this acceleration bound isn't valid (nor is it used)
     if (emcmotStatus == 0) {
-       rtapi_print("!!!tpInit: NULL emcmotStatus, bye\n\n");
+       TP_PRINT("!!!tpInit: NULL emcmotStatus, bye\n\n");
        return -1;
     }
     tpGetMachineAccelBounds(&acc_bound);
@@ -623,7 +623,7 @@ int tpSetId(TP_STRUCT * const tp, int id)
 {
 
     if (!MOTION_ID_VALID(id)) {
-        rtapi_print_msg(RTAPI_MSG_ERR, "tpSetId: invalid motion id %d\n", id);
+        TP_PRINT_MSG(TP_MSG_ERR, "tpSetId: invalid motion id %d\n", id);
         return TP_ERR_FAIL;
     }
 
@@ -723,7 +723,7 @@ int tpSetCurrentPos(TP_STRUCT * const tp, EmcPose const * const pos)
         tp->currentPos = *pos;
         return TP_ERR_OK;
     } else {
-        rtapi_print_msg(RTAPI_MSG_ERR, "Tried to set invalid pose in tpSetCurrentPos on id %d!"
+        TP_PRINT_MSG(TP_MSG_ERR, "Tried to set invalid pose in tpSetCurrentPos on id %d!"
                 "pos is %.12g, %.12g, %.12g\n",
                 tp->execId,
                 pos->tran.x,
@@ -744,7 +744,7 @@ int tpAddCurrentPos(TP_STRUCT * const tp, EmcPose const * const disp)
         emcPoseSelfAdd(&tp->currentPos, disp);
         return TP_ERR_OK;
     } else {
-        rtapi_print_msg(RTAPI_MSG_ERR, "Tried to set invalid pose in tpAddCurrentPos on id %d!"
+        TP_PRINT_MSG(TP_MSG_ERR, "Tried to set invalid pose in tpAddCurrentPos on id %d!"
                 "disp is %.12g, %.12g, %.12g\n",
                 tp->execId,
                 disp->tran.x,
@@ -761,11 +761,11 @@ int tpAddCurrentPos(TP_STRUCT * const tp, EmcPose const * const disp)
 int tpErrorCheck(TP_STRUCT const * const tp) {
 
     if (!tp) {
-        rtapi_print_msg(RTAPI_MSG_ERR, "TP is null\n");
+        TP_PRINT_MSG(TP_MSG_ERR, "TP is null\n");
         return TP_ERR_FAIL;
     }
     if (tp->aborting) {
-        rtapi_print_msg(RTAPI_MSG_ERR, "TP is aborting\n");
+        TP_PRINT_MSG(TP_MSG_ERR, "TP is aborting\n");
         return TP_ERR_FAIL;
     }
     return TP_ERR_OK;
@@ -912,7 +912,7 @@ STATIC int tcSetLineXYZ(TC_STRUCT * const tc, PmCartLine const * const line)
         return TP_ERR_FAIL;
     }
     if (!tc->coords.line.abc.tmag_zero || !tc->coords.line.uvw.tmag_zero) {
-        rtapi_print_msg(RTAPI_MSG_ERR, "SetLineXYZ does not supportABC or UVW motion\n");
+        TP_PRINT_MSG(TP_MSG_ERR, "SetLineXYZ does not supportABC or UVW motion\n");
         return TP_ERR_FAIL;
     }
 
@@ -1538,7 +1538,7 @@ STATIC tp_err_t tpCreateLineLineBlend(TP_STRUCT * const tp, TC_STRUCT * const pr
         retval = tcqPopBack(&tp->queue);
         if (retval) {
             //This is unrecoverable since we've already changed the line. Something is wrong if we get here...
-            rtapi_print_msg(RTAPI_MSG_ERR, "PopBack failed\n");
+            TP_PRINT_MSG(TP_MSG_ERR, "PopBack failed\n");
             return TP_ERR_FAIL;
         }
         //Since the blend arc meets the end of the previous line, we only need
@@ -1563,7 +1563,7 @@ STATIC inline int tpAddSegmentToQueue(TP_STRUCT * const tp, TC_STRUCT * const tc
 
     tc->id = tp->nextId;
     if (tcqPut(&tp->queue, tc) == -1) {
-        rtapi_print_msg(RTAPI_MSG_ERR, "tcqPut failed.\n");
+        TP_PRINT_MSG(TP_MSG_ERR, "tcqPut failed.\n");
         return TP_ERR_FAIL;
     }
     if (inc_id) {
@@ -1637,7 +1637,7 @@ int tpAddRigidTap(TP_STRUCT * const tp,
     tp_info_print("== AddRigidTap ==\n");
 
     if(!tp->synchronized) {
-        rtapi_print_msg(RTAPI_MSG_ERR, "Cannot add unsynchronized rigid tap move.\n");
+        TP_PRINT_MSG(TP_MSG_ERR, "Cannot add unsynchronized rigid tap move.\n");
         return TP_ERR_FAIL;
     }
 
@@ -2159,7 +2159,7 @@ int tpAddLine(TP_STRUCT * const tp, EmcPose end, int canon_motion_type,
             &end);
     tc.target = pmLine9Target(&tc.coords.line);
     if (tc.target < TP_POS_EPSILON) {
-        rtapi_print_msg(RTAPI_MSG_DBG,"failed to create line id %d, zero-length segment\n",tp->nextId);
+        TP_PRINT_MSG(TP_MSG_DBG,"failed to create line id %d, zero-length segment\n",tp->nextId);
         return TP_ERR_ZERO_LENGTH;
     }
     tc.nominal_length = tc.target;
@@ -2574,7 +2574,7 @@ STATIC void tpDebugCycleInfo(TP_STRUCT const * const tp, TC_STRUCT const * const
     tc_debug_print("          motion type %d\n", tc->motion_type);
 
     if (tc->on_final_decel) {
-        rtapi_print(" on final decel\n");
+        TP_PRINT(" on final decel\n");
     }
 #else
     (void)tp;
@@ -2605,7 +2605,7 @@ void tpCalculateTrapezoidalAccel(TP_STRUCT const * const tp, TC_STRUCT * const t
 
 #ifdef TP_PEDANTIC
     if (tc_finalvel > 0.0 && tc->term_cond != TC_TERM_COND_TANGENT) {
-        rtapi_print_msg(RTAPI_MSG_ERR, "Final velocity of %f with non-tangent segment!\n",tc_finalvel);
+        TP_PRINT_MSG(TP_MSG_ERR, "Final velocity of %f with non-tangent segment!\n",tc_finalvel);
         tc_finalvel = 0.0;
     }
 #endif
@@ -2626,7 +2626,7 @@ void tpCalculateTrapezoidalAccel(TP_STRUCT const * const tp, TC_STRUCT * const t
     // in this situation
 #ifdef TP_PEDANTIC
     if (discr < 0.0) {
-        rtapi_print_msg(RTAPI_MSG_ERR,
+        TP_PRINT_MSG(TP_MSG_ERR,
                 "discriminant %f < 0 in velocity calculation!\n", discr);
     }
 #endif
@@ -2918,11 +2918,11 @@ STATIC void tpUpdateRigidTapState(TP_STRUCT const * const tp,
                 pmCartLinePoint(&tc->coords.rigidtap.xyz, tc->progress, &start);
                 end = tc->coords.rigidtap.xyz.start;
                 pmCartLineInit(aux, &start, &end);
-                rtapi_print_msg(RTAPI_MSG_DBG, "old target = %f", tc->target);
+                TP_PRINT_MSG(TP_MSG_DBG, "old target = %f", tc->target);
                 tc->coords.rigidtap.reversal_target = aux->tmag;
                 tc->target = aux->tmag + 10. * tc->uu_per_rev;
                 tc->progress = 0.0;
-                rtapi_print_msg(RTAPI_MSG_DBG, "new target = %f", tc->target);
+                TP_PRINT_MSG(TP_MSG_DBG, "new target = %f", tc->target);
 
                 tc->coords.rigidtap.state = RETRACTION;
             }
@@ -3149,7 +3149,7 @@ STATIC int tpCompleteSegment(TP_STRUCT * const tp,
         tp_debug_print("Finished reverse run of tc id %d\n", tc->id);
     } else {
         int res_pop = tcqPop(&tp->queue);
-        if (res_pop) rtapi_print_msg(RTAPI_MSG_ERR,"Got error %d from tcqPop!\n", res_pop);
+        if (res_pop) TP_PRINT_MSG(TP_MSG_ERR,"Got error %d from tcqPop!\n", res_pop);
         tp_debug_print("Finished tc id %d\n", tc->id);
     }
 
@@ -3202,7 +3202,7 @@ STATIC tp_err_t tpCheckAtSpeed(TP_STRUCT * const tp, TC_STRUCT * const tc)
     // this is no longer the segment we were waiting_for_index for
     if (MOTION_ID_VALID(tp->spindle.waiting_for_index) && tp->spindle.waiting_for_index != tc->id)
     {
-        rtapi_print_msg(RTAPI_MSG_ERR,
+        TP_PRINT_MSG(TP_MSG_ERR,
                 "Was waiting for index on motion id %d, but reached id %d\n",
                 tp->spindle.waiting_for_index, tc->id);
         tp->spindle.waiting_for_index = MOTION_INVALID_ID;
@@ -3211,7 +3211,7 @@ STATIC tp_err_t tpCheckAtSpeed(TP_STRUCT * const tp, TC_STRUCT * const tc)
     if (MOTION_ID_VALID(tp->spindle.waiting_for_atspeed) && tp->spindle.waiting_for_atspeed != tc->id)
     {
 
-        rtapi_print_msg(RTAPI_MSG_ERR,
+        TP_PRINT_MSG(TP_MSG_ERR,
                 "Was waiting for atspeed on motion id %d, but reached id %d\n",
                 tp->spindle.waiting_for_atspeed, tc->id);
         tp->spindle.waiting_for_atspeed = MOTION_INVALID_ID;
@@ -3233,7 +3233,7 @@ STATIC tp_err_t tpCheckAtSpeed(TP_STRUCT * const tp, TC_STRUCT * const tc)
             /* haven't passed index yet */
             return TP_ERR_WAITING;
         } else {
-            rtapi_print_msg(RTAPI_MSG_DBG, "Index seen on spindle %d\n", tp->spindle.spindle_num);
+            TP_PRINT_MSG(TP_MSG_DBG, "Index seen on spindle %d\n", tp->spindle.spindle_num);
             /* passed index, start the move */
             emcmotStatus->spindleSync = 1;
             tp->spindle.waiting_for_index = MOTION_INVALID_ID;
@@ -3337,7 +3337,7 @@ STATIC tp_err_t tpActivateSegment(TP_STRUCT * const tp, TC_STRUCT * const tc) {
         // ask for an index reset
         emcmotStatus->spindle_status[tp->spindle.spindle_num].spindle_index_enable = 1;
         tp->spindle.offset = 0.0;
-        rtapi_print_msg(RTAPI_MSG_DBG, "Waiting on sync. spindle_num %d..\n", tp->spindle.spindle_num);
+        TP_PRINT_MSG(TP_MSG_DBG, "Waiting on sync. spindle_num %d..\n", tp->spindle.spindle_num);
         return TP_ERR_WAITING;
     }
 
@@ -3600,7 +3600,7 @@ STATIC inline int tcSetSplitCycle(TC_STRUCT * const tc, double split_time,
 {
     tp_debug_print("split time for id %d is %.16g\n", tc->id, split_time);
     if (tc->splitting != 0 && split_time > 0.0) {
-        rtapi_print_msg(RTAPI_MSG_ERR,"already splitting on id %d with cycle time %.16g, dx = %.16g, split time %.12g\n",
+        TP_PRINT_MSG(TP_MSG_ERR,"already splitting on id %d with cycle time %.16g, dx = %.16g, split time %.12g\n",
                 tc->id,
                 tc->cycle_time,
                 tc->target-tc->progress,
@@ -3790,7 +3790,7 @@ STATIC int tpHandleSplitCycle(TP_STRUCT * const tp, TC_STRUCT * const tc,
         case TC_TERM_COND_EXACT:
             break;
         default:
-            rtapi_print_msg(RTAPI_MSG_ERR,"unknown term cond %d in segment %d\n",
+            TP_PRINT_MSG(TP_MSG_ERR,"unknown term cond %d in segment %d\n",
                     tc->term_cond,
                     tc->id);
     }
@@ -4114,7 +4114,7 @@ int tpSetRunDir(TP_STRUCT * const tp, tc_direction_t dir)
             tp->reverse_run = dir;
             return TP_ERR_OK;
         default:
-            rtapi_print_msg(RTAPI_MSG_ERR,"Invalid direction flag in SetRunDir");
+            TP_PRINT_MSG(TP_MSG_ERR,"Invalid direction flag in SetRunDir");
             return TP_ERR_FAIL;
     }
 }

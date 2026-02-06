@@ -14,9 +14,9 @@
 * Last change:
 ********************************************************************/
 
-#include "rtapi.h"		/* rtapi_print_msg */
 #include "rtapi_math.h"
 #include "tp_platform.h"
+#include "tp_rtapi_interface.h"
 #include "posemath.h"
 #include "blendmath.h"
 #include "emcpose.h"
@@ -296,7 +296,7 @@ int tcGetStartTangentUnitVector(TC_STRUCT const * const tc, PmCartesian * const 
             pmCircleTangentVector(&tc->coords.circle.xyz, 0.0, out);
             break;
         default:
-            rtapi_print_msg(RTAPI_MSG_ERR, "Invalid motion type %d!\n",tc->motion_type);
+            TP_PRINT_MSG(TP_MSG_ERR, "Invalid motion type %d!\n",tc->motion_type);
             return -1;
     }
     return 0;
@@ -319,7 +319,7 @@ int tcGetEndTangentUnitVector(TC_STRUCT const * const tc, PmCartesian * const ou
                     tc->coords.circle.xyz.angle, out);
             break;
         default:
-            rtapi_print_msg(RTAPI_MSG_ERR, "Invalid motion type %d!\n",tc->motion_type);
+            TP_PRINT_MSG(TP_MSG_ERR, "Invalid motion type %d!\n",tc->motion_type);
             return -1;
     }
     return 0;
@@ -353,7 +353,7 @@ int tcGetCurrentTangentUnitVector(TC_STRUCT const * const tc, PmCartesian * cons
             // progress not yet implemented, direction will be zeroed in caller
             return -1;
         default:
-            rtapi_print_msg(RTAPI_MSG_ERR, "Invalid motion type %d!\n", tc->motion_type);
+            TP_PRINT_MSG(TP_MSG_ERR, "Invalid motion type %d!\n", tc->motion_type);
             return -1;
     }
     return 0;
@@ -741,7 +741,7 @@ int pmLine9Init(PmLine9 * const line9,
     int uvw_fail = pmCartLineInit(&line9->uvw, &start_uvw, &end_uvw);
 
     if (xyz_fail || abc_fail || uvw_fail) {
-        rtapi_print_msg(RTAPI_MSG_ERR,"Failed to initialize Line9, err codes %d, %d, %d\n",
+        TP_PRINT_MSG(TP_MSG_ERR,"Failed to initialize Line9, err codes %d, %d, %d\n",
                 xyz_fail,abc_fail,uvw_fail);
         return TP_ERR_FAIL;
     }
@@ -770,7 +770,7 @@ int pmCircle9Init(PmCircle9 * const circ9,
     int res_fit = findSpiralArcLengthFit(&circ9->xyz,&circ9->fit);
 
     if (xyz_fail || abc_fail || uvw_fail || res_fit) {
-        rtapi_print_msg(RTAPI_MSG_ERR,"Failed to initialize Circle9, err codes %d, %d, %d, %d\n",
+        TP_PRINT_MSG(TP_MSG_ERR,"Failed to initialize Circle9, err codes %d, %d, %d, %d\n",
                 xyz_fail, abc_fail, uvw_fail, res_fit);
         return TP_ERR_FAIL;
     }
@@ -1016,14 +1016,14 @@ int tcSetCircleXYZ(TC_STRUCT * const tc, PmCircle const * const circ)
         return TP_ERR_FAIL;
     }
     if (!tc->coords.circle.abc.tmag_zero || !tc->coords.circle.uvw.tmag_zero) {
-        rtapi_print_msg(RTAPI_MSG_ERR, "SetCircleXYZ does not supportABC or UVW motion\n");
+        TP_PRINT_MSG(TP_MSG_ERR, "SetCircleXYZ does not supportABC or UVW motion\n");
         return TP_ERR_FAIL;
     }
 
     // Store the new circular segment (or use the current one)
 
     if (!circ) {
-        rtapi_print_msg(RTAPI_MSG_ERR, "SetCircleXYZ missing new circle definition\n");
+        TP_PRINT_MSG(TP_MSG_ERR, "SetCircleXYZ missing new circle definition\n");
         return TP_ERR_FAIL;
     }
 
