@@ -21,6 +21,7 @@
 #include "rtapi_math.h"
 #include "homing.h"
 #include "axis.h"
+#include "tp_motion_interface.h"
 
 // Mark strings for translation, but defer translation to userspace
 #define _(s) (s)
@@ -246,6 +247,10 @@ static int module_intfc() {
     tpMotData(emcmotStatus
              ,emcmotConfig
              );
+    
+    // Initialize the motion interface for TP
+    tpMotionInterfaceInit();
+    
     return 0;
 }
 

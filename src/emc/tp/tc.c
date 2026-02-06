@@ -25,15 +25,13 @@
 #include "spherical_arc.h"
 #include "motion_types.h"
 #include "motion.h"
+#include "tp_motion_interface.h"
 
 //Debug output
 #include "tp_debug.h"
 
-// For jerk-limited arc velocity (planner_type 1)
-extern emcmot_status_t *emcmotStatus;
-
 #ifndef GET_TRAJ_PLANNER_TYPE
-#define GET_TRAJ_PLANNER_TYPE() (emcmotStatus->planner_type)
+#define GET_TRAJ_PLANNER_TYPE() TP_GET_PLANNER_TYPE()
 #endif
 
 
@@ -844,10 +842,10 @@ int tcUpdateArcLimits(TC_STRUCT * tc)
     }
 
     // Jerk-based velocity limiting for S-curve planner (planner_type 1)
-    if (GET_TRAJ_PLANNER_TYPE() == 1 && emcmotStatus->jerk > TP_POS_EPSILON &&
+    if (GET_TRAJ_PLANNER_TYPE() == 1 && TP_GET_JERK_LIMIT() > TP_POS_EPSILON &&
         tc->cycle_time > TP_TIME_EPSILON) {
 
-        double jerk = emcmotStatus->jerk;
+        double jerk = TP_GET_JERK_LIMIT();
         double R_sq = pmSq(radius);
 
         // Constraint 1: Steady-state rotational jerk + entry/exit transitions
