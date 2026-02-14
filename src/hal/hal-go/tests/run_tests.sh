@@ -1,6 +1,5 @@
 #!/bin/bash
 # Integration tests for hal-go package
-# Must be run with LinuxCNC environment (halrun available)
 
 set -e
 
@@ -12,11 +11,21 @@ PASSTHROUGH="$TOP_DIR/bin/hal-go-passthrough"
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 TESTS_RUN=0
 TESTS_PASSED=0
 TESTS_FAILED=0
+
+# Temporary file for HAL commands
+TMPHAL=""
+
+cleanup() {
+    if [[ -n "$TMPHAL" && -f "$TMPHAL" ]]; then
+        rm -f "$TMPHAL"
+    fi
+}
+trap cleanup EXIT
 
 pass() {
     echo -e "${GREEN}PASS${NC}: $1"
@@ -24,20 +33,19 @@ pass() {
 }
 
 fail() {
-    echo -e "${RED}FAIL${NC}: $1"
+    echo -e "${RED}FAIL${NC}: $1 - $2"
     : $((TESTS_FAILED++))
 }
 
-run_test() {
-    local name="$1"
-    local script="$2"
-    : $((TESTS_RUN++))
-    echo "Running: $name"
-    if bash -c "$script"; then
-        pass "$name"
-    else
-        fail "$name"
-    fi
+# Create temp hal file and run it
+run_hal() {
+    TMPHAL=$(mktemp --suffix=.hal)
+    cat > "$TMPHAL"
+    halrun -f "$TMPHAL" 2>&1
+    local result=$?
+    rm -f "$TMPHAL"
+    TMPHAL=""
+    return $result
 }
 
 # Check prerequisites
@@ -58,94 +66,121 @@ echo "============================================"
 echo ""
 
 # Test 1: Component loads successfully
-run_test "Component loads" "
-    halrun -f - <<EOF
+echo "Running: Component loads"
+: $((TESTS_RUN++))
+OUTPUT=$(run_hal <<EOF
 loadusr -W $PASSTHROUGH
 show comp passthrough
 unload passthrough
 EOF
-"
+) && pass "Component loads" || fail "Component loads" "halrun failed"
 
 # Test 2: All pins are created
-run_test "Pin creation (8 pins)" "
-    OUTPUT=\$(halrun -f - <<EOF
+echo "Running: Pin creation (8 pins)"
+: $((TESTS_RUN++))
+OUTPUT=$(run_hal <<EOF
 loadusr -W $PASSTHROUGH
 show pin passthrough.*
+unload passthrough
 EOF
 )
-    echo \"\$OUTPUT\" | grep -c 'passthrough\.' | grep -q '^8$'
-"
+PIN_COUNT=$(echo "$OUTPUT" | grep -c 'passthrough\.' || true)
+if [[ "$PIN_COUNT" -eq 8 ]]; then
+    pass "Pin creation (8 pins)"
+else
+    fail "Pin creation (8 pins)" "Expected 8 pins, got $PIN_COUNT"
+fi
 
 # Test 3: Float passthrough works
-run_test "Float passthrough" "
-    OUTPUT=\$(halrun -f - <<EOF
+echo "Running: Float passthrough"
+: $((TESTS_RUN++))
+OUTPUT=$(run_hal <<EOF
 loadusr -W $PASSTHROUGH
 setp passthrough.in-float 123.456
-# Give component time to process
-loadusr -w sleep 0.1
+loadusr -w sleep 0.2
 show pin passthrough.out-float
 unload passthrough
 EOF
 )
-    echo \"\$OUTPUT\" | grep -q '123.456'
-"
+if echo "$OUTPUT" | grep -q '123.456'; then
+    pass "Float passthrough"
+else
+    fail "Float passthrough" "Value not passed through"
+fi
 
 # Test 4: Bit passthrough works
-run_test "Bit passthrough" "
-    OUTPUT=\$(halrun -f - <<EOF
+echo "Running: Bit passthrough"
+: $((TESTS_RUN++))
+OUTPUT=$(run_hal <<EOF
 loadusr -W $PASSTHROUGH
 setp passthrough.in-bit true
-loadusr -w sleep 0.1
+loadusr -w sleep 0.2
 show pin passthrough.out-bit
 unload passthrough
 EOF
 )
-    echo \"\$OUTPUT\" | grep -q 'TRUE'
-"
+if echo "$OUTPUT" | grep -q 'TRUE'; then
+    pass "Bit passthrough"
+else
+    fail "Bit passthrough" "Value not passed through"
+fi
 
 # Test 5: S32 passthrough works
-run_test "S32 passthrough" "
-    OUTPUT=\$(halrun -f - <<EOF
+echo "Running: S32 passthrough"
+: $((TESTS_RUN++))
+OUTPUT=$(run_hal <<EOF
 loadusr -W $PASSTHROUGH
 setp passthrough.in-s32 -42
-loadusr -w sleep 0.1
+loadusr -w sleep 0.2
 show pin passthrough.out-s32
 unload passthrough
 EOF
 )
-    echo \"\$OUTPUT\" | grep -q '\-42'
-"
+if echo "$OUTPUT" | grep -q '\-42'; then
+    pass "S32 passthrough"
+else
+    fail "S32 passthrough" "Value not passed through"
+fi
 
 # Test 6: U32 passthrough works
-run_test "U32 passthrough" "
-    OUTPUT=\$(halrun -f - <<EOF
+echo "Running: U32 passthrough"
+: $((TESTS_RUN++))
+OUTPUT=$(run_hal <<EOF
 loadusr -W $PASSTHROUGH
 setp passthrough.in-u32 0xDEADBEEF
-loadusr -w sleep 0.1
+loadusr -w sleep 0.2
 show pin passthrough.out-u32
 unload passthrough
 EOF
 )
-    echo \"\$OUTPUT\" | grep -q 'DEADBEEF'
-"
+if echo "$OUTPUT" | grep -qi 'DEADBEEF'; then
+    pass "U32 passthrough"
+else
+    fail "U32 passthrough" "Value not passed through"
+fi
 
 # Test 7: Clean unload (SIGTERM)
-run_test "Clean unload (SIGTERM)" "
-    halrun -f - <<EOF
+echo "Running: Clean unload (SIGTERM)"
+: $((TESTS_RUN++))
+OUTPUT=$(run_hal <<EOF
 loadusr -W $PASSTHROUGH
 unload passthrough
 EOF
-"
+) && pass "Clean unload (SIGTERM)" || fail "Clean unload (SIGTERM)" "unload failed"
 
 # Test 8: No zombie processes after unload
-run_test "No zombie processes" "
-    halrun -f - <<EOF
+echo "Running: No zombie processes"
+: $((TESTS_RUN++))
+run_hal <<EOF
 loadusr -W $PASSTHROUGH
 unload passthrough
 EOF
-    sleep 0.5
-    ! pgrep -f 'hal-go-passthrough' > /dev/null
-"
+sleep 0.5
+if ! pgrep -f 'hal-go-passthrough' > /dev/null 2>&1; then
+    pass "No zombie processes"
+else
+    fail "No zombie processes" "Process still running"
+fi
 
 echo ""
 echo "============================================"
