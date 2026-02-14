@@ -1,21 +1,20 @@
-// passthrough is a simple HAL component that copies input pins to output pins.
-// It demonstrates the basic usage of the hal-go package.
+// Example HAL component - Passthrough
 //
-// Usage:
-//   go build -o passthrough
-//   halrun
-//   loadusr ./passthrough
-//   show pin passthrough.*
+// This component demonstrates the hal-go API by creating pins of each type
+// and copying input values to corresponding output pins.
 //
 // Pins created:
-//   passthrough.in-bit      (bit, in)
-//   passthrough.out-bit     (bit, out)
-//   passthrough.in-float    (float, in)
-//   passthrough.out-float   (float, out)
-//   passthrough.in-s32      (s32, in)
-//   passthrough.out-s32     (s32, out)
-//   passthrough.in-u32      (u32, in)
-//   passthrough.out-u32     (u32, out)
+//   - mycomponent.in-bit    (input)  -> mycomponent.out-bit    (output)
+//   - mycomponent.in-float  (input)  -> mycomponent.out-float  (output)
+//   - mycomponent.in-s32    (input)  -> mycomponent.out-s32    (output)
+//   - mycomponent.in-u32    (input)  -> mycomponent.out-u32    (output)
+//
+// Usage:
+//   halrun
+//   halcmd: loadusr -W ./mycomponent
+//   halcmd: setp mycomponent.in-float 123.456
+//   halcmd: show pin mycomponent.*
+//   halcmd: unload mycomponent
 
 package main
 
@@ -27,8 +26,8 @@ import (
 )
 
 func main() {
-	// Create component
-	comp, err := hal.NewComponent("passthrough")
+	// Create component - name should match binary name for loadusr -W
+	comp, err := hal.NewComponent("mycomponent")
 	if err != nil {
 		log.Fatalf("Failed to create component: %v", err)
 	}
@@ -76,12 +75,11 @@ func main() {
 		log.Fatalf("Failed to create out-u32 pin: %v", err)
 	}
 
-	// Mark component ready
+	// Mark component as ready
 	if err := comp.Ready(); err != nil {
 		log.Fatalf("Failed to mark component ready: %v", err)
 	}
-
-	log.Println("passthrough component ready")
+	log.Println("mycomponent ready")
 
 	// Main loop - copy inputs to outputs
 	for comp.Running() {
@@ -93,5 +91,5 @@ func main() {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	log.Println("passthrough component exiting")
+	log.Println("mycomponent exiting")
 }
