@@ -1,7 +1,7 @@
 # hal-go - Go Bindings for LinuxCNC HAL
 
 [![Go Version](https://img.shields.io/badge/go-1.21+-blue.svg)](https://golang.org/dl/)
-[![Phase](https://img.shields.io/badge/phase-1%20(design)-yellow.svg)](../../docs/golang-hal-implementation-tracking.md)
+[![Phase](https://img.shields.io/badge/phase-2%20(CGO%20bindings)-green.svg)](../../docs/golang-hal-implementation-tracking.md)
 
 Go bindings for LinuxCNC's Hardware Abstraction Layer (HAL), enabling userspace HAL components to be written in Go.
 
@@ -16,12 +16,15 @@ HAL (Hardware Abstraction Layer) is the core communication mechanism in LinuxCNC
 
 ## Project Status
 
-**Phase 1: Survey & Design** ✅ (Current)
+**Phase 2: CGO Wrapper Development** ✅ (Current)
 
-This phase provides the complete API structure with stub implementations. The package compiles and documents the intended API, but does not yet interface with the HAL C library.
+This phase provides working CGO bindings to the LinuxCNC HAL C library. The package now interfaces with actual HAL shared memory and can create real HAL components.
 
-Future phases will add:
-- **Phase 2**: CGO bindings to HAL C library
+**Completed:**
+- **Phase 1**: Survey & Design - Complete API structure with stub implementations
+- **Phase 2**: CGO bindings to HAL C library - Working integration with LinuxCNC
+
+**Future phases:**
 - **Phase 3**: Idiomatic Go API refinements  
 - **Phase 4**: Signal handling and graceful shutdown
 - **Phase 5**: Testing and validation
@@ -175,16 +178,14 @@ halcmd start
 
 ## Build Requirements
 
-### Phase 1 (Current)
-- Go 1.21+
-- No CGO required
-- No LinuxCNC installation needed
-
-### Phase 2+ (Future)
+### Phase 2 (Current)
 - Go 1.21+
 - CGO enabled (`CGO_ENABLED=1`)
 - LinuxCNC development headers
 - LinuxCNC HAL library (`liblinuxcnchal`)
+- GCC or compatible C compiler
+
+The package now uses CGO to interface with the HAL C library and requires LinuxCNC to be installed or the source tree to be built.
 
 ## Documentation
 
@@ -222,6 +223,6 @@ This implementation follows the design patterns established by the Python HAL bi
 
 ---
 
-**Status**: Phase 1 (Survey & Design) - API defined with stub implementations  
-**Next**: Phase 2 - CGO wrapper development  
+**Status**: Phase 2 (CGO Wrapper Development) - Working CGO bindings to HAL C library  
+**Next**: Phase 3 - Idiomatic Go API refinements  
 **Last Updated**: 2026-02-14

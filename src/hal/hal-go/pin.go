@@ -1,8 +1,13 @@
 package hal
 
+/*
+#include "hal.h"
+*/
+import "C"
 import (
 	"fmt"
 	"sync"
+	"unsafe"
 )
 
 // Pin represents a HAL pin with type-safe access.
@@ -20,9 +25,9 @@ type Pin[T PinValue] struct {
 	// direction is the pin direction (In, Out, or IO).
 	direction Direction
 
-	// value holds the current pin value (stub for Phase 1).
-	// Phase 2+ will use a pointer to HAL shared memory.
-	value T
+	// ptr is a pointer to the HAL shared memory for this pin.
+	// This is set by hal_pin_*_new() and used for Get/Set operations.
+	ptr unsafe.Pointer
 
 	// comp is the component that owns this pin.
 	comp *Component
@@ -39,8 +44,12 @@ type Pin[T PinValue] struct {
 // Valid directions are In (component reads), Out (component writes), or
 // IO (bidirectional).
 //
-// In Phase 1, this is a stub implementation. Phase 2+ will add the actual
-// CGO call to hal_pin_*_new().
+// This calls the appropriate hal_pin_*_new() function via CGO based on the
+// type parameter T:
+//   - bool -> hal_pin_bit_new()
+//   - float64 -> hal_pin_float_new()
+//   - int32 -> hal_pin_s32_new()
+//   - uint32 -> hal_pin_u32_new()
 //
 // Type inference example:
 //   pin, err := NewPin[float64](comp, "speed", hal.In)
@@ -62,17 +71,40 @@ func NewPin[T PinValue](c *Component, name string, dir Direction) (*Pin[T], erro
 	// Build fully-qualified pin name
 	fullName := fmt.Sprintf("%s.%s", c.Name(), name)
 
-	// Phase 1 stub: Just create the pin structure
-	// Phase 2+ will call the appropriate hal_pin_*_new() function based on type T:
-	//   - bool -> hal_pin_bit_new()
-	//   - float64 -> hal_pin_float_new()
-	//   - int32 -> hal_pin_s32_new()
-	//   - uint32 -> hal_pin_u32_new()
+	// Create the pin by calling the appropriate hal_pin_*_new() function
+	// based on the type parameter T
+	var ptr unsafe.Pointer
+	var err error
+	var zeroValue T
+	switch any(zeroValue).(type) {
+	case bool:
+		cPtr, e := halPinBitNew(fullName, dir, c.id)
+		ptr = unsafe.Pointer(cPtr)
+		err = e
+	case float64:
+		cPtr, e := halPinFloatNew(fullName, dir, c.id)
+		ptr = unsafe.Pointer(cPtr)
+		err = e
+	case int32:
+		cPtr, e := halPinS32New(fullName, dir, c.id)
+		ptr = unsafe.Pointer(cPtr)
+		err = e
+	case uint32:
+		cPtr, e := halPinU32New(fullName, dir, c.id)
+		ptr = unsafe.Pointer(cPtr)
+		err = e
+	default:
+		return nil, newError("NewPin", "unsupported pin type", -22)
+	}
+
+	if err != nil {
+		return nil, err
+	}
 
 	pin := &Pin[T]{
 		name:      fullName,
 		direction: dir,
-		value:     *new(T), // Zero value for type T
+		ptr:       ptr,
 		comp:      c,
 	}
 
@@ -84,13 +116,38 @@ func NewPin[T PinValue](c *Component, name string, dir Direction) (*Pin[T], erro
 // For input pins, this reads the value written by the connected signal.
 // For output pins, this reads the value last written by Set().
 //
-// In Phase 1, this returns the stub value. Phase 2+ will dereference
-// the pointer to HAL shared memory.
+// This dereferences the pointer to HAL shared memory.
 func (p *Pin[T]) Get() T {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	// Phase 2+ will be: return *(*T)(p.ptr)
-	return p.value
+
+	// Read from HAL shared memory based on the type
+	var zeroValue T
+	switch any(zeroValue).(type) {
+	case bool:
+		// HAL bool is stored as hal_bit_t (C bool)
+		cPtr := (*C.hal_bit_t)(p.ptr)
+		val := bool(*cPtr)
+		return any(val).(T)
+	case float64:
+		// HAL float is stored as hal_float_t (C double)
+		cPtr := (*C.hal_float_t)(p.ptr)
+		val := float64(*cPtr)
+		return any(val).(T)
+	case int32:
+		// HAL S32 is stored as hal_s32_t (C int32_t)
+		cPtr := (*C.hal_s32_t)(p.ptr)
+		val := int32(*cPtr)
+		return any(val).(T)
+	case uint32:
+		// HAL U32 is stored as hal_u32_t (C uint32_t)
+		cPtr := (*C.hal_u32_t)(p.ptr)
+		val := uint32(*cPtr)
+		return any(val).(T)
+	default:
+		// Should never happen due to PinValue constraint
+		return *new(T)
+	}
 }
 
 // Set writes a value to the pin.
@@ -99,13 +156,31 @@ func (p *Pin[T]) Get() T {
 // components. For input pins, calling Set() has no effect (the value is
 // overwritten by the connected signal).
 //
-// In Phase 1, this updates the stub value. Phase 2+ will write to HAL
-// shared memory.
+// This writes to HAL shared memory.
 func (p *Pin[T]) Set(value T) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	// Phase 2+ will be: *(*T)(p.ptr) = value
-	p.value = value
+
+	// Write to HAL shared memory based on the type
+	var zeroValue T
+	switch any(zeroValue).(type) {
+	case bool:
+		// HAL bool is stored as hal_bit_t (C bool)
+		cPtr := (*C.hal_bit_t)(p.ptr)
+		*cPtr = C.hal_bit_t(any(value).(bool))
+	case float64:
+		// HAL float is stored as hal_float_t (C double)
+		cPtr := (*C.hal_float_t)(p.ptr)
+		*cPtr = C.hal_float_t(any(value).(float64))
+	case int32:
+		// HAL S32 is stored as hal_s32_t (C int32_t)
+		cPtr := (*C.hal_s32_t)(p.ptr)
+		*cPtr = C.hal_s32_t(any(value).(int32))
+	case uint32:
+		// HAL U32 is stored as hal_u32_t (C uint32_t)
+		cPtr := (*C.hal_u32_t)(p.ptr)
+		*cPtr = C.hal_u32_t(any(value).(uint32))
+	}
 }
 
 // Name returns the fully-qualified pin name.
@@ -141,5 +216,5 @@ func (p *Pin[T]) String() string {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return fmt.Sprintf("Pin{name=%s, type=%s, dir=%s, value=%v}",
-		p.name, p.Type(), p.direction, p.value)
+		p.name, p.Type(), p.direction, p.Get())
 }
