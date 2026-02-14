@@ -22,7 +22,24 @@ HAL (Hardware Abstraction Layer) is the core communication mechanism in LinuxCNC
 
 ## Installation
 
-When building components within the LinuxCNC source tree, the hal-go package is automatically available. For standalone components outside the source tree, use the `hal-go-template` (see Building Standalone Components below).
+The hal-go package is installed as part of LinuxCNC when Go support is enabled during the build process.
+
+### From Source (LinuxCNC)
+
+When building LinuxCNC from source with Go support:
+
+```bash
+cd src
+./configure --enable-go  # or use ./autogen.sh
+make
+```
+
+The hal-go package will be built and installed to `share/linuxcnc/hal-go/` (in the source tree for RIP builds, or system-wide for installed builds).
+
+### Using hal-go
+
+- **Within LinuxCNC source tree**: The hal-go package is automatically available
+- **For standalone components**: Use the `hal-go-template` (see Building Standalone Components below)
 
 ## Quick Start
 
