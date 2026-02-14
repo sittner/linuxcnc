@@ -30,8 +30,7 @@ type Component struct {
 // The name must be unique across all HAL components in the system and
 // must not exceed 47 characters (HAL_NAME_LEN).
 //
-// In Phase 1, this is a stub implementation. Phase 2+ will add the actual
-// CGO call to hal_init().
+// This calls hal_init() via CGO to register the component with HAL.
 //
 // Returns the component on success, or an error if initialization fails.
 func NewComponent(name string) (*Component, error) {
@@ -39,10 +38,14 @@ func NewComponent(name string) (*Component, error) {
 		return nil, newError("NewComponent", ErrInvalidName.Message, ErrInvalidName.Code)
 	}
 
-	// Phase 1 stub: Just create the component structure
-	// Phase 2+ will call: id := C.hal_init(C.CString(name))
+	// Call hal_init() to register the component
+	id, err := halInit(name)
+	if err != nil {
+		return nil, err
+	}
+
 	comp := &Component{
-		id:      1, // Stub value; real ID comes from hal_init()
+		id:      id,
 		name:    name,
 		ready:   false,
 		running: true,
@@ -57,8 +60,7 @@ func NewComponent(name string) (*Component, error) {
 // but before the component enters its main loop. It allows halcmd's
 // 'loadusr -W' to wait until the component is ready.
 //
-// In Phase 1, this is a stub implementation. Phase 2+ will add the actual
-// CGO call to hal_ready().
+// This calls hal_ready() via CGO.
 func (c *Component) Ready() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -67,10 +69,12 @@ func (c *Component) Ready() error {
 		return newError("Ready", ErrAlreadyReady.Message, ErrAlreadyReady.Code)
 	}
 
-	// Phase 1 stub: Just set the flag
-	// Phase 2+ will call: ret := C.hal_ready(C.int(c.id))
-	c.ready = true
+	// Call hal_ready()
+	if err := halReady(c.id); err != nil {
+		return err
+	}
 
+	c.ready = true
 	return nil
 }
 
@@ -91,16 +95,19 @@ func (c *Component) Running() bool {
 // shutting down. It unregisters the component and removes all pins
 // and parameters.
 //
-// In Phase 1, this is a stub implementation. Phase 2+ will add the actual
-// CGO call to hal_exit().
+// This calls hal_exit() via CGO.
 func (c *Component) Exit() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Phase 1 stub: Just mark as not running
-	// Phase 2+ will call: ret := C.hal_exit(C.int(c.id))
-	c.running = false
+	// Call hal_exit()
+	if err := halExit(c.id); err != nil {
+		// Mark as not running even on error
+		c.running = false
+		return err
+	}
 
+	c.running = false
 	return nil
 }
 
