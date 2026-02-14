@@ -75,7 +75,6 @@ else
     endif
 endif
 
-.PHONY: install
 install: $(COMPONENT)
 ifndef LINUXCNC_BINDIR
 	$(error Cannot find LinuxCNC bin directory. Source scripts/rip-environment or ensure LinuxCNC is in your PATH)
@@ -83,7 +82,6 @@ endif
 	@echo "Installing $(COMPONENT) to $(LINUXCNC_BINDIR)"
 	install -m 755 $(COMPONENT) $(LINUXCNC_BINDIR)
 
-.PHONY: uninstall
 uninstall:
 ifndef LINUXCNC_BINDIR
 	$(error Cannot find LinuxCNC bin directory)
