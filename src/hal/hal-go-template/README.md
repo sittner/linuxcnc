@@ -29,7 +29,25 @@ source /path/to/linuxcnc/scripts/rip-environment
 make
 ```
 
-### 3. Test
+### 3. Install (Optional)
+
+To install the component to the LinuxCNC bin directory:
+
+```bash
+make install
+```
+
+This will:
+- For RIP builds: Install to `$EMC2_HOME/bin`
+- For installed LinuxCNC: Install to the same directory as `halcompile`
+
+To uninstall:
+
+```bash
+make uninstall
+```
+
+### 4. Test
 
 ```bash
 halrun

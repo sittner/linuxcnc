@@ -27,7 +27,7 @@ endif
 GO := go
 GOFLAGS := -v
 
-.PHONY: all clean check-env
+.PHONY: all clean check-env install uninstall
 
 all: check-env go.work $(COMPONENT)
 
@@ -62,3 +62,30 @@ clean:
 # Run component (for testing)
 run: $(COMPONENT)
 	./$(COMPONENT)
+
+# Detect LinuxCNC bin directory
+ifdef EMC2_HOME
+    # RIP environment
+    LINUXCNC_BINDIR := $(EMC2_HOME)/bin
+else
+    # Installed LinuxCNC - find bin dir from halcompile location
+    HALCOMPILE_PATH := $(shell which halcompile 2>/dev/null)
+    ifneq ($(HALCOMPILE_PATH),)
+        LINUXCNC_BINDIR := $(dir $(HALCOMPILE_PATH))
+    endif
+endif
+
+.PHONY: install
+install: $(COMPONENT)
+ifndef LINUXCNC_BINDIR
+	$(error Cannot find LinuxCNC bin directory. Source scripts/rip-environment or ensure LinuxCNC is in your PATH)
+endif
+	@echo "Installing $(COMPONENT) to $(LINUXCNC_BINDIR)"
+	install -m 755 $(COMPONENT) $(LINUXCNC_BINDIR)
+
+.PHONY: uninstall
+uninstall:
+ifndef LINUXCNC_BINDIR
+	$(error Cannot find LinuxCNC bin directory)
+endif
+	rm -f $(LINUXCNC_BINDIR)/$(COMPONENT)
