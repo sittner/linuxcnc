@@ -179,5 +179,8 @@ func (c *Component) setupSignalHandler() {
 		c.mu.Lock()
 		c.running = false
 		c.mu.Unlock()
+		// Stop listening for signals after the first one
+		signal.Stop(sigChan)
+		close(sigChan)
 	}()
 }
