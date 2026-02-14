@@ -1,7 +1,6 @@
 # hal-go - Go Bindings for LinuxCNC HAL
 
 [![Go Version](https://img.shields.io/badge/go-1.21+-blue.svg)](https://golang.org/dl/)
-[![Phase](https://img.shields.io/badge/phase-2%20(CGO%20bindings)-green.svg)](../../docs/golang-hal-implementation-tracking.md)
 
 Go bindings for LinuxCNC's Hardware Abstraction Layer (HAL), enabling userspace HAL components to be written in Go.
 
@@ -14,37 +13,16 @@ HAL (Hardware Abstraction Layer) is the core communication mechanism in LinuxCNC
 - Communicate with other HAL components via shared memory
 - Integrate seamlessly into the LinuxCNC ecosystem
 
-## Project Status
+## Requirements
 
-**Phase 2: CGO Wrapper Development** ✅ (Current)
-
-This phase provides working CGO bindings to the LinuxCNC HAL C library. The package now interfaces with actual HAL shared memory and can create real HAL components.
-
-**Completed:**
-- **Phase 1**: Survey & Design - Complete API structure with stub implementations
-- **Phase 2**: CGO bindings to HAL C library - Working integration with LinuxCNC
-
-**Future phases:**
-- **Phase 3**: Idiomatic Go API refinements  
-- **Phase 4**: Signal handling and graceful shutdown
-- **Phase 5**: Testing and validation
-- **Phase 6**: Documentation and examples
-
-See [golang-hal-implementation-tracking.md](../../docs/golang-hal-implementation-tracking.md) for details.
+- Go 1.21 or later
+- LinuxCNC (installed or RIP build)
+- CGO enabled (`CGO_ENABLED=1`)
+- GCC or compatible C compiler
 
 ## Installation
 
-### Prerequisites
-
-- Go 1.21 or later
-- LinuxCNC development headers (for Phase 2+)
-
-### Install Package
-
-```bash
-cd src/hal/hal-go
-go mod download
-```
+When building components within the LinuxCNC source tree, the hal-go package is automatically available. For standalone components outside the source tree, use the `hal-go-template` (see Building Standalone Components below).
 
 ## Quick Start
 
@@ -156,7 +134,7 @@ ioPin.Set(current + 1)
 
 ## Integration with LinuxCNC
 
-Once Phase 2+ is complete, HAL components written in Go will integrate fully with LinuxCNC:
+HAL components written in Go integrate fully with LinuxCNC:
 
 ```bash
 # Load the component
@@ -176,31 +154,22 @@ halcmd net speed-out doubler.output => another-comp.input
 halcmd start
 ```
 
-## Build Requirements
+## Building Components
 
-### Phase 2 (Current)
-- Go 1.21+
-- CGO enabled (`CGO_ENABLED=1`)
-- LinuxCNC development headers
-- LinuxCNC HAL library (`liblinuxcnchal`)
-- GCC or compatible C compiler
+### Within LinuxCNC Source Tree
 
-The package now uses CGO to interface with the HAL C library and requires LinuxCNC to be installed or the source tree to be built.
+To build the example passthrough component:
 
-## Documentation
+```bash
+cd src
+make
+```
 
-- Package documentation is available via `go doc` after installation
-- [Implementation Plan](../../docs/golang-hal-implementation-plan.md)
-- [Progress Tracking](../../docs/golang-hal-implementation-tracking.md)
-- [LinuxCNC HAL Docs](https://linuxcnc.org/docs/html/hal/intro.html)
+The examples are built as part of the main LinuxCNC build when Go support is enabled.
 
-## Examples
+### Standalone Components (hal-go-template)
 
-See the `examples/passthrough` directory for a complete working example of a HAL component that demonstrates all pin types.
-
-## Building External HAL Components
-
-A template is provided for building Go HAL components **outside** the LinuxCNC source tree:
+For building Go HAL components **outside** the LinuxCNC source tree, a template with auto-detecting build system is provided.
 
 **Location (installed):**
 - System install: `/usr/share/linuxcnc/hal-go-template/`
@@ -235,9 +204,27 @@ The template includes:
 
 The template uses Go workspaces to reference the installed hal-go package, so you don't need to copy the HAL bindings into your project.
 
-## Contributing
+## Examples
 
-This is an active development project. See the [Implementation Plan](../../docs/golang-hal-implementation-plan.md) for the roadmap and [Progress Tracking](../../docs/golang-hal-implementation-tracking.md) for current status.
+The `examples/passthrough` directory contains a complete working example demonstrating all pin types and proper component lifecycle.
+
+## Testing
+
+To run the test suite:
+
+```bash
+cd src/hal/hal-go
+./tests/run_tests.sh
+```
+
+Tests require a working LinuxCNC installation or RIP build with `rtapi.conf` configured.
+
+## Documentation
+
+- Package documentation: `go doc linuxcnc.org/hal`
+- [LinuxCNC HAL Introduction](https://linuxcnc.org/docs/html/hal/intro.html)
+- [HAL C API Reference](../hal.h)
+- [Python HAL Bindings](../../../lib/python/hal.py)
 
 ## License
 
@@ -253,9 +240,3 @@ This code is part of LinuxCNC and is licensed under the GNU Lesser General Publi
 ## Acknowledgments
 
 This implementation follows the design patterns established by the Python HAL bindings (`halmodule.cc`) and is inspired by the successful integration of multiple languages in the LinuxCNC ecosystem.
-
----
-
-**Status**: Phase 2 (CGO Wrapper Development) - Working CGO bindings to HAL C library  
-**Next**: Phase 3 - Idiomatic Go API refinements  
-**Last Updated**: 2026-02-14
