@@ -30,7 +30,7 @@ Example:
 		"log"
 		"time"
 
-		"github.com/linuxcnc/hal-go"
+		"linuxcnc.org/hal"
 	)
 
 	func main() {
@@ -102,16 +102,12 @@ Pins have a direction that specifies how data flows:
 
 # Build Requirements
 
-This package uses CGO to interface with the LinuxCNC HAL library (starting in
-Phase 2). To build programs using this package, you need:
+This package uses CGO to interface with the LinuxCNC HAL library. To build 
+programs using this package, you need:
 
   - Go 1.21 or later
-  - LinuxCNC development headers (starting in Phase 2)
-  - CGO_ENABLED=1 (starting in Phase 2)
-
-Phase 1 Note: The current implementation (Phase 1) provides the API structure
-with stub implementations. Full CGO integration with the HAL C library will be
-added in Phase 2+.
+  - LinuxCNC development headers
+  - CGO_ENABLED=1
 
 # Integration with LinuxCNC
 
@@ -124,9 +120,9 @@ HAL components written in Go integrate seamlessly with the rest of LinuxCNC:
 
 # Signal Handling
 
-HAL components should handle SIGTERM and SIGINT to shut down gracefully.
-The Running() method will return false when a shutdown signal is received
-(this will be implemented in Phase 4).
+HAL components automatically handle SIGTERM and SIGINT for graceful shutdown.
+The Running() method returns false when a shutdown signal is received, allowing
+the component to clean up and exit properly.
 
 # References
 
@@ -135,16 +131,5 @@ For more information about LinuxCNC HAL:
   - HAL Manual: https://linuxcnc.org/docs/html/hal/intro.html
   - HAL C API: src/hal/hal.h
   - Python HAL bindings: lib/python/hal.py
-
-# Implementation Status
-
-This is Phase 1 of the implementation (Survey & Design). The API is defined
-with stub implementations. Future phases will add:
-
-  - Phase 2: CGO bindings to HAL C library
-  - Phase 3: Idiomatic Go API refinements
-  - Phase 4: Signal handling and graceful shutdown
-  - Phase 5: Testing and validation
-  - Phase 6: Documentation and examples
 */
 package hal
