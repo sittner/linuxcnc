@@ -71,7 +71,7 @@ else
     # Installed LinuxCNC - find bin dir from halcompile location
     HALCOMPILE_PATH := $(shell which halcompile 2>/dev/null)
     ifneq ($(HALCOMPILE_PATH),)
-        LINUXCNC_BINDIR := $(dir $(HALCOMPILE_PATH))
+        LINUXCNC_BINDIR := $(patsubst %/,%,$(dir $(HALCOMPILE_PATH)))
     endif
 endif
 
@@ -80,7 +80,7 @@ ifndef LINUXCNC_BINDIR
 	$(error Cannot find LinuxCNC bin directory. Source scripts/rip-environment or ensure LinuxCNC is in your PATH)
 endif
 	@echo "Installing $(COMPONENT) to $(LINUXCNC_BINDIR)"
-	install -m 755 $(COMPONENT) $(LINUXCNC_BINDIR)
+	install -m 755 $(COMPONENT) $(LINUXCNC_BINDIR)/$(COMPONENT)
 
 uninstall:
 ifndef LINUXCNC_BINDIR
