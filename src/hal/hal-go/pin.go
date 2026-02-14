@@ -75,8 +75,8 @@ func NewPin[T PinValue](c *Component, name string, dir Direction) (*Pin[T], erro
 	// based on the type parameter T
 	var ptr unsafe.Pointer
 	var err error
-	var t T
-	switch any(t).(type) {
+	var zeroValue T
+	switch any(zeroValue).(type) {
 	case bool:
 		cPtr, e := halPinBitNew(fullName, dir, c.id)
 		ptr = unsafe.Pointer(cPtr)
@@ -122,8 +122,8 @@ func (p *Pin[T]) Get() T {
 	defer p.mu.RUnlock()
 
 	// Read from HAL shared memory based on the type
-	var t T
-	switch any(t).(type) {
+	var zeroValue T
+	switch any(zeroValue).(type) {
 	case bool:
 		// HAL bool is stored as hal_bit_t (C bool)
 		cPtr := (*C.hal_bit_t)(p.ptr)
@@ -162,8 +162,8 @@ func (p *Pin[T]) Set(value T) {
 	defer p.mu.Unlock()
 
 	// Write to HAL shared memory based on the type
-	var t T
-	switch any(t).(type) {
+	var zeroValue T
+	switch any(zeroValue).(type) {
 	case bool:
 		// HAL bool is stored as hal_bit_t (C bool)
 		cPtr := (*C.hal_bit_t)(p.ptr)
