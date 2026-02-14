@@ -189,7 +189,7 @@ The package now uses CGO to interface with the HAL C library and requires LinuxC
 
 ## Documentation
 
-- [Package Documentation](https://pkg.go.dev/linuxcnc.org/hal)
+- Package documentation is available via `go doc` after installation
 - [Implementation Plan](../../docs/golang-hal-implementation-plan.md)
 - [Progress Tracking](../../docs/golang-hal-implementation-tracking.md)
 - [LinuxCNC HAL Docs](https://linuxcnc.org/docs/html/hal/intro.html)
