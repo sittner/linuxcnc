@@ -6,7 +6,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HAL_GO_DIR="$(dirname "$SCRIPT_DIR")"
 TOP_DIR="$(cd "$HAL_GO_DIR/../../.." && pwd)"
-PASSTHROUGH="$TOP_DIR/bin/hal-go-passthrough"
+PASSTHROUGH="$TOP_DIR/bin/passthrough"
 
 # Colors for output
 RED='\033[0;31m'
@@ -176,7 +176,7 @@ loadusr -W $PASSTHROUGH
 unload passthrough
 EOF
 sleep 0.5
-if ! pgrep -f 'hal-go-passthrough' > /dev/null 2>&1; then
+if ! pgrep -f 'passthrough' > /dev/null 2>&1; then
     pass "No zombie processes"
 else
     fail "No zombie processes" "Process still running"
