@@ -21,7 +21,7 @@ This document tracks the implementation progress of Golang userspace HAL compone
 | 2 | CGO Wrapper Development | 🟢 Completed | 100% | Week 2-3 |
 | 3 | Idiomatic Go API | 🟢 Completed | 100% | Week 4 |
 | 4 | Signal & Shutdown Support | 🟢 Completed | 100% | Week 5 |
-| 5 | Testing & Validation | 🔴 Not Started | 0% | Week 6 |
+| 5 | Testing & Validation | 🟡 In Progress | 50% | Week 6 |
 | 6 | Documentation & Release | 🔴 Not Started | 0% | Week 7 |
 | 7 | Build System Integration | 🔴 Not Started | 0% | Week 7 |
 
@@ -179,6 +179,8 @@ Successfully implemented CGO bindings for the Golang HAL component API. Key acco
 
 **Note on hal_malloc()**: Initially deferred, this function was later implemented (2026-02-14) to fix a critical bug. The HAL API requires that `data_ptr_addr` parameters passed to `hal_pin_xxx_new()` functions must point to memory allocated by `hal_malloc()`. The original implementation incorrectly allocated these pointers on the Go stack, causing "data_ptr_addr not in shared memory" errors. All pin creation functions were updated to allocate pointer storage in HAL shared memory using `hal_malloc()` before calling the HAL API functions.
 
+**Bug Fix (2026-02-14)**: Initial implementation incorrectly used Go stack variables for pin pointers. HAL requires `data_ptr_addr` to point to memory allocated by `hal_malloc()`. Fixed in PR #23 by allocating pin pointer storage in HAL shared memory before calling `hal_pin_*_new()`.
+
 Ready to proceed to Phase 3: Idiomatic Go API refinements and Phase 4: Signal handling.
 
 ---
@@ -314,7 +316,7 @@ Combined with Phase 3 to deliver a complete, production-ready Golang HAL API.
 
 ## Phase 5: Testing & Validation
 
-**Status:** 🔴 Not Started  
+**Status:** 🟡 In Progress  
 **Assignee:** TBD  
 **Target:** Week 6
 
@@ -338,20 +340,42 @@ Combined with Phase 3 to deliver a complete, production-ready Golang HAL API.
   - [ ] Pin read/write latency
   - [ ] Component initialization time
   - [ ] Memory usage
-- [ ] Real hardware testing (if available)
-  - [ ] Test on actual LinuxCNC system
-  - [ ] Verify stability over extended runtime
+- [x] Real hardware testing (if available)
+  - [x] Test on actual LinuxCNC system
+  - [x] Verify stability over extended runtime
 
 ### Deliverables
 
 - [ ] Comprehensive test suite
 - [ ] All tests passing
 - [ ] Performance benchmark results documented
-- [ ] Hardware test results (if applicable)
+- [x] Hardware test results (if applicable)
 
 ### Notes
 
-_Add notes here as work progresses_
+**Manual Testing Completed on 2026-02-14**
+
+Successfully tested on real LinuxCNC installation. All tests passed:
+
+| Test | Result | Details |
+|------|--------|---------|
+| Component creation | ✅ Pass | `passthrough component ready` |
+| Pin visibility | ✅ Pass | All 8 pins visible in halcmd |
+| Float passthrough | ✅ Pass | `123.456` → `123.456` |
+| Bit passthrough | ✅ Pass | `true` → `TRUE` |
+| S32 passthrough | ✅ Pass | `-42` → `-42` |
+| U32 passthrough | ✅ Pass | `0xDEADBEEF` → `0xDEADBEEF` |
+| SIGTERM (unload) | ✅ Pass | Clean shutdown with log message |
+| No zombie processes | ✅ Pass | Component exited cleanly |
+
+Test environment:
+- LinuxCNC with POSIX non-realtime
+- Go component loaded via `halrun` / `loadusr`
+
+Remaining for Phase 5:
+- [ ] Automated unit test suite
+- [ ] Integration tests with halrun/halcmd scripts
+- [ ] Performance benchmarks
 
 ---
 
@@ -437,6 +461,7 @@ _Add notes here as work progresses_
 
 | Date | Issue | Status | Resolution |
 |------|-------|--------|------------|
+| 2026-02-14 | Pin creation failed with "data_ptr_addr not in shared memory" error | ✅ Resolved | Fixed by using hal_malloc() to allocate pin pointers in HAL shared memory instead of Go stack (PR #23) |
 | 2026-02-14 | Pin pointers allocated on Go stack instead of HAL shared memory | ✅ Fixed | Modified all `halPinXxxNew()` functions to use `hal_malloc()` to allocate pointer storage in HAL shared memory before calling `hal_pin_xxx_new()`. This satisfies HAL API requirement that `data_ptr_addr` must point to memory allocated by `hal_malloc()`. |
 
 ---
@@ -445,6 +470,7 @@ _Add notes here as work progresses_
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-02-14 | Use hal_malloc() for pin pointer storage | HAL API requires data_ptr_addr to point to memory allocated by hal_malloc(), not stack memory. This matches the pattern used by C components like xhc-hb04.cc |
 | 2026-02-14 | Combine Phases 3 and 4 implementation | Phase 2 already implemented most Phase 3 requirements; signal handling is integral to working example |
 | 2026-02-14 | Automatic signal handler setup in NewComponent() | Ensures all components have graceful shutdown without requiring explicit setup by users |
 | 2026-02-14 | Use only HAL types from hal.h (BIT, FLOAT, S32, U32) | HAL_S64 and HAL_U64 do not exist in current LinuxCNC implementation |
@@ -471,6 +497,8 @@ _Add notes here as work progresses_
 
 | Date | Author | Change |
 |------|--------|--------|
+| 2026-02-14 | sittner | Manual testing completed - all pin types and signal handling verified on real LinuxCNC |
+| 2026-02-14 | GitHub Copilot | Fixed hal_malloc bug - pin pointers now allocated in HAL shared memory (PR #23) |
 | 2026-02-14 | GitHub Copilot | Phase 3+4 completed - Working passthrough example and signal handling implemented |
 | 2026-02-14 | GitHub Copilot | Phase 2 completed - CGO bindings for HAL C library implemented |
 | 2026-02-14 | GitHub Copilot | Phase 1 completed - API structure and stub implementations created |
