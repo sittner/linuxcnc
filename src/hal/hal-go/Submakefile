@@ -1,0 +1,58 @@
+# hal-go Submakefile - Golang HAL component bindings
+# Only included if BUILD_GOLANG is true (Go 1.21+ detected)
+
+ifeq ($(BUILD_GOLANG),yes)
+
+# Go build settings
+HAL_GO_DIR := hal/hal-go
+HAL_GO_SRC := $(addprefix $(HAL_GO_DIR)/, \
+    hal.go \
+    component.go \
+    pin.go \
+    types.go \
+    errors.go \
+    cgo.go \
+    doc.go)
+
+# Build directory for absolute paths
+TOP := $(shell cd ..; pwd)
+
+# CGO environment for building
+HAL_GO_CGO_CFLAGS := -I$(TOP)/src/hal -I$(TOP)/src/rtapi -I$(TOP)/include -DULAPI
+HAL_GO_CGO_LDFLAGS := -L$(TOP)/lib -llinuxcnchal
+
+# Build the passthrough example
+HAL_GO_EXAMPLES := ../bin/hal-go-passthrough
+
+../bin/hal-go-passthrough: $(HAL_GO_SRC) $(HAL_GO_DIR)/examples/passthrough/main.go $(HAL_GO_DIR)/examples/passthrough/go.mod
+	@echo "Building hal-go passthrough example"
+	cd $(HAL_GO_DIR)/examples/passthrough && \
+	CGO_ENABLED=1 \
+	CGO_CFLAGS="$(HAL_GO_CGO_CFLAGS)" \
+	CGO_LDFLAGS="$(HAL_GO_CGO_LDFLAGS)" \
+	$(GO) build -o $(TOP)/bin/hal-go-passthrough .
+
+# Targets
+TARGETS += $(HAL_GO_EXAMPLES)
+
+# Test target
+.PHONY: test-hal-go
+test-hal-go: $(HAL_GO_EXAMPLES)
+	@echo "Running hal-go integration tests..."
+	$(HAL_GO_DIR)/tests/run_tests.sh
+
+# Clean
+clean: hal-go-clean
+.PHONY: hal-go-clean
+hal-go-clean:
+	rm -f $(HAL_GO_EXAMPLES)
+	rm -rf $(HAL_GO_DIR)/examples/passthrough/passthrough
+
+# Install
+install: hal-go-install
+.PHONY: hal-go-install
+hal-go-install: $(HAL_GO_EXAMPLES)
+	$(DIR) $(DESTDIR)$(EMC2_HOME)/bin
+	$(FILE) $(HAL_GO_EXAMPLES) $(DESTDIR)$(EMC2_HOME)/bin/
+
+endif # BUILD_GOLANG
