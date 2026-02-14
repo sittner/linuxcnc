@@ -22,15 +22,15 @@ HAL_GO_CGO_CFLAGS := -I$(TOP)/src/hal -I$(TOP)/src/rtapi -I$(TOP)/include -DULAP
 HAL_GO_CGO_LDFLAGS := -L$(TOP)/lib -llinuxcnchal
 
 # Build the passthrough example
-HAL_GO_EXAMPLES := ../bin/hal-go-passthrough
+HAL_GO_EXAMPLES := ../bin/passthrough
 
-../bin/hal-go-passthrough: $(HAL_GO_SRC) $(HAL_GO_DIR)/examples/passthrough/main.go $(HAL_GO_DIR)/examples/passthrough/go.mod ../lib/liblinuxcnchal.so
+../bin/passthrough: $(HAL_GO_SRC) $(HAL_GO_DIR)/examples/passthrough/main.go $(HAL_GO_DIR)/examples/passthrough/go.mod ../lib/liblinuxcnchal.so
 	@echo "Building hal-go passthrough example"
 	cd $(HAL_GO_DIR)/examples/passthrough && \
 	CGO_ENABLED=1 \
 	CGO_CFLAGS="$(HAL_GO_CGO_CFLAGS)" \
 	CGO_LDFLAGS="$(HAL_GO_CGO_LDFLAGS)" \
-	$(GO) build -o $(TOP)/bin/hal-go-passthrough .
+	$(GO) build -o $(TOP)/bin/passthrough .
 
 # Targets
 TARGETS += $(HAL_GO_EXAMPLES)
