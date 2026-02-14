@@ -75,7 +75,7 @@ else
     endif
 endif
 
-install: $(COMPONENT)
+install: all
 ifndef LINUXCNC_BINDIR
 	$(error Cannot find LinuxCNC bin directory. Source scripts/rip-environment or ensure LinuxCNC is in your PATH)
 endif
@@ -86,4 +86,5 @@ uninstall:
 ifndef LINUXCNC_BINDIR
 	$(error Cannot find LinuxCNC bin directory)
 endif
+	@echo "Removing $(COMPONENT) from $(LINUXCNC_BINDIR)"
 	rm -f $(LINUXCNC_BINDIR)/$(COMPONENT)
