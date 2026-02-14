@@ -54,5 +54,22 @@ install: hal-go-install
 hal-go-install: $(HAL_GO_EXAMPLES)
 	$(DIR) $(DESTDIR)$(EMC2_HOME)/bin
 	$(FILE) $(HAL_GO_EXAMPLES) $(DESTDIR)$(EMC2_HOME)/bin/
+	# Install hal-go package for external component development
+	$(DIR) $(DESTDIR)$(datadir)/linuxcnc/hal-go
+	$(FILE) $(HAL_GO_DIR)/hal.go $(DESTDIR)$(datadir)/linuxcnc/hal-go/
+	$(FILE) $(HAL_GO_DIR)/component.go $(DESTDIR)$(datadir)/linuxcnc/hal-go/
+	$(FILE) $(HAL_GO_DIR)/pin.go $(DESTDIR)$(datadir)/linuxcnc/hal-go/
+	$(FILE) $(HAL_GO_DIR)/types.go $(DESTDIR)$(datadir)/linuxcnc/hal-go/
+	$(FILE) $(HAL_GO_DIR)/errors.go $(DESTDIR)$(datadir)/linuxcnc/hal-go/
+	$(FILE) $(HAL_GO_DIR)/cgo.go $(DESTDIR)$(datadir)/linuxcnc/hal-go/
+	$(FILE) $(HAL_GO_DIR)/doc.go $(DESTDIR)$(datadir)/linuxcnc/hal-go/
+	$(FILE) $(HAL_GO_DIR)/go.mod $(DESTDIR)$(datadir)/linuxcnc/hal-go/
+	# Install template for external component development
+	$(DIR) $(DESTDIR)$(datadir)/linuxcnc/hal-go-template
+	$(FILE) $(HAL_GO_DIR)/../hal-go-template/README.md $(DESTDIR)$(datadir)/linuxcnc/hal-go-template/
+	$(FILE) $(HAL_GO_DIR)/../hal-go-template/Makefile $(DESTDIR)$(datadir)/linuxcnc/hal-go-template/
+	$(FILE) $(HAL_GO_DIR)/../hal-go-template/go.mod $(DESTDIR)$(datadir)/linuxcnc/hal-go-template/
+	$(FILE) $(HAL_GO_DIR)/../hal-go-template/main.go $(DESTDIR)$(datadir)/linuxcnc/hal-go-template/
+	$(FILE) $(HAL_GO_DIR)/../hal-go-template/.gitignore $(DESTDIR)$(datadir)/linuxcnc/hal-go-template/
 
 endif # BUILD_GOLANG

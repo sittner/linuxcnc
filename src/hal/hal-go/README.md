@@ -57,7 +57,7 @@ import (
     "log"
     "time"
 
-    "github.com/linuxcnc/hal-go"
+    "linuxcnc.org/hal"
 )
 
 func main() {
@@ -189,18 +189,51 @@ The package now uses CGO to interface with the HAL C library and requires LinuxC
 
 ## Documentation
 
-- [Package Documentation](https://pkg.go.dev/github.com/linuxcnc/hal-go) (Phase 2+)
+- Package documentation is available via `go doc` after installation
 - [Implementation Plan](../../docs/golang-hal-implementation-plan.md)
 - [Progress Tracking](../../docs/golang-hal-implementation-tracking.md)
 - [LinuxCNC HAL Docs](https://linuxcnc.org/docs/html/hal/intro.html)
 
 ## Examples
 
-Examples will be added in Phase 6. Planned examples include:
+See the `examples/passthrough` directory for a complete working example of a HAL component that demonstrates all pin types.
 
-- `simple/` - Basic input/output component
-- `counter/` - Stateful component with internal state
-- `modbus/` - Network protocol bridge (stretch goal)
+## Building External HAL Components
+
+A template is provided for building Go HAL components **outside** the LinuxCNC source tree:
+
+**Location (installed):**
+- System install: `/usr/share/linuxcnc/hal-go-template/`
+- RIP build: `$EMC2_HOME/share/linuxcnc/hal-go-template/`
+
+**Quick Start:**
+
+```bash
+# Copy the template
+cp -r /usr/share/linuxcnc/hal-go-template ~/my-hal-component
+cd ~/my-hal-component
+
+# Build (with installed LinuxCNC)
+make
+
+# Or with RIP build
+source /path/to/linuxcnc/scripts/rip-environment
+make
+
+# Test
+halrun
+halcmd: loadusr -W ./mycomponent
+halcmd: show pin mycomponent.*
+halcmd: exit
+```
+
+The template includes:
+- `Makefile` - Auto-detects LinuxCNC installation (RIP or system)
+- `go.mod` - Go module definition
+- `main.go` - Example passthrough component
+- `README.md` - Complete usage instructions
+
+The template uses Go workspaces to reference the installed hal-go package, so you don't need to copy the HAL bindings into your project.
 
 ## Contributing
 
