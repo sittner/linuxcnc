@@ -20,18 +20,18 @@ TESTS_FAILED=0
 
 pass() {
     echo -e "${GREEN}PASS${NC}: $1"
-    ((TESTS_PASSED++))
+    : $((TESTS_PASSED++))
 }
 
 fail() {
     echo -e "${RED}FAIL${NC}: $1"
-    ((TESTS_FAILED++))
+    : $((TESTS_FAILED++))
 }
 
 run_test() {
     local name="$1"
     local script="$2"
-    ((TESTS_RUN++))
+    : $((TESTS_RUN++))
     echo "Running: $name"
     if bash -c "$script"; then
         pass "$name"
