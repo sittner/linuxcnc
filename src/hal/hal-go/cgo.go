@@ -47,19 +47,34 @@ func halExit(compID int) error {
 	return halError(int(ret), "hal_exit")
 }
 
+// halMalloc wraps hal_malloc() to allocate memory in HAL shared memory.
+// Returns an unsafe.Pointer to the allocated memory, or nil on failure.
+// The allocated memory is freed when the component exits.
+func halMalloc(size int) unsafe.Pointer {
+	return C.hal_malloc(C.long(size))
+}
+
 // halPinBitNew wraps hal_pin_bit_new() to create a new bit (boolean) pin.
 // Returns a pointer to the HAL shared memory for the pin value.
 func halPinBitNew(name string, dir Direction, compID int) (*C.hal_bit_t, error) {
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
 
-	var ptr *C.hal_bit_t
-	ret := C.hal_pin_bit_new(cName, C.hal_pin_dir_t(dir), &ptr, C.int(compID))
+	// Allocate space for the pointer in HAL shared memory
+	// hal_pin_bit_new expects hal_bit_t**, so we need sizeof(hal_bit_t *)
+	ptrPtr := (**C.hal_bit_t)(halMalloc(int(unsafe.Sizeof((*C.hal_bit_t)(nil)))))
+	if ptrPtr == nil {
+		return nil, newError("hal_malloc", "failed to allocate HAL shared memory", -12)
+	}
+
+	// hal_pin_bit_new will set *ptrPtr to point to the actual data
+	ret := C.hal_pin_bit_new(cName, C.hal_pin_dir_t(dir), ptrPtr, C.int(compID))
 	if ret < 0 {
 		return nil, halError(int(ret), "hal_pin_bit_new")
 	}
 
-	return ptr, nil
+	// Return the pointer to the actual pin data
+	return *ptrPtr, nil
 }
 
 // halPinFloatNew wraps hal_pin_float_new() to create a new float pin.
@@ -68,13 +83,21 @@ func halPinFloatNew(name string, dir Direction, compID int) (*C.hal_float_t, err
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
 
-	var ptr *C.hal_float_t
-	ret := C.hal_pin_float_new(cName, C.hal_pin_dir_t(dir), &ptr, C.int(compID))
+	// Allocate space for the pointer in HAL shared memory
+	// hal_pin_float_new expects hal_float_t**, so we need sizeof(hal_float_t *)
+	ptrPtr := (**C.hal_float_t)(halMalloc(int(unsafe.Sizeof((*C.hal_float_t)(nil)))))
+	if ptrPtr == nil {
+		return nil, newError("hal_malloc", "failed to allocate HAL shared memory", -12)
+	}
+
+	// hal_pin_float_new will set *ptrPtr to point to the actual data
+	ret := C.hal_pin_float_new(cName, C.hal_pin_dir_t(dir), ptrPtr, C.int(compID))
 	if ret < 0 {
 		return nil, halError(int(ret), "hal_pin_float_new")
 	}
 
-	return ptr, nil
+	// Return the pointer to the actual pin data
+	return *ptrPtr, nil
 }
 
 // halPinS32New wraps hal_pin_s32_new() to create a new signed 32-bit integer pin.
@@ -83,13 +106,21 @@ func halPinS32New(name string, dir Direction, compID int) (*C.hal_s32_t, error) 
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
 
-	var ptr *C.hal_s32_t
-	ret := C.hal_pin_s32_new(cName, C.hal_pin_dir_t(dir), &ptr, C.int(compID))
+	// Allocate space for the pointer in HAL shared memory
+	// hal_pin_s32_new expects hal_s32_t**, so we need sizeof(hal_s32_t *)
+	ptrPtr := (**C.hal_s32_t)(halMalloc(int(unsafe.Sizeof((*C.hal_s32_t)(nil)))))
+	if ptrPtr == nil {
+		return nil, newError("hal_malloc", "failed to allocate HAL shared memory", -12)
+	}
+
+	// hal_pin_s32_new will set *ptrPtr to point to the actual data
+	ret := C.hal_pin_s32_new(cName, C.hal_pin_dir_t(dir), ptrPtr, C.int(compID))
 	if ret < 0 {
 		return nil, halError(int(ret), "hal_pin_s32_new")
 	}
 
-	return ptr, nil
+	// Return the pointer to the actual pin data
+	return *ptrPtr, nil
 }
 
 // halPinU32New wraps hal_pin_u32_new() to create a new unsigned 32-bit integer pin.
@@ -98,13 +129,21 @@ func halPinU32New(name string, dir Direction, compID int) (*C.hal_u32_t, error) 
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
 
-	var ptr *C.hal_u32_t
-	ret := C.hal_pin_u32_new(cName, C.hal_pin_dir_t(dir), &ptr, C.int(compID))
+	// Allocate space for the pointer in HAL shared memory
+	// hal_pin_u32_new expects hal_u32_t**, so we need sizeof(hal_u32_t *)
+	ptrPtr := (**C.hal_u32_t)(halMalloc(int(unsafe.Sizeof((*C.hal_u32_t)(nil)))))
+	if ptrPtr == nil {
+		return nil, newError("hal_malloc", "failed to allocate HAL shared memory", -12)
+	}
+
+	// hal_pin_u32_new will set *ptrPtr to point to the actual data
+	ret := C.hal_pin_u32_new(cName, C.hal_pin_dir_t(dir), ptrPtr, C.int(compID))
 	if ret < 0 {
 		return nil, halError(int(ret), "hal_pin_u32_new")
 	}
 
-	return ptr, nil
+	// Return the pointer to the actual pin data
+	return *ptrPtr, nil
 }
 
 // halError translates a HAL C error code to a Go error.
