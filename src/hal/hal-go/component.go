@@ -25,6 +25,9 @@ type Component struct {
 	// running indicates whether the component should continue running.
 	running bool
 
+	// done is used to signal the signal handler goroutine to exit.
+	done chan struct{}
+
 	// mu protects the component state.
 	mu sync.RWMutex
 }
@@ -53,6 +56,7 @@ func NewComponent(name string) (*Component, error) {
 		name:    name,
 		ready:   false,
 		running: true,
+		done:    make(chan struct{}),
 	}
 
 	// Set up signal handling for graceful shutdown
@@ -106,6 +110,14 @@ func (c *Component) Running() bool {
 func (c *Component) Exit() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	// Signal the signal handler goroutine to exit
+	select {
+	case <-c.done:
+		// Already closed
+	default:
+		close(c.done)
+	}
 
 	// Call hal_exit()
 	if err := halExit(c.id); err != nil {
@@ -169,17 +181,24 @@ func (c *Component) String() string {
 //
 // SIGTERM is sent by halcmd when unloading a component.
 // SIGINT is sent when the user presses Ctrl+C.
+//
+// The goroutine is properly cleaned up when Exit() is called.
 func (c *Component) setupSignalHandler() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 
 	go func() {
-		sig := <-sigChan
-		log.Printf("Received signal %v, initiating shutdown", sig)
-		c.mu.Lock()
-		c.running = false
-		c.mu.Unlock()
-		// Stop listening for signals after the first one
-		signal.Stop(sigChan)
+		select {
+		case sig := <-sigChan:
+			log.Printf("Received signal %v, initiating shutdown", sig)
+			c.mu.Lock()
+			c.running = false
+			c.mu.Unlock()
+			// Stop listening for signals
+			signal.Stop(sigChan)
+		case <-c.done:
+			// Component exiting, clean up
+			signal.Stop(sigChan)
+		}
 	}()
 }
