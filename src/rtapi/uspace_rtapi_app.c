@@ -152,8 +152,7 @@ static void msg_queue_push(msg_level_t level, const char *msg) {
     
     /* Write the message */
     msg_queue[head].level = level;
-    strncpy(msg_queue[head].msg, msg, sizeof(msg_queue[head].msg) - 1);
-    msg_queue[head].msg[sizeof(msg_queue[head].msg) - 1] = '\0';
+    snprintf(msg_queue[head].msg, sizeof(msg_queue[head].msg), "%s", msg);
     
     /* Publish the new head (release ensures msg is visible before head update) */
     atomic_store_explicit(&msg_head, next, memory_order_release);

@@ -425,7 +425,7 @@ static char *get_sys_enable_path(const struct rtapi_pci_dev *dev, char *path, si
 int rtapi_pci_enable_device(struct rtapi_pci_dev *dev)
 {
     FILE *stream;
-    char path[256];
+    char path[280];
     int i,r;
     unsigned long long L1, L2, L3;
     size_t ret;
@@ -488,7 +488,7 @@ int rtapi_pci_enable_device(struct rtapi_pci_dev *dev)
 int rtapi_pci_disable_device(struct rtapi_pci_dev *dev)
 {
     FILE *stream;
-    char path[256];
+    char path[280];
     int r;
 
     with_root_enter();
