@@ -38,8 +38,15 @@ static int msg_level = RTAPI_MSG_ERR;	/* message printing level */
 
 #include "config.h"
 
-#ifdef RTAPI
+#if defined(RTAPI) && defined(__cplusplus)
 #include "rtapi_uspace.hh"
+#endif
+
+/* For C code using RTAPI, provide a compatible WITH_ROOT macro */
+#if defined(RTAPI) && !defined(__cplusplus) && !defined(WITH_ROOT)
+extern void with_root_enter(void);
+extern void with_root_exit(void);
+#define WITH_ROOT for(int _wr = (with_root_enter(), 1); _wr; _wr = 0, with_root_exit())
 #endif
 
 typedef struct {
