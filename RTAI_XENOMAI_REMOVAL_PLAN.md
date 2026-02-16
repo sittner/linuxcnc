@@ -85,33 +85,37 @@ These blocks tried to build the deleted source files when CONFIG_USPACE_RTAI=y o
 
 ---
 
-## Phase 3: Script Cleanup (TODO)
+## Phase 3: Script Cleanup ✓ COMPLETE
 
 ### 1. `scripts/rtapi.conf.in`
-**Lines to remove:**
-- Lines 22-54: RTAI module loading configuration (adeos, rtai_hal, rtai_sched, etc.)
+**Lines removed:**
+- ✅ Lines 22-54: RTAI module loading configuration (adeos, rtai_hal, rtai_sched, etc.)
 
-**Keep:**
-- Lines 1-21: Header and basic configuration
-- Case statement for uspace (lines 46-53 keep the empty MODULES case)
+**Kept:**
+- ✅ Lines 1-21: Header and basic configuration
+- ✅ Simplified to empty MODULES for uspace-only
 
 ### 2. `scripts/realtime.in`  
-**Lines to review:**
-- Module loading logic that checks for RTAI modules
-- RTPREFIX checks for non-uspace realtime
+**Changes made:**
+- ✅ Removed RTAI-specific module loading logic (lines 86-114)
+- ✅ Simplified CheckStatus() to only check rtapi_app for uspace
+- ✅ Simplified CheckMem() to return immediately (no kernel modules to check)
+- ✅ Simplified Unload() to only handle uspace rtapi_app cleanup
+- ✅ Simplified CheckUnloaded() to return immediately (no kernel modules)
+- ✅ Updated header description to remove RTAI references
 
-**Strategy:** This script loads kernel modules. For uspace-only, simplify to minimal RTAPI/HAL loading.
+**Strategy:** Script now simplified to minimal RTAPI/HAL loading for uspace only.
 
 ### 3. `scripts/platform-is-supported`
-**Changes:**
-- Line 34: Remove 'rtai' and 'xenomai' from `supported_kernel_flavors` array
-- Lines 50-61: Remove or simplify detect_kernel_flavor to only detect 'rtpreempt' and 'vanilla'
-- Simplify kernel flavor detection since we only care about rtpreempt
+**Changes made:**
+- ✅ Line 34: Removed 'rtai' from `supported_kernel_flavors` array (now only rtpreempt and vanilla)
+- ✅ Lines 41-61: Simplified detect_kernel_flavor() to only detect 'rtpreempt' and 'vanilla'
+- ✅ Removed CONFIG_IPIPE and CONFIG_XENO_ detection logic
 
 ### 4. `scripts/latency-histogram`  
-**Lines to remove:**
-- Lines 33-34: RTAI detection in tcl_platform
-- Line 300: RTAI conditional
+**Lines removed:**
+- ✅ Lines 33-37: RTAI detection in tcl_platform and realtime module loading
+- ✅ Lines 300-304: RTAI conditional startup code
 
 ---
 
