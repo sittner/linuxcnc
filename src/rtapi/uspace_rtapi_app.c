@@ -166,7 +166,7 @@ static int msg_queue_consume_all(void) {
     while(tail != atomic_load_explicit(&msg_head, memory_order_acquire)) {
         /* Copy message to local buffer before updating tail */
         msg_level_t level = msg_queue[tail].level;
-        char msg_copy[sizeof(msg_queue[0].msg)];
+        char msg_copy[sizeof(msg_queue[tail].msg)];
         strncpy(msg_copy, msg_queue[tail].msg, sizeof(msg_copy) - 1);
         msg_copy[sizeof(msg_copy) - 1] = '\0';
         
