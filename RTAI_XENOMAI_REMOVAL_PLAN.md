@@ -123,51 +123,65 @@ These blocks tried to build the deleted source files when CONFIG_USPACE_RTAI=y o
 
 ---
 
-## Phase 4: Documentation Updates (TODO)
+## Phase 4: Documentation Updates ✓ COMPLETE
 
-### Primary Documentation Files (94 RTAI references, 3 Xenomai references)
+### Files Updated
 
-#### Critical Documentation
-1. **`docs/src/code/building-linuxcnc.adoc`** (23 references)
-   - Lines 120-122: RTAI description
-   - Lines 181-187: RTAI realtime platform build instructions
-   - Lines 301-322: RTAI configure options and kernel configuration
-   - Line 461: RTAI memory lock privilege note
-   - **Action:** Remove RTAI as an option, update to show only uspace/RT_PREEMPT
+#### Main Documentation
+1. ✅ **`docs/INSTALL.adoc`**
+   - Removed `--with-realtime=/usr/rtai...` from configure examples
+   - Removed references to "RT-PREEMPT or RTAI" - now only mentions RT_PREEMPT/uspace
+   - Simplified realtime section to only describe uspace
 
-2. **`docs/src/getting-started/system-requirements.adoc`** (10 references)
-   - Lines 57, 69, 84-100: RTAI kernel sections
-   - **Action:** Remove RTAI sections, keep only RT_PREEMPT information
+2. ✅ **`docs/INSTALL_es.adoc`** (Spanish version)
+   - Same changes as INSTALL.adoc
+   - Updated to remove RTAI references
 
-3. **`docs/src/getting-started/getting-linuxcnc.adoc`**
-   - Remove RTAI installation instructions
-   - Update to show only RT_PREEMPT kernel installation
+3. ✅ **`docs/src/config/integrator-concepts.adoc`**
+   - Removed entire "RTAI" section (lines ~260-280) that explained what RTAI is
+   - Updated to describe only RT_PREEMPT/PREEMPT_RT
+   - Updated ACPI section to remove RTAI-specific context
 
-4. **`docs/INSTALL.adoc` and `docs/INSTALL_es.adoc`**
-   - Remove RTAI installation steps
-   - Simplify to RT_PREEMPT only
+4. ✅ **`docs/src/config/stepper-diagnostics.adoc`**
+   - Updated "RTAPI Error" section - removed "based on an indication from RTAI"
+   - Kept the error description but removed RTAI-specific context
+
+5. ✅ **`docs/src/getting-started/updating-linuxcnc.adoc`**
+   - Removed RTAI kernel detection instructions
+   - Removed RTAI-specific apt repository lines from the table
+   - Updated to only show uspace/preempt options
 
 #### Man Pages
-5. **`docs/man/man3/intro.3rtapi`**
-   - Update RTAPI introduction to remove RTAI platform mentions
+6. ✅ **`docs/man/man3/intro.3rtapi`**
+   - Changed "POSIX threads and RTAI are supported" to just "POSIX threads"
+   - Removed RTAI platform mentions
 
-6. **`docs/man/man3/rtapi_get_time.3rtapi`**
-   - Update platform-specific notes
+7. ✅ **`docs/man/man3/rtapi_is.3rtapi`**
+   - Updated description of `rtapi_is_kernelspace()` - removed "(e.g., under RTAI)"
+   - Updated `rtapi_is_realtime()` description - removed "For rtai, this always returns nonzero"
 
-7. **`docs/man/man3/rtapi_is.3rtapi`**  
-   - Update platform detection documentation
+8. ✅ **`docs/man/man1/halcmd.1`**
+   - Updated loadrt description - removed "(e.g. RTAI)" example
+   - Simplified to only mention userspace/Preempt-RT
 
-#### Configuration and Integration Docs
-8. Other documentation files with RTAI references:
-   - `docs/src/config/pncconf.adoc`
-   - `docs/src/config/ini-config.adoc`
-   - `docs/src/integrator/steppers.adoc`
-   - `docs/src/config/stepper-diagnostics.adoc`
-   - Various GUI documentation files
+#### Help Files
+9. ✅ **`docs/help/rtfaults.adoc`**
+   - Updated example path that contains "rtai" in it (changed to "rt")
+   - Kept the debugging instructions but with generic paths
 
-### Translation Files (Phase 4b)
+10. ✅ **`docs/help/rtfaults_es.adoc`** (Spanish version)
+    - Same changes as rtfaults.adoc
 
-#### Documentation Translations (15+ files)
+### Changes Summary
+- Replaced RTAI mentions with RT_PREEMPT or PREEMPT_RT where appropriate
+- Removed Xenomai mentions entirely
+- Documentation now accurately reflects uspace-only builds
+- All documentation formatting preserved (asciidoc, man page format)
+- Translations maintained where they exist (Spanish files)
+
+---
+
+## Phase 5: Final Verification (TODO)
 - `docs/po/de.po`, `docs/po/es.po`, `docs/po/fr.po`, etc.
 - Update translated strings that mention RTAI/Xenomai
 - Mark untranslated after changes
