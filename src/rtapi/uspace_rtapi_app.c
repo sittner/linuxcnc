@@ -93,7 +93,7 @@ static int rtapi_timespec_less(const struct timespec ta, const struct timespec t
 }
 
 /* Forward declaration of rtapi_timespec_advance */
-void rtapi_timespec_advance(struct timespec result, const struct timespec src, unsigned long nsec);
+void rtapi_timespec_advance(struct timespec *result, const struct timespec *src, unsigned long nsec);
 static int with_root_level = 0;
 
 static void with_root_enter(void) {
@@ -1126,7 +1126,7 @@ static void *task_wrapper(void *arg)
 
     struct timespec now;
     clock_gettime(RTAPI_CLOCK, &now);
-    rtapi_timespec_advance(task->nextstart, now, task->period + task->pll_correction);
+    rtapi_timespec_advance(&task->nextstart, &now, task->period + task->pll_correction);
 
     (task->taskcode)(task->arg);
 
@@ -1214,7 +1214,7 @@ static void task_wait(void) {
         pthread_mutex_unlock(&thread_lock);
     pthread_testcancel();
     struct rtapi_task *task = (struct rtapi_task*)pthread_getspecific(task_key);
-    rtapi_timespec_advance(task->nextstart, task->nextstart, task->period + task->pll_correction);
+    rtapi_timespec_advance(&task->nextstart, &task->nextstart, task->period + task->pll_correction);
     struct timespec now;
     clock_gettime(RTAPI_CLOCK, &now);
     if(rtapi_timespec_less(task->nextstart, now))
@@ -1400,22 +1400,22 @@ void rtapi_delay(long ns) {
 }
 
 const unsigned long ONE_SEC_IN_NS = 1000000000;
-void rtapi_timespec_advance(struct timespec result, const struct timespec src, unsigned long nsec)
+void rtapi_timespec_advance(struct timespec *result, const struct timespec *src, unsigned long nsec)
 {
-    time_t sec = src.tv_sec;
+    time_t sec = src->tv_sec;
     while(nsec >= ONE_SEC_IN_NS)
     {
         ++sec;
         nsec -= ONE_SEC_IN_NS;
     }
-    nsec += src.tv_nsec;
+    nsec += src->tv_nsec;
     if(nsec >= ONE_SEC_IN_NS)
     {
         ++sec;
         nsec -= ONE_SEC_IN_NS;
     }
-    result.tv_sec = sec;
-    result.tv_nsec = nsec;
+    result->tv_sec = sec;
+    result->tv_nsec = nsec;
 }
 
 int rtapi_open_as_root(const char *filename, int mode) {
