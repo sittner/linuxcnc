@@ -99,7 +99,7 @@ int rtapi_pci_enable_device(struct rtapi_pci_dev *dev)
     return -ENODEV;
 }
 
-int rtapi_pci_disble_device(struct rtapi_pci_dev *dev)
+int rtapi_pci_disable_device(struct rtapi_pci_dev *dev)
 {
     return -ENODEV;
 }
@@ -403,7 +403,7 @@ void rtapi_iounmap(volatile void rtapi__iomem *addr)
     for(i = 0; i < MAX_IOMAPS; i++) {
         if(iomaps[i].in_use && iomaps[i].addr == (void*)addr) {
             munmap(iomaps[i].addr, iomaps[i].size);
-            rtapi_print_msg(RTAPI_MSG_ERR, "RTAPI_PCI: Unmapped %zd bytes at %p\n", 
+            rtapi_print_msg(RTAPI_MSG_DBG, "RTAPI_PCI: Unmapped %zd bytes at %p\n", 
                 iomaps[i].size, addr);
             iomaps[i].in_use = 0;
             return;
@@ -556,7 +556,7 @@ int rtapi_request_firmware(const struct rtapi_firmware **fw, const char *name, s
         return -ENOENT;
     }
 
-    /* We've found and oepned the file, now let's get the size */
+    /* We've found and opened the file, now let's get the size */
     if (stat(path, &st) < 0)
     {
         rtapi_print_msg(RTAPI_MSG_ERR, "Could not determine size of file \"%s\". (%s)\n",

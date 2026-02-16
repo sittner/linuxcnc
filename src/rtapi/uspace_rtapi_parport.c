@@ -74,7 +74,7 @@ static void map_parports(void) {
         }
         struct portinfo pi;
         pi.port_id = i;
-        pi.in_use = 1;
+        pi.in_use = 0;
         if(fscanf(f, "%hd %hd", &pi.base, &pi.base_hi) != 2) {
             rtapi_print_msg(RTAPI_MSG_ERR, "Failed to parse base-addr for port #%d\n", i);
             fclose(f);
@@ -83,6 +83,7 @@ static void map_parports(void) {
         fclose(f);
 
         /* Store by port ID and by base address */
+        pi.in_use = 1;
         parports[i] = pi;
     }
     parports_initialized = 1;
@@ -147,7 +148,7 @@ int rtapi_parport_get(const char *mod_name, rtapi_parport_t *port, unsigned shor
 
         ppmodes = ~0;
 
-        if(ioctl(port->fd, PPGETMODES, &modes) < 0) {
+        if(ioctl(port->fd, PPGETMODES, &ppmodes) < 0) {
             rtapi_print_msg(RTAPI_MSG_WARN, "ioctl(%s, PPGETMODES): %s\n", port_path, strerror(errno));
         }
 

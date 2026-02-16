@@ -727,7 +727,7 @@ become_master:
         }
         if(result < 0 && errno == ECONNREFUSED) {
             unlink(get_fifo_path());
-            fprintf(stderr, "Waited 3 seconds for master. giving up.\n");
+            fprintf(stderr, "Waited 3 seconds for master. Giving up.\n");
             close(fd);
             goto become_master;
         }
