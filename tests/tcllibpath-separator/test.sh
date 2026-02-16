@@ -4,7 +4,7 @@
 set -e
 
 # Get the root directory
-ROOT_DIR=$(cd $(dirname $0)/../.. && pwd)
+ROOT_DIR=$(cd "$(dirname "$0")"/../.. && pwd)
 
 # Test the logic directly from the .in file
 # Simulate what the scripts do
