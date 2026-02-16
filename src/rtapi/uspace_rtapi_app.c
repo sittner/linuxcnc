@@ -22,6 +22,8 @@
 #include "config.h"
 #include "linuxcnc.h"
 
+#include <stdatomic.h>
+
 #ifdef __linux__
 #include <sys/fsuid.h>
 #endif
@@ -94,10 +96,10 @@ static int rtapi_timespec_less(const struct timespec ta, const struct timespec t
 
 /* Forward declaration of rtapi_timespec_advance */
 void rtapi_timespec_advance(struct timespec *result, const struct timespec *src, unsigned long nsec);
-static int with_root_level = 0;
+static _Atomic int with_root_level = 0;
 
 static void with_root_enter(void) {
-    if(!with_root_level++) {
+    if(atomic_fetch_add(&with_root_level, 1) == 0) {
 #ifdef __linux__
         setfsuid(euid);
 #endif
@@ -105,7 +107,7 @@ static void with_root_enter(void) {
 }
 
 static void with_root_exit(void) {
-    if(!--with_root_level) {
+    if(atomic_fetch_sub(&with_root_level, 1) == 1) {
 #ifdef __linux__
         setfsuid(ruid);
 #endif
@@ -136,32 +138,40 @@ struct message_t {
     char msg[1024];
 };
 static struct message_t msg_queue[MSG_QUEUE_SIZE];
-static volatile int msg_head = 0;
-static volatile int msg_tail = 0;
-static pthread_mutex_t msg_lock = PTHREAD_MUTEX_INITIALIZER;
+static _Atomic int msg_head = 0;
+static _Atomic int msg_tail = 0;
 
 static void msg_queue_push(msg_level_t level, const char *msg) {
-    pthread_mutex_lock(&msg_lock);
-    int next = (msg_head + 1) % MSG_QUEUE_SIZE;
-    if(next != msg_tail) {
-        msg_queue[msg_head].level = level;
-        strncpy(msg_queue[msg_head].msg, msg, sizeof(msg_queue[msg_head].msg) - 1);
-        msg_queue[msg_head].msg[sizeof(msg_queue[msg_head].msg) - 1] = '\0';
-        msg_head = next;
+    int head = atomic_load_explicit(&msg_head, memory_order_relaxed);
+    int next = (head + 1) % MSG_QUEUE_SIZE;
+    
+    /* Check if queue is full (don't block, just drop) */
+    if(next == atomic_load_explicit(&msg_tail, memory_order_acquire)) {
+        return;  /* Queue full, message dropped */
     }
-    pthread_mutex_unlock(&msg_lock);
+    
+    /* Write the message */
+    msg_queue[head].level = level;
+    strncpy(msg_queue[head].msg, msg, sizeof(msg_queue[head].msg) - 1);
+    msg_queue[head].msg[sizeof(msg_queue[head].msg) - 1] = '\0';
+    
+    /* Publish the new head (release ensures msg is visible before head update) */
+    atomic_store_explicit(&msg_head, next, memory_order_release);
 }
 
 static int msg_queue_consume_all(void) {
     int processed = 0;
-    pthread_mutex_lock(&msg_lock);
-    while(msg_tail != msg_head) {
-        struct message_t *m = &msg_queue[msg_tail];
+    int tail = atomic_load_explicit(&msg_tail, memory_order_relaxed);
+    
+    while(tail != atomic_load_explicit(&msg_head, memory_order_acquire)) {
+        struct message_t *m = &msg_queue[tail];
         fputs(m->msg, m->level == RTAPI_MSG_ALL ? stdout : stderr);
-        msg_tail = (msg_tail + 1) % MSG_QUEUE_SIZE;
+        
+        /* Move tail forward (release not strictly needed for SPSC but good practice) */
+        tail = (tail + 1) % MSG_QUEUE_SIZE;
+        atomic_store_explicit(&msg_tail, tail, memory_order_release);
         processed++;
     }
-    pthread_mutex_unlock(&msg_lock);
     return processed;
 }
 
@@ -1213,6 +1223,12 @@ static void task_wait(void) {
         pthread_mutex_unlock(&thread_lock);
     pthread_testcancel();
     struct rtapi_task *task = (struct rtapi_task*)pthread_getspecific(task_key);
+    if(!task) {
+        rtapi_print_msg(RTAPI_MSG_ERR, "rtapi_wait called from non-task thread\n");
+        if(do_thread_lock)
+            pthread_mutex_lock(&thread_lock);
+        return;
+    }
     rtapi_timespec_advance(&task->nextstart, &task->nextstart, task->period + task->pll_correction);
     struct timespec now;
     clock_gettime(RTAPI_CLOCK, &now);
