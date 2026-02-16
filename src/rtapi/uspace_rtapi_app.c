@@ -164,12 +164,19 @@ static int msg_queue_consume_all(void) {
     int tail = atomic_load_explicit(&msg_tail, memory_order_relaxed);
     
     while(tail != atomic_load_explicit(&msg_head, memory_order_acquire)) {
-        struct message_t *m = &msg_queue[tail];
-        fputs(m->msg, m->level == RTAPI_MSG_ALL ? stdout : stderr);
+        /* Copy message to local buffer before updating tail */
+        msg_level_t level = msg_queue[tail].level;
+        char msg_copy[1024];
+        strncpy(msg_copy, msg_queue[tail].msg, sizeof(msg_copy) - 1);
+        msg_copy[sizeof(msg_copy) - 1] = '\0';
         
-        /* Move tail forward (release not strictly needed for SPSC but good practice) */
-        tail = (tail + 1) % MSG_QUEUE_SIZE;
-        atomic_store_explicit(&msg_tail, tail, memory_order_release);
+        /* Move tail forward after reading the message data */
+        int next_tail = (tail + 1) % MSG_QUEUE_SIZE;
+        atomic_store_explicit(&msg_tail, next_tail, memory_order_release);
+        tail = next_tail;
+        
+        /* Now output the message (safe because we copied it) */
+        fputs(msg_copy, level == RTAPI_MSG_ALL ? stdout : stderr);
         processed++;
     }
     return processed;
