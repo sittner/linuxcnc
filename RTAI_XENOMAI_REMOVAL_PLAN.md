@@ -108,9 +108,13 @@ These blocks tried to build the deleted source files when CONFIG_USPACE_RTAI=y o
 
 ### 3. `scripts/platform-is-supported`
 **Changes made:**
-- ✅ Line 34: Removed 'rtai' from `supported_kernel_flavors` array (now only rtpreempt and vanilla)
-- ✅ Lines 41-61: Simplified detect_kernel_flavor() to only detect 'rtpreempt' and 'vanilla'
-- ✅ Removed CONFIG_IPIPE and CONFIG_XENO_ detection logic
+- ✅ Line 34: Removed `supported_kernel_flavors` list entirely (no longer needed)
+- ✅ Lines 41-55: Removed entire `detect_kernel_flavor()` function
+- ✅ Line 78: Removed `kernel_flavor = detect_kernel_flavor(uname)` call
+- ✅ Line 91: Removed kernel flavor from uname print statement
+- ✅ Lines 111-113: Removed kernel flavor validation check
+- ✅ Fixed regex escape sequence warning (changed `\.` to `r'\.'`)
+- **Result:** Script now only checks OS, CPU, and distribution version (no kernel flavor detection)
 
 ### 4. `scripts/latency-histogram`  
 **Lines removed:**
