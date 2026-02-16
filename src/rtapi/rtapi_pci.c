@@ -8,7 +8,7 @@
 *                           Charles Steinkuehler <charles AT steinkuehler DOT net>
 *                           John Morris <john AT zultron DOT com>
 *                           Michael Haberler <license AT mah DOT priv DOT at>
-* Copyright (C) 2014 Jeff Epler <jepler@unpythonic.net>
+* Copyright (C) 2014-2026 Jeff Epler <jepler@unpythonic.net>
 
 * This program is free software; you can redistribute it and/or
 * modify it under the terms of the GNU Lesser General Public

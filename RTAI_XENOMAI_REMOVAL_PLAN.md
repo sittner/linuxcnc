@@ -193,15 +193,15 @@ Convert RTAPI from C++ to C by removing the class hierarchy that was designed fo
 - ✅ Class hierarchy (RtapiApp base class, Posix derived class)
 - ✅ Runtime factory pattern (makeApp() that tried to load RTAI/Xenomai)
 - ✅ STL containers (std::map, std::vector, std::string)
-- ✅ boost::lockfree::queue → pthread mutex-protected queue
+- ✅ boost::lockfree::queue → lock-free SPSC ring buffer using C11 atomics
 - ✅ C++ syntax (namespace, new/delete, auto, reinterpret_cast, nullptr)
 - ✅ WithRoot RAII → explicit with_root_enter()/with_root_exit() functions
-- ✅ std::atomic → volatile int with proper synchronization
+- ✅ std::atomic → C11 _Atomic with proper memory ordering
 - ✅ Exception handling → error return codes
 
 **Converted to C equivalents:**
 - Module map: std::map<string, void*> → array of structs with mutex
-- Message queue: boost::lockfree::queue → circular buffer with pthread_mutex
+- Message queue: boost::lockfree::queue → lock-free circular buffer with C11 atomics
 - Strings: std::string → char*
 - Memory management: new/delete → malloc/free
 - Virtual methods → static functions
@@ -235,13 +235,62 @@ Convert RTAPI from C++ to C by removing the class hierarchy that was designed fo
 - **No boost library dependency:** Removed boost::lockfree::queue
 - **Simplified architecture:** Direct POSIX initialization (SCHED_FIFO/SCHED_OTHER)
 - **Maintained compatibility:** All public APIs preserved
-- **Thread safety preserved:** pthread mutexes and atomics used correctly
+- **Thread safety preserved:** Lock-free atomics for RT-safe message passing, pthread mutexes only for non-RT paths
 
 ### Statistics
 - **Files deleted:** 4 (.cc and .hh files)
 - **Files converted:** 3 (uspace_rtapi_app, rtapi_pci, uspace_rtapi_parport)
 - **Lines removed:** ~2,080 (C++ code)
 - **Dependencies removed:** boost::lockfree, C++ STL
+
+### Phase 5.1: RT-Safety Fixes ✓ COMPLETE
+
+After initial C conversion, the following RT-safety issues were identified and fixed:
+
+#### Lock-Free Message Queue
+The initial conversion used a mutex-protected queue, but this violated RT constraints. Fixed to use a proper lock-free SPSC (Single Producer Single Consumer) ring buffer:
+
+```c
+static _Atomic int msg_head = 0;
+static _Atomic int msg_tail = 0;
+
+// Lock-free push from RT threads - NEVER blocks
+static void msg_queue_push(msg_level_t level, const char *msg) {
+    int head = atomic_load_explicit(&msg_head, memory_order_relaxed);
+    int next = (head + 1) % MSG_QUEUE_SIZE;
+    if(next == atomic_load_explicit(&msg_tail, memory_order_acquire))
+        return;  // Queue full, drop message (RT threads can't wait)
+    // Write message then publish with release semantics
+    msg_queue[head].level = level;
+    snprintf(msg_queue[head].msg, sizeof(msg_queue[head].msg), "%s", msg);
+    atomic_store_explicit(&msg_head, next, memory_order_release);
+}
+```
+
+#### Atomic Privilege Level Counter
+The `with_root_level` counter was converted to use C11 atomics for thread-safe reference counting:
+
+```c
+static _Atomic int with_root_level = 0;
+
+static void with_root_enter(void) {
+    if(atomic_fetch_add(&with_root_level, 1) == 0) {
+        setfsuid(euid);
+    }
+}
+```
+
+#### Files Modified
+- `src/rtapi/uspace_rtapi_app.c` - Lock-free queue, atomic with_root_level, NULL checks
+- `src/rtapi/rtapi_pci.c` - Atomic with_root_level, buffer size fixes
+- `src/rtapi/uspace_rtapi_parport.c` - Atomic with_root_level
+
+#### Key RT-Safety Properties
+- **No mutex in RT path:** Message queue uses lock-free atomics
+- **Non-blocking drops:** If queue is full, messages are dropped (RT threads can't wait)
+- **Memory ordering:** Proper acquire/release semantics ensure visibility
+- **Thread lock only for non-RT:** The `thread_lock` mutex is only used when `do_thread_lock=1` (non-RT mode with `SCHED_OTHER`)
+
 
 ---
 
@@ -259,15 +308,15 @@ Convert RTAPI from C++ to C by removing the class hierarchy that was designed fo
 
 ### Build Verification
 - [x] Configure with `--with-realtime=uspace` succeeds (Phase 2 complete)
-- [ ] Build completes without errors
-- [ ] All tests pass
-- [ ] No broken references to removed files
+- [x] Build completes without errors
+- [x] All tests pass
+- [x] No broken references to removed files
 
 ### Functional Verification  
-- [ ] rtapi_app starts correctly
-- [ ] HAL components load
-- [ ] Sample configurations run
-- [ ] No RTAI/Xenomai detection code executes
+- [x] rtapi_app starts correctly
+- [x] HAL components load
+- [x] Sample configurations run
+- [x] No RTAI/Xenomai detection code executes
 
 ### Documentation Verification
 - [ ] Documentation builds without errors

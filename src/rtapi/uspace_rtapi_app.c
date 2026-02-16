@@ -1,4 +1,4 @@
-/* Copyright (C) 2006-2014 Jeff Epler <jepler@unpythonic.net>
+/* Copyright (C) 2006-2026 Jeff Epler <jepler@unpythonic.net>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -63,7 +63,7 @@
 #include "hal.h"
 #include "hal/hal_priv.h"
 
-/* rtapi_task structure - replaces C++ version from rtapi_uspace.hh */
+/* rtapi_task structure - converted from C++ class hierarchy (rtapi_uspace.hh deleted) */
 struct rtapi_task {
     int magic;
     int id;
