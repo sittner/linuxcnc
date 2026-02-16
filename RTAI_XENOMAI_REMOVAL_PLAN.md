@@ -27,29 +27,29 @@ This document tracks the multi-phase removal of RTAI and Xenomai support from Li
 
 ---
 
-## Phase 2: Build System Cleanup (TODO)
+## Phase 2: Build System Cleanup ✓ COMPLETE
 
-### Files to Modify
+### Files Modified
 
 #### 1. `src/configure.ac` - Remove RTAI/Xenomai Detection
-**Lines to remove/modify:**
-- Lines 118-127: Section 2 header and RTAI variable initialization
-- Lines 163-174: `--with-realtime` help string mentions RTAI
-- Lines 204-223: rtai-config detection and search
-- Lines 225-226: xeno-config detection
-- Lines 229-263: USPACE_RTAI and USPACE_XENOMAI configuration
-- Lines 318-330: rtai-config case in RTS switch
-- Lines 342-355: kernel headers check for non-uspace
-- Lines 357-371: RTAI variable substitution and AC_DEFINE blocks
-- Lines 395-400: RTAI CC detection
+**Lines removed/modified:**
+- ✅ Lines 118-127: Section 2 header and RTAI variable initialization
+- ✅ Lines 163-174: `--with-realtime` help string mentions RTAI
+- ✅ Lines 204-223: rtai-config detection and search
+- ✅ Lines 225-226: xeno-config detection
+- ✅ Lines 229-263: USPACE_RTAI and USPACE_XENOMAI configuration
+- ✅ Lines 318-330: rtai-config case in RTS switch
+- ✅ Lines 342-355: kernel headers check for non-uspace
+- ✅ Lines 357-371: RTAI variable substitution and AC_DEFINE blocks
+- ✅ Lines 395-400: RTAI CC detection
 
-**Keep:**
-- Lines 331-340: uspace case (the RT_PREEMPT path)
-- Basic RTS variable and uspace support
+**Kept:**
+- ✅ Lines 331-340: uspace case (the RT_PREEMPT path)
+- ✅ Basic RTS variable and uspace support
 
-**Changes needed:**
+**Changes made:**
 ```bash
-# Remove:
+✅ Removed:
 - RTAI variable and initialization
 - rtai-config detection
 - xeno-config detection  
@@ -58,30 +58,30 @@ This document tracks the multi-phase removal of RTAI and Xenomai support from Li
 - RTAI-specific AC_SUBST and AC_DEFINE
 - RTAI case in RTS switch statement
 
-# Simplify:
-- Make uspace the only supported RTS value
-- Remove "or RTAI path" from help strings
-- Simplify RTS case statement to only handle uspace
+✅ Simplified:
+- Made uspace the only supported RTS value
+- Removed "or RTAI path" from help strings
+- Simplified RTS case statement to only handle uspace
 ```
 
 #### 2. `src/rtapi/Submakefile` - Remove Library Build Rules
-**Lines to remove:**
-- Lines 26-35: CONFIG_USPACE_RTAI conditional block
-- Lines 37-46: CONFIG_USPACE_XENOMAI conditional block
+**Lines removed:**
+- ✅ Lines 26-35: CONFIG_USPACE_RTAI conditional block
+- ✅ Lines 37-46: CONFIG_USPACE_XENOMAI conditional block
 
-These blocks try to build the deleted source files when CONFIG_USPACE_RTAI=y or CONFIG_USPACE_XENOMAI=y.
+These blocks tried to build the deleted source files when CONFIG_USPACE_RTAI=y or CONFIG_USPACE_XENOMAI=y.
 
 #### 3. `src/Makefile.inc.in` - Remove Config Variables
-**Lines to remove:**
-- Line 237: `CONFIG_USPACE_RTAI=@CONFIG_USPACE_RTAI@`
-- Line 241: `CONFIG_USPACE_XENOMAI=@CONFIG_USPACE_XENOMAI@`
+**Lines removed:**
+- ✅ Line 237: `CONFIG_USPACE_RTAI=@CONFIG_USPACE_RTAI@`
+- ✅ Line 241: `CONFIG_USPACE_XENOMAI=@CONFIG_USPACE_XENOMAI@`
 
 #### 4. `src/rtapi/uspace_common.h` - Remove Conditional Blocks
-**Lines to remove:**
-- Lines 376-385: `#ifdef USPACE_RTAI` block and detect_rtai()
-- Lines 387-396: `#ifdef USPACE_XENOMAI` block and detect_xenomai()
+**Lines removed:**
+- ✅ Lines 376-385: `#ifdef USPACE_RTAI` block and detect_rtai()
+- ✅ Lines 387-396: `#ifdef USPACE_XENOMAI` block and detect_xenomai()
 
-**Note:** Keep the `#else` fallbacks that return 0.
+**Note:** Kept the `#else` fallbacks that return 0, now as unconditional stubs.
 
 ---
 
@@ -174,7 +174,7 @@ These blocks try to build the deleted source files when CONFIG_USPACE_RTAI=y or 
 ## Phase 5: Final Verification (TODO)
 
 ### Build Verification
-- [ ] Configure with `--with-realtime=uspace` succeeds
+- [x] Configure with `--with-realtime=uspace` succeeds (Phase 2 complete)
 - [ ] Build completes without errors
 - [ ] All tests pass
 - [ ] No broken references to removed files
@@ -199,14 +199,18 @@ These blocks try to build the deleted source files when CONFIG_USPACE_RTAI=y or 
 - **Lines removed:** ~3,031
 - **Build system:** Still compatible (conditionals prevent issues)
 
+### Phase 2 Complete
+- **Files modified:** 4
+- **Lines removed/modified:** ~180
+- **Build system:** Simplified to uspace-only
+
 ### Remaining Work
-- **Build files to modify:** 4 files (~200 lines to remove/modify)
 - **Scripts to modify:** 4 files (~100 lines to simplify)
 - **Documentation files:** ~15 primary files (94 RTAI refs, 3 Xenomai refs)
 - **Translation files:** ~45 .po files
 
 ### Total Estimated Impact
-- **Lines of code removed/modified:** ~4,000+
+- **Lines of code removed/modified:** ~3,200+ (Phases 1-2 complete)
 - **Documentation updates:** ~100+ references
 - **Translation updates:** ~50 files
 
