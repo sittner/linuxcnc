@@ -1079,13 +1079,12 @@ static int task_start(int task_id, unsigned long int period_nsec)
     if((ret = pthread_attr_setinheritsched(&attr, PTHREAD_EXPLICIT_SCHED)) != 0)
         return -ret;
     if(nprocs > 1) {
-        const static int rt_cpu_number = -2;
+        static int rt_cpu_number = -2;  /* -2 means uninitialized, call find_rt_cpu_number() */
         int cpu_num;
         if(rt_cpu_number == -2) {
-            cpu_num = find_rt_cpu_number();
-        } else {
-            cpu_num = rt_cpu_number;
+            rt_cpu_number = find_rt_cpu_number();
         }
+        cpu_num = rt_cpu_number;
         if(cpu_num != -1) {
 #ifdef __FreeBSD__
             cpuset_t cpuset;
