@@ -76,7 +76,7 @@ CheckConfig(){
     # Import the config
     source $RTAPICONF
     if [ ! -e $RTLIB_DIR/.runinfo -a -e $RTLIB_DIR/emc2/.runinfo ]; then
-        # installed system: we don't want our modules mixed up with rtai
+        # installed system: we don't want our modules mixed up with other modules
         RTLIB_DIR=$RTLIB_DIR/emc2
     fi
     # Export the module path specified in the config.
