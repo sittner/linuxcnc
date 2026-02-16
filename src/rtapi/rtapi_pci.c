@@ -35,6 +35,7 @@
 #include <rtapi_pci.h>
 #include <rtapi_firmware.h>
 
+#include <stdatomic.h>
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -59,10 +60,10 @@
 #define MAX_IOMAPS 64
 
 static uid_t euid, ruid;
-static int with_root_level = 0;
+static _Atomic int with_root_level = 0;
 
 static void with_root_enter(void) {
-    if(!with_root_level++) {
+    if(atomic_fetch_add(&with_root_level, 1) == 0) {
 #ifdef __linux__
         setfsuid(euid);
 #endif
@@ -70,7 +71,7 @@ static void with_root_enter(void) {
 }
 
 static void with_root_exit(void) {
-    if(!--with_root_level) {
+    if(atomic_fetch_sub(&with_root_level, 1) == 1) {
 #ifdef __linux__
         setfsuid(ruid);
 #endif

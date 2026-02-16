@@ -13,6 +13,7 @@
 //    You should have received a copy of the GNU General Public License
 //    along with this program; if not, write to the Free Software
 //    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#include <stdatomic.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/ppdev.h>
@@ -41,10 +42,10 @@ static struct portinfo parports[MAX_PARPORTS];
 static int parports_initialized = 0;
 
 static uid_t euid, ruid;
-static int with_root_level = 0;
+static _Atomic int with_root_level = 0;
 
 static void with_root_enter(void) {
-    if(!with_root_level++) {
+    if(atomic_fetch_add(&with_root_level, 1) == 0) {
 #ifdef __linux__
         setfsuid(euid);
 #endif
@@ -52,7 +53,7 @@ static void with_root_enter(void) {
 }
 
 static void with_root_exit(void) {
-    if(!--with_root_level) {
+    if(atomic_fetch_sub(&with_root_level, 1) == 1) {
 #ifdef __linux__
         setfsuid(ruid);
 #endif
