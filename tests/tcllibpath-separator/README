@@ -1,0 +1,13 @@
+Test TCLLIBPATH separator fix
+==============================
+
+This test verifies that TCLLIBPATH uses space separators (as required by Tcl)
+rather than colon separators (which are used by PATH, LD_LIBRARY_PATH, etc).
+
+The test:
+1. Sources the rip-environment script multiple times
+2. Verifies that TCLLIBPATH contains space-separated paths
+3. Verifies that paths are not duplicated with colons
+
+This ensures that running rip-environment or linuxcnc script multiple times
+doesn't break the TCLLIBPATH variable.
