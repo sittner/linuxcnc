@@ -137,25 +137,66 @@ static inline void hal_thread_sync_write(void) {
 }
 ```
 
-### Phase 2: Convert All Components
+## Phase 2: Component Conversion (Subdivided)
 
-Convert all HAL components to use the new API. This is a mechanical transformation.
+Convert all HAL components to use the new API. This is a mechanical transformation divided into waves for early issue detection.
 
-#### Pin Conversion Patterns
+### Phase 2a: Pilot Components (First Wave)
+
+Simple components from both RT and userspace to validate the approach:
+
+| Type | Component | File | Notes |
+|------|-----------|------|-------|
+| RT | supply | `src/hal/components/supply.c` | Simplest RT, 4 pins |
+| RT | counter | `src/hal/components/counter.c` | Pins + params, 2 functions |
+| Userspace | shuttle | `src/hal/user_comps/shuttle.c` | Simple poll loop |
+
+**Status**: ✅ Complete
+
+### Phase 2b: Second Wave
+
+Slightly more complex components:
+
+| Type | Component | File | Notes |
+|------|-----------|------|-------|
+| RT | siggen | `src/hal/components/siggen.c` | Multiple outputs |
+| Userspace | sampler_usr | `src/hal/components/sampler_usr.c` | Stream-based |
+| Userspace | sendkeys | `src/hal/user_comps/sendkeys.c` | Event-driven |
+
+### Phase 2c: Third Wave (Complex)
+
+Components with complex patterns:
+
+| Type | Component | File | Notes |
+|------|-----------|------|-------|
+| Userspace | VFD drivers | `src/hal/user_comps/*_vfd.c` | Modbus pattern |
+| Userspace | mb2hal | `src/hal/user_comps/mb2hal/` | Multi-threaded |
+| RT | pid | `src/hal/components/pid.c` | Many pins, critical |
+
+### Userspace Sync Placement Guidelines
+
+For userspace components, sync calls must be placed at appropriate points in the main loop:
+
+1. **Simple poll loop**: `sync_read` at loop start, `sync_write` before sleep
+2. **Event-driven**: `sync_read` before event processing, `sync_write` after
+3. **Multi-threaded**: Each worker thread syncs, OR use coordinator thread
+4. **GUI integration**: Use idle handlers for sync
+
+### Pin Conversion Patterns
 
 ```
 **pin             →  hal_pin_get_TYPE(&pin)
 **pin = value     →  hal_pin_set_TYPE(&pin, value)
 ```
 
-#### Parameter Conversion Patterns
+### Parameter Conversion Patterns
 
 ```
 *param           →  hal_param_get_TYPE(&param)
 *param = value   →  hal_param_set_TYPE(&param, value)
 ```
 
-#### Example Conversion
+### Example Conversion
 
 **Before:**
 ```c
@@ -194,7 +235,7 @@ static void update(void *arg, long period) {
 }
 ```
 
-### Phase 3: Introduce Thread-Local HAL
+## Phase 3: Introduce Thread-Local HAL
 
 Replace the API implementation with thread-local storage. Components don't change - just recompile.
 

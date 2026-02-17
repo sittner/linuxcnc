@@ -142,13 +142,17 @@ static void update_supply(void *arg, long l)
 {
     hal_supply_t *supply;
 
+    hal_thread_sync_read();
+
     /* point to the data */
     supply = arg;
     /* set pin = param */
-    *(supply->q) = *(supply->d);
-    *(supply->_q) = !(*(supply->d));
-    *(supply->variable) = *(supply->value);
-    *(supply->_variable) = *(supply->value) * -1.0;
+    hal_pin_set_bit(&supply->q, hal_pin_get_bit(&supply->d));
+    hal_pin_set_bit(&supply->_q, !hal_pin_get_bit(&supply->d));
+    hal_pin_set_float(&supply->variable, hal_pin_get_float(&supply->value));
+    hal_pin_set_float(&supply->_variable, hal_pin_get_float(&supply->value) * -1.0);
+
+    hal_thread_sync_write();
     /* done */
 }
 

@@ -182,19 +182,24 @@ static void update(void *arg, long period)
     counter_t *cntr;
     int n;
 
+    hal_thread_sync_read();
+
     for (cntr = arg, n = 0; n < num_chan; cntr++, n++) {
         // count on rising edge
-        if(!cntr->oldA && *cntr->phaseA)
-            (*cntr->raw_count)++;
-        cntr->oldA = *cntr->phaseA;
+        if(!cntr->oldA && hal_pin_get_bit(&cntr->phaseA)) {
+            hal_pin_set_s32(&cntr->raw_count, hal_pin_get_s32(&cntr->raw_count) + 1);
+        }
+        cntr->oldA = hal_pin_get_bit(&cntr->phaseA);
 
         // reset on rising edge
-        if(cntr->reset_on_index && !cntr->oldZ && *cntr->phaseZ) {
-            cntr->last_index_count = *(cntr->raw_count);
-            *(cntr->index_ena) = 0;
+        if(cntr->reset_on_index && !cntr->oldZ && hal_pin_get_bit(&cntr->phaseZ)) {
+            cntr->last_index_count = hal_pin_get_s32(&cntr->raw_count);
+            hal_pin_set_bit(&cntr->index_ena, 0);
         }
-        cntr->oldZ = *cntr->phaseZ;
+        cntr->oldZ = hal_pin_get_bit(&cntr->phaseZ);
     }
+
+    hal_thread_sync_write();
 }
 
 static void capture(void *arg, long period)
@@ -202,42 +207,46 @@ static void capture(void *arg, long period)
     counter_t *cntr;
     int n;
 
+    hal_thread_sync_read();
+
     for (cntr = arg, n = 0; n < num_chan; cntr++, n++) {
 	/* check reset input */
         int raw_count;
         int counts;
-	if (*(cntr->reset)) {
+	if (hal_pin_get_bit(&cntr->reset)) {
 	    /* reset is active, reset the counter */
-	    *(cntr->raw_count) = 0;
+	    hal_pin_set_s32(&cntr->raw_count, 0);
             cntr->last_index_count = 0;
             cntr->last_count = 0;
 	}
 	/* capture raw counts to latches */
-        raw_count = *(cntr->raw_count);
-	*(cntr->count) = raw_count - cntr->last_index_count;
+        raw_count = hal_pin_get_s32(&cntr->raw_count);
+	hal_pin_set_s32(&cntr->count, raw_count - cntr->last_index_count);
         counts = (raw_count - cntr->last_count);
         cntr->last_count = raw_count;
 
 	/* check for change in scale value */
-	if ( *(cntr->pos_scale) != cntr->old_scale ) {
+	if ( hal_pin_get_float(&cntr->pos_scale) != cntr->old_scale ) {
 	    /* save new scale to detect future changes */
-	    cntr->old_scale = *(cntr->pos_scale);
+	    cntr->old_scale = hal_pin_get_float(&cntr->pos_scale);
 	    /* scale value has changed, test and update it */
-	    if ((*(cntr->pos_scale) < 1e-20) && (*(cntr->pos_scale) > -1e-20)) {
+	    if ((hal_pin_get_float(&cntr->pos_scale) < 1e-20) && (hal_pin_get_float(&cntr->pos_scale) > -1e-20)) {
 		/* value too small, divide by zero is a bad thing */
-		*(cntr->pos_scale) = 1.0;
+		hal_pin_set_float(&cntr->pos_scale, 1.0);
 	    }
 	    /* we actually want the reciprocal */
-	    cntr->scale = 1.0 / *(cntr->pos_scale);
+	    cntr->scale = 1.0 / hal_pin_get_float(&cntr->pos_scale);
 	}
 	/* scale count to make floating point position */
-	*(cntr->pos) = *(cntr->count) * cntr->scale;
+	hal_pin_set_float(&cntr->pos, hal_pin_get_s32(&cntr->count) * cntr->scale);
 	/* scale counts to make floating point velocity */
-        *(cntr->vel) = counts * cntr->scale * 1e9 / period;
+        hal_pin_set_float(&cntr->vel, counts * cntr->scale * 1e9 / period);
 
 	/* update reset_on_index based on index_ena */
-        cntr->reset_on_index = *(cntr->index_ena);
+        cntr->reset_on_index = hal_pin_get_bit(&cntr->index_ena);
     }
+
+    hal_thread_sync_write();
 }
 
 /***********************************************************************

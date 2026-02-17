@@ -155,31 +155,31 @@ int read_update(struct shuttle *s) {
     button = ((uint8_t)packet[4] << 8) | (uint8_t)packet[3];
     for (int i = 0; i < s->contour_type->num_buttons; i ++) {
         if (button & s->contour_type->button_mask[i]) {
-            *s->hal->button[i] = 1;
+            hal_pin_set_bit(&s->hal->button[i], 1);
         } else {
-            *s->hal->button[i] = 0;
+            hal_pin_set_bit(&s->hal->button[i], 0);
         }
-        *s->hal->button_not[i] = !*s->hal->button[i];
+        hal_pin_set_bit(&s->hal->button_not[i], !hal_pin_get_bit(&s->hal->button[i]));
     }
 
     {
         int curr_count = packet[1];
 
         if (s->read_first_event == 0) {
-            *s->hal->counts = 0;
+            hal_pin_set_s32(&s->hal->counts, 0);
             s->prev_count = curr_count;
             s->read_first_event = 1;
         } else {
             int diff_count = curr_count - s->prev_count;
             if (diff_count > 128) diff_count -= 256;
             if (diff_count < -128) diff_count += 256;
-            *s->hal->counts += diff_count;
+            hal_pin_set_s32(&s->hal->counts, hal_pin_get_s32(&s->hal->counts) + diff_count);
             s->prev_count = curr_count;
         }
     }
 
-    *s->hal->spring_wheel_s32 = packet[0];
-    *s->hal->spring_wheel_f = packet[0] / 7.0;
+    hal_pin_set_s32(&s->hal->spring_wheel_s32, packet[0]);
+    hal_pin_set_float(&s->hal->spring_wheel_f, packet[0] / 7.0);
 
     return 0;
 }
@@ -376,6 +376,8 @@ int main(int argc, char *argv[]) {
             exit(1);
         }
 
+        hal_thread_sync_read();
+
         for (i = 0; i < num_devices; i ++) {
             if (FD_ISSET(shuttle[i]->fd, &readers)) {
                 r = read_update(shuttle[i]);
@@ -384,6 +386,8 @@ int main(int argc, char *argv[]) {
                 }
             }
         }
+
+        hal_thread_sync_write();
     }
 
     exit(0);
