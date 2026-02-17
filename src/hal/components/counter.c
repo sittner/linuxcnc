@@ -187,7 +187,7 @@ static void update(void *arg, long period)
     for (cntr = arg, n = 0; n < num_chan; cntr++, n++) {
         hal_bit_t phaseA = hal_pin_get_bit(&cntr->phaseA);
         hal_bit_t phaseZ = hal_pin_get_bit(&cntr->phaseZ);
-        
+
         // count on rising edge
         if(!cntr->oldA && phaseA) {
             hal_s32_t raw_count = hal_pin_get_s32(&cntr->raw_count);
@@ -239,7 +239,7 @@ static void capture(void *arg, long period)
 	    /* scale value has changed, test and update it */
 	    if ((current_pos_scale < 1e-20) && (current_pos_scale > -1e-20)) {
 		/* value too small, divide by zero is a bad thing */
-		/* clamp to minimum safe value and write back to pin */
+		/* reset to safe default value of 1.0 and write back to pin */
 		current_pos_scale = 1.0;
 		hal_pin_set_float(&cntr->pos_scale, current_pos_scale);
 	    }
