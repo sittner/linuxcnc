@@ -952,9 +952,36 @@ extern bool hal_stream_writable(hal_stream_t *stream);
 extern void hal_stream_wait_writable(hal_stream_t *stream, sig_atomic_t *stop);
 #endif
 
-RTAPI_END_DECLS
+/***********************************************************************
+*                    THREAD-LOCAL SYNC FUNCTIONS                       *
+*                                                                      *
+* These functions synchronize thread-local HAL data copies with        *
+* shared memory. In Phase 1, these are no-ops. In Phase 3, they        *
+* enable thread-local data copies for improved determinism.            *
+*                                                                      *
+* RT components: Sync is called automatically by the RT executor.      *
+* Userspace components: Must call these in their main loop.            *
+*                                                                      *
+* See THREAD_LOCAL_HAL.md for architecture details.                    *
+***********************************************************************/
 
-/* Include the accessor API for Phase 1+ compatibility */
-#include "hal_api.h"
+/** Sync read: Copy shared HAL data to thread-local buffer.
+ *  Call at the START of each execution cycle.
+ *  For RT components, called automatically by RT executor.
+ *  For userspace components, call at top of main loop.
+ *  Phase 1: No-op (returns immediately)
+ */
+extern void hal_thread_sync_read(void);
+
+/** Sync write: Copy modified thread-local data back to shared memory.
+ *  Call at the END of each execution cycle.
+ *  Uses double-buffer diff to only write changed values.
+ *  For RT components, called automatically by RT executor.
+ *  For userspace components, call at bottom of main loop.
+ *  Phase 1: No-op (returns immediately)
+ */
+extern void hal_thread_sync_write(void);
+
+RTAPI_END_DECLS
 
 #endif /* HAL_H */

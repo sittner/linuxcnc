@@ -4210,6 +4210,19 @@ int hal_stream_num_underruns(hal_stream_t *stream) {
     return stream->fifo->num_underruns;
 }
 
+/***********************************************************************
+*                    THREAD-LOCAL SYNC FUNCTIONS                       *
+***********************************************************************/
+
+/* Phase 1 stubs - no-ops until Phase 3 implementation */
+void hal_thread_sync_read(void) {
+    /* No-op in Phase 1 */
+}
+
+void hal_thread_sync_write(void) {
+    /* No-op in Phase 1 */
+}
+
 #ifdef RTAPI
 /* only export symbols when we're building a kernel module */
 
@@ -4310,4 +4323,7 @@ EXPORT_SYMBOL_GPL(hal_stream_element_count);
 EXPORT_SYMBOL_GPL(hal_stream_element_type);
 EXPORT_SYMBOL_GPL(hal_stream_num_overruns);
 EXPORT_SYMBOL_GPL(hal_stream_num_underruns);
+
+EXPORT_SYMBOL(hal_thread_sync_read);
+EXPORT_SYMBOL(hal_thread_sync_write);
 #endif /* rtapi */
