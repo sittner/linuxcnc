@@ -221,24 +221,27 @@ static void capture(void *arg, long period)
 	}
 	/* capture raw counts to latches */
         raw_count = hal_pin_get_s32(&cntr->raw_count);
-	hal_pin_set_s32(&cntr->count, raw_count - cntr->last_index_count);
+	hal_s32_t count = raw_count - cntr->last_index_count;
+	hal_pin_set_s32(&cntr->count, count);
         counts = (raw_count - cntr->last_count);
         cntr->last_count = raw_count;
 
 	/* check for change in scale value */
-	if ( hal_pin_get_float(&cntr->pos_scale) != cntr->old_scale ) {
+	float pos_scale = hal_pin_get_float(&cntr->pos_scale);
+	if ( pos_scale != cntr->old_scale ) {
 	    /* save new scale to detect future changes */
-	    cntr->old_scale = hal_pin_get_float(&cntr->pos_scale);
+	    cntr->old_scale = pos_scale;
 	    /* scale value has changed, test and update it */
-	    if ((hal_pin_get_float(&cntr->pos_scale) < 1e-20) && (hal_pin_get_float(&cntr->pos_scale) > -1e-20)) {
+	    if ((pos_scale < 1e-20) && (pos_scale > -1e-20)) {
 		/* value too small, divide by zero is a bad thing */
-		hal_pin_set_float(&cntr->pos_scale, 1.0);
+		pos_scale = 1.0;
+		hal_pin_set_float(&cntr->pos_scale, pos_scale);
 	    }
 	    /* we actually want the reciprocal */
-	    cntr->scale = 1.0 / hal_pin_get_float(&cntr->pos_scale);
+	    cntr->scale = 1.0 / pos_scale;
 	}
 	/* scale count to make floating point position */
-	hal_pin_set_float(&cntr->pos, hal_pin_get_s32(&cntr->count) * cntr->scale);
+	hal_pin_set_float(&cntr->pos, count * cntr->scale);
 	/* scale counts to make floating point velocity */
         hal_pin_set_float(&cntr->vel, counts * cntr->scale * 1e9 / period);
 

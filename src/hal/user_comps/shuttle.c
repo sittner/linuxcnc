@@ -154,12 +154,9 @@ int read_update(struct shuttle *s) {
 
     button = ((uint8_t)packet[4] << 8) | (uint8_t)packet[3];
     for (int i = 0; i < s->contour_type->num_buttons; i ++) {
-        if (button & s->contour_type->button_mask[i]) {
-            hal_pin_set_bit(&s->hal->button[i], 1);
-        } else {
-            hal_pin_set_bit(&s->hal->button[i], 0);
-        }
-        hal_pin_set_bit(&s->hal->button_not[i], !hal_pin_get_bit(&s->hal->button[i]));
+        hal_bit_t button_val = (button & s->contour_type->button_mask[i]) ? 1 : 0;
+        hal_pin_set_bit(&s->hal->button[i], button_val);
+        hal_pin_set_bit(&s->hal->button_not[i], !button_val);
     }
 
     {
