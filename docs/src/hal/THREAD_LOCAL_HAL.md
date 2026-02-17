@@ -499,7 +499,7 @@ except KeyboardInterrupt:
 
 ## Additional Resources
 
-For implementation details and current status of the thread-local HAL migration, see the project tracking documents in the repository root.
+For detailed technical architecture and implementation specifics of the thread-local HAL system, including the double-buffer diff mechanism and memory management details, see the technical architecture document in the repository root: `/THREAD_LOCAL_HAL.md` (separate from this migration guide).
 
 ## Summary
 
