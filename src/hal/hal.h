@@ -954,4 +954,7 @@ extern void hal_stream_wait_writable(hal_stream_t *stream, sig_atomic_t *stop);
 
 RTAPI_END_DECLS
 
+/* Include the accessor API for Phase 1+ compatibility */
+#include "hal_api.h"
+
 #endif /* HAL_H */
