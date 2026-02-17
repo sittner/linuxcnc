@@ -222,24 +222,24 @@ static void capture(void *arg, long period)
 	/* capture raw counts to latches */
         raw_count = hal_pin_get_s32(&cntr->raw_count);
 	/* compute count relative to last index pulse */
-	hal_s32_t indexed_count = raw_count - cntr->last_index_count;
+	int indexed_count = raw_count - cntr->last_index_count;
 	hal_pin_set_s32(&cntr->count, indexed_count);
         counts = (raw_count - cntr->last_count);
         cntr->last_count = raw_count;
 
 	/* check for change in scale value */
-	float pos_scale = hal_pin_get_float(&cntr->pos_scale);
-	if ( pos_scale != cntr->old_scale ) {
+	float current_pos_scale = hal_pin_get_float(&cntr->pos_scale);
+	if ( current_pos_scale != cntr->old_scale ) {
 	    /* save new scale to detect future changes */
-	    cntr->old_scale = pos_scale;
+	    cntr->old_scale = current_pos_scale;
 	    /* scale value has changed, test and update it */
-	    if ((pos_scale < 1e-20) && (pos_scale > -1e-20)) {
+	    if ((current_pos_scale < 1e-20) && (current_pos_scale > -1e-20)) {
 		/* value too small, divide by zero is a bad thing */
-		pos_scale = 1.0;
-		hal_pin_set_float(&cntr->pos_scale, pos_scale);
+		current_pos_scale = 1.0;
+		hal_pin_set_float(&cntr->pos_scale, current_pos_scale);
 	    }
 	    /* we actually want the reciprocal */
-	    cntr->scale = 1.0 / pos_scale;
+	    cntr->scale = 1.0 / current_pos_scale;
 	}
 	/* scale count to make floating point position */
 	hal_pin_set_float(&cntr->pos, indexed_count * cntr->scale);
