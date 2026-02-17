@@ -1,527 +1,184 @@
-# Thread-Local HAL Architecture
+# Thread-Local HAL Data Architecture
 
-## Motivation
+## Overview
 
-HAL (Hardware Abstraction Layer) currently uses direct shared memory access for pin/signal/parameter data. This creates challenges for:
+This document describes the thread-local HAL data copy mechanism for improved
+real-time determinism. The key insight is that **no changes to pin/param access
+syntax are required** - only sync function calls at thread boundaries.
 
-1. **Thread Safety**: Multiple threads accessing HAL data can cause race conditions
-2. **String Support**: Variable-length strings don't fit well in the current fixed-size atomic data model
-3. **Determinism**: Locks during real-time execution can cause latency issues
+## Problem Statement
 
-## Proposed Architecture
+Current HAL accesses shared memory directly, which can cause:
+- Cache contention between RT threads
+- Non-deterministic latency from memory barriers
+- Potential for mid-cycle data changes
 
-### Core Concept
+## Solution: Double-Buffer Diff
 
-Each thread maintains a local copy of HAL data. Synchronization with a master copy happens at defined points (thread loop boundaries), not during data access.
+Each RT thread maintains two local copies of HAL data:
+- **before**: Snapshot at start of cycle (sync_read)
+- **after**: Working copy modified during execution
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      Master HAL Data                             │
-│  (shared memory - source of truth)                               │
-│  ┌─────────┬─────────┬─────────┬─────────┐                      │
-│  │ pins    │ signals │ params  │ strings │                      │
-│  └─────────┴─────────┴─────────┴─────────┘                      │
-│                         ▲                                        │
-│            ┌────────────┼────────────┐                          │
-│            │ sync       │ sync       │ sync                     │
-│            ▼            ▼            ▼                          │
-│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐            │
-│  │ Thread 1     │ │ Thread 2     │ │ Thread N     │            │
-│  │ Local Copy   │ │ Local Copy   │ │ Local Copy   │            │
-│  │              │ │              │ │              │            │
-│  │ dirty_bitmap │ │ dirty_bitmap │ │ dirty_bitmap │            │
-│  └──────────────┘ └──────────────┘ └──────────────┘            │
-└─────────────────────────────────────────────────────────────────┘
-```
+At cycle end, sync_write compares before/after and writes only changed values
+back to shared memory.
 
-### Thread Loop Model
+## Key Design Decisions
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  1. hal_thread_sync_read()  - pull changes from master          │
-│  2. ... thread work (all reads/writes to local copy) ...        │
-│  3. hal_thread_sync_write() - push dirty data to master         │
-└─────────────────────────────────────────────────────────────────┘
+### No Accessor Functions Needed
+
+Existing pin/param access syntax works unchanged:
+```c
+// These work exactly as before:
+*(pin->output) = value;        // Write pin
+value = *(pin->input);         // Read pin  
+param->scale = 1.5;            // Write param
+value = param->offset;         // Read param
 ```
 
-### Benefits
+The pointers are redirected to thread-local buffers transparently.
 
-| Benefit | Description |
-|---------|-------------|
-| **Thread-safe by design** | Each thread works on local copy, no races during execution |
-| **Lock-free hot path** | Reads/writes during thread loop need no synchronization |
-| **Predictable sync points** | All sync happens at defined points (loop boundaries) |
-| **Natural string support** | Strings become just another data type with same sync mechanism |
-| **Scalable** | More threads don't increase contention during execution |
-| **Deterministic for RT** | No locks or waits during thread execution |
+### Sync Functions Only
 
-## Migration Plan
+The only API addition is two sync functions:
+```c
+void hal_thread_sync_read(void);   // shared → local (start of cycle)
+void hal_thread_sync_write(void);  // local → shared (end of cycle, diff only)
+```
 
-### Phase 1: New API (Abstraction Layer)
+### RT Components: Zero Code Changes
 
-Introduce accessor functions that wrap current implementation for both **pins** and **parameters**. This creates the abstraction layer without changing behavior.
-
-#### Pin Accessors
+RT components require **no changes**. The RT thread executor calls sync
+functions automatically:
 
 ```c
-// hal_api.h - Pin accessor API
-
-// Getters
-static inline hal_bit_t hal_pin_get_bit(hal_bit_t **pin);
-static inline hal_float_t hal_pin_get_float(hal_float_t **pin);
-static inline hal_s32_t hal_pin_get_s32(hal_s32_t **pin);
-static inline hal_u32_t hal_pin_get_u32(hal_u32_t **pin);
-
-// Setters
-static inline void hal_pin_set_bit(hal_bit_t **pin, hal_bit_t value);
-static inline void hal_pin_set_float(hal_float_t **pin, hal_float_t value);
-static inline void hal_pin_set_s32(hal_s32_t **pin, hal_s32_t value);
-static inline void hal_pin_set_u32(hal_u32_t **pin, hal_u32_t value);
-```
-
-#### Parameter Accessors
-
-Parameters differ from pins - they use single pointers (not double pointers) and are not linked to signals.
-
-```c
-// hal_api.h - Parameter accessor API
-
-// Getters
-static inline hal_bit_t hal_param_get_bit(hal_bit_t *param);
-static inline hal_float_t hal_param_get_float(hal_float_t *param);
-static inline hal_s32_t hal_param_get_s32(hal_s32_t *param);
-static inline hal_u32_t hal_param_get_u32(hal_u32_t *param);
-
-// Setters
-static inline void hal_param_set_bit(hal_bit_t *param, hal_bit_t value);
-static inline void hal_param_set_float(hal_float_t *param, hal_float_t value);
-static inline void hal_param_set_s32(hal_s32_t *param, hal_s32_t value);
-static inline void hal_param_set_u32(hal_u32_t *param, hal_u32_t value);
-```
-
-#### Thread Sync Points
-
-```c
-// Thread sync points (no-op in Phase 1)
-static inline void hal_thread_sync_read(void);
-static inline void hal_thread_sync_write(void);
-```
-
-#### Phase 1 Implementation (thin wrappers)
-
-```c
-// Pins use double pointer
-static inline hal_float_t hal_pin_get_float(hal_float_t **pin) {
-    return **pin;  // Direct access - same as before
-}
-
-static inline void hal_pin_set_float(hal_float_t **pin, hal_float_t value) {
-    **pin = value;  // Direct access - same as before
-}
-
-// Parameters use single pointer
-static inline hal_float_t hal_param_get_float(hal_float_t *param) {
-    return *param;  // Direct access - same as before
-}
-
-static inline void hal_param_set_float(hal_float_t *param, hal_float_t value) {
-    *param = value;  // Direct access - same as before
-}
-
-static inline void hal_thread_sync_read(void) {
-    // No-op in Phase 1
-}
-
-static inline void hal_thread_sync_write(void) {
-    // No-op in Phase 1
-}
-```
-
-### Phase 2: Convert All Components
-
-Convert all HAL components to use the new API. This is a mechanical transformation.
-
-#### Pin Conversion Patterns
-
-```
-**pin             →  hal_pin_get_TYPE(&pin)
-**pin = value     →  hal_pin_set_TYPE(&pin, value)
-```
-
-#### Parameter Conversion Patterns
-
-```
-*param           →  hal_param_get_TYPE(&param)
-*param = value   →  hal_param_set_TYPE(&param, value)
-```
-
-#### Example Conversion
-
-**Before:**
-```c
-static hal_float_t *position_cmd;    // Pin (double pointer after hal_pin_new)
-static hal_float_t *position_fb;     // Pin
-static hal_bit_t *enable;            // Pin
-static hal_float_t scale;            // Parameter (direct value)
-
-static void update(void *arg, long period) {
-    if (*enable) {
-        *position_cmd = calculate_pos() * scale;
-        float fb = *position_fb;
-    }
-}
-```
-
-**After:**
-```c
-#include "hal_api.h"
-
-static hal_float_t *position_cmd;
-static hal_float_t *position_fb;
-static hal_bit_t *enable;
-static hal_float_t scale;
-
-static void update(void *arg, long period) {
-    hal_thread_sync_read();
+// In RT thread executor (hal_lib.c)
+void execute_thread(hal_thread_t *thread) {
+    hal_thread_sync_read();      // Added once here
     
-    if (hal_pin_get_bit(&enable)) {
-        float s = hal_param_get_float(&scale);
-        hal_pin_set_float(&position_cmd, calculate_pos() * s);
-        float fb = hal_pin_get_float(&position_fb);
+    for_each_function(f) {
+        f->funct(f->arg, period); // Component code UNCHANGED
     }
     
-    hal_thread_sync_write();
+    hal_thread_sync_write();     // Added once here
 }
 ```
 
-### Phase 3: Introduce Thread-Local HAL
+### Userspace Components: Add Sync Calls
 
-Replace the API implementation with thread-local storage. Components don't change - just recompile.
-
-#### Ensuring Non-Migrated Components Fail to Compile
-
-To detect components that weren't migrated, change the pin/param pointer types to opaque handles:
+Userspace components with their own main loop need sync calls added:
 
 ```c
-// Phase 3: Opaque handle prevents direct dereference
-typedef struct {
-    void *_opaque;  // Cannot dereference!
-} hal_pin_handle_t;
-
-typedef struct {
-    void *_opaque;
-} hal_param_handle_t;
-```
-
-Non-migrated code will fail:
-```c
-// Old code - COMPILER ERROR in Phase 3
-**pin = value;    // Error: cannot dereference 'void *'
-*param = value;   // Error: cannot dereference 'void *'
-
-// Migrated code - works fine
-hal_pin_set_float(&pin, value);
-hal_param_set_float(&param, value);
-```
-
-#### Thread-Local Implementation
-
-```c
-// Thread-local instance
-static __thread hal_thread_instance_t *tls_instance = NULL;
-
-typedef struct {
-    hal_data_t local_data;        // Local copy of HAL data
-    uint8_t *dirty_bitmap;        // Track modified data
-    size_t dirty_bitmap_size;
-    uint64_t sync_version;        // Track sync state
-    int thread_id;
-} hal_thread_instance_t;
-```
-
-#### Userspace Component Handling
-
-Userspace components manage their own loop and need explicit access to thread-local initialization:
-
-```c
-// hal_init() creates the thread-local copy for userspace components
-int hal_init(const char *name) {
-    int comp_id = hal_init_internal(name);
+// Before (unchanged logic):
+while (running) {
+    hal_thread_sync_read();      // ADD THIS
     
-    // Initialize thread-local instance for this component
-    tls_instance = hal_thread_instance_create();
+    // ... existing code unchanged ...
+    *(out->value) = process(*(in->value));
     
-    return comp_id;
-}
-
-// Userspace component example
-int main() {
-    int comp_id = hal_init("my-component");  // Creates thread-local copy
-    
-    hal_pin_float_new("my-component.output", HAL_OUT, &output_pin, comp_id);
-    
-    hal_ready(comp_id);
-    
-    while (!done) {
-        hal_thread_sync_read();   // Sync from master
-        
-        float value = hal_pin_get_float(&input_pin);
-        hal_pin_set_float(&output_pin, value * 2.0);
-        
-        hal_thread_sync_write();  // Sync to master
-        
-        usleep(1000);
-    }
-    
-    hal_exit(comp_id);
-    return 0;
+    hal_thread_sync_write();     // ADD THIS
+    usleep(period);
 }
 ```
 
-#### Realtime Component Handling
+### halcompile: Automatic for .comp Files
 
-For realtime components, the HAL thread infrastructure handles sync:
+The halcompile tool will generate sync calls in the userspace wrapper,
+so .comp files require **no changes**.
 
+### Python/Go Bindings: Transparent
+
+Bindings integrate sync into their read/write layer - user code unchanged.
+
+## Implementation Phases
+
+### Phase 1: API Foundation (Current)
+- Add `hal_thread_sync_read()` / `hal_thread_sync_write()` declarations to hal.h
+- Implement as no-ops (stubs)
+- Update documentation
+
+### Phase 2: Userspace Migration
+- Modify halcompile to generate sync calls for userspace .comp
+- Update Python halmodule.cc to integrate sync
+- Update Go hal-go bindings
+- Manually add sync to userspace C components
+
+### Phase 3: Full Implementation  
+- Implement thread-local buffer allocation
+- Implement double-buffer diff sync logic
+- Integrate into RT thread executor
+- Performance testing and optimization
+
+## Userspace Component Migration
+
+### Components Using halcompile (.comp files)
+**No changes required** - halcompile generates sync calls.
+
+### Components with Manual Main Loop
+Add sync calls to main loop. Known components requiring migration:
+
+| Component | File | Status |
+|-----------|------|--------|
+| shuttle | `src/hal/user_comps/shuttle.c` | Pending |
+| mb2hal | `src/hal/user_comps/mb2hal/` | Pending |
+| xhc-hb04 | `src/hal/user_comps/xhc-hb04.cc` | Pending |
+| VFD drivers | `src/hal/user_comps/*_vfd.c` | Pending |
+
+### Python Components
+**No changes required** - handled by halmodule.cc.
+
+### Go Components  
+**No changes required** - handled by hal-go bindings.
+
+## Double-Buffer Diff Performance
+
+Memory comparison is extremely fast on modern CPUs:
+- Sequential access pattern (cache-friendly)
+- Can use SIMD (AVX2/AVX-512) for 32-64 bytes per instruction
+- Typical HAL data: ~4KB → compare time: ~50-100 nanoseconds
+- Negligible compared to RT periods (typically 1ms+)
+
+Benefits over dirty-bitmap approach:
+- Zero overhead on writes during execution (latency-critical phase)
+- Simpler implementation (no bitmap management)
+- Better debugging (can inspect before/after state)
+
+## Language Bindings
+
+### halcompile (.comp files)
+Modify `src/hal/utils/halcompile.g` to generate sync calls in userspace
+component wrappers. RT components get sync from executor automatically.
+
+### Python (halmodule.cc)
+Integrate sync into `pyhal_read_common()` / `pyhal_write_common()` in
+`src/hal/halmodule.cc`. User code unchanged.
+
+### Go (hal-go)
+Add sync calls to the Go component's internal loop handling.
+User code unchanged.
+
+## Future Considerations: String Support
+
+HAL currently supports numeric types only. String support options for future:
+
+### Option A: HAL String Pin Type
 ```c
-// In HAL thread execution (hal_lib.c)
-static void hal_thread_execute(void *arg, long period) {
-    hal_thread_t *thread = arg;
-    
-    hal_thread_sync_read();  // Sync before running functions
-    
-    // Execute all functions attached to this thread
-    for (funct = thread->funct_list; funct; funct = funct->next) {
-        funct->funct(funct->arg, period);
-    }
-    
-    hal_thread_sync_write();  // Sync after all functions complete
-}
+typedef char hal_string_t[HAL_STRING_LEN];
+// Fixed-size buffer, sync'd like other pin types
 ```
 
-### Phase 4: Implement String Support
+### Option B: String Stream
+Use HAL's existing `hal_stream` mechanism for string data.
 
-With thread-local HAL in place, strings become straightforward for both pins and parameters.
+### Option C: External String Storage  
+Strings stored outside HAL, pins hold references/IDs only.
 
-#### String Pin API
+Decision deferred until after thread-local implementation is complete.
 
-```c
-typedef int hal_string_t;  // Handle to string in thread-local storage
+## Files Changed
 
-int hal_pin_string_new(const char *name, hal_pin_dir_t dir,
-                       hal_string_t **data_ptr_addr, int comp_id);
-
-size_t hal_string_get(hal_string_t *str, char *dest, size_t max_len);
-int hal_string_set(hal_string_t *str, const char *value);
-int hal_string_setf(hal_string_t *str, const char *fmt, ...)
-    __attribute__((format(printf, 2, 3)));
-size_t hal_string_len(hal_string_t *str);
-```
-
-#### String Parameter API
-
-```c
-int hal_param_string_new(const char *name, hal_param_dir_t dir,
-                         hal_string_t *data_addr, int comp_id);
-
-// For HAL_RW string params - settable via halcmd:
-// halcmd setp mycomp.description "Some text"
-```
-
-#### Implementation
-
-```c
-// String storage in thread-local instance
-typedef struct {
-    char *data;
-    size_t len;
-    size_t capacity;
-} hal_string_local_t;
-
-size_t hal_string_get(hal_string_t *str, char *dest, size_t max_len) {
-    hal_string_local_t *local = &tls_instance->strings[*str];
-    size_t copy_len = local->len < max_len ? local->len : max_len - 1;
-    memcpy(dest, local->data, copy_len);
-    dest[copy_len] = '\0';
-    return copy_len;
-}
-
-int hal_string_setf(hal_string_t *str, const char *fmt, ...) {
-    hal_string_local_t *local = &tls_instance->strings[*str];
-    va_list ap;
-    
-    // Calculate required size
-    va_start(ap, fmt);
-    int needed = vsnprintf(NULL, 0, fmt, ap);
-    va_end(ap);
-    
-    // Grow buffer if needed
-    if (needed + 1 > local->capacity) {
-        local->data = realloc(local->data, needed * 2 + 1);
-        local->capacity = needed * 2 + 1;
-    }
-    
-    // Format string
-    va_start(ap, fmt);
-    local->len = vsnprintf(local->data, local->capacity, fmt, ap);
-    va_end(ap);
-    
-    // Mark dirty for sync
-    bitmap_set(tls_instance->dirty_bitmap, STRING_DIRTY_BASE + *str);
-    
-    return local->len;
-}
-```
-
-#### Usage Example
-
-```c
-static hal_string_t *status_pin;
-static hal_string_t status_param;  // Parameter version
-
-hal_pin_string_new("mycomp.status", HAL_OUT, &status_pin, comp_id);
-hal_param_string_new("mycomp.description", HAL_RW, &status_param, comp_id);
-
-// In update function
-hal_string_setf(status_pin, "Temp=%.1f RPM=%d State=%s", temp, rpm, state_name);
-
-// Reader
-char buf[256];
-hal_string_get(other_status_pin, buf, sizeof(buf));
-```
-
-## HAL Streams
-
-HAL streams (`hal_stream_t`) are an **existing mechanism** for FIFO-based communication between components:
-
-```c
-typedef struct {
-    int comp_id, shmem_id;
-    struct hal_stream_shm *fifo;
-} hal_stream_t;
-
-int hal_stream_create(hal_stream_t *stream, int comp, int key, int depth, const char *typestring);
-int hal_stream_read(hal_stream_t *stream, union hal_stream_data *buf, unsigned *sampleno);
-int hal_stream_write(hal_stream_t *stream, union hal_stream_data *buf);
-```
-
-### Decision: Streams Remain Unchanged
-
-HAL streams are **already designed for asynchronous cross-component communication** with their own lock-free FIFO mechanism. They:
-
-- Have single reader / single writer semantics
-- Use atomic operations internally
-- Are independent of the pin/param synchronization model
-
-**Recommendation**: HAL streams do not need thread-local treatment and should remain unchanged. They already solve a different problem (streaming data) than pins/params (shared state).
-
-## Synchronization Details
-
-### Dirty Bitmap
-
-Track which data has been modified locally:
-
-```c
-typedef struct {
-    uint8_t *bitmap;
-    size_t size;
-} hal_dirty_bitmap_t;
-
-#define DIRTY_BIT_GRANULARITY 64  // Cache line size
-
-static inline void bitmap_set(uint8_t *bitmap, size_t index) {
-    bitmap[index / 8] |= (1 << (index % 8));
-}
-
-static inline bool bitmap_test(uint8_t *bitmap, size_t index) {
-    return bitmap[index / 8] & (1 << (index % 8));
-}
-```
-
-### Sync Implementation
-
-```c
-void hal_sync_from_master(hal_thread_instance_t *inst) {
-    hal_master_t *master = hal_master;
-    
-    uint64_t master_version = atomic_load(&master->version);
-    
-    if (master_version == inst->sync_version) {
-        return;  // Fast path - nothing changed
-    }
-    
-    // Copy changed regions from master to local
-    rtapi_mutex_get(&master->read_mutex);
-    memcpy(&inst->local_data, &master->data, sizeof(hal_data_t));
-    rtapi_mutex_give(&master->read_mutex);
-    
-    inst->sync_version = master_version;
-}
-
-void hal_sync_to_master(hal_thread_instance_t *inst) {
-    hal_master_t *master = hal_master;
-    
-    if (bitmap_is_empty(inst->dirty_bitmap)) {
-        return;  // Fast path - nothing to write
-    }
-    
-    rtapi_mutex_get(&master->write_mutex);
-    
-    // Only copy dirty regions
-    for_each_set_bit(bit, inst->dirty_bitmap) {
-        size_t offset = bit * DIRTY_BIT_GRANULARITY;
-        size_t size = DIRTY_BIT_GRANULARITY;
-        memcpy((char*)&master->data + offset,
-               (char*)&inst->local_data + offset,
-               size);
-    }
-    
-    atomic_fetch_add(&master->version, 1);
-    
-    rtapi_mutex_give(&master->write_mutex);
-    
-    bitmap_clear_all(inst->dirty_bitmap);
-}
-```
-
-### Write Conflict Policy
-
-When multiple threads write the same data, use **last write wins** (matching current HAL behavior):
-
-```c
-// Option 1: Last write wins (simple, current behavior)
-// - Just overwrite master with local dirty data
-// - No conflict detection
-```
-
-## Summary
-
-| Phase | Work | Risk | Deliverable |
-|-------|------|------|-------------|
-| 1 | Define API, thin wrappers for pins AND params | None | `hal_api.h` with accessor functions |
-| 2 | Convert all components | Low | All components use new API |
-| 3 | Thread-local implementation | Medium | Thread-safe HAL |
-| 4 | Add strings (pins and params) | Low | `hal_string_*` API |
-
-## HAL Entity Coverage
-
-| Entity | Phase 1 | Phase 2 | Phase 3 | Phase 4 |
-|--------|---------|---------|---------|---------|
-| Pins | `hal_pin_get/set_*` | Convert | Thread-local | String pins |
-| Parameters | `hal_param_get/set_*` | Convert | Thread-local | String params |
-| Signals | (via pins) | (via pins) | (via pins) | - |
-| Streams | Unchanged | Unchanged | Unchanged | Unchanged |
-
-## Open Questions
-
-1. **Granularity of dirty tracking**: Per-pin vs per-cache-line vs per-region?
-2. **String memory limits**: Maximum string length? Maximum number of string pins/params?
-3. **Halcmd integration**: How to display/set strings in halcmd?
-4. **Python bindings**: Extend halmodule.cc for string support?
-5. **Parameter sync direction**: Should HAL_RO params sync differently than HAL_RW?
-
-## References
-
-- Current HAL implementation: `src/hal/hal_lib.c`, `src/hal/hal.h`
-- HAL_PORT (existing streaming type): Lock-free ring buffer pattern
-- HAL_STREAM: Existing FIFO for sampler/streamer components
-- Thread-local storage: `__thread` keyword, POSIX thread-specific data
+| File | Change |
+|------|--------|
+| `src/hal/hal.h` | Add sync function declarations |
+| `src/hal/hal_lib.c` | Add sync function stub implementations |
+| `src/hal/hal_api.h` | **REMOVED** (accessor macros not needed) |
+| `THREAD_LOCAL_HAL.md` | Complete rewrite (this document) |
