@@ -70,6 +70,7 @@ linuxcnc-server (single Go process)
 | Task/IOControl | Linked as libraries | Minimal changes to existing code |
 | Configuration | Go parses INI, passes to components | Centralized config handling |
 | HAL loading | Execute existing HAL file commands | Reuse proven mechanism |
+| **HAL integration** | **Reuse existing hal-go** | **Existing package at src/hal/hal-go/ is complete and tested** |
 
 ---
 
@@ -94,9 +95,7 @@ linuxcnc/
 │   │   │   ├── rtapi.go             # Go wrapper
 │   │   │   └── rtapi_cgo.go         # cgo bindings
 │   │   │
-│   │   ├── hal/                     # HAL integration
-│   │   │   ├── hal.go               # Go wrapper
-│   │   │   ├── hal_cgo.go           # cgo bindings
+│   │   ├── halconfig/               # HAL configuration loading (uses existing hal-go)
 │   │   │   └── loader.go            # HAL file loader
 │   │   │
 │   │   ├── task/                    # Task controller integration
@@ -111,8 +110,6 @@ linuxcnc/
 │   │       ├── shim.h               # Common definitions
 │   │       ├── rtapi_shim.c         # RTAPI C shim
 │   │       ├── rtapi_shim.h
-│   │       ├── hal_shim.c           # HAL C shim
-│   │       ├── hal_shim.h
 │   │       ├── task_shim.c          # Task C shim
 │   │       ├── task_shim.h
 │   │       ├── iocontrol_shim.c     # IOControl C shim
@@ -178,7 +175,7 @@ import (
 	"syscall"
 
 	"linuxcnc/server/config"
-	"linuxcnc/server/hal"
+	"linuxcnc/server/halconfig"
 	"linuxcnc/server/iocontrol"
 	"linuxcnc/server/rtapi"
 	"linuxcnc/server/task"
@@ -256,19 +253,16 @@ func run(iniFile string, debug bool) error {
 
 	fmt.Println("RTAPI initialized")
 
-	// ===== Step 4: Initialize HAL =====
-	h, err := hal.Init(hal.Config{
-		ComponentName: "linuxcnc",
-	})
+	// ===== Step 4: Initialize HAL using existing hal-go package =====
+	halLoader, err := halconfig.NewLoader(cfg)
 	if err != nil {
 		return fmt.Errorf("hal init failed: %w", err)
 	}
-	defer h.Shutdown()
+	defer halLoader.Shutdown()
 
 	fmt.Println("HAL initialized")
 
 	// ===== Step 5: Load HAL configuration =====
-	halLoader := hal.NewLoader(h, cfg)
 	if err := halLoader.LoadFiles(cfg.HAL.Files); err != nil {
 		return fmt.Errorf("hal config failed: %w", err)
 	}
@@ -300,7 +294,7 @@ func run(iniFile string, debug bool) error {
 	fmt.Println("Task Controller initialized")
 
 	// ===== Step 8: Signal HAL ready =====
-	if err := h.Ready(); err != nil {
+	if err := halLoader.Ready(); err != nil {
 		return fmt.Errorf("hal ready failed: %w", err)
 	}
 
@@ -342,7 +336,11 @@ go 1.21
 require (
 	golang.org/x/sync v0.6.0
 	gopkg.in/ini.v1 v1.67.0
+	linuxcnc.org/hal v0.0.0  // Use the existing hal-go package
 )
+
+// Replace directive to use local hal-go package
+replace linuxcnc.org/hal => ../hal/hal-go
 ```
 
 ### 3.3 Configuration Package
@@ -776,107 +774,41 @@ int rtapi_shim_unloadrt(const char *name)
 ### 3.5 HAL Integration
 
 ```go
-// src/server/hal/hal.go
-package hal
-
-/*
-#cgo CFLAGS: -I${SRCDIR}/../../../hal -I${SRCDIR}/../../../rtapi
-#cgo LDFLAGS: -L${SRCDIR}/../../../lib -llinuxcnchal
-
-#include "hal_shim.h"
-#include <stdlib.h>
-*/
-import "C"
+// src/server/halconfig/loader.go
+package halconfig
 
 import (
-	"fmt"
-	"unsafe"
-)
-
-// Config holds HAL initialization parameters
-type Config struct {
-	ComponentName string
-}
-
-// HAL represents an initialized HAL instance
-type HAL struct {
-	config Config
-	id     C.int
-}
-
-// Init initializes the HAL subsystem
-func Init(cfg Config) (*HAL, error) {
-	name := C.CString(cfg.ComponentName)
-	defer C.free(unsafe.Pointer(name))
-
-	ret := C.hal_shim_init(name)
-	if ret < 0 {
-		return nil, fmt.Errorf("hal_init failed with code %d", ret)
-	}
-
-	return &HAL{
-		config: cfg,
-		id:     ret,
-	}, nil
-}
-
-// Shutdown cleanly shuts down HAL
-func (h *HAL) Shutdown() error {
-	ret := C.hal_shim_exit()
-	if ret < 0 {
-		return fmt.Errorf("hal_exit failed with code %d", ret)
-	}
-	return nil
-}
-
-// Ready signals that HAL setup is complete
-func (h *HAL) Ready() error {
-	ret := C.hal_shim_ready()
-	if ret < 0 {
-		return fmt.Errorf("hal_ready failed with code %d", ret)
-	}
-	return nil
-}
-
-// ExecuteCommand executes a HAL command string
-func (h *HAL) ExecuteCommand(cmd string) error {
-	ccmd := C.CString(cmd)
-	defer C.free(unsafe.Pointer(ccmd))
-
-	ret := C.hal_shim_execute_cmd(ccmd)
-	if ret < 0 {
-		return fmt.Errorf("hal command failed: %s", cmd)
-	}
-	return nil
-}
-```
-
-```go
-// src/server/hal/loader.go
-package hal
-
-import (
-	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
-	"strings"
 
+	"linuxcnc.org/hal"
 	"linuxcnc/server/config"
 )
 
 // Loader handles loading HAL configuration files
 type Loader struct {
-	hal    *HAL
+	comp   *hal.Component
 	config *config.Config
 }
 
 // NewLoader creates a new HAL configuration loader
-func NewLoader(h *HAL, cfg *config.Config) *Loader {
-	return &Loader{
-		hal:    h,
-		config: cfg,
+func NewLoader(cfg *config.Config) (*Loader, error) {
+	comp, err := hal.NewComponent("linuxcnc-server")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create HAL component: %w", err)
 	}
+
+	return &Loader{
+		comp:   comp,
+		config: cfg,
+	}, nil
+}
+
+// Component returns the underlying HAL component
+func (l *Loader) Component() *hal.Component {
+	return l.comp
 }
 
 // LoadFiles loads multiple HAL configuration files in order
@@ -896,182 +828,26 @@ func (l *Loader) LoadFiles(files []string) error {
 	return nil
 }
 
-// loadFile loads a single HAL file
+// loadFile loads a single HAL file by executing halcmd
 func (l *Loader) loadFile(path string) error {
-	file, err := os.Open(path)
+	cmd := exec.Command("halcmd", "-f", path)
+	cmd.Env = append(os.Environ(), fmt.Sprintf("INI_FILE_NAME=%s", l.config.IniPath))
+	
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return err
+		return fmt.Errorf("halcmd failed: %s: %w", string(output), err)
 	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	lineNo := 0
-
-	for scanner.Scan() {
-		lineNo++
-		line := strings.TrimSpace(scanner.Text())
-
-		// Skip empty lines and comments
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		// Substitute INI variables [SECTION]KEY
-		line = l.substituteIniVars(line)
-
-		// Execute the HAL command
-		if err := l.hal.ExecuteCommand(line); err != nil {
-			return fmt.Errorf("line %d: %w", lineNo, err)
-		}
-	}
-
-	return scanner.Err()
+	return nil
 }
 
-// substituteIniVars replaces [SECTION]KEY patterns with INI values
-func (l *Loader) substituteIniVars(line string) string {
-	// Pattern: [SECTION]KEY or [SECTION](KEY)
-	// This is a simplified implementation
-	// Full implementation should handle all HAL substitution patterns
-
-	result := line
-
-	// Simple regex-free approach for common patterns
-	for {
-		start := strings.Index(result, "[")
-		if start < 0 {
-			break
-		}
-
-		end := strings.Index(result[start:], "]")
-		if end < 0 {
-			break
-		}
-		end += start
-
-		section := result[start+1 : end]
-
-		// Check for KEY after ]
-		rest := result[end+1:]
-		keyEnd := strings.IndexAny(rest, " \t,;")
-		if keyEnd < 0 {
-			keyEnd = len(rest)
-		}
-		key := rest[:keyEnd]
-
-		// Look up in config
-		sectionData := l.config.GetSection(section)
-		if sectionData != nil {
-			if val, ok := sectionData[key]; ok {
-				pattern := fmt.Sprintf("[%s]%s", section, key)
-				result = strings.Replace(result, pattern, val, 1)
-				continue
-			}
-		}
-
-		// No substitution found, move past this bracket
-		break
-	}
-
-	return result
-}
-```
-
-```c
-// src/server/shim/hal_shim.h
-#ifndef HAL_SHIM_H
-#define HAL_SHIM_H
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-/*
- * HAL Shim Layer
- *
- * Provides a clean C interface for Go's cgo to call HAL functions.
- */
-
-/* Initialize HAL component
- * Returns: component ID on success, negative error code on failure
- */
-int hal_shim_init(const char *component_name);
-
-/* Exit HAL component
- * Returns: 0 on success, negative error code on failure
- */
-int hal_shim_exit(void);
-
-/* Signal HAL component is ready
- * Returns: 0 on success, negative error code on failure
- */
-int hal_shim_ready(void);
-
-/* Execute a HAL command (like halcmd)
- * Returns: 0 on success, negative error code on failure
- */
-int hal_shim_execute_cmd(const char *cmd);
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif /* HAL_SHIM_H */
-```
-
-```c
-// src/server/shim/hal_shim.c
-#include "hal_shim.h"
-#include "hal.h"
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-
-static int hal_comp_id = -1;
-
-int hal_shim_init(const char *component_name)
-{
-    hal_comp_id = hal_init(component_name);
-    if (hal_comp_id < 0) {
-        fprintf(stderr, "hal_shim: hal_init(%s) failed: %d\n",
-                component_name, hal_comp_id);
-        return hal_comp_id;
-    }
-    return hal_comp_id;
+// Ready marks the HAL component as ready
+func (l *Loader) Ready() error {
+	return l.comp.Ready()
 }
 
-int hal_shim_exit(void)
-{
-    if (hal_comp_id < 0) {
-        return 0;
-    }
-
-    int ret = hal_exit(hal_comp_id);
-    hal_comp_id = -1;
-    return ret;
-}
-
-int hal_shim_ready(void)
-{
-    if (hal_comp_id < 0) {
-        return -1;
-    }
-    return hal_ready(hal_comp_id);
-}
-
-int hal_shim_execute_cmd(const char *cmd)
-{
-    // Delegate to halcmd for now
-    // TODO: Implement direct HAL command parsing/execution
-    char halcmd[2048];
-    snprintf(halcmd, sizeof(halcmd), "halcmd %s", cmd);
-
-    int ret = system(halcmd);
-    if (ret != 0) {
-        fprintf(stderr, "hal_shim: command failed: %s\n", cmd);
-        return -1;
-    }
-    return 0;
+// Shutdown cleans up HAL resources
+func (l *Loader) Shutdown() error {
+	return l.comp.Exit()
 }
 ```
 
@@ -2120,10 +1896,10 @@ net zpos-fb joint.2.motor-pos-fb <= joint.2.motor-pos-cmd
 | 1.1 | Create `src/server/` directory structure | ☐ |
 | 1.2 | Create Go module (`go.mod`, `go.sum`) | ☐ |
 | 1.3 | Implement configuration package | ☐ |
-| 1.4 | Implement C shim layer | ☐ |
+| 1.4 | Implement C shim layer (RTAPI, Task, IOControl only) | ☐ |
 | 1.5 | Implement RTAPI Go wrapper | ☐ |
-| 1.6 | Implement HAL Go wrapper | ☐ |
-| 1.7 | Implement HAL file loader | ☐ |
+| 1.6 | Integrate with existing hal-go package | ☐ |
+| 1.7 | Implement HAL config loader (using hal-go) | ☐ |
 | 1.8 | Modify `emctaskmain.cc` | ☐ |
 | 1.9 | Implement Task Go wrapper | ☐ |
 | 1.10 | Modify `ioControl.cc` | ☐ |
@@ -2156,18 +1932,141 @@ If issues are encountered:
 
 ---
 
-## 8. Future Phases (Out of Scope)
+## 8. Future Phases
 
-The following items are explicitly **not** part of Phase 1:
+The following items are explicitly **not** part of Phase 1 but represent the long-term architectural vision:
 
-| Item | Target Phase |
-|------|--------------|
-| New client API (JSON/Protobuf) | Phase 2 |
-| WebSocket support | Phase 2 |
-| NML removal | Phase 3 |
-| Task controller C rewrite | Phase 4+ |
-| IOControl C rewrite | Phase 4+ |
-| Web-based UI | Phase 4+ |
+### 8.1 Why Go for Userspace Components
+
+The Task Controller, IO Controller, and G-code Interpreter are **not real-time critical**:
+
+| Component | Cycle Time | Real-time? | Go Suitable? |
+|-----------|------------|------------|--------------|
+| Motion Controller | 1ms (1kHz) | Yes | No - keep in C |
+| Trajectory Planner | 1ms | Yes | No - keep in C |
+| HAL servo thread | 1ms | Yes | No - keep in C |
+| **Task Controller** | 10ms | No | **Yes** |
+| **IO Controller** | 100ms | No | **Yes** |
+| **G-code Interpreter** | On-demand | No | **Yes** |
+
+Go's garbage collection pauses (typically <1ms) are negligible compared to 10-100ms cycle times.
+
+### 8.2 Phase Roadmap
+
+| Phase | Description | Estimated Effort |
+|-------|-------------|------------------|
+| Phase 2 | Modern API Layer (JSON/WebSocket alongside NML) | 4-6 weeks |
+| Phase 3 | IO Controller Rewrite (Go) | 2-4 weeks |
+| Phase 4 | Task Controller Rewrite (Go) | 4-8 weeks |
+| Phase 5 | G-code Interpreter Rewrite (Go) | 8-16 weeks |
+| Phase 6 | NML Replacement (gRPC or modern IPC) | 4-6 weeks |
+| Phase 7 | Web-based UI (Optional) | 8-12 weeks |
+
+### 8.3 Phase 2: Modern API Layer
+- Add JSON/WebSocket API alongside NML
+- Go-native API implementation
+- NML preserved for legacy UI compatibility
+- Enables new UI development
+
+### 8.4 Phase 3: IO Controller Rewrite (Go)
+- Simplest component to rewrite (~1,500 lines C++ → ~800 lines Go)
+- Clear interfaces (NML commands in, HAL pins out)
+- Good test case for the Go rewrite approach
+- Tool table management
+- Coolant, lube, spindle control
+
+### 8.5 Phase 4: Task Controller Rewrite (Go)
+- State machine managing machine modes
+- Coordinates motion, IO, and interpreter
+- Command queue management
+- Error handling and recovery
+- Leverage lessons learned from Phase 3
+
+### 8.6 Phase 5: G-code Interpreter Rewrite (Go)
+- Largest component (~15,000 lines C++ → ~8,000 lines Go estimated)
+- Use modern parser generator (PEG or ANTLR)
+- Dramatically improved error messages with line/column info
+- Opportunity to add modern features:
+  - Better expression evaluation
+  - Debugging support (breakpoints, stepping)
+  - Improved subroutine handling
+- RS274NGC specification compliance tests
+
+### 8.7 Phase 6: NML Replacement
+- Replace NML with modern IPC:
+  - Option A: gRPC (cross-language, well-tooled)
+  - Option B: NATS (lightweight, pub/sub)
+  - Option C: Custom shared memory + Go channels
+- All UIs migrate to new API
+- NML compatibility layer for transition period
+- Eventually remove NML entirely
+
+### 8.8 Phase 7: Web-based UI (Optional)
+- Modern web UI using new API
+- Mobile-friendly responsive design
+- Real-time updates via WebSocket
+- Can run on separate device (tablet, phone)
+
+### 8.9 Long-term Target Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    linuxcnc-server (Go)                      │
+├─────────────────────────────────────────────────────────────┤
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+│  │   Task      │  │     IO      │  │    G-code           │  │
+│  │ Controller  │  │ Controller  │  │   Interpreter       │  │
+│  │   (Go)      │  │    (Go)     │  │      (Go)           │  │
+│  └──────┬──────┘  └──────┬──────┘  └──────────┬──────────┘  │
+│         │                │                     │             │
+│  ┌──────┴────────────────┴─────────────────────┴──────────┐  │
+│  │              Internal Go Channels / API                │  │
+│  └──────┬────────────────┬─────────────────────┬──────────┘  │
+│         │                │                     │             │
+│  ┌──────┴──────┐  ┌──────┴──────┐  ┌──────────┴──────────┐  │
+│  │  HAL (CGO)  │  │ Motion API  │  │   External API      │  │
+│  │  hal-go pkg │  │   (CGO)     │  │ (gRPC/WebSocket)    │  │
+│  └──────┬──────┘  └──────┬──────┘  └──────────┬──────────┘  │
+├─────────┼────────────────┼─────────────────────┼─────────────┤
+│         ↓                ↓                     ↓             │
+│    HAL Shared      Motion Module          UIs / Clients      │
+│     Memory         (C, real-time)         (any language)     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 8.10 Benefits of Go Rewrite
+
+| Benefit | Description |
+|---------|-------------|
+| Memory Safety | Eliminates buffer overflows, use-after-free, memory leaks |
+| Concurrency | Goroutines and channels simpler than pthreads |
+| Code Clarity | Estimated 30-50% code reduction |
+| Error Handling | Explicit error returns easier to trace |
+| Testing | Built-in testing framework |
+| Maintainability | Easier to onboard new contributors |
+| Modern APIs | Native JSON/Protobuf/gRPC support |
+| Single Binary | Simplified deployment |
+
+### 8.11 Prerequisites for Successful Rewrite
+
+1. **Comprehensive Test Suite**
+   - Collect real-world G-code programs for testing
+   - Create conformance tests from RS274NGC specification
+   - Automated regression testing comparing Go vs C output
+
+2. **Parallel Operation Period**
+   - Run Go and C versions side-by-side during transition
+   - Compare outputs for identical inputs
+   - Gradual cutover with fallback capability
+
+3. **Clear Interface Definitions**
+   - Define clean Go interfaces first
+   - Allows swapping implementations (C via CGO or pure Go)
+
+4. **Performance Benchmarks**
+   - Establish baseline metrics with C version
+   - Ensure Go version meets performance requirements
+   - Profile and optimize hot paths if needed
 
 ---
 
@@ -2210,3 +2109,4 @@ The following items are explicitly **not** part of Phase 1:
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-02-16 | - | Initial document |
+| 1.1 | 2026-02-17 | - | Updated to use existing hal-go package; revised future phases for Go rewrites |
