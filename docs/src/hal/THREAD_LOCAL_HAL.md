@@ -289,6 +289,34 @@ while running:
 - The framework knows exactly when execution starts and ends
 - Therefore, sync can be automatic
 
+## Why Full Thread-Local (Not Hybrid)?
+
+During the design phase, we considered a hybrid approach where numeric pins could optionally use direct shared memory access (backward compatible) while string pins would require thread-local storage.
+
+**We chose full thread-local for all pin types because of fail-fast behavior:**
+
+| Approach | Forgotten Sync Behavior | Bug Detection |
+|----------|------------------------|---------------|
+| **Hybrid (direct fallback)** | Works, but with race conditions | Silent bugs, hard to find |
+| **Full Thread-Local** | Pins read as initial values (0, false, "") | **Obvious failure**, easy to detect |
+
+**Example of fail-fast detection:**
+```python
+# Component that forgot sync_read():
+while True:
+    h['out'] = h['in'] * 2  # h['in'] is always 0!
+    h.sync_write()
+    time.sleep(0.001)
+# User immediately notices: "Why is my output always 0?"
+```
+
+**Benefits of full thread-local:**
+- All pin types behave consistently (no special cases for strings vs. numerics)
+- Bugs are obvious - forgotten sync = zero/empty values
+- Simpler mental model: "call sync, period"
+- Future-proof for new pin types
+- No legacy "direct mode" code paths to maintain
+
 ## Implementation Phases
 
 The migration will happen in phases to minimize disruption:
@@ -477,13 +505,92 @@ except KeyboardInterrupt:
     pass  # Clean shutdown
 ```
 
+## Advanced Sync Patterns
+
+### Read-Only Components
+
+A powerful feature of manual sync is the ability to create **intentionally read-only components** by only calling `sync_read()`:
+
+```python
+# Read-only monitoring component - never writes to HAL
+import hal
+import time
+
+h = hal.component("monitor")
+h.newpin("axis-x-pos", hal.HAL_FLOAT, hal.HAL_IN)
+h.newpin("axis-y-pos", hal.HAL_FLOAT, hal.HAL_IN)
+h.newpin("spindle-speed", hal.HAL_FLOAT, hal.HAL_IN)
+h.ready()
+
+while True:
+    h.sync_read()  # Only sync_read - component is guaranteed read-only
+    
+    # Log, display, or transmit data - but never modify HAL state
+    log_position(h['axis-x-pos'], h['axis-y-pos'])
+    update_display(h['spindle-speed'])
+    
+    # No sync_write() - this component cannot affect machine state
+    time.sleep(0.1)
+```
+
+**Benefits:**
+- **Explicit constraint**: The component is architecturally prevented from writing
+- **Safety**: Even if code accidentally sets an output pin, it won't propagate to HAL
+- **Documentation**: The missing `sync_write()` clearly signals intent
+
+### Write-Only Components (Rare)
+
+Similarly, a component that only generates outputs could use only `sync_write()`:
+
+```python
+# Signal generator - produces output without reading inputs
+while True:
+    h['signal'] = math.sin(time.time() * frequency)
+    h.sync_write()  # Only sync_write - doesn't need external inputs
+    time.sleep(0.001)
+```
+
+### Multiple Sync Points
+
+For components with distinct processing phases:
+
+```c
+void user_mainloop(void) {
+    while(1) {
+        // Phase 1: Read sensors
+        hal_thread_sync_read();
+        sensor_data = process_inputs();
+        
+        // Phase 2: Complex calculation (may take time)
+        result = complex_calculation(sensor_data);
+        
+        // Phase 3: Write outputs
+        set_outputs(result);
+        hal_thread_sync_write();
+        
+        // Optional: Mid-cycle sync for time-critical feedback
+        // hal_thread_sync_read();
+        // hal_thread_sync_write();
+        
+        usleep(1000);
+    }
+}
+```
+
 ## Frequently Asked Questions
 
 ### Q: Do I need to change my RT component code?
 **A:** No. RT components have sync handled automatically by the executor.
 
 ### Q: What happens if I forget sync calls in userspace components?
-**A:** In Phase 1, nothing - sync is currently a no-op. In Phase 4, your component will see stale data from the last sync.
+**A:** This depends on the current phase:
+- **Phase 1-3:** Nothing - sync is currently a no-op, component works normally
+- **Phase 4+:** Your component will read initial/zero values for all input pins, and output pins will never update in HAL
+
+This "fail-fast" behavior is intentional - it makes forgotten sync calls **obvious and easy to detect** rather than creating subtle race conditions. If your component reads all zeros or your outputs don't change, check your sync calls first!
+
+### Q: Can I create a read-only component?
+**A:** Yes! By only calling `sync_read()` and omitting `sync_write()`, you create a component that is architecturally prevented from modifying HAL state. This is useful for monitoring, logging, or display components. See "Advanced Sync Patterns" section.
 
 ### Q: Can I call sync in the middle of my loop?
 **A:** Yes, but typically you want sync at the boundaries (start/end). Multiple syncs per cycle add overhead.
