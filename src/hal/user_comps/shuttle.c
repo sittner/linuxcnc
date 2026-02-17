@@ -170,7 +170,8 @@ int read_update(struct shuttle *s) {
             int diff_count = curr_count - s->prev_count;
             if (diff_count > 128) diff_count -= 256;
             if (diff_count < -128) diff_count += 256;
-            hal_pin_set_s32(&s->hal->counts, hal_pin_get_s32(&s->hal->counts) + diff_count);
+            hal_s32_t total_counts = hal_pin_get_s32(&s->hal->counts) + diff_count;
+            hal_pin_set_s32(&s->hal->counts, total_counts);
             s->prev_count = curr_count;
         }
     }

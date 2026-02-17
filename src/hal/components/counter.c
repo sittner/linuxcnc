@@ -222,8 +222,8 @@ static void capture(void *arg, long period)
 	/* capture raw counts to latches */
         raw_count = hal_pin_get_s32(&cntr->raw_count);
 	/* compute count relative to last index pulse */
-	int indexed_count = raw_count - cntr->last_index_count;
-	hal_pin_set_s32(&cntr->count, indexed_count);
+	int count_since_index = raw_count - cntr->last_index_count;
+	hal_pin_set_s32(&cntr->count, count_since_index);
         counts = (raw_count - cntr->last_count);
         cntr->last_count = raw_count;
 
@@ -242,7 +242,7 @@ static void capture(void *arg, long period)
 	    cntr->scale = 1.0 / current_pos_scale;
 	}
 	/* scale count to make floating point position */
-	hal_pin_set_float(&cntr->pos, indexed_count * cntr->scale);
+	hal_pin_set_float(&cntr->pos, count_since_index * cntr->scale);
 	/* scale counts to make floating point velocity */
         hal_pin_set_float(&cntr->vel, counts * cntr->scale * 1e9 / period);
 
