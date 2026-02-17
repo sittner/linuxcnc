@@ -37,11 +37,11 @@ Each thread maintains a local copy of HAL data. Synchronization with a master co
 ### Thread Loop Model
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  1. hal_thread_sync_read()  - pull changes from master      │
-│  2. ... thread work (all reads/writes to local copy) ...    │
-│  3. hal_thread_sync_write() - push dirty data to master     │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│  1. hal_thread_sync_read()  - pull changes from master          │
+│  2. ... thread work (all reads/writes to local copy) ...        │
+│  3. hal_thread_sync_write() - push dirty data to master         │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ### Benefits
@@ -59,10 +59,12 @@ Each thread maintains a local copy of HAL data. Synchronization with a master co
 
 ### Phase 1: New API (Abstraction Layer)
 
-Introduce accessor functions that wrap current implementation. This creates the abstraction layer without changing behavior.
+Introduce accessor functions that wrap current implementation for both **pins** and **parameters**. This creates the abstraction layer without changing behavior.
+
+#### Pin Accessors
 
 ```c
-// hal_api.h - New accessor API
+// hal_api.h - Pin accessor API
 
 // Getters
 static inline hal_bit_t hal_pin_get_bit(hal_bit_t **pin);
@@ -75,21 +77,55 @@ static inline void hal_pin_set_bit(hal_bit_t **pin, hal_bit_t value);
 static inline void hal_pin_set_float(hal_float_t **pin, hal_float_t value);
 static inline void hal_pin_set_s32(hal_s32_t **pin, hal_s32_t value);
 static inline void hal_pin_set_u32(hal_u32_t **pin, hal_u32_t value);
+```
 
+#### Parameter Accessors
+
+Parameters differ from pins - they use single pointers (not double pointers) and are not linked to signals.
+
+```c
+// hal_api.h - Parameter accessor API
+
+// Getters
+static inline hal_bit_t hal_param_get_bit(hal_bit_t *param);
+static inline hal_float_t hal_param_get_float(hal_float_t *param);
+static inline hal_s32_t hal_param_get_s32(hal_s32_t *param);
+static inline hal_u32_t hal_param_get_u32(hal_u32_t *param);
+
+// Setters
+static inline void hal_param_set_bit(hal_bit_t *param, hal_bit_t value);
+static inline void hal_param_set_float(hal_float_t *param, hal_float_t value);
+static inline void hal_param_set_s32(hal_s32_t *param, hal_s32_t value);
+static inline void hal_param_set_u32(hal_u32_t *param, hal_u32_t value);
+```
+
+#### Thread Sync Points
+
+```c
 // Thread sync points (no-op in Phase 1)
 static inline void hal_thread_sync_read(void);
 static inline void hal_thread_sync_write(void);
 ```
 
-**Phase 1 Implementation** (thin wrappers over existing behavior):
+#### Phase 1 Implementation (thin wrappers)
 
 ```c
+// Pins use double pointer
 static inline hal_float_t hal_pin_get_float(hal_float_t **pin) {
     return **pin;  // Direct access - same as before
 }
 
 static inline void hal_pin_set_float(hal_float_t **pin, hal_float_t value) {
     **pin = value;  // Direct access - same as before
+}
+
+// Parameters use single pointer
+static inline hal_float_t hal_param_get_float(hal_float_t *param) {
+    return *param;  // Direct access - same as before
+}
+
+static inline void hal_param_set_float(hal_float_t *param, hal_float_t value) {
+    *param = value;  // Direct access - same as before
 }
 
 static inline void hal_thread_sync_read(void) {
@@ -103,17 +139,34 @@ static inline void hal_thread_sync_write(void) {
 
 ### Phase 2: Convert All Components
 
-Convert all HAL components to use the new API. This is a mechanical transformation:
+Convert all HAL components to use the new API. This is a mechanical transformation.
+
+#### Pin Conversion Patterns
+
+```
+**pin             →  hal_pin_get_TYPE(&pin)
+**pin = value     →  hal_pin_set_TYPE(&pin, value)
+```
+
+#### Parameter Conversion Patterns
+
+```
+*param           →  hal_param_get_TYPE(&param)
+*param = value   →  hal_param_set_TYPE(&param, value)
+```
+
+#### Example Conversion
 
 **Before:**
 ```c
-static hal_float_t *position_cmd;
-static hal_float_t *position_fb;
-static hal_bit_t *enable;
+static hal_float_t *position_cmd;    // Pin (double pointer after hal_pin_new)
+static hal_float_t *position_fb;     // Pin
+static hal_bit_t *enable;            // Pin
+static hal_float_t scale;            // Parameter (direct value)
 
 static void update(void *arg, long period) {
     if (*enable) {
-        *position_cmd = calculate_pos();
+        *position_cmd = calculate_pos() * scale;
         float fb = *position_fb;
     }
 }
@@ -126,12 +179,14 @@ static void update(void *arg, long period) {
 static hal_float_t *position_cmd;
 static hal_float_t *position_fb;
 static hal_bit_t *enable;
+static hal_float_t scale;
 
 static void update(void *arg, long period) {
     hal_thread_sync_read();
     
     if (hal_pin_get_bit(&enable)) {
-        hal_pin_set_float(&position_cmd, calculate_pos());
+        float s = hal_param_get_float(&scale);
+        hal_pin_set_float(&position_cmd, calculate_pos() * s);
         float fb = hal_pin_get_float(&position_fb);
     }
     
@@ -139,19 +194,13 @@ static void update(void *arg, long period) {
 }
 ```
 
-**Conversion patterns:**
-```
-*pin              →  hal_pin_get_TYPE(&pin)
-*pin = value      →  hal_pin_set_TYPE(&pin, value)
-```
-
 ### Phase 3: Introduce Thread-Local HAL
 
 Replace the API implementation with thread-local storage. Components don't change - just recompile.
 
-**Ensuring Non-Migrated Components Fail to Compile:**
+#### Ensuring Non-Migrated Components Fail to Compile
 
-To detect components that weren't migrated, change the pin pointer type to an opaque handle:
+To detect components that weren't migrated, change the pin/param pointer types to opaque handles:
 
 ```c
 // Phase 3: Opaque handle prevents direct dereference
@@ -159,21 +208,23 @@ typedef struct {
     void *_opaque;  // Cannot dereference!
 } hal_pin_handle_t;
 
-// Change pin creation to return handle
-int hal_pin_float_new(const char *name, hal_pin_dir_t dir,
-    hal_pin_handle_t *handle, int comp_id);
+typedef struct {
+    void *_opaque;
+} hal_param_handle_t;
 ```
 
 Non-migrated code will fail:
 ```c
 // Old code - COMPILER ERROR in Phase 3
-**pin = value;  // Error: cannot dereference 'void *'
+**pin = value;    // Error: cannot dereference 'void *'
+*param = value;   // Error: cannot dereference 'void *'
 
 // Migrated code - works fine
-hal_pin_set_float(pin, value);
+hal_pin_set_float(&pin, value);
+hal_param_set_float(&param, value);
 ```
 
-**Thread-Local Implementation:**
+#### Thread-Local Implementation
 
 ```c
 // Thread-local instance
@@ -186,29 +237,9 @@ typedef struct {
     uint64_t sync_version;        // Track sync state
     int thread_id;
 } hal_thread_instance_t;
-
-static inline hal_float_t hal_pin_get_float(hal_pin_handle_t *pin) {
-    // Read from thread-local copy
-    return tls_instance->local_data.pins[pin->index].value.f;
-}
-
-static inline void hal_pin_set_float(hal_pin_handle_t *pin, hal_float_t value) {
-    // Write to thread-local copy
-    tls_instance->local_data.pins[pin->index].value.f = value;
-    // Mark dirty for sync
-    bitmap_set(tls_instance->dirty_bitmap, pin->dirty_index);
-}
-
-static inline void hal_thread_sync_read(void) {
-    hal_sync_from_master(tls_instance);
-}
-
-static inline void hal_thread_sync_write(void) {
-    hal_sync_to_master(tls_instance);
-}
 ```
 
-**Userspace Component Handling:**
+#### Userspace Component Handling
 
 Userspace components manage their own loop and need explicit access to thread-local initialization:
 
@@ -221,14 +252,6 @@ int hal_init(const char *name) {
     tls_instance = hal_thread_instance_create();
     
     return comp_id;
-}
-
-// hal_exit() cleans up thread-local copy
-void hal_exit(int comp_id) {
-    hal_thread_instance_destroy(tls_instance);
-    tls_instance = NULL;
-    
-    hal_exit_internal(comp_id);
 }
 
 // Userspace component example
@@ -250,12 +273,12 @@ int main() {
         usleep(1000);
     }
     
-    hal_exit(comp_id);  // Cleanup thread-local copy
+    hal_exit(comp_id);
     return 0;
 }
 ```
 
-**Realtime Component Handling:**
+#### Realtime Component Handling
 
 For realtime components, the HAL thread infrastructure handles sync:
 
@@ -277,19 +300,13 @@ static void hal_thread_execute(void *arg, long period) {
 
 ### Phase 4: Implement String Support
 
-With thread-local HAL in place, strings become straightforward:
+With thread-local HAL in place, strings become straightforward for both pins and parameters.
+
+#### String Pin API
 
 ```c
 typedef int hal_string_t;  // Handle to string in thread-local storage
 
-// String storage in thread-local instance
-typedef struct {
-    char *data;
-    size_t len;
-    size_t capacity;
-} hal_string_local_t;
-
-// API
 int hal_pin_string_new(const char *name, hal_pin_dir_t dir,
                        hal_string_t **data_ptr_addr, int comp_id);
 
@@ -300,9 +317,26 @@ int hal_string_setf(hal_string_t *str, const char *fmt, ...)
 size_t hal_string_len(hal_string_t *str);
 ```
 
-**Implementation:**
+#### String Parameter API
 
 ```c
+int hal_param_string_new(const char *name, hal_param_dir_t dir,
+                         hal_string_t *data_addr, int comp_id);
+
+// For HAL_RW string params - settable via halcmd:
+// halcmd setp mycomp.description "Some text"
+```
+
+#### Implementation
+
+```c
+// String storage in thread-local instance
+typedef struct {
+    char *data;
+    size_t len;
+    size_t capacity;
+} hal_string_local_t;
+
 size_t hal_string_get(hal_string_t *str, char *dest, size_t max_len) {
     hal_string_local_t *local = &tls_instance->strings[*str];
     size_t copy_len = local->len < max_len ? local->len : max_len - 1;
@@ -338,12 +372,14 @@ int hal_string_setf(hal_string_t *str, const char *fmt, ...) {
 }
 ```
 
-**Usage Example:**
+#### Usage Example
 
 ```c
 static hal_string_t *status_pin;
+static hal_string_t status_param;  // Parameter version
 
 hal_pin_string_new("mycomp.status", HAL_OUT, &status_pin, comp_id);
+hal_param_string_new("mycomp.description", HAL_RW, &status_param, comp_id);
 
 // In update function
 hal_string_setf(status_pin, "Temp=%.1f RPM=%d State=%s", temp, rpm, state_name);
@@ -352,6 +388,31 @@ hal_string_setf(status_pin, "Temp=%.1f RPM=%d State=%s", temp, rpm, state_name);
 char buf[256];
 hal_string_get(other_status_pin, buf, sizeof(buf));
 ```
+
+## HAL Streams
+
+HAL streams (`hal_stream_t`) are an **existing mechanism** for FIFO-based communication between components:
+
+```c
+typedef struct {
+    int comp_id, shmem_id;
+    struct hal_stream_shm *fifo;
+} hal_stream_t;
+
+int hal_stream_create(hal_stream_t *stream, int comp, int key, int depth, const char *typestring);
+int hal_stream_read(hal_stream_t *stream, union hal_stream_data *buf, unsigned *sampleno);
+int hal_stream_write(hal_stream_t *stream, union hal_stream_data *buf);
+```
+
+### Decision: Streams Remain Unchanged
+
+HAL streams are **already designed for asynchronous cross-component communication** with their own lock-free FIFO mechanism. They:
+
+- Have single reader / single writer semantics
+- Use atomic operations internally
+- Are independent of the pin/param synchronization model
+
+**Recommendation**: HAL streams do not need thread-local treatment and should remain unchanged. They already solve a different problem (streaming data) than pins/params (shared state).
 
 ## Synchronization Details
 
@@ -365,7 +426,6 @@ typedef struct {
     size_t size;
 } hal_dirty_bitmap_t;
 
-// One bit per cache line (or per pin/signal for finer granularity)
 #define DIRTY_BIT_GRANULARITY 64  // Cache line size
 
 static inline void bitmap_set(uint8_t *bitmap, size_t index) {
@@ -374,10 +434,6 @@ static inline void bitmap_set(uint8_t *bitmap, size_t index) {
 
 static inline bool bitmap_test(uint8_t *bitmap, size_t index) {
     return bitmap[index / 8] & (1 << (index % 8));
-}
-
-static inline void bitmap_clear_all(uint8_t *bitmap, size_t size) {
-    memset(bitmap, 0, size);
 }
 ```
 
@@ -429,49 +485,43 @@ void hal_sync_to_master(hal_thread_instance_t *inst) {
 
 ### Write Conflict Policy
 
-When multiple threads write the same data:
+When multiple threads write the same data, use **last write wins** (matching current HAL behavior):
 
 ```c
 // Option 1: Last write wins (simple, current behavior)
 // - Just overwrite master with local dirty data
 // - No conflict detection
-
-// Option 2: Detect and warn
-void hal_sync_to_master_detect_conflicts(hal_thread_instance_t *inst) {
-    for_each_dirty(bit) {
-        if (master_modified_since_our_read(bit)) {
-            rtapi_print_msg(RTAPI_MSG_WARN,
-                "HAL: Write conflict detected at offset %zu\n", bit);
-        }
-        // Still write, but warn
-    }
-}
-
-// Option 3: Priority-based (RT threads win)
-// - Track writer priority per region
-// - Lower priority writes discarded if higher priority wrote
 ```
-
-Recommended: Start with **Option 1** (last write wins) for simplicity, matching current HAL behavior.
 
 ## Summary
 
 | Phase | Work | Risk | Deliverable |
 |-------|------|------|-------------|
-| 1 | Define API, thin wrappers | None | `hal_api.h` with accessor functions |
+| 1 | Define API, thin wrappers for pins AND params | None | `hal_api.h` with accessor functions |
 | 2 | Convert all components | Low | All components use new API |
 | 3 | Thread-local implementation | Medium | Thread-safe HAL |
-| 4 | Add strings | Low | `hal_string_*` API |
+| 4 | Add strings (pins and params) | Low | `hal_string_*` API |
+
+## HAL Entity Coverage
+
+| Entity | Phase 1 | Phase 2 | Phase 3 | Phase 4 |
+|--------|---------|---------|---------|---------|
+| Pins | `hal_pin_get/set_*` | Convert | Thread-local | String pins |
+| Parameters | `hal_param_get/set_*` | Convert | Thread-local | String params |
+| Signals | (via pins) | (via pins) | (via pins) | - |
+| Streams | Unchanged | Unchanged | Unchanged | Unchanged |
 
 ## Open Questions
 
 1. **Granularity of dirty tracking**: Per-pin vs per-cache-line vs per-region?
-2. **String memory limits**: Maximum string length? Maximum number of string pins?
+2. **String memory limits**: Maximum string length? Maximum number of string pins/params?
 3. **Halcmd integration**: How to display/set strings in halcmd?
 4. **Python bindings**: Extend halmodule.cc for string support?
+5. **Parameter sync direction**: Should HAL_RO params sync differently than HAL_RW?
 
 ## References
 
 - Current HAL implementation: `src/hal/hal_lib.c`, `src/hal/hal.h`
 - HAL_PORT (existing streaming type): Lock-free ring buffer pattern
+- HAL_STREAM: Existing FIFO for sampler/streamer components
 - Thread-local storage: `__thread` keyword, POSIX thread-specific data
