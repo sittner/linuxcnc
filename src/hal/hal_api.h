@@ -11,8 +11,8 @@
 *   improved thread safety and determinism.                            *
 *                                                                      *
 * Design Documentation:                                                *
-*   See /THREAD_LOCAL_HAL.md for complete architecture details and     *
-*   migration strategy.                                                *
+*   See THREAD_LOCAL_HAL.md in repository root for complete            *
+*   architecture details and migration strategy.                       *
 *                                                                      *
 * Migration Patterns:                                                  *
 *                                                                      *
