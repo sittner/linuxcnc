@@ -221,6 +221,7 @@ static void capture(void *arg, long period)
 	}
 	/* capture raw counts to latches */
         raw_count = hal_pin_get_s32(&cntr->raw_count);
+	/* compute count relative to last index pulse */
 	hal_s32_t indexed_count = raw_count - cntr->last_index_count;
 	hal_pin_set_s32(&cntr->count, indexed_count);
         counts = (raw_count - cntr->last_count);

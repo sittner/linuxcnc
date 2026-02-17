@@ -177,8 +177,8 @@ Components with complex patterns:
 
 For userspace components, sync calls must be placed at appropriate points in the main loop:
 
-1. **Simple poll loop**: `sync_read` at loop start, `sync_write` before sleep
-2. **Event-driven**: `sync_read` before event processing, `sync_write` after
+1. **Simple poll loop**: `sync_read` at loop start, `sync_write` at loop end (before sleep/delay)
+2. **Event-driven (select/poll)**: `sync_read` after event detection, `sync_write` after all processing
 3. **Multi-threaded**: Each worker thread syncs, OR use coordinator thread
 4. **GUI integration**: Use idle handlers for sync
 
