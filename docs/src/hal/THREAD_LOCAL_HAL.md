@@ -297,7 +297,7 @@ The migration will happen in phases to minimize disruption:
 - Add `hal_thread_sync_read()` and `hal_thread_sync_write()` C functions as no-ops
 - Add Python `h.sync_read()` / `h.sync_write()` methods as no-ops
 - No behavioral change - components work exactly as before
-- **Status:** Planned
+- **Status:** In Progress (C functions complete, Python methods pending)
 
 ### Phase 2: Update All Userspace Components
 - Update all userspace .comp files to call sync in `user_mainloop()`
