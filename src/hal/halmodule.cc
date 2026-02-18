@@ -438,20 +438,10 @@ static PyObject *pyhal_new_pin(PyObject *_self, PyObject *o) {
 static PyObject * pyhal_create_pin_handle(halobject *self, char *name, hal_type_t type, hal_pin_dir_t dir) {
     char pin_name[HAL_NAME_LEN+1];
     int res;
-    halitem pin;
     hal_pin_handle_t handle;
-    pin.is_pin = 1;
 
     if(type < HAL_BIT || type > HAL_U32) {
         PyErr_Format(pyhal_error_type, "Invalid pin type %d", type);
-        return NULL;
-    }
-
-    pin.type = type;
-    pin.dir.pindir = dir;
-    pin.u = (halunion*)hal_malloc(sizeof(halunion));
-    if(!pin.u) {
-        PyErr_SetString(PyExc_MemoryError, "hal_malloc failed");
         return NULL;
     }
 
@@ -484,8 +474,10 @@ static PyObject * pyhal_create_pin_handle(halobject *self, char *name, hal_type_
     
     if(res) return pyhal_error(res);
 
-    // Store in both items map (for backward compatibility) and handle map
-    (*self->items)[name] = pin;
+    // Store handle in pin_handles map
+    // Note: Handle-based pins are not stored in items map because the handle API
+    // does its own memory allocation and doesn't expose the pointer address.
+    // These pins are only accessible through the context API.
     (*self->pin_handles)[name] = handle;
 
     // Return the handle as an integer
@@ -511,20 +503,10 @@ static PyObject *pyhal_new_pin_handle(PyObject *_self, PyObject *o) {
 static PyObject * pyhal_create_param_handle(halobject *self, char *name, hal_type_t type, hal_param_dir_t dir) {
     char param_name[HAL_NAME_LEN+1];
     int res;
-    halitem param;
     hal_param_handle_t handle;
-    param.is_pin = 0;
 
     if(type < HAL_BIT || type > HAL_U32) {
         PyErr_Format(pyhal_error_type, "Invalid param type %d", type);
-        return NULL;
-    }
-    
-    param.type = type;
-    param.dir.paramdir = dir;
-    param.u = (halunion*)hal_malloc(sizeof(halunion));
-    if(!param.u) {
-        PyErr_SetString(PyExc_MemoryError, "hal_malloc failed");
         return NULL;
     }
 
@@ -552,8 +534,10 @@ static PyObject * pyhal_create_param_handle(halobject *self, char *name, hal_typ
     
     if(res) return pyhal_error(res);
 
-    // Store in both items map (for backward compatibility) and handle map
-    (*self->items)[name] = param;
+    // Store handle in param_handles map
+    // Note: Handle-based params are not stored in items map because the handle API
+    // does its own memory allocation and doesn't expose the pointer address.
+    // These params are only accessible through the context API.
     (*self->param_handles)[name] = handle;
 
     // Return the handle as an integer
