@@ -22,6 +22,15 @@ Each RT thread and userspace context maintains:
 
 Key insight: Pins don't store data directly - they point to **signals**. Parameters store data directly. Both signals and parameters are allocated from HAL shared memory using **offsets**, not pointers.
 
+## Sync Responsibility Matrix
+
+| Component Type | Loop Control | Sync Strategy | User Changes Required |
+|----------------|--------------|---------------|----------------------|
+| **RT (.comp, .c)** | RT executor | **Automatic ✅** | **Yes** - Function signature changes to `(void *arg, hal_ctx_t *ctx)`, use handle-based pin access |
+| **Userspace .comp** | User's `user_mainloop()` | **Manual ⚠️** | Add `hal_ctx_sync_read()` / `hal_ctx_sync_write()` calls |
+| **Python halmodule** | User's `while` loop | **Manual ⚠️** | Add `h.sync_read()` / `h.sync_write()` calls |
+| **Go components** | User's loop | **Manual ⚠️** | Add sync calls in main loop |
+
 ## Memory Architecture
 
 ```
@@ -297,6 +306,22 @@ hal_ctx_t *hal_ctx_create(int comp_id);
 void hal_ctx_destroy(hal_ctx_t *ctx);
 ```
 
+### Handle-based Pin/Param Creation
+
+```c
+/* Create pin and return handle (for new context-based access) */
+hal_pin_handle_t hal_pin_float_new_handle(const char *name, hal_pin_dir_t dir, int comp_id);
+hal_pin_handle_t hal_pin_bit_new_handle(const char *name, hal_pin_dir_t dir, int comp_id);
+hal_pin_handle_t hal_pin_s32_new_handle(const char *name, hal_pin_dir_t dir, int comp_id);
+hal_pin_handle_t hal_pin_u32_new_handle(const char *name, hal_pin_dir_t dir, int comp_id);
+
+/* Create param and return handle */
+hal_param_handle_t hal_param_float_new_handle(const char *name, hal_param_dir_t dir, int comp_id);
+hal_param_handle_t hal_param_bit_new_handle(const char *name, hal_param_dir_t dir, int comp_id);
+hal_param_handle_t hal_param_s32_new_handle(const char *name, hal_param_dir_t dir, int comp_id);
+hal_param_handle_t hal_param_u32_new_handle(const char *name, hal_param_dir_t dir, int comp_id);
+```
+
 ### Sync Operations
 
 ```c
@@ -335,6 +360,23 @@ void hal_ctx_pin_bit_set(hal_ctx_t *ctx, hal_pin_handle_t pin, hal_bit_t val);
 void hal_ctx_pin_s32_set(hal_ctx_t *ctx, hal_pin_handle_t pin, hal_s32_t val);
 void hal_ctx_pin_u32_set(hal_ctx_t *ctx, hal_pin_handle_t pin, hal_u32_t val);
 ```
+
+### Parameter Access (Context-Aware)
+
+```c
+/* Read param from working_buf */
+hal_float_t hal_ctx_param_float_get(hal_ctx_t *ctx, hal_param_handle_t param);
+hal_bit_t hal_ctx_param_bit_get(hal_ctx_t *ctx, hal_param_handle_t param);
+hal_s32_t hal_ctx_param_s32_get(hal_ctx_t *ctx, hal_param_handle_t param);
+hal_u32_t hal_ctx_param_u32_get(hal_ctx_t *ctx, hal_param_handle_t param);
+
+/* Write param to working_buf + mark dirty */
+void hal_ctx_param_float_set(hal_ctx_t *ctx, hal_param_handle_t param, hal_float_t val);
+void hal_ctx_param_bit_set(hal_ctx_t *ctx, hal_param_handle_t param, hal_bit_t val);
+void hal_ctx_param_s32_set(hal_ctx_t *ctx, hal_param_handle_t param, hal_s32_t val);
+void hal_ctx_param_u32_set(hal_ctx_t *ctx, hal_param_handle_t param, hal_u32_t val);
+```
+
 ## RT Component Example
 
 ### Before (old API)
@@ -361,6 +403,83 @@ void update(void *arg, hal_ctx_t *ctx) {
 ```
 
 Note: For RT components, `sync_read` and `sync_write` are called by the thread runner, not by individual component functions.
+
+## Userspace Component Example
+
+Userspace components control their own main loop via `user_mainloop()`. They must call sync explicitly.
+
+### Before (current code)
+```c
+void user_mainloop(void) {
+    while(1) {
+        FOR_ALL_INSTS() {
+            out = in;  // component logic
+        }
+        usleep(1000);
+    }
+}
+```
+
+### After (with sync calls)
+```c
+void user_mainloop(void) {
+    while(1) {
+        hal_ctx_sync_read();   // Sync inputs from shared memory
+        
+        FOR_ALL_INSTS() {
+            out = in;  // existing component logic unchanged
+        }
+        
+        hal_ctx_sync_write();  // Sync outputs to shared memory
+        usleep(1000);
+    }
+}
+```
+
+**Key Points:**
+- Add `hal_ctx_sync_read()` at the start of each loop iteration
+- Add `hal_ctx_sync_write()` at the end of each loop iteration
+- Place sync calls **outside** the `FOR_ALL_INSTS()` block
+
+## Python API
+
+The Python `hal` module provides sync methods for userspace components.
+
+### `h.sync_read()`
+```python
+h.sync_read()
+```
+Synchronizes input pins from shared memory to thread-local storage. Call at the start of your main loop iteration.
+
+### `h.sync_write()`
+```python
+h.sync_write()
+```
+Synchronizes output pins from thread-local storage to shared memory. Call at the end of your main loop iteration.
+
+### `h.synced()` (Context Manager)
+```python
+with h.synced():
+    # pin operations here
+```
+Convenience context manager that calls `sync_read()` on entry and `sync_write()` on exit.
+
+### Python Example
+```python
+import hal
+import time
+
+h = hal.component("mycomp")
+h.newpin("in", hal.HAL_FLOAT, hal.HAL_IN)
+h.newpin("out", hal.HAL_FLOAT, hal.HAL_OUT)
+h.ready()
+
+while True:
+    h.sync_read()
+    h['out'] = h['in'] * 2.0
+    h.sync_write()
+    time.sleep(0.001)
+```
 
 ## halcompile Integration
 
@@ -393,6 +512,34 @@ void _(void *arg, hal_ctx_t *ctx) {
 }
 ```
 
+## Why Userspace Needs Manual Sync
+
+Userspace components control their own main loop. The HAL framework cannot inject sync calls because it doesn't know when your loop iterations begin and end. Only you know the logical boundaries of your processing cycle.
+
+**In contrast, RT components:**
+- Have their execution controlled by the RT thread scheduler
+- Call a single `update()` function per cycle
+- The framework knows exactly when execution starts and ends
+- Therefore, sync can be automatic
+
+## Why Full Thread-Local (Not Hybrid)?
+
+During the design phase, we considered a hybrid approach where numeric pins could optionally use direct shared memory access (backward compatible) while string pins would require thread-local storage.
+
+**We chose full thread-local for all pin types because of fail-fast behavior:**
+
+| Approach | Forgotten Sync Behavior | Bug Detection |
+|----------|------------------------|---------------|
+| **Hybrid (direct fallback)** | Works, but with race conditions | Silent bugs, hard to find |
+| **Full Thread-Local** | Pins read as initial values (0, false, "") | **Obvious failure**, easy to detect |
+
+**Benefits of full thread-local:**
+- All pin types behave consistently (no special cases for strings vs. numerics)
+- Bugs are obvious - forgotten sync = zero/empty values
+- Simpler mental model: "call sync, period"
+- Future-proof for new pin types
+- No legacy "direct mode" code paths to maintain
+
 ## Implementation Phases
 
 ### Phase 1: Master HAL Changes
@@ -400,29 +547,101 @@ void _(void *arg, hal_ctx_t *ctx) {
 - Update signal/param allocation to set bitmap bits
 - Add `dirty_offset`, `dirty_mask[2]` to signal/param structs
 - Precompute dirty access on allocation
+- **Status:** Planned
 
 ### Phase 2: Context Implementation
 - Implement `hal_ctx_t` with working_buf + dirty_bitmap
 - Implement `hal_ctx_create/destroy`
 - Implement `hal_ctx_sync_read/write`
 - Implement `hal_ctx_pin_*_get/set` with dirty marking
+- **Status:** Planned
 
 ### Phase 3: Thread Integration
 - Change `hal_funct_t` signature (breaking change)
 - Add `ctx` to `hal_thread_t`
 - Update thread creation to create context
 - Update thread runner to call sync and pass context
+- **Status:** Planned
 
 ### Phase 4: halcompile Update
 - Generate new function signature
 - Generate handle-based pin/param creation
 - Generate context-aware pin access
 - Replace period parameter with `hal_ctx_period(ctx)`
+- **Status:** Planned
 
 ### Phase 5: Component Migration
 - Migrate `counter.c` as first example
 - Update remaining RT components
 - Update documentation
+- **Status:** Planned
+
+## Files Requiring Updates (Phase 5 Inventory)
+
+The following files need to be updated during Phase 5 (Component Migration).
+
+### Userspace .comp Files
+
+| File | Description |
+|------|-------------|
+| `src/hal/user_comps/thermistor.comp` | Thermistor temperature estimator |
+| `src/hal/user_comps/pi500_vfd/pi500_vfd.comp` | Powtran PI500 VFD modbus driver |
+| `src/hal/user_comps/wj200_vfd/wj200_vfd.comp` | Hitachi WJ200 VFD modbus driver |
+| `docs/src/hal/rand.comp` | Example/documentation random component |
+
+### Python HAL Module
+
+| File | Changes Needed |
+|------|----------------|
+| `lib/python/hal.py` | Add `sync_read()`, `sync_write()`, and `synced()` context manager |
+| `src/hal/halmodule.cc` | Add C implementation of sync methods |
+
+### Python Components
+
+| File | Description |
+|------|-------------|
+| `src/hal/user_comps/sim-torch.py` | Simulated torch for plasma cutting |
+| `src/hal/user_comps/mqtt-publisher.py` | MQTT publisher component |
+| `src/hal/user_comps/pmx485.py` | Powermax RS485 plasma driver |
+
+## Advanced Sync Patterns
+
+### Read-Only Components
+
+By only calling `sync_read()` and omitting `sync_write()`, you create a component that is architecturally prevented from modifying HAL state:
+
+```python
+while True:
+    h.sync_read()  # Only sync_read - component is guaranteed read-only
+    log_position(h['axis-x-pos'], h['axis-y-pos'])
+    # No sync_write() - this component cannot affect machine state
+    time.sleep(0.1)
+```
+
+### Write-Only Components (Rare)
+
+A component that only generates outputs could use only `sync_write()`:
+
+```python
+while True:
+    h['signal'] = math.sin(time.time() * frequency)
+    h.sync_write()  # Only sync_write - doesn't need external inputs
+    time.sleep(0.001)
+```
+
+## Frequently Asked Questions
+
+### Q: Do I need to change my RT component code?
+**A:** Yes. RT components require the new function signature `(void *arg, hal_ctx_t *ctx)` and handle-based pin access via `hal_ctx_pin_*_get/set()`. However, the RT executor still handles sync automatically.
+
+### Q: What happens if I forget sync calls in userspace components?
+**A:** Your component will read initial/zero values for all input pins, and output pins will never update in HAL. This "fail-fast" behavior is intentional.
+
+### Q: What about HAL parameters?
+**A:** Parameters follow the same thread-local model as pins and will be included in sync operations.
+
+### Q: Do HAL streams need sync?
+**A:** No. HAL streams have their own lock-free FIFO mechanism and are independent of the pin sync model.
 
 ## Files to Modify
 
@@ -443,3 +662,7 @@ void _(void *arg, hal_ctx_t *ctx) {
 | Pin access without `sync_read` | Error: "context not synced" |
 | `sync_write` without `sync_read` | Error: "sync_write without sync_read" |
 | Access after `ctx_destroy` | Error: "context destroyed" |
+
+## Additional Resources
+
+For user-facing migration guidance, detailed examples, halcompile integration details, and comprehensive FAQ, see the migration guide: <a>docs/src/hal/THREAD_LOCAL_HAL.md</a>
