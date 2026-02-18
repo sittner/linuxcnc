@@ -40,7 +40,9 @@ hal_ctx_t *hal_ctx_create(int comp_id) {
         return NULL;
     }
     
-    ctx->dirty_bitmap = calloc(HAL_DIRTY_BITMAP_SIZE / sizeof(uint32_t), sizeof(uint32_t));
+    /* Allocate dirty bitmap: 1 bit per byte of HAL memory, stored as uint32_t words */
+    size_t dirty_words = HAL_DIRTY_BITMAP_SIZE / sizeof(uint32_t);
+    ctx->dirty_bitmap = calloc(dirty_words, sizeof(uint32_t));
     if (!ctx->dirty_bitmap) {
         rtapi_print_msg(RTAPI_MSG_ERR,
             "HAL: ERROR: Failed to allocate dirty bitmap\n");
@@ -108,7 +110,8 @@ int hal_ctx_sync_read(hal_ctx_t *ctx) {
     }
     
     /* Clear only the portion of dirty bitmap that's in use */
-    size_t dirty_bytes = (max_block + 7) / 8;
+    /* dirty_bitmap has 1 bit per byte of HAL memory */
+    size_t dirty_bytes = (hal_data->shmem_bot + 7) / 8;
     memset(ctx->dirty_bitmap, 0, dirty_bytes);
     
     ctx->valid = 1;
@@ -129,7 +132,7 @@ int hal_ctx_sync_write(hal_ctx_t *ctx) {
     uint64_t *alloc = (uint64_t *)hal_data->allocation_bitmap;
     uint64_t *dst = (uint64_t *)hal_shmem_base;
     uint64_t *src = (uint64_t *)ctx->working_buf;
-    uint8_t *dirty = (uint8_t *)ctx->dirty_bitmap;
+    uint32_t *dirty = ctx->dirty_bitmap;
     
     /* Only scan up to actual allocation boundary */
     size_t max_block = (hal_data->shmem_bot + 7) / 8;
@@ -143,12 +146,25 @@ int hal_ctx_sync_write(hal_ctx_t *ctx) {
         while (bits) {
             size_t bit = __builtin_ctzll(bits);
             size_t block = w * 64 + bit;
-            size_t offset = block * 8;
+            size_t byte_offset = block * 8;  /* byte offset in HAL memory */
             
-            /* Check if any byte dirty in this block (fast 8-byte check) */
-            if (*(uint64_t *)(dirty + offset)) {
+            /* Check if any of the 8 bytes in this block are dirty */
+            /* dirty_bitmap has 1 bit per byte of HAL memory */
+            /* Each uint32_t word covers 32 bytes, so check 8 bits in appropriate word */
+            uint32_t word_idx = byte_offset / 32;
+            uint32_t bit_offset = byte_offset % 32;
+            uint32_t mask = 0xFF << bit_offset;  /* 8 bits for 8 bytes */
+            
+            if (dirty[word_idx] & mask) {
+                /* At least one byte in this block is dirty, write the whole block */
                 dst[block] = src[block];
-                *(uint64_t *)(dirty + offset) = 0;  /* Clear dirty flags */
+                /* Clear dirty bits for this block */
+                dirty[word_idx] &= ~mask;
+                /* If block spans word boundary, clear bits in next word too */
+                if (bit_offset + 8 > 32) {
+                    uint32_t overflow_mask = (1 << ((bit_offset + 8) - 32)) - 1;
+                    dirty[word_idx + 1] &= ~overflow_mask;
+                }
             }
             
             bits &= bits - 1;  /* Clear lowest set bit */
@@ -449,6 +465,10 @@ int hal_param_u32_new_handle(const char *name, hal_param_dir_t dir,
 /***********************************************************************
 *                     HELPER: Find signal/param for dirty marking      *
 ***********************************************************************/
+
+/* TODO: Performance optimization - these helper functions perform linear
+ * scans on every set operation. Consider caching signal/param pointers in
+ * handle structure or using a hash table for O(1) lookup. */
 
 /* Helper to find signal from pin handle data offset */
 static hal_sig_t *find_signal_by_data_offset(int data_offset) {
