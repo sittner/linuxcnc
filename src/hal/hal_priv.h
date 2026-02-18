@@ -118,9 +118,13 @@
 */
 
 #define HAL_KEY   0x48414C32	/* key used to open HAL shared memory */
-#define HAL_VER   0x00000010	/* version code */
+#define HAL_VER   0x00000011	/* version code - incremented for thread-local HAL */
 #define HAL_SIZE  (256*4096)
 #define HAL_PSEUDO_COMP_PREFIX "__" /* prefix to identify a pseudo component */
+
+/* Allocation bitmap: 1 bit per 8-byte block, tracks signal/param data regions */
+#define HAL_ALLOC_BLOCK_SIZE    8                                      /* bytes per bitmap bit */
+#define HAL_ALLOC_BITMAP_SIZE   (HAL_SIZE / HAL_ALLOC_BLOCK_SIZE / 8)  /* 16KB */
 
 /* These pointers are set by hal_init() to point to the shmem block
    and to the master data structure. All access should use these
@@ -274,6 +278,8 @@ typedef struct hal_data_t {
     int exact_base_period;      /* if set, pretend that rtapi satisfied our
 				   period request exactly */
     unsigned char lock;         /* hal locking, can be one of the HAL_LOCK_* types */
+    /* Thread-local HAL: allocation bitmap - 1 bit per 8-byte block */
+    unsigned char allocation_bitmap[HAL_ALLOC_BITMAP_SIZE];
 } hal_data_t;
 
 /** HAL 'component' type.
@@ -346,6 +352,9 @@ struct hal_sig_t {
     int bidirs;			/* number of I/O pins linked */
     int flags;			/* flag (e.g. HAL_FLAG_RETAIN) */
     hal_sig_val_t retain_val;	/* value for retain change tracking */
+    /* Thread-local HAL: precomputed dirty bitmap access for fast marking */
+    uint32_t dirty_offset;      /* index into dirty_bitmap array */
+    uint32_t dirty_mask[2];     /* bitmasks for 1 or 2 words (handles boundary crossing) */
     char name[HAL_NAME_LEN + 1];	/* signal name */
 };
 
@@ -359,6 +368,9 @@ struct hal_param_t {
     SHMFIELD(hal_oldname_t) oldname;		/* old name if aliased, else zero */
     hal_type_t type;		/* data type */
     hal_param_dir_t dir;	/* data direction */
+    /* Thread-local HAL: precomputed dirty bitmap access for fast marking */
+    uint32_t dirty_offset;      /* index into dirty_bitmap array */
+    uint32_t dirty_mask[2];     /* bitmasks for 1 or 2 words (handles boundary crossing) */
     char name[HAL_NAME_LEN + 1];	/* parameter name */
 };
 
@@ -521,5 +533,83 @@ struct hal_stream_shm {
 };
 
 extern int halpr_parse_types(hal_type_t type[HAL_STREAM_MAX_PINS], const char *fcg);
+
+/** Thread-local HAL bitmap helper functions */
+
+/** Set bits in allocation bitmap when allocating signal/param data.
+ *  @param offset Byte offset into HAL shared memory
+ *  @param size Size of allocation in bytes
+ */
+static inline void halpr_alloc_bitmap_set(int offset, int size) {
+    int start_block = offset / HAL_ALLOC_BLOCK_SIZE;
+    int end_block = (offset + size - 1) / HAL_ALLOC_BLOCK_SIZE;
+    int block;
+    
+    for (block = start_block; block <= end_block; block++) {
+        int byte_idx = block / 8;
+        int bit_idx = block % 8;
+        hal_data->allocation_bitmap[byte_idx] |= (1 << bit_idx);
+    }
+}
+
+/** Clear bits in allocation bitmap when freeing signal/param data.
+ *  @param offset Byte offset into HAL shared memory
+ *  @param size Size of allocation in bytes
+ */
+static inline void halpr_alloc_bitmap_clear(int offset, int size) {
+    int start_block = offset / HAL_ALLOC_BLOCK_SIZE;
+    int end_block = (offset + size - 1) / HAL_ALLOC_BLOCK_SIZE;
+    int block;
+    
+    for (block = start_block; block <= end_block; block++) {
+        int byte_idx = block / 8;
+        int bit_idx = block % 8;
+        hal_data->allocation_bitmap[byte_idx] &= ~(1 << bit_idx);
+    }
+}
+
+/** Precompute dirty bitmap access info for fast marking during pin writes.
+ *  @param offset Byte offset into HAL shared memory
+ *  @param size Size of data in bytes
+ *  @param dirty_offset Output: index into dirty_bitmap array
+ *  @param dirty_mask Output: bitmasks for 1 or 2 words (handles boundary crossing)
+ */
+static inline void halpr_compute_dirty_info(int offset, int size, 
+                                            uint32_t *dirty_offset, 
+                                            uint32_t dirty_mask[2]) {
+    int start_block = offset / HAL_ALLOC_BLOCK_SIZE;
+    int end_block = (offset + size - 1) / HAL_ALLOC_BLOCK_SIZE;
+    int start_word = start_block / 32;
+    int end_word = end_block / 32;
+    int start_bit = start_block % 32;
+    int end_bit = end_block % 32;
+    
+    *dirty_offset = start_word;
+    
+    if (start_word == end_word) {
+        /* Data fits in single 32-bit word */
+        uint32_t mask = 0;
+        int bit;
+        for (bit = start_bit; bit <= end_bit; bit++) {
+            mask |= (1U << bit);
+        }
+        dirty_mask[0] = mask;
+        dirty_mask[1] = 0;
+    } else {
+        /* Data spans two 32-bit words */
+        uint32_t mask0 = 0;
+        uint32_t mask1 = 0;
+        int bit;
+        for (bit = start_bit; bit < 32; bit++) {
+            mask0 |= (1U << bit);
+        }
+        for (bit = 0; bit <= end_bit; bit++) {
+            mask1 |= (1U << bit);
+        }
+        dirty_mask[0] = mask0;
+        dirty_mask[1] = mask1;
+    }
+}
+
 RTAPI_END_DECLS
 #endif /* HAL_PRIV_H */
