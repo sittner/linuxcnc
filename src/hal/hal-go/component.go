@@ -243,14 +243,22 @@ func (c *Component) SyncWrite() error {
 //	}
 //
 // If the function returns an error, SyncWrite is still called to ensure
-// partial results are written before returning the error.
+// partial results are written before returning the error. If both the function
+// and SyncWrite fail, both errors are logged and the function error is returned.
 func (c *Component) Synced(fn func() error) error {
 	if err := c.SyncRead(); err != nil {
 		return err
 	}
-	if err := fn(); err != nil {
-		c.SyncWrite() // Still try to write on error
-		return err
+	fnErr := fn()
+	if syncErr := c.SyncWrite(); syncErr != nil {
+		// If both function and sync failed, log sync error and return function error
+		if fnErr != nil {
+			log.Printf("Warning: SyncWrite failed after function error: %v", syncErr)
+			return fnErr
+		}
+		// If only sync failed, return sync error
+		return syncErr
 	}
-	return c.SyncWrite()
+	// Return function error (may be nil)
+	return fnErr
 }
