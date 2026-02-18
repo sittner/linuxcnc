@@ -549,7 +549,7 @@ The migration will happen in phases to minimize disruption:
 - Update signal/param allocation to set bitmap bits
 - Add `dirty_offset`, `dirty_mask[2]` to signal/param structs
 - Precompute dirty access info on allocation
-- **Status:** Planned
+- **Status:** ✅ Complete
 
 ### Phase 2: Context Implementation
 - Implement `hal_ctx_t` with working_buf + dirty_bitmap
@@ -557,14 +557,14 @@ The migration will happen in phases to minimize disruption:
 - Implement `hal_ctx_sync_read/write` with dirty tracking
 - Implement `hal_ctx_pin_*_get/set` with dirty marking
 - Implement handle-based pin/param creation APIs
-- **Status:** Planned
+- **Status:** ✅ Complete
 
 ### Phase 3: Thread Integration & Function Signature Change
 - Change `hal_funct_t` signature from `(void *arg, long period)` to `(void *arg, hal_ctx_t *ctx)` (**breaking change**)
 - Add `ctx` to `hal_thread_t`
 - Update thread creation to create context
 - Update thread runner to call `hal_ctx_sync_read/write` and pass context to functions
-- **Status:** Planned
+- **Status:** 🚧 In Progress
 
 ### Phase 4: halcompile Update
 - Generate new function signature: `void update(void *arg, hal_ctx_t *ctx)`
