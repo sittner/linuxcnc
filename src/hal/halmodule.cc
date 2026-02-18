@@ -157,6 +157,8 @@ struct pyhalitem {
 static PyObject * pyhal_pin_new(halitem * pin, const char *name);
 
 typedef std::map<std::string, struct halitem> itemmap;
+typedef std::map<std::string, hal_pin_handle_t> pinhandlemap;
+typedef std::map<std::string, hal_param_handle_t> paramhandlemap;
 
 typedef struct halobject {
         PyObject_HEAD
@@ -164,6 +166,8 @@ typedef struct halobject {
     char *name;
     char *prefix;
     itemmap *items;
+    pinhandlemap *pin_handles;
+    paramhandlemap *param_handles;
 } halobject;
 
 PyObject *pyhal_error_type = NULL;
@@ -186,6 +190,8 @@ static int pyhal_init(PyObject *_self, PyObject *args, PyObject *kw) {
     if(!PyArg_ParseTuple(args, "s|s:hal.component", &name, &prefix)) return -1;
 
     self->items = new itemmap();
+    self->pin_handles = new pinhandlemap();
+    self->param_handles = new paramhandlemap();
 
     self->hal_id = hal_init(name);
     if(self->hal_id <= 0) {
@@ -220,6 +226,12 @@ static void pyhal_exit_impl(halobject *self) {
 
     delete self->items;
     self->items = 0;
+    
+    delete self->pin_handles;
+    self->pin_handles = 0;
+    
+    delete self->param_handles;
+    self->param_handles = 0;
 }
 
 static void pyhal_delete(PyObject *_self) {
@@ -423,6 +435,147 @@ static PyObject *pyhal_new_pin(PyObject *_self, PyObject *o) {
     return pyhal_create_pin(self, name, (hal_type_t)type, (hal_pin_dir_t)dir);
 }
 
+static PyObject * pyhal_create_pin_handle(halobject *self, char *name, hal_type_t type, hal_pin_dir_t dir) {
+    char pin_name[HAL_NAME_LEN+1];
+    int res;
+    halitem pin;
+    hal_pin_handle_t handle;
+    pin.is_pin = 1;
+
+    if(type < HAL_BIT || type > HAL_U32) {
+        PyErr_Format(pyhal_error_type, "Invalid pin type %d", type);
+        return NULL;
+    }
+
+    pin.type = type;
+    pin.dir.pindir = dir;
+    pin.u = (halunion*)hal_malloc(sizeof(halunion));
+    if(!pin.u) {
+        PyErr_SetString(PyExc_MemoryError, "hal_malloc failed");
+        return NULL;
+    }
+
+    res = snprintf(pin_name, sizeof(pin_name), "%s.%s", self->prefix, name);
+    if(res > HAL_NAME_LEN || res < 0) {
+        PyErr_Format(pyhal_error_type,
+            "Invalid pin name length \"%s.%s\": max = %d characters",
+            self->prefix, name, HAL_NAME_LEN);
+        return NULL;
+    }
+    
+    // Use handle-based pin creation based on type
+    switch(type) {
+        case HAL_BIT:
+            res = hal_pin_bit_new_handle(pin_name, dir, &handle, self->hal_id);
+            break;
+        case HAL_FLOAT:
+            res = hal_pin_float_new_handle(pin_name, dir, &handle, self->hal_id);
+            break;
+        case HAL_S32:
+            res = hal_pin_s32_new_handle(pin_name, dir, &handle, self->hal_id);
+            break;
+        case HAL_U32:
+            res = hal_pin_u32_new_handle(pin_name, dir, &handle, self->hal_id);
+            break;
+        default:
+            PyErr_Format(pyhal_error_type, "Invalid pin type %d", type);
+            return NULL;
+    }
+    
+    if(res) return pyhal_error(res);
+
+    // Store in both items map (for backward compatibility) and handle map
+    (*self->items)[name] = pin;
+    (*self->pin_handles)[name] = handle;
+
+    // Return the handle as an integer
+    return PyLong_FromLong(handle);
+}
+
+static PyObject *pyhal_new_pin_handle(PyObject *_self, PyObject *o) {
+    char *name;
+    int type, dir;
+    halobject *self = (halobject *)_self;
+
+    if(!PyArg_ParseTuple(o, "sii", &name, &type, &dir)) 
+        return NULL;
+    EXCEPTION_IF_NOT_LIVE(NULL);
+
+    if (find_item(self, name)) {
+        PyErr_Format(PyExc_ValueError, "Duplicate pin name '%s'", name);
+        return NULL;
+    } else { PyErr_Clear(); }
+    return pyhal_create_pin_handle(self, name, (hal_type_t)type, (hal_pin_dir_t)dir);
+}
+
+static PyObject * pyhal_create_param_handle(halobject *self, char *name, hal_type_t type, hal_param_dir_t dir) {
+    char param_name[HAL_NAME_LEN+1];
+    int res;
+    halitem param;
+    hal_param_handle_t handle;
+    param.is_pin = 0;
+
+    if(type < HAL_BIT || type > HAL_U32) {
+        PyErr_Format(pyhal_error_type, "Invalid param type %d", type);
+        return NULL;
+    }
+    
+    param.type = type;
+    param.dir.paramdir = dir;
+    param.u = (halunion*)hal_malloc(sizeof(halunion));
+    if(!param.u) {
+        PyErr_SetString(PyExc_MemoryError, "hal_malloc failed");
+        return NULL;
+    }
+
+    res = snprintf(param_name, sizeof(param_name), "%s.%s", self->prefix, name);
+    if(res > HAL_NAME_LEN || res < 0) { return pyhal_error(-EINVAL); }
+    
+    // Use handle-based param creation based on type
+    switch(type) {
+        case HAL_BIT:
+            res = hal_param_bit_new_handle(param_name, dir, &handle, self->hal_id);
+            break;
+        case HAL_FLOAT:
+            res = hal_param_float_new_handle(param_name, dir, &handle, self->hal_id);
+            break;
+        case HAL_S32:
+            res = hal_param_s32_new_handle(param_name, dir, &handle, self->hal_id);
+            break;
+        case HAL_U32:
+            res = hal_param_u32_new_handle(param_name, dir, &handle, self->hal_id);
+            break;
+        default:
+            PyErr_Format(pyhal_error_type, "Invalid param type %d", type);
+            return NULL;
+    }
+    
+    if(res) return pyhal_error(res);
+
+    // Store in both items map (for backward compatibility) and handle map
+    (*self->items)[name] = param;
+    (*self->param_handles)[name] = handle;
+
+    // Return the handle as an integer
+    return PyLong_FromLong(handle);
+}
+
+static PyObject *pyhal_new_param_handle(PyObject *_self, PyObject *o) {
+    char *name;
+    int type, dir;
+    halobject *self = (halobject *)_self;
+
+    if(!PyArg_ParseTuple(o, "sii", &name, &type, &dir)) 
+        return NULL;
+    EXCEPTION_IF_NOT_LIVE(NULL);
+
+    if (find_item(self, name)) {
+        PyErr_Format(PyExc_ValueError, "Duplicate parameter name '%s'", name);
+        return NULL;
+    } else { PyErr_Clear(); }
+    return pyhal_create_param_handle(self, name, (hal_type_t)type, (hal_param_dir_t)dir);
+}
+
 static PyObject *pyhal_get_pin(PyObject *_self, PyObject *o) {
     char *name;
     halobject *self = (halobject *)_self;
@@ -547,6 +700,10 @@ static PyMethodDef hal_methods[] = {
         "Create a new parameter"},
     {"newpin", pyhal_new_pin, METH_VARARGS,
         "Create a new pin"},
+    {"newparam_handle", pyhal_new_param_handle, METH_VARARGS,
+        "Create a new parameter and return handle for context API"},
+    {"newpin_handle", pyhal_new_pin_handle, METH_VARARGS,
+        "Create a new pin and return handle for context API"},
     {"getitem", pyhal_get_pin, METH_VARARGS,
         "Get existing pin object"},
     {"getpins", pyhal_get_pins, METH_VARARGS,
@@ -2170,17 +2327,15 @@ static PyObject *pyhal_context_new(PyObject *_self, PyObject *args) {
     ctx_obj->pin_handles = new handlemap_pin();
     ctx_obj->param_handles = new handlemap_param();
     
-    // Note: The context API requires pins and params to be created with the
-    // handle-based API (hal_pin_*_new_handle, hal_param_*_new_handle).
-    // Pins created with the old API (component.newpin()) are not accessible
-    // through the context API.
-    //
-    // To use the context API, pins and params must be created directly in C
-    // or through a future enhancement that provides handle-based creation
-    // in Python (e.g., component.newpin_handle()).
-    //
-    // For now, the handle maps remain empty. Users attempting to access pins
-    // will receive a NameError indicating the pin was not found.
+    // Copy handles from component to context
+    // Pins/params created with newpin_handle()/newparam_handle() will be accessible
+    // through the context API. Pins created with the old API (newpin()) will not.
+    if(comp->pin_handles) {
+        *ctx_obj->pin_handles = *comp->pin_handles;
+    }
+    if(comp->param_handles) {
+        *ctx_obj->param_handles = *comp->param_handles;
+    }
     
     return (PyObject *)ctx_obj;
 }
