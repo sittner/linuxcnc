@@ -1,7 +1,7 @@
 # Compiled binaries
 demo
-examples/*/demo
 examples/demo/demo
+examples/passthrough/passthrough
 
 # Go build artifacts
 *.o
