@@ -512,7 +512,12 @@ static PyObject * pyhal_create_param_handle(halobject *self, char *name, hal_typ
     }
 
     res = snprintf(param_name, sizeof(param_name), "%s.%s", self->prefix, name);
-    if(res > HAL_NAME_LEN || res < 0) { return pyhal_error(-EINVAL); }
+    if(res > HAL_NAME_LEN || res < 0) {
+        PyErr_Format(pyhal_error_type,
+            "Invalid param name length \"%s.%s\": max = %d characters",
+            self->prefix, name, HAL_NAME_LEN);
+        return NULL;
+    }
     
     // Use handle-based param creation based on type
     switch(type) {
