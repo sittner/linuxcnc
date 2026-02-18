@@ -20,7 +20,7 @@ Each thread that accesses HAL pins must:
 1. Create a context with `hal_ctx_create()`
 2. Call `hal_ctx_sync_read()` at cycle start
 3. Access pins via context-aware functions
-4. Call `hal_ctx_sync_write()` at cycle end
+4. Call `hal_ctx_sync_write()` at cycle end (can be omitted for read only components)
 5. Destroy context with `hal_ctx_destroy()` on exit
 
 At cycle end, `sync_write` compares before/after buffers and writes only
