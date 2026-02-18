@@ -8,7 +8,7 @@ import (
 "fmt"
 "log"
 
-hal "github.com/linuxcnc/hal-go"
+hal "linuxcnc.org/hal"
 )
 
 func main() {

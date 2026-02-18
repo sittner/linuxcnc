@@ -2,7 +2,7 @@ package hal_test
 
 import (
 "fmt"
-"github.com/linuxcnc/hal-go"
+"linuxcnc.org/hal"
 )
 
 // Example demonstrates basic usage of the hal package.
