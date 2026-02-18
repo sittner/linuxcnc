@@ -1,6 +1,7 @@
 package hal
 
 /*
+#include <stdlib.h>
 #include "hal.h"
 */
 import "C"

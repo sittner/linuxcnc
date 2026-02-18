@@ -1,13 +1,10 @@
 package hal
 
 /*
+#include <stdlib.h>
 #include "hal.h"
 */
 import "C"
-import (
-	"fmt"
-	"unsafe"
-)
 
 // Context represents a thread-local HAL context for efficient pin/param access.
 //
@@ -108,7 +105,7 @@ func (c *Context) GetPinBit(handle PinHandle) bool {
 		return false
 	}
 	val := C.hal_ctx_pin_bit_get(c.ctx, C.hal_pin_handle_t(handle))
-	return val != 0
+	return bool(val)
 }
 
 // SetPinBit sets a bit (boolean) pin value in the thread-local context.
@@ -119,9 +116,11 @@ func (c *Context) SetPinBit(handle PinHandle, val bool) {
 	if c.ctx == nil {
 		return
 	}
-	cVal := C.hal_bit_t(0)
+	var cVal C.hal_bit_t
 	if val {
-		cVal = 1
+		cVal = C.hal_bit_t(true)
+	} else {
+		cVal = C.hal_bit_t(false)
 	}
 	C.hal_ctx_pin_bit_set(c.ctx, C.hal_pin_handle_t(handle), cVal)
 }
@@ -204,7 +203,7 @@ func (c *Context) GetParamBit(handle ParamHandle) bool {
 		return false
 	}
 	val := C.hal_ctx_param_bit_get(c.ctx, C.hal_param_handle_t(handle))
-	return val != 0
+	return bool(val)
 }
 
 // SetParamBit sets a bit (boolean) parameter value in the thread-local context.
@@ -215,9 +214,11 @@ func (c *Context) SetParamBit(handle ParamHandle, val bool) {
 	if c.ctx == nil {
 		return
 	}
-	cVal := C.hal_bit_t(0)
+	var cVal C.hal_bit_t
 	if val {
-		cVal = 1
+		cVal = C.hal_bit_t(true)
+	} else {
+		cVal = C.hal_bit_t(false)
 	}
 	C.hal_ctx_param_bit_set(c.ctx, C.hal_param_handle_t(handle), cVal)
 }
