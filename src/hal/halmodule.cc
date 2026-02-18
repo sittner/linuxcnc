@@ -1703,6 +1703,9 @@ PyTypeObject stream_type = {
 };
 
 
+// Forward declaration for context API
+static PyObject *pyhal_context_new(PyObject *_self, PyObject *args);
+
 PyMethodDef module_methods[] = {
     {"pin_has_writer", pin_has_writer, METH_VARARGS,
 	".pin_has_writer('pin_name'): Return a FALSE value if a pin has no writers and TRUE if it does"},
