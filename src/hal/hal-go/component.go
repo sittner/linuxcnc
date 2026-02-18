@@ -242,9 +242,11 @@ func (c *Component) SyncWrite() error {
 //	    time.Sleep(10 * time.Millisecond)
 //	}
 //
-// If the function returns an error, SyncWrite is still called to ensure
-// partial results are written before returning the error. If both the function
-// and SyncWrite fail, both errors are logged and the function error is returned.
+// Error handling: If the function returns an error, SyncWrite is still called
+// to ensure partial results are written. If both the function and SyncWrite fail,
+// a warning is logged with both errors, and the function error is returned
+// (since it represents the primary failure). If only SyncWrite fails, its error
+// is returned.
 //
 // Note: This is a method on Component for API consistency and future extensibility
 // (e.g., adding per-component context tracking or error hooks).
@@ -255,8 +257,11 @@ func (c *Component) Synced(fn func() error) error {
 	fnErr := fn()
 	if syncErr := c.SyncWrite(); syncErr != nil {
 		// If both function and sync failed, log both errors and return function error
+		// We log here because the sync error is secondary to the function error,
+		// but both failures should be visible for debugging
 		if fnErr != nil {
-			log.Printf("Warning: SyncWrite failed (%v) after function error (%v)", syncErr, fnErr)
+			log.Printf("HAL Component %s: SyncWrite failed (%v) after function error (%v)", 
+				c.name, syncErr, fnErr)
 			return fnErr
 		}
 		// If only sync failed, return sync error

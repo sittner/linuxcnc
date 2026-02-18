@@ -148,17 +148,17 @@ func halPinU32New(name string, dir Direction, compID int) (*C.hal_u32_t, error) 
 
 // halCtxSyncRead wraps hal_ctx_sync_read() for userspace components.
 // Synchronizes input pins from shared memory to thread-local storage.
-// For userspace components, uses the global context (nil parameter).
+// For userspace components, uses the thread-local context (nil parameter).
 func halCtxSyncRead() error {
-	ret := C.hal_ctx_sync_read(nil) // For userspace, uses global context
+	ret := C.hal_ctx_sync_read(nil) // For userspace, uses thread-local context
 	return halError(int(ret), "hal_ctx_sync_read")
 }
 
 // halCtxSyncWrite wraps hal_ctx_sync_write() for userspace components.
 // Synchronizes output pins from thread-local storage to shared memory.
-// For userspace components, uses the global context (nil parameter).
+// For userspace components, uses the thread-local context (nil parameter).
 func halCtxSyncWrite() error {
-	ret := C.hal_ctx_sync_write(nil)
+	ret := C.hal_ctx_sync_write(nil) // For userspace, uses thread-local context
 	return halError(int(ret), "hal_ctx_sync_write")
 }
 
