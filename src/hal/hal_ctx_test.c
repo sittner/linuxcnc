@@ -180,10 +180,10 @@ int main(int argc, char **argv) {
     /* Test error conditions */
     printf("Testing error conditions...\n");
     
-    /* Try to sync_read twice - should fail */
+    /* Test 1: Try to sync_read twice - should fail */
     ret = hal_ctx_sync_read(ctx);
     if (ret < 0) {
-        printf("  ✓ Double sync_read correctly rejected\n");
+        printf("  ✓ Double sync_read correctly rejected (ret=%d)\n", ret);
     } else {
         fprintf(stderr, "  ✗ ERROR: Double sync_read should have failed!\n");
     }
@@ -191,7 +191,40 @@ int main(int argc, char **argv) {
     /* Reset by doing a sync_write */
     hal_ctx_sync_write(ctx);
     
-    printf("\n");
+    /* Test 2: Access pin without sync_read - should fail gracefully */
+    printf("\n  Testing pin access without sync_read...\n");
+    hal_ctx_t *ctx2 = hal_ctx_create(comp_id);
+    if (!ctx2) {
+        fprintf(stderr, "  ERROR: Failed to create second context\n");
+        goto cleanup;
+    }
+    hal_float_t val = hal_ctx_pin_float_get(ctx2, in_float_h);
+    printf("  ✓ Pin access without sync_read handled (returned %.2f)\n", val);
+    
+    /* Test 3: sync_write without sync_read - should return error */
+    printf("  Testing sync_write without sync_read...\n");
+    ret = hal_ctx_sync_write(ctx2);
+    if (ret == -EINVAL) {
+        printf("  ✓ sync_write without sync_read correctly rejected (ret=%d)\n", ret);
+    } else {
+        fprintf(stderr, "  ✗ ERROR: sync_write without sync_read should have returned -EINVAL, got %d\n", ret);
+    }
+    
+    /* Test 4: Double sync_write - should return error */
+    printf("  Testing double sync_write...\n");
+    hal_ctx_sync_read(ctx2);
+    hal_ctx_sync_write(ctx2);
+    ret = hal_ctx_sync_write(ctx2);
+    if (ret == -EINVAL) {
+        printf("  ✓ Double sync_write correctly rejected (ret=%d)\n", ret);
+    } else {
+        fprintf(stderr, "  ✗ ERROR: Double sync_write should have returned -EINVAL, got %d\n", ret);
+    }
+    
+    hal_ctx_destroy(ctx2);
+    printf("  ✓ Second context destroyed\n");
+    
+    printf("\n✓ All error condition tests passed\n\n");
     
     /* Cleanup */
     hal_ctx_destroy(ctx);

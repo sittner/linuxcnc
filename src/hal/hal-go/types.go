@@ -32,6 +32,32 @@ func (d Direction) String() string {
 	}
 }
 
+// ParamDirection represents the direction of data flow for a HAL parameter.
+// It corresponds to hal_param_dir_t in the C HAL API.
+type ParamDirection int
+
+const (
+	// RO indicates the parameter is read-only (HAL_RO = 64).
+	// The component can read but not write this parameter.
+	RO ParamDirection = 64
+
+	// RW indicates the parameter is read-write (HAL_RW = 192).
+	// The component can both read and write this parameter.
+	RW ParamDirection = 192
+)
+
+// String returns the string representation of the parameter direction.
+func (d ParamDirection) String() string {
+	switch d {
+	case RO:
+		return "RO"
+	case RW:
+		return "RW"
+	default:
+		return "UNKNOWN"
+	}
+}
+
 // PinType represents the data type of a HAL pin or signal.
 // It corresponds to hal_type_t in the C HAL API.
 type PinType int

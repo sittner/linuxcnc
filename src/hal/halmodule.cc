@@ -1731,6 +1731,8 @@ PyMethodDef module_methods[] = {
 	".get_info_signals(): Get a list of dicts for all the signals; {NAME:, VALUE:}"},
     {"get_info_params", get_info_params, METH_VARARGS,
 	".get_info_params(): Get a list of dicts for all the parameters; {NAME:, VALUE:}"},
+    {"context", pyhal_context_new, METH_VARARGS,
+	".context(component): Create a thread-local context for the given component"},
     {NULL},
 };
 
@@ -1760,6 +1762,426 @@ const char *module_doc = "Interface to emc2's hal\n"
 "KeyboardInterrupt exception will be raised."
 ;
 
+/***********************************************************************
+*                    CONTEXT API PYTHON BINDINGS                       *
+***********************************************************************/
+
+typedef std::map<std::string, hal_pin_handle_t> handlemap_pin;
+typedef std::map<std::string, hal_param_handle_t> handlemap_param;
+
+typedef struct halcontextobject {
+    PyObject_HEAD
+    hal_ctx_t *ctx;
+    int comp_id;
+    halobject *comp;
+    handlemap_pin *pin_handles;
+    handlemap_param *param_handles;
+} halcontextobject;
+
+static void pyhalcontext_delete(PyObject *_self) {
+    halcontextobject *self = (halcontextobject *)_self;
+    
+    if(self->ctx) {
+        hal_ctx_destroy(self->ctx);
+        self->ctx = NULL;
+    }
+    
+    delete self->pin_handles;
+    self->pin_handles = NULL;
+    
+    delete self->param_handles;
+    self->param_handles = NULL;
+    
+    Py_XDECREF(self->comp);
+    
+    Py_TYPE(self)->tp_free(self);
+}
+
+static int pyhalcontext_init(PyObject *_self, PyObject *args, PyObject *kw) {
+    PyErr_SetString(PyExc_RuntimeError,
+        "Cannot be constructed directly. Use hal.context(component) instead.");
+    return -1;
+}
+
+static PyObject *pyhalcontext_sync_read(PyObject *_self, PyObject *args) {
+    halcontextobject *self = (halcontextobject *)_self;
+    
+    if(!self->ctx) {
+        PyErr_SetString(pyhal_error_type, "Context has been destroyed");
+        return NULL;
+    }
+    
+    int ret = hal_ctx_sync_read(self->ctx);
+    if(ret < 0) {
+        return pyhal_error(ret);
+    }
+    
+    Py_RETURN_NONE;
+}
+
+static PyObject *pyhalcontext_sync_write(PyObject *_self, PyObject *args) {
+    halcontextobject *self = (halcontextobject *)_self;
+    
+    if(!self->ctx) {
+        PyErr_SetString(pyhal_error_type, "Context has been destroyed");
+        return NULL;
+    }
+    
+    int ret = hal_ctx_sync_write(self->ctx);
+    if(ret < 0) {
+        return pyhal_error(ret);
+    }
+    
+    Py_RETURN_NONE;
+}
+
+static PyObject *pyhalcontext_get_pin(PyObject *_self, PyObject *args) {
+    halcontextobject *self = (halcontextobject *)_self;
+    const char *name;
+    
+    if(!PyArg_ParseTuple(args, "s", &name)) {
+        return NULL;
+    }
+    
+    if(!self->ctx) {
+        PyErr_SetString(pyhal_error_type, "Context has been destroyed");
+        return NULL;
+    }
+    
+    // Look up handle
+    auto it = self->pin_handles->find(name);
+    if(it == self->pin_handles->end()) {
+        PyErr_Format(PyExc_NameError, "Pin '%s' not found", name);
+        return NULL;
+    }
+    
+    hal_pin_handle_t handle = it->second;
+    
+    // Get the pin type from the component's items map
+    auto item_it = self->comp->items->find(name);
+    if(item_it == self->comp->items->end()) {
+        PyErr_Format(PyExc_NameError, "Pin '%s' not found in component", name);
+        return NULL;
+    }
+    
+    halitem *item = &item_it->second;
+    
+    // Call appropriate get function based on type
+    switch(item->type) {
+        case HAL_BIT:
+            return to_python(hal_ctx_pin_bit_get(self->ctx, handle));
+        case HAL_FLOAT:
+            return to_python(hal_ctx_pin_float_get(self->ctx, handle));
+        case HAL_S32:
+            return to_python(hal_ctx_pin_s32_get(self->ctx, handle));
+        case HAL_U32:
+            return to_python(hal_ctx_pin_u32_get(self->ctx, handle));
+        default:
+            PyErr_Format(pyhal_error_type, "Invalid pin type %d", item->type);
+            return NULL;
+    }
+}
+
+static PyObject *pyhalcontext_set_pin(PyObject *_self, PyObject *args) {
+    halcontextobject *self = (halcontextobject *)_self;
+    const char *name;
+    PyObject *value;
+    
+    if(!PyArg_ParseTuple(args, "sO", &name, &value)) {
+        return NULL;
+    }
+    
+    if(!self->ctx) {
+        PyErr_SetString(pyhal_error_type, "Context has been destroyed");
+        return NULL;
+    }
+    
+    // Look up handle
+    auto it = self->pin_handles->find(name);
+    if(it == self->pin_handles->end()) {
+        PyErr_Format(PyExc_NameError, "Pin '%s' not found", name);
+        return NULL;
+    }
+    
+    hal_pin_handle_t handle = it->second;
+    
+    // Get the pin type from the component's items map
+    auto item_it = self->comp->items->find(name);
+    if(item_it == self->comp->items->end()) {
+        PyErr_Format(PyExc_NameError, "Pin '%s' not found in component", name);
+        return NULL;
+    }
+    
+    halitem *item = &item_it->second;
+    
+    // Call appropriate set function based on type
+    switch(item->type) {
+        case HAL_BIT: {
+            int bit_val = PyObject_IsTrue(value);
+            if(bit_val < 0) return NULL; // Error in conversion
+            hal_ctx_pin_bit_set(self->ctx, handle, bit_val);
+            break;
+        }
+        case HAL_FLOAT: {
+            double tmp;
+            if(!from_python(value, &tmp)) return NULL;
+            hal_ctx_pin_float_set(self->ctx, handle, tmp);
+            break;
+        }
+        case HAL_S32: {
+            int32_t tmp;
+            if(!from_python(value, &tmp)) return NULL;
+            hal_ctx_pin_s32_set(self->ctx, handle, tmp);
+            break;
+        }
+        case HAL_U32: {
+            uint32_t tmp;
+            if(!from_python(value, &tmp)) return NULL;
+            hal_ctx_pin_u32_set(self->ctx, handle, tmp);
+            break;
+        }
+        default:
+            PyErr_Format(pyhal_error_type, "Invalid pin type %d", item->type);
+            return NULL;
+    }
+    
+    Py_RETURN_NONE;
+}
+
+static PyObject *pyhalcontext_get_param(PyObject *_self, PyObject *args) {
+    halcontextobject *self = (halcontextobject *)_self;
+    const char *name;
+    
+    if(!PyArg_ParseTuple(args, "s", &name)) {
+        return NULL;
+    }
+    
+    if(!self->ctx) {
+        PyErr_SetString(pyhal_error_type, "Context has been destroyed");
+        return NULL;
+    }
+    
+    // Look up handle
+    auto it = self->param_handles->find(name);
+    if(it == self->param_handles->end()) {
+        PyErr_Format(PyExc_NameError, "Parameter '%s' not found", name);
+        return NULL;
+    }
+    
+    hal_param_handle_t handle = it->second;
+    
+    // Get the param type from the component's items map
+    auto item_it = self->comp->items->find(name);
+    if(item_it == self->comp->items->end()) {
+        PyErr_Format(PyExc_NameError, "Parameter '%s' not found in component", name);
+        return NULL;
+    }
+    
+    halitem *item = &item_it->second;
+    
+    // Call appropriate get function based on type
+    switch(item->type) {
+        case HAL_BIT:
+            return to_python(hal_ctx_param_bit_get(self->ctx, handle));
+        case HAL_FLOAT:
+            return to_python(hal_ctx_param_float_get(self->ctx, handle));
+        case HAL_S32:
+            return to_python(hal_ctx_param_s32_get(self->ctx, handle));
+        case HAL_U32:
+            return to_python(hal_ctx_param_u32_get(self->ctx, handle));
+        default:
+            PyErr_Format(pyhal_error_type, "Invalid parameter type %d", item->type);
+            return NULL;
+    }
+}
+
+static PyObject *pyhalcontext_set_param(PyObject *_self, PyObject *args) {
+    halcontextobject *self = (halcontextobject *)_self;
+    const char *name;
+    PyObject *value;
+    
+    if(!PyArg_ParseTuple(args, "sO", &name, &value)) {
+        return NULL;
+    }
+    
+    if(!self->ctx) {
+        PyErr_SetString(pyhal_error_type, "Context has been destroyed");
+        return NULL;
+    }
+    
+    // Look up handle
+    auto it = self->param_handles->find(name);
+    if(it == self->param_handles->end()) {
+        PyErr_Format(PyExc_NameError, "Parameter '%s' not found", name);
+        return NULL;
+    }
+    
+    hal_param_handle_t handle = it->second;
+    
+    // Get the param type from the component's items map
+    auto item_it = self->comp->items->find(name);
+    if(item_it == self->comp->items->end()) {
+        PyErr_Format(PyExc_NameError, "Parameter '%s' not found in component", name);
+        return NULL;
+    }
+    
+    halitem *item = &item_it->second;
+    
+    // Call appropriate set function based on type
+    switch(item->type) {
+        case HAL_BIT: {
+            int bit_val = PyObject_IsTrue(value);
+            if(bit_val < 0) return NULL; // Error in conversion
+            hal_ctx_param_bit_set(self->ctx, handle, bit_val);
+            break;
+        }
+        case HAL_FLOAT: {
+            double tmp;
+            if(!from_python(value, &tmp)) return NULL;
+            hal_ctx_param_float_set(self->ctx, handle, tmp);
+            break;
+        }
+        case HAL_S32: {
+            int32_t tmp;
+            if(!from_python(value, &tmp)) return NULL;
+            hal_ctx_param_s32_set(self->ctx, handle, tmp);
+            break;
+        }
+        case HAL_U32: {
+            uint32_t tmp;
+            if(!from_python(value, &tmp)) return NULL;
+            hal_ctx_param_u32_set(self->ctx, handle, tmp);
+            break;
+        }
+        default:
+            PyErr_Format(pyhal_error_type, "Invalid parameter type %d", item->type);
+            return NULL;
+    }
+    
+    Py_RETURN_NONE;
+}
+
+static PyObject *pyhalcontext_destroy(PyObject *_self, PyObject *args) {
+    halcontextobject *self = (halcontextobject *)_self;
+    
+    if(self->ctx) {
+        hal_ctx_destroy(self->ctx);
+        self->ctx = NULL;
+    }
+    
+    Py_RETURN_NONE;
+}
+
+static PyMethodDef halcontext_methods[] = {
+    {"sync_read", pyhalcontext_sync_read, METH_NOARGS,
+        "Copy shared memory to local buffers"},
+    {"sync_write", pyhalcontext_sync_write, METH_NOARGS,
+        "Copy modified local values to shared memory"},
+    {"get_pin", pyhalcontext_get_pin, METH_VARARGS,
+        "Get pin value from context"},
+    {"set_pin", pyhalcontext_set_pin, METH_VARARGS,
+        "Set pin value in context"},
+    {"get_param", pyhalcontext_get_param, METH_VARARGS,
+        "Get parameter value from context"},
+    {"set_param", pyhalcontext_set_param, METH_VARARGS,
+        "Set parameter value in context"},
+    {"destroy", pyhalcontext_destroy, METH_NOARGS,
+        "Destroy context and free resources"},
+    {NULL},
+};
+
+static PyTypeObject halcontext_type = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "hal.context",             /*tp_name*/
+    sizeof(halcontextobject),  /*tp_basicsize*/
+    0,                         /*tp_itemsize*/
+    pyhalcontext_delete,       /*tp_dealloc*/
+    0,                         /*tp_print*/
+    0,                         /*tp_getattr*/
+    0,                         /*tp_setattr*/
+    0,                         /*tp_compare*/
+    0,                         /*tp_repr*/
+    0,                         /*tp_as_number*/
+    0,                         /*tp_as_sequence*/
+    0,                         /*tp_as_mapping*/
+    0,                         /*tp_hash */
+    0,                         /*tp_call*/
+    0,                         /*tp_str*/
+    0,                         /*tp_getattro*/
+    0,                         /*tp_setattro*/
+    0,                         /*tp_as_buffer*/
+    Py_TPFLAGS_DEFAULT,        /*tp_flags*/
+    "HAL Thread-Local Context",/*tp_doc*/
+    0,                         /*tp_traverse*/
+    0,                         /*tp_clear*/
+    0,                         /*tp_richcompare*/
+    0,                         /*tp_weaklistoffset*/
+    0,                         /*tp_iter*/
+    0,                         /*tp_iternext*/
+    halcontext_methods,        /*tp_methods*/
+    0,                         /*tp_members*/
+    0,                         /*tp_getset*/
+    0,                         /*tp_base*/
+    0,                         /*tp_dict*/
+    0,                         /*tp_descr_get*/
+    0,                         /*tp_descr_set*/
+    0,                         /*tp_dictoffset*/
+    pyhalcontext_init,         /*tp_init*/
+    0,                         /*tp_alloc*/
+    PyType_GenericNew,         /*tp_new*/
+    0,                         /*tp_free*/
+    0,                         /*tp_is_gc*/
+};
+
+static PyObject *pyhal_context_new(PyObject *_self, PyObject *args) {
+    halobject *comp;
+    
+    if(!PyArg_ParseTuple(args, "O!", &halobject_type, &comp)) {
+        return NULL;
+    }
+    
+    if(comp->hal_id <= 0) {
+        PyErr_SetString(PyExc_RuntimeError, 
+            "Invalid operation on closed HAL component");
+        return NULL;
+    }
+    
+    // Create context object
+    halcontextobject *ctx_obj = PyObject_New(halcontextobject, &halcontext_type);
+    if(!ctx_obj) {
+        return NULL;
+    }
+    
+    // Initialize fields
+    ctx_obj->ctx = hal_ctx_create(comp->hal_id);
+    if(!ctx_obj->ctx) {
+        Py_DECREF(ctx_obj);
+        PyErr_SetString(pyhal_error_type, "Failed to create HAL context");
+        return NULL;
+    }
+    
+    ctx_obj->comp_id = comp->hal_id;
+    ctx_obj->comp = comp;
+    Py_INCREF(comp);
+    
+    ctx_obj->pin_handles = new handlemap_pin();
+    ctx_obj->param_handles = new handlemap_param();
+    
+    // Note: The context API requires pins and params to be created with the
+    // handle-based API (hal_pin_*_new_handle, hal_param_*_new_handle).
+    // Pins created with the old API (component.newpin()) are not accessible
+    // through the context API.
+    //
+    // To use the context API, pins and params must be created directly in C
+    // or through a future enhancement that provides handle-based creation
+    // in Python (e.g., component.newpin_handle()).
+    //
+    // For now, the handle maps remain empty. Users attempting to access pins
+    // will receive a NameError indicating the pin was not found.
+    
+    return (PyObject *)ctx_obj;
+}
+
 static struct PyModuleDef hal_moduledef = {
     PyModuleDef_HEAD_INIT,  /* m_base */
     "_hal",                 /* m_name */
@@ -1780,6 +2202,7 @@ PyMODINIT_FUNC PyInit__hal(void)
     PyType_Ready(&shm_type);
     PyType_Ready(&halpin_type);
     PyType_Ready(&stream_type);
+    PyType_Ready(&halcontext_type);
     PyModule_AddObject(m, "component", (PyObject*)&halobject_type);
     PyModule_AddObject(m, "shm", (PyObject*)&shm_type);
     PyModule_AddObject(m, "item", (PyObject*)&halpin_type);
