@@ -982,6 +982,201 @@ extern void hal_thread_sync_read(void);
  */
 extern void hal_thread_sync_write(void);
 
+/***********************************************************************
+*                    THREAD-LOCAL CONTEXT API                          *
+*                                                                      *
+* This API provides a shim layer for thread-local HAL data copies.    *
+* Each thread manages its own hal_ctx_t, independent of component.    *
+* Uses double-buffer diff to minimize shared memory writes.            *
+*                                                                      *
+* Key principles:                                                      *
+* - Fail early: Invalid usage = immediate error                        *
+* - Thread-local contexts: Each thread has its own context             *
+* - Explicit API: User must explicitly call sync functions             *
+* - Hard errors: sync_write without sync_read = error                  *
+***********************************************************************/
+
+/** Opaque context type - definition in hal_ctx_internal.h */
+typedef struct hal_ctx hal_ctx_t;
+
+/** Handle types for pins and parameters */
+typedef int hal_pin_handle_t;
+typedef int hal_param_handle_t;
+
+/***********************************************************************
+*                     CONTEXT LIFECYCLE                                *
+***********************************************************************/
+
+/** Create a new thread-local HAL context
+ *  
+ * Creates a context for accessing HAL pins/params in a thread-local manner.
+ * Each thread should create its own context.
+ * 
+ * @param comp_id Component ID to associate with this context
+ * @return Pointer to new context, or NULL on failure
+ */
+extern hal_ctx_t *hal_ctx_create(int comp_id);
+
+/** Destroy a thread-local HAL context
+ *  
+ * Frees all resources associated with the context.
+ * 
+ * @param ctx Context to destroy
+ */
+extern void hal_ctx_destroy(hal_ctx_t *ctx);
+
+/***********************************************************************
+*                     SYNC OPERATIONS                                  *
+***********************************************************************/
+
+/** Sync read: Copy shared memory to local buffers
+ *  
+ * Must be called before accessing any pins/params through the context.
+ * Copies current values from shared memory to the thread-local "after" buffer.
+ * Also creates a snapshot in the "before" buffer for diff detection.
+ * 
+ * @param ctx Context to sync
+ * @return 0 on success, -EINVAL if called twice without sync_write
+ */
+extern int hal_ctx_sync_read(hal_ctx_t *ctx);
+
+/** Sync write: Copy modified local values to shared memory
+ *  
+ * Must be called after sync_read and pin/param modifications.
+ * Compares "after" vs "before" buffers and writes only changed values.
+ * After this call, must call sync_read again before accessing data.
+ * 
+ * @param ctx Context to sync
+ * @return 0 on success, -EINVAL if called without prior sync_read
+ */
+extern int hal_ctx_sync_write(hal_ctx_t *ctx);
+
+/***********************************************************************
+*                     PIN CREATION (HANDLE-BASED)                      *
+***********************************************************************/
+
+/** Create a new bit pin and return a handle
+ * 
+ * Similar to hal_pin_bit_new() but returns a handle instead of pointer.
+ * The handle can be used with hal_ctx_pin_bit_get/set() for access.
+ * 
+ * @param name Pin name
+ * @param dir Pin direction (HAL_IN, HAL_OUT, HAL_IO)
+ * @param handle Pointer to store the returned handle
+ * @param comp_id Component ID
+ * @return 0 on success, negative error code on failure
+ */
+extern int hal_pin_bit_new_handle(const char *name, hal_pin_dir_t dir,
+                                  hal_pin_handle_t *handle, int comp_id);
+
+extern int hal_pin_float_new_handle(const char *name, hal_pin_dir_t dir,
+                                    hal_pin_handle_t *handle, int comp_id);
+
+extern int hal_pin_s32_new_handle(const char *name, hal_pin_dir_t dir,
+                                  hal_pin_handle_t *handle, int comp_id);
+
+extern int hal_pin_u32_new_handle(const char *name, hal_pin_dir_t dir,
+                                  hal_pin_handle_t *handle, int comp_id);
+
+/***********************************************************************
+*                     PIN ACCESS (CONTEXT-AWARE)                       *
+***********************************************************************/
+
+/** Get bit pin value from thread-local context
+ * 
+ * Must be called between sync_read and sync_write.
+ * Returns value from the thread-local "after" buffer.
+ * 
+ * @param ctx Thread-local context
+ * @param pin Pin handle
+ * @return Pin value
+ */
+extern hal_bit_t hal_ctx_pin_bit_get(hal_ctx_t *ctx, hal_pin_handle_t pin);
+
+/** Set bit pin value in thread-local context
+ * 
+ * Must be called between sync_read and sync_write.
+ * Writes value to the thread-local "after" buffer.
+ * Value will be written to shared memory on sync_write.
+ * 
+ * @param ctx Thread-local context
+ * @param pin Pin handle
+ * @param val Value to set
+ */
+extern void hal_ctx_pin_bit_set(hal_ctx_t *ctx, hal_pin_handle_t pin, hal_bit_t val);
+
+extern hal_float_t hal_ctx_pin_float_get(hal_ctx_t *ctx, hal_pin_handle_t pin);
+extern void hal_ctx_pin_float_set(hal_ctx_t *ctx, hal_pin_handle_t pin, hal_float_t val);
+
+extern hal_s32_t hal_ctx_pin_s32_get(hal_ctx_t *ctx, hal_pin_handle_t pin);
+extern void hal_ctx_pin_s32_set(hal_ctx_t *ctx, hal_pin_handle_t pin, hal_s32_t val);
+
+extern hal_u32_t hal_ctx_pin_u32_get(hal_ctx_t *ctx, hal_pin_handle_t pin);
+extern void hal_ctx_pin_u32_set(hal_ctx_t *ctx, hal_pin_handle_t pin, hal_u32_t val);
+
+/***********************************************************************
+*                     PARAMETER CREATION (HANDLE-BASED)                *
+***********************************************************************/
+
+/** Create a new bit parameter and return a handle
+ * 
+ * Similar to hal_param_bit_new() but returns a handle instead of pointer.
+ * The handle can be used with hal_ctx_param_bit_get/set() for access.
+ * 
+ * @param name Parameter name
+ * @param dir Parameter direction (HAL_RO, HAL_RW)
+ * @param handle Pointer to store the returned handle
+ * @param comp_id Component ID
+ * @return 0 on success, negative error code on failure
+ */
+extern int hal_param_bit_new_handle(const char *name, hal_param_dir_t dir,
+                                    hal_param_handle_t *handle, int comp_id);
+
+extern int hal_param_float_new_handle(const char *name, hal_param_dir_t dir,
+                                      hal_param_handle_t *handle, int comp_id);
+
+extern int hal_param_s32_new_handle(const char *name, hal_param_dir_t dir,
+                                    hal_param_handle_t *handle, int comp_id);
+
+extern int hal_param_u32_new_handle(const char *name, hal_param_dir_t dir,
+                                    hal_param_handle_t *handle, int comp_id);
+
+/***********************************************************************
+*                     PARAMETER ACCESS (CONTEXT-AWARE)                 *
+***********************************************************************/
+
+/** Get bit parameter value from thread-local context
+ * 
+ * Must be called between sync_read and sync_write.
+ * Returns value from the thread-local "after" buffer.
+ * 
+ * @param ctx Thread-local context
+ * @param param Parameter handle
+ * @return Parameter value
+ */
+extern hal_bit_t hal_ctx_param_bit_get(hal_ctx_t *ctx, hal_param_handle_t param);
+
+/** Set bit parameter value in thread-local context
+ * 
+ * Must be called between sync_read and sync_write.
+ * Writes value to the thread-local "after" buffer.
+ * Value will be written to shared memory on sync_write.
+ * 
+ * @param ctx Thread-local context
+ * @param param Parameter handle
+ * @param val Value to set
+ */
+extern void hal_ctx_param_bit_set(hal_ctx_t *ctx, hal_param_handle_t param, hal_bit_t val);
+
+extern hal_float_t hal_ctx_param_float_get(hal_ctx_t *ctx, hal_param_handle_t param);
+extern void hal_ctx_param_float_set(hal_ctx_t *ctx, hal_param_handle_t param, hal_float_t val);
+
+extern hal_s32_t hal_ctx_param_s32_get(hal_ctx_t *ctx, hal_param_handle_t param);
+extern void hal_ctx_param_s32_set(hal_ctx_t *ctx, hal_param_handle_t param, hal_s32_t val);
+
+extern hal_u32_t hal_ctx_param_u32_get(hal_ctx_t *ctx, hal_param_handle_t param);
+extern void hal_ctx_param_u32_set(hal_ctx_t *ctx, hal_param_handle_t param, hal_u32_t val);
+
 RTAPI_END_DECLS
 
 #endif /* HAL_H */
