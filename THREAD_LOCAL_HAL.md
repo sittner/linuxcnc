@@ -659,14 +659,14 @@ During the design phase, we considered a hybrid approach where numeric pins coul
 - Implement `hal_ctx_sync_read/write`
 - Implement `hal_ctx_pin_*_get/set` with dirty marking
 - Implement handle-based pin/param creation APIs
-- **Status:** 🚧 In Progress
+- **Status:** ✅ Complete
 
 ### Phase 3: Thread Integration
 - Change `hal_funct_t` signature (breaking change)
 - Add `ctx` to `hal_thread_t`
 - Update thread creation to create context
 - Update thread runner to call sync and pass context
-- **Status:** Planned
+- **Status:** 🚧 In Progress
 
 ### Phase 4: halcompile Update
 - Generate new function signature
@@ -680,6 +680,283 @@ During the design phase, we considered a hybrid approach where numeric pins coul
 - Update remaining RT components
 - Update documentation
 - **Status:** Planned
+
+## Phase 3: Detailed Implementation Plan
+
+This section provides specific implementation details for Phase 3 (Thread Integration).
+
+### 3.1 Function Signature Change
+
+**File:** `src/hal/hal.h`
+
+The `hal_funct_t` typedef must change from:
+
+```c
+typedef void (*hal_funct_t)(void *arg, long period);
+```
+
+To:
+
+```c
+typedef void (*hal_funct_t)(void *arg, hal_ctx_t *ctx);
+```
+
+Components access period via `hal_ctx_period(ctx)` instead of the parameter.
+
+### 3.2 Thread Structure Changes
+
+**File:** `src/hal/hal_priv.h`
+
+Add `ctx` field to `hal_thread_t`:
+
+```c
+typedef struct hal_thread {
+    int next_ptr;           /* next thread in list */
+    int uses_fp;            /* thread uses floating point */
+    long int period;        /* period of the thread, in nsec */
+    int priority;           /* thread priority */
+    int task_id;            /* task id from RTAPI */
+    hal_s32_t *runtime;     /* runtime accumulator */
+    hal_s32_t *maxtime;     /* max runtime */
+    hal_list_t funct_list;  /* list of functions */
+    char name[HAL_NAME_LEN+1]; /* thread name */
+    
+    /* Thread-local context for Phase 3 */
+    hal_ctx_t *ctx;         /* thread-local HAL context */
+} hal_thread_t;
+```
+
+### 3.3 Thread Creation - Context Allocation
+
+**File:** `src/hal/hal_lib.c`
+
+In `hal_create_thread()`, add context creation after thread struct allocation:
+
+```c
+int hal_create_thread(const char *name, unsigned long period_nsec,
+                      int uses_fp, int cpu_id)
+{
+    hal_thread_t *new_thread;
+    
+    // ... existing allocation code ...
+    
+    /* Allocate thread struct */
+    new_thread = alloc_thread_struct();
+    if (new_thread == NULL) {
+        rtapi_mutex_give(&(hal_data->mutex));
+        rtapi_print_msg(RTAPI_MSG_ERR,
+            "HAL: ERROR: insufficient memory for thread '%s'\n", name);
+        return -ENOMEM;
+    }
+    
+    /* Create thread-local context */
+    new_thread->ctx = hal_ctx_create_internal(period_nsec);
+    if (new_thread->ctx == NULL) {
+        rtapi_mutex_give(&(hal_data->mutex));
+        rtapi_print_msg(RTAPI_MSG_ERR,
+            "HAL: ERROR: failed to create context for thread '%s'\n", name);
+        free_thread_struct(new_thread);
+        return -ENOMEM;
+    }
+    
+    /* Set thread name in context */
+    new_thread->ctx->thread_name = new_thread->name;
+    new_thread->ctx->period_ns = period_nsec;
+    
+    // ... rest of existing code ...
+}
+```
+
+Add internal context creation function (doesn't require comp_id):
+
+```c
+/* Internal function for thread context creation */
+static hal_ctx_t *hal_ctx_create_internal(long period_ns)
+{
+    hal_ctx_t *ctx;
+    
+    /* Allocate context struct */
+    ctx = malloc(sizeof(hal_ctx_t));
+    if (!ctx) return NULL;
+    
+    /* Allocate working buffer (1MB) */
+    ctx->working_buf = malloc(HAL_SIZE);
+    if (!ctx->working_buf) {
+        free(ctx);
+        return NULL;
+    }
+    
+    /* Allocate dirty bitmap (128KB for 1-byte granularity) */
+    ctx->dirty_bitmap = calloc(HAL_SIZE / 8, sizeof(uint32_t));
+    if (!ctx->dirty_bitmap) {
+        free(ctx->working_buf);
+        free(ctx);
+        return NULL;
+    }
+    
+    /* Initialize fields */
+    ctx->period_ns = period_ns;
+    ctx->actual_period_ns = 0;
+    ctx->iteration_count = 0;
+    ctx->overruns = 0;
+    ctx->thread_name = NULL;
+    ctx->valid = 0;
+    ctx->comp_id = -1;  /* RT thread context, not tied to userspace component */
+    
+    return ctx;
+}
+```
+
+In thread deletion, destroy context:
+
+```c
+int hal_thread_delete(const char *name)
+{
+    hal_thread_t *thread;
+    
+    // ... find thread ...
+    
+    /* Destroy thread context before freeing thread */
+    if (thread->ctx) {
+        hal_ctx_destroy(thread->ctx);
+        thread->ctx = NULL;
+    }
+    
+    // ... rest of deletion code ...
+}
+```
+
+### 3.4 Thread Runner - Sync Integration
+
+**File:** `src/rtapi/rtapi_app.cc`
+
+The RT thread runner must:
+1. Call `hal_ctx_sync_read()` at start of cycle
+2. Pass `ctx` to each function instead of `period`
+3. Call `hal_ctx_sync_write()` at end of cycle
+
+Update the thread execution function:
+
+```c
+static void thread_task(void *arg)
+{
+    hal_thread_t *thread = (hal_thread_t *)arg;
+    hal_funct_entry_t *funct_entry;
+    hal_funct_t funct;
+    hal_ctx_t *ctx = thread->ctx;
+    long long start_time, end_time;
+    
+    while (1) {
+        start_time = rtapi_get_time();
+        
+        /* Sync read at start of cycle */
+        hal_ctx_sync_read(ctx);
+        
+        /* Update iteration count */
+        ctx->iteration_count++;
+        
+        /* Iterate through function list */
+        hal_list_for_each_entry(funct_entry, &thread->funct_list, list) {
+            funct = funct_entry->funct;
+            /* Pass context instead of period */
+            funct(funct_entry->arg, ctx);
+        }
+        
+        /* Sync write at end of cycle */
+        hal_ctx_sync_write(ctx);
+        
+        /* Calculate actual period for next iteration */
+        end_time = rtapi_get_time();
+        ctx->actual_period_ns = (long)(end_time - start_time);
+        
+        /* Check for overruns */
+        if (ctx->actual_period_ns > thread->period) {
+            ctx->overruns++;
+        }
+        
+        rtapi_wait();
+    }
+}
+```
+
+### 3.5 Implementation Order
+
+| Step | Task | File | Risk Level |
+|------|------|------|------------|
+| 1 | Add `ctx` to `hal_thread_t` | `hal_priv.h` | Low |
+| 2 | Add `hal_ctx_create_internal()` | `hal_lib.c` | Low |
+| 3 | Add context creation in `hal_create_thread()` | `hal_lib.c` | Medium |
+| 4 | Add context destruction in `hal_thread_delete()` | `hal_lib.c` | Low |
+| 5 | Update `hal_funct_t` typedef | `hal.h` | **Breaking** |
+| 6 | Update thread runner with sync calls | `rtapi_app.cc` | Medium |
+| 7 | Migrate `counter.c` as first example | `components/counter.c` | Low |
+
+**Note:** Step 5 is the breaking change - after this, all RT components must use the new signature.
+
+### 3.6 RT Component Migration Example
+
+**Before (old API):**
+```c
+static hal_float_t *in, *out;
+static hal_float_t gain;
+
+static void update(void *arg, long period)
+{
+    *out = *in * gain;
+    
+    if (period > 1000000) {
+        // do something
+    }
+}
+
+int rtapi_app_main(void)
+{
+    comp_id = hal_init("example");
+    hal_pin_float_new("example.in", HAL_IN, &in, comp_id);
+    hal_pin_float_new("example.out", HAL_OUT, &out, comp_id);
+    hal_param_float_new("example.gain", HAL_RW, &gain, comp_id);
+    hal_export_funct("example", update, NULL, 1, 0, comp_id);
+    hal_ready(comp_id);
+    return 0;
+}
+```
+
+**After (new API):**
+```c
+static hal_pin_handle_t in_h, out_h;
+static hal_param_handle_t gain_h;
+
+static void update(void *arg, hal_ctx_t *ctx)
+{
+    hal_float_t in_val = hal_ctx_pin_float_get(ctx, in_h);
+    hal_float_t gain_val = hal_ctx_param_float_get(ctx, gain_h);
+    
+    hal_ctx_pin_float_set(ctx, out_h, in_val * gain_val);
+    
+    long period = hal_ctx_period(ctx);
+    if (period > 1000000) {
+        // do something
+    }
+}
+
+int rtapi_app_main(void)
+{
+    comp_id = hal_init("example");
+    hal_pin_float_new_handle("example.in", HAL_IN, &in_h, comp_id);
+    hal_pin_float_new_handle("example.out", HAL_OUT, &out_h, comp_id);
+    hal_param_float_new_handle("example.gain", HAL_RW, &gain_h, comp_id);
+    hal_export_funct("example", update, NULL, 1, 0, comp_id);
+    hal_ready(comp_id);
+    return 0;
+}
+```
+
+### 3.7 Testing Strategy
+
+1. **Build test** - Ensure all code compiles after each step
+2. **Unit test** - Test context creation/destruction in isolation
+3. **Integration test** - Run with single migrated component (`counter`)
+4. **Full test** - Run LinuxCNC demo after all components migrated
 
 ## Files Requiring Updates (Phase 5 Inventory)
 
