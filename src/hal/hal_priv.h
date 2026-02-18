@@ -587,27 +587,14 @@ static inline void halpr_compute_dirty_info(int offset, int size,
     *dirty_offset = start_word;
     
     if (start_word == end_word) {
-        /* Data fits in single 32-bit word */
-        uint32_t mask = 0;
-        int bit;
-        for (bit = start_bit; bit <= end_bit; bit++) {
-            mask |= (1U << bit);
-        }
-        dirty_mask[0] = mask;
+        /* Data fits in single 32-bit word - use bit shift for efficiency */
+        int num_bits = end_bit - start_bit + 1;
+        dirty_mask[0] = ((1U << num_bits) - 1) << start_bit;
         dirty_mask[1] = 0;
     } else {
         /* Data spans two 32-bit words */
-        uint32_t mask0 = 0;
-        uint32_t mask1 = 0;
-        int bit;
-        for (bit = start_bit; bit < 32; bit++) {
-            mask0 |= (1U << bit);
-        }
-        for (bit = 0; bit <= end_bit; bit++) {
-            mask1 |= (1U << bit);
-        }
-        dirty_mask[0] = mask0;
-        dirty_mask[1] = mask1;
+        dirty_mask[0] = ~0U << start_bit;  /* All bits from start_bit to 31 */
+        dirty_mask[1] = (1U << (end_bit + 1)) - 1;  /* All bits from 0 to end_bit */
     }
 }
 
