@@ -1001,19 +1001,13 @@ typedef struct hal_ctx hal_ctx_t;
 
 /** Handle types for pins and parameters */
 typedef struct {
-    int data_offset;        /* offset to data in HAL memory */
-    hal_type_t type;        /* data type for validation */
-    /* Precomputed dirty marking info (from signal/param struct) */
-    uint32_t dirty_offset;  /* index into dirty_bitmap array */
-    uint32_t dirty_mask[2]; /* bitmasks for fast dirty marking */
+    hal_pin_t *pin;         /* Direct pointer to pin struct in shmem */
+    hal_type_t type;        /* For validation */
 } hal_pin_handle_t;
 
 typedef struct {
-    int data_offset;        /* offset to data in HAL memory */
-    hal_type_t type;        /* data type for validation */
-    /* Precomputed dirty marking info (from param struct) */
-    uint32_t dirty_offset;  /* index into dirty_bitmap array */
-    uint32_t dirty_mask[2]; /* bitmasks for fast dirty marking */
+    hal_param_t *param;     /* Direct pointer to param struct in shmem */
+    hal_type_t type;        /* For validation */
 } hal_param_handle_t;
 
 /***********************************************************************

@@ -213,22 +213,19 @@ int hal_pin_bit_new_handle(const char *name, hal_pin_dir_t dir,
         return ret;
     }
     
-    /* Find the pin we just created to get signal info */
+    /* Find the pin we just created and store pointer */
     rtapi_mutex_get(&(hal_data->mutex));
     pin = halpr_find_pin_by_name(name);
+    rtapi_mutex_give(&(hal_data->mutex));
+    
     if (!pin) {
-        rtapi_mutex_give(&(hal_data->mutex));
         rtapi_print_msg(RTAPI_MSG_ERR,
             "HAL: ERROR: Failed to find pin '%s' after creation\n", name);
         return -EINVAL;
     }
     
-    /* Get the data offset from the pin's current data pointer */
-    volatile void *data_ptr = *data_ptr_addr;
-    handle->data_offset = SHMOFF((void*)data_ptr);
+    handle->pin = pin;
     handle->type = HAL_BIT;
-    
-    rtapi_mutex_give(&(hal_data->mutex));
     
     return 0;
 }
@@ -251,17 +248,12 @@ int hal_pin_float_new_handle(const char *name, hal_pin_dir_t dir,
     
     rtapi_mutex_get(&(hal_data->mutex));
     pin = halpr_find_pin_by_name(name);
-    if (!pin) {
-        rtapi_mutex_give(&(hal_data->mutex));
-        return -EINVAL;
-    }
-    
-    volatile void *data_ptr = *data_ptr_addr;
-    handle->data_offset = SHMOFF((void*)data_ptr);
-    handle->type = HAL_FLOAT;
-    
     rtapi_mutex_give(&(hal_data->mutex));
     
+    if (!pin) return -EINVAL;
+    
+    handle->pin = pin;
+    handle->type = HAL_FLOAT;
     return 0;
 }
 
@@ -283,17 +275,12 @@ int hal_pin_s32_new_handle(const char *name, hal_pin_dir_t dir,
     
     rtapi_mutex_get(&(hal_data->mutex));
     pin = halpr_find_pin_by_name(name);
-    if (!pin) {
-        rtapi_mutex_give(&(hal_data->mutex));
-        return -EINVAL;
-    }
-    
-    volatile void *data_ptr = *data_ptr_addr;
-    handle->data_offset = SHMOFF((void*)data_ptr);
-    handle->type = HAL_S32;
-    
     rtapi_mutex_give(&(hal_data->mutex));
     
+    if (!pin) return -EINVAL;
+    
+    handle->pin = pin;
+    handle->type = HAL_S32;
     return 0;
 }
 
@@ -315,17 +302,12 @@ int hal_pin_u32_new_handle(const char *name, hal_pin_dir_t dir,
     
     rtapi_mutex_get(&(hal_data->mutex));
     pin = halpr_find_pin_by_name(name);
-    if (!pin) {
-        rtapi_mutex_give(&(hal_data->mutex));
-        return -EINVAL;
-    }
-    
-    volatile void *data_ptr = *data_ptr_addr;
-    handle->data_offset = SHMOFF((void*)data_ptr);
-    handle->type = HAL_U32;
-    
     rtapi_mutex_give(&(hal_data->mutex));
     
+    if (!pin) return -EINVAL;
+    
+    handle->pin = pin;
+    handle->type = HAL_U32;
     return 0;
 }
 
@@ -351,20 +333,19 @@ int hal_param_bit_new_handle(const char *name, hal_param_dir_t dir,
         return ret;
     }
     
-    /* Find the param we just created to get its offset */
+    /* Find the param we just created and store pointer */
     rtapi_mutex_get(&(hal_data->mutex));
     param = halpr_find_param_by_name(name);
+    rtapi_mutex_give(&(hal_data->mutex));
+    
     if (!param) {
-        rtapi_mutex_give(&(hal_data->mutex));
         rtapi_print_msg(RTAPI_MSG_ERR,
             "HAL: ERROR: Failed to find param '%s' after creation\n", name);
         return -EINVAL;
     }
     
-    handle->data_offset = SHMOFF(data_ptr);
+    handle->param = param;
     handle->type = HAL_BIT;
-    
-    rtapi_mutex_give(&(hal_data->mutex));
     
     return 0;
 }
@@ -387,16 +368,12 @@ int hal_param_float_new_handle(const char *name, hal_param_dir_t dir,
     
     rtapi_mutex_get(&(hal_data->mutex));
     param = halpr_find_param_by_name(name);
-    if (!param) {
-        rtapi_mutex_give(&(hal_data->mutex));
-        return -EINVAL;
-    }
-    
-    handle->data_offset = SHMOFF(data_ptr);
-    handle->type = HAL_FLOAT;
-    
     rtapi_mutex_give(&(hal_data->mutex));
     
+    if (!param) return -EINVAL;
+    
+    handle->param = param;
+    handle->type = HAL_FLOAT;
     return 0;
 }
 
@@ -418,16 +395,12 @@ int hal_param_s32_new_handle(const char *name, hal_param_dir_t dir,
     
     rtapi_mutex_get(&(hal_data->mutex));
     param = halpr_find_param_by_name(name);
-    if (!param) {
-        rtapi_mutex_give(&(hal_data->mutex));
-        return -EINVAL;
-    }
-    
-    handle->data_offset = SHMOFF(data_ptr);
-    handle->type = HAL_S32;
-    
     rtapi_mutex_give(&(hal_data->mutex));
     
+    if (!param) return -EINVAL;
+    
+    handle->param = param;
+    handle->type = HAL_S32;
     return 0;
 }
 
@@ -449,273 +422,181 @@ int hal_param_u32_new_handle(const char *name, hal_param_dir_t dir,
     
     rtapi_mutex_get(&(hal_data->mutex));
     param = halpr_find_param_by_name(name);
-    if (!param) {
-        rtapi_mutex_give(&(hal_data->mutex));
-        return -EINVAL;
-    }
+    rtapi_mutex_give(&(hal_data->mutex));
     
-    handle->data_offset = SHMOFF(data_ptr);
+    if (!param) return -EINVAL;
+    
+    handle->param = param;
     handle->type = HAL_U32;
-    
-    rtapi_mutex_give(&(hal_data->mutex));
-    
     return 0;
-}
-
-/***********************************************************************
-*                     HELPER: Find signal/param for dirty marking      *
-***********************************************************************/
-
-/* TODO: Performance optimization - these helper functions perform linear
- * scans on every set operation. Consider caching signal/param pointers in
- * handle structure or using a hash table for O(1) lookup. */
-
-/* Helper to find signal from pin handle data offset */
-static hal_sig_t *find_signal_by_data_offset(int data_offset) {
-    hal_sig_t *sig;
-    rtapi_intptr_t next;
-    
-    /* Scan signal list to find one with matching data_ptr */
-    rtapi_mutex_get(&(hal_data->mutex));
-    next = hal_data->sig_list_ptr;
-    while (next != 0) {
-        sig = SHMPTR(next);
-        if (sig->data_ptr == data_offset) {
-            rtapi_mutex_give(&(hal_data->mutex));
-            return sig;
-        }
-        next = sig->next_ptr;
-    }
-    rtapi_mutex_give(&(hal_data->mutex));
-    return NULL;
-}
-
-/* Helper to find param by data offset */
-static hal_param_t *find_param_by_data_offset(int data_offset) {
-    hal_param_t *param;
-    rtapi_intptr_t next;
-    
-    /* Scan param list to find one with matching data_ptr */
-    rtapi_mutex_get(&(hal_data->mutex));
-    next = hal_data->param_list_ptr;
-    while (next != 0) {
-        param = SHMPTR(next);
-        if (param->data_ptr == data_offset) {
-            rtapi_mutex_give(&(hal_data->mutex));
-            return param;
-        }
-        next = param->next_ptr;
-    }
-    rtapi_mutex_give(&(hal_data->mutex));
-    return NULL;
 }
 
 /***********************************************************************
 *                     PIN ACCESS (CONTEXT-AWARE)                       *
 ***********************************************************************/
 
-hal_bit_t hal_ctx_pin_bit_get(hal_ctx_t *ctx, hal_pin_handle_t pin) {
-    if (!ctx) {
-        return 0;
-    }
+hal_bit_t hal_ctx_pin_bit_get(hal_ctx_t *ctx, hal_pin_handle_t h) {
+    if (!ctx) return 0;
     
-    hal_bit_t *val = (hal_bit_t *)(ctx->working_buf + pin.data_offset);
-    return *val;
+    hal_sig_t *sig = SHMPTR(h.pin->signal);
+    if (!sig) return 0;  /* Unlinked - return default */
+    
+    return *(hal_bit_t *)(ctx->working_buf + sig->data_ptr);
 }
 
-void hal_ctx_pin_bit_set(hal_ctx_t *ctx, hal_pin_handle_t pin, hal_bit_t val) {
-    if (!ctx) {
-        return;
-    }
+void hal_ctx_pin_bit_set(hal_ctx_t *ctx, hal_pin_handle_t h, hal_bit_t val) {
+    if (!ctx) return;
     
-    /* Write value to working buffer */
-    *(hal_bit_t *)(ctx->working_buf + pin.data_offset) = val;
+    hal_sig_t *sig = SHMPTR(h.pin->signal);
+    if (!sig) return;  /* Unlinked - nothing to do */
     
-    /* Mark dirty using precomputed values from signal */
-    hal_sig_t *sig = find_signal_by_data_offset(pin.data_offset);
-    if (sig) {
-        ctx->dirty_bitmap[sig->dirty_offset]     |= sig->dirty_mask[0];
-        ctx->dirty_bitmap[sig->dirty_offset + 1] |= sig->dirty_mask[1];
-    }
+    /* Write to working buffer */
+    *(hal_bit_t *)(ctx->working_buf + sig->data_ptr) = val;
+    
+    /* Mark dirty using signal's precomputed dirty info */
+    ctx->dirty_bitmap[sig->dirty_offset]     |= sig->dirty_mask[0];
+    ctx->dirty_bitmap[sig->dirty_offset + 1] |= sig->dirty_mask[1];
 }
 
-hal_float_t hal_ctx_pin_float_get(hal_ctx_t *ctx, hal_pin_handle_t pin) {
-    if (!ctx) {
-        return 0.0;
-    }
+hal_float_t hal_ctx_pin_float_get(hal_ctx_t *ctx, hal_pin_handle_t h) {
+    if (!ctx) return 0.0;
     
-    hal_float_t *val = (hal_float_t *)(ctx->working_buf + pin.data_offset);
-    return *val;
+    hal_sig_t *sig = SHMPTR(h.pin->signal);
+    if (!sig) return 0.0;  /* Unlinked - return default */
+    
+    return *(hal_float_t *)(ctx->working_buf + sig->data_ptr);
 }
 
-void hal_ctx_pin_float_set(hal_ctx_t *ctx, hal_pin_handle_t pin, hal_float_t val) {
-    if (!ctx) {
-        return;
-    }
+void hal_ctx_pin_float_set(hal_ctx_t *ctx, hal_pin_handle_t h, hal_float_t val) {
+    if (!ctx) return;
     
-    /* Write value to working buffer */
-    *(hal_float_t *)(ctx->working_buf + pin.data_offset) = val;
+    hal_sig_t *sig = SHMPTR(h.pin->signal);
+    if (!sig) return;  /* Unlinked - nothing to do */
     
-    /* Mark dirty using precomputed values from signal */
-    hal_sig_t *sig = find_signal_by_data_offset(pin.data_offset);
-    if (sig) {
-        ctx->dirty_bitmap[sig->dirty_offset]     |= sig->dirty_mask[0];
-        ctx->dirty_bitmap[sig->dirty_offset + 1] |= sig->dirty_mask[1];
-    }
+    /* Write to working buffer */
+    *(hal_float_t *)(ctx->working_buf + sig->data_ptr) = val;
+    
+    /* Mark dirty using signal's precomputed dirty info */
+    ctx->dirty_bitmap[sig->dirty_offset]     |= sig->dirty_mask[0];
+    ctx->dirty_bitmap[sig->dirty_offset + 1] |= sig->dirty_mask[1];
 }
 
-hal_s32_t hal_ctx_pin_s32_get(hal_ctx_t *ctx, hal_pin_handle_t pin) {
-    if (!ctx) {
-        return 0;
-    }
+hal_s32_t hal_ctx_pin_s32_get(hal_ctx_t *ctx, hal_pin_handle_t h) {
+    if (!ctx) return 0;
     
-    hal_s32_t *val = (hal_s32_t *)(ctx->working_buf + pin.data_offset);
-    return *val;
+    hal_sig_t *sig = SHMPTR(h.pin->signal);
+    if (!sig) return 0;  /* Unlinked - return default */
+    
+    return *(hal_s32_t *)(ctx->working_buf + sig->data_ptr);
 }
 
-void hal_ctx_pin_s32_set(hal_ctx_t *ctx, hal_pin_handle_t pin, hal_s32_t val) {
-    if (!ctx) {
-        return;
-    }
+void hal_ctx_pin_s32_set(hal_ctx_t *ctx, hal_pin_handle_t h, hal_s32_t val) {
+    if (!ctx) return;
     
-    /* Write value to working buffer */
-    *(hal_s32_t *)(ctx->working_buf + pin.data_offset) = val;
+    hal_sig_t *sig = SHMPTR(h.pin->signal);
+    if (!sig) return;  /* Unlinked - nothing to do */
     
-    /* Mark dirty using precomputed values from signal */
-    hal_sig_t *sig = find_signal_by_data_offset(pin.data_offset);
-    if (sig) {
-        ctx->dirty_bitmap[sig->dirty_offset]     |= sig->dirty_mask[0];
-        ctx->dirty_bitmap[sig->dirty_offset + 1] |= sig->dirty_mask[1];
-    }
+    /* Write to working buffer */
+    *(hal_s32_t *)(ctx->working_buf + sig->data_ptr) = val;
+    
+    /* Mark dirty using signal's precomputed dirty info */
+    ctx->dirty_bitmap[sig->dirty_offset]     |= sig->dirty_mask[0];
+    ctx->dirty_bitmap[sig->dirty_offset + 1] |= sig->dirty_mask[1];
 }
 
-hal_u32_t hal_ctx_pin_u32_get(hal_ctx_t *ctx, hal_pin_handle_t pin) {
-    if (!ctx) {
-        return 0;
-    }
+hal_u32_t hal_ctx_pin_u32_get(hal_ctx_t *ctx, hal_pin_handle_t h) {
+    if (!ctx) return 0;
     
-    hal_u32_t *val = (hal_u32_t *)(ctx->working_buf + pin.data_offset);
-    return *val;
+    hal_sig_t *sig = SHMPTR(h.pin->signal);
+    if (!sig) return 0;  /* Unlinked - return default */
+    
+    return *(hal_u32_t *)(ctx->working_buf + sig->data_ptr);
 }
 
-void hal_ctx_pin_u32_set(hal_ctx_t *ctx, hal_pin_handle_t pin, hal_u32_t val) {
-    if (!ctx) {
-        return;
-    }
+void hal_ctx_pin_u32_set(hal_ctx_t *ctx, hal_pin_handle_t h, hal_u32_t val) {
+    if (!ctx) return;
     
-    /* Write value to working buffer */
-    *(hal_u32_t *)(ctx->working_buf + pin.data_offset) = val;
+    hal_sig_t *sig = SHMPTR(h.pin->signal);
+    if (!sig) return;  /* Unlinked - nothing to do */
     
-    /* Mark dirty using precomputed values from signal */
-    hal_sig_t *sig = find_signal_by_data_offset(pin.data_offset);
-    if (sig) {
-        ctx->dirty_bitmap[sig->dirty_offset]     |= sig->dirty_mask[0];
-        ctx->dirty_bitmap[sig->dirty_offset + 1] |= sig->dirty_mask[1];
-    }
+    /* Write to working buffer */
+    *(hal_u32_t *)(ctx->working_buf + sig->data_ptr) = val;
+    
+    /* Mark dirty using signal's precomputed dirty info */
+    ctx->dirty_bitmap[sig->dirty_offset]     |= sig->dirty_mask[0];
+    ctx->dirty_bitmap[sig->dirty_offset + 1] |= sig->dirty_mask[1];
 }
 
 /***********************************************************************
 *                     PARAMETER ACCESS (CONTEXT-AWARE)                 *
 ***********************************************************************/
 
-hal_bit_t hal_ctx_param_bit_get(hal_ctx_t *ctx, hal_param_handle_t param) {
-    if (!ctx) {
-        return 0;
-    }
+hal_bit_t hal_ctx_param_bit_get(hal_ctx_t *ctx, hal_param_handle_t h) {
+    if (!ctx) return 0;
     
-    hal_bit_t *val = (hal_bit_t *)(ctx->working_buf + param.data_offset);
-    return *val;
+    return *(hal_bit_t *)(ctx->working_buf + h.param->data_ptr);
 }
 
-void hal_ctx_param_bit_set(hal_ctx_t *ctx, hal_param_handle_t param, hal_bit_t val) {
-    if (!ctx) {
-        return;
-    }
+void hal_ctx_param_bit_set(hal_ctx_t *ctx, hal_param_handle_t h, hal_bit_t val) {
+    if (!ctx) return;
     
     /* Write value to working buffer */
-    *(hal_bit_t *)(ctx->working_buf + param.data_offset) = val;
+    *(hal_bit_t *)(ctx->working_buf + h.param->data_ptr) = val;
     
-    /* Mark dirty using precomputed values from param */
-    hal_param_t *p = find_param_by_data_offset(param.data_offset);
-    if (p) {
-        ctx->dirty_bitmap[p->dirty_offset]     |= p->dirty_mask[0];
-        ctx->dirty_bitmap[p->dirty_offset + 1] |= p->dirty_mask[1];
-    }
+    /* Mark dirty using param's precomputed dirty info */
+    ctx->dirty_bitmap[h.param->dirty_offset]     |= h.param->dirty_mask[0];
+    ctx->dirty_bitmap[h.param->dirty_offset + 1] |= h.param->dirty_mask[1];
 }
 
-hal_float_t hal_ctx_param_float_get(hal_ctx_t *ctx, hal_param_handle_t param) {
-    if (!ctx) {
-        return 0.0;
-    }
+hal_float_t hal_ctx_param_float_get(hal_ctx_t *ctx, hal_param_handle_t h) {
+    if (!ctx) return 0.0;
     
-    hal_float_t *val = (hal_float_t *)(ctx->working_buf + param.data_offset);
-    return *val;
+    return *(hal_float_t *)(ctx->working_buf + h.param->data_ptr);
 }
 
-void hal_ctx_param_float_set(hal_ctx_t *ctx, hal_param_handle_t param, hal_float_t val) {
-    if (!ctx) {
-        return;
-    }
+void hal_ctx_param_float_set(hal_ctx_t *ctx, hal_param_handle_t h, hal_float_t val) {
+    if (!ctx) return;
     
     /* Write value to working buffer */
-    *(hal_float_t *)(ctx->working_buf + param.data_offset) = val;
+    *(hal_float_t *)(ctx->working_buf + h.param->data_ptr) = val;
     
-    /* Mark dirty using precomputed values from param */
-    hal_param_t *p = find_param_by_data_offset(param.data_offset);
-    if (p) {
-        ctx->dirty_bitmap[p->dirty_offset]     |= p->dirty_mask[0];
-        ctx->dirty_bitmap[p->dirty_offset + 1] |= p->dirty_mask[1];
-    }
+    /* Mark dirty using param's precomputed dirty info */
+    ctx->dirty_bitmap[h.param->dirty_offset]     |= h.param->dirty_mask[0];
+    ctx->dirty_bitmap[h.param->dirty_offset + 1] |= h.param->dirty_mask[1];
 }
 
-hal_s32_t hal_ctx_param_s32_get(hal_ctx_t *ctx, hal_param_handle_t param) {
-    if (!ctx) {
-        return 0;
-    }
+hal_s32_t hal_ctx_param_s32_get(hal_ctx_t *ctx, hal_param_handle_t h) {
+    if (!ctx) return 0;
     
-    hal_s32_t *val = (hal_s32_t *)(ctx->working_buf + param.data_offset);
-    return *val;
+    return *(hal_s32_t *)(ctx->working_buf + h.param->data_ptr);
 }
 
-void hal_ctx_param_s32_set(hal_ctx_t *ctx, hal_param_handle_t param, hal_s32_t val) {
-    if (!ctx) {
-        return;
-    }
+void hal_ctx_param_s32_set(hal_ctx_t *ctx, hal_param_handle_t h, hal_s32_t val) {
+    if (!ctx) return;
     
     /* Write value to working buffer */
-    *(hal_s32_t *)(ctx->working_buf + param.data_offset) = val;
+    *(hal_s32_t *)(ctx->working_buf + h.param->data_ptr) = val;
     
-    /* Mark dirty using precomputed values from param */
-    hal_param_t *p = find_param_by_data_offset(param.data_offset);
-    if (p) {
-        ctx->dirty_bitmap[p->dirty_offset]     |= p->dirty_mask[0];
-        ctx->dirty_bitmap[p->dirty_offset + 1] |= p->dirty_mask[1];
-    }
+    /* Mark dirty using param's precomputed dirty info */
+    ctx->dirty_bitmap[h.param->dirty_offset]     |= h.param->dirty_mask[0];
+    ctx->dirty_bitmap[h.param->dirty_offset + 1] |= h.param->dirty_mask[1];
 }
 
-hal_u32_t hal_ctx_param_u32_get(hal_ctx_t *ctx, hal_param_handle_t param) {
-    if (!ctx) {
-        return 0;
-    }
+hal_u32_t hal_ctx_param_u32_get(hal_ctx_t *ctx, hal_param_handle_t h) {
+    if (!ctx) return 0;
     
-    hal_u32_t *val = (hal_u32_t *)(ctx->working_buf + param.data_offset);
-    return *val;
+    return *(hal_u32_t *)(ctx->working_buf + h.param->data_ptr);
 }
 
-void hal_ctx_param_u32_set(hal_ctx_t *ctx, hal_param_handle_t param, hal_u32_t val) {
-    if (!ctx) {
-        return;
-    }
+void hal_ctx_param_u32_set(hal_ctx_t *ctx, hal_param_handle_t h, hal_u32_t val) {
+    if (!ctx) return;
     
     /* Write value to working buffer */
-    *(hal_u32_t *)(ctx->working_buf + param.data_offset) = val;
+    *(hal_u32_t *)(ctx->working_buf + h.param->data_ptr) = val;
     
-    /* Mark dirty using precomputed values from param */
-    hal_param_t *p = find_param_by_data_offset(param.data_offset);
-    if (p) {
-        ctx->dirty_bitmap[p->dirty_offset]     |= p->dirty_mask[0];
-        ctx->dirty_bitmap[p->dirty_offset + 1] |= p->dirty_mask[1];
-    }
+    /* Mark dirty using param's precomputed dirty info */
+    ctx->dirty_bitmap[h.param->dirty_offset]     |= h.param->dirty_mask[0];
+    ctx->dirty_bitmap[h.param->dirty_offset + 1] |= h.param->dirty_mask[1];
 }
 
 /***********************************************************************
