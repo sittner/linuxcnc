@@ -468,12 +468,12 @@ int hal_ctx_sync_write(hal_ctx_t *ctx) {
 ***********************************************************************/
 
 /* Helper macro to check context state */
-#define CHECK_CTX_STATE(ctx) \
+#define CHECK_CTX_STATE(ctx, retval) \
     do { \
         if (!ctx || ctx->state != HAL_CTX_STATE_READ) { \
             rtapi_print_msg(RTAPI_MSG_ERR, \
                 "HAL: ERROR: Context access without active sync_read\n"); \
-            return (typeof(((void)0,0)))0; \
+            return (retval); \
         } \
     } while(0)
 
@@ -486,12 +486,12 @@ int hal_ctx_sync_write(hal_ctx_t *ctx) {
         } \
     } while(0)
 
-#define CHECK_HANDLE(handle, ctx) \
+#define CHECK_HANDLE(handle, ctx, retval) \
     do { \
         if (handle < 0 || handle >= ctx->num_entries) { \
             rtapi_print_msg(RTAPI_MSG_ERR, \
                 "HAL: ERROR: Invalid handle %d\n", handle); \
-            return (typeof(((void)0,0)))0; \
+            return (retval); \
         } \
     } while(0)
 
@@ -505,8 +505,8 @@ int hal_ctx_sync_write(hal_ctx_t *ctx) {
     } while(0)
 
 hal_bit_t hal_ctx_pin_bit_get(hal_ctx_t *ctx, hal_pin_handle_t pin) {
-    CHECK_CTX_STATE(ctx);
-    CHECK_HANDLE(pin, ctx);
+    CHECK_CTX_STATE(ctx, 0);
+    CHECK_HANDLE(pin, ctx, 0);
     
     hal_ctx_entry_t *entry = &ctx->entries[pin];
     hal_bit_t *val = (hal_bit_t *)((char *)ctx->after + entry->offset);
@@ -523,8 +523,8 @@ void hal_ctx_pin_bit_set(hal_ctx_t *ctx, hal_pin_handle_t pin, hal_bit_t val) {
 }
 
 hal_float_t hal_ctx_pin_float_get(hal_ctx_t *ctx, hal_pin_handle_t pin) {
-    CHECK_CTX_STATE(ctx);
-    CHECK_HANDLE(pin, ctx);
+    CHECK_CTX_STATE(ctx, 0.0);
+    CHECK_HANDLE(pin, ctx, 0.0);
     
     hal_ctx_entry_t *entry = &ctx->entries[pin];
     hal_float_t *val = (hal_float_t *)((char *)ctx->after + entry->offset);
@@ -541,8 +541,8 @@ void hal_ctx_pin_float_set(hal_ctx_t *ctx, hal_pin_handle_t pin, hal_float_t val
 }
 
 hal_s32_t hal_ctx_pin_s32_get(hal_ctx_t *ctx, hal_pin_handle_t pin) {
-    CHECK_CTX_STATE(ctx);
-    CHECK_HANDLE(pin, ctx);
+    CHECK_CTX_STATE(ctx, 0);
+    CHECK_HANDLE(pin, ctx, 0);
     
     hal_ctx_entry_t *entry = &ctx->entries[pin];
     hal_s32_t *val = (hal_s32_t *)((char *)ctx->after + entry->offset);
@@ -559,8 +559,8 @@ void hal_ctx_pin_s32_set(hal_ctx_t *ctx, hal_pin_handle_t pin, hal_s32_t val) {
 }
 
 hal_u32_t hal_ctx_pin_u32_get(hal_ctx_t *ctx, hal_pin_handle_t pin) {
-    CHECK_CTX_STATE(ctx);
-    CHECK_HANDLE(pin, ctx);
+    CHECK_CTX_STATE(ctx, 0);
+    CHECK_HANDLE(pin, ctx, 0);
     
     hal_ctx_entry_t *entry = &ctx->entries[pin];
     hal_u32_t *val = (hal_u32_t *)((char *)ctx->after + entry->offset);
@@ -581,8 +581,8 @@ void hal_ctx_pin_u32_set(hal_ctx_t *ctx, hal_pin_handle_t pin, hal_u32_t val) {
 ***********************************************************************/
 
 hal_bit_t hal_ctx_param_bit_get(hal_ctx_t *ctx, hal_param_handle_t param) {
-    CHECK_CTX_STATE(ctx);
-    CHECK_HANDLE(param, ctx);
+    CHECK_CTX_STATE(ctx, 0);
+    CHECK_HANDLE(param, ctx, 0);
     
     hal_ctx_entry_t *entry = &ctx->entries[param];
     hal_bit_t *val = (hal_bit_t *)((char *)ctx->after + entry->offset);
@@ -599,8 +599,8 @@ void hal_ctx_param_bit_set(hal_ctx_t *ctx, hal_param_handle_t param, hal_bit_t v
 }
 
 hal_float_t hal_ctx_param_float_get(hal_ctx_t *ctx, hal_param_handle_t param) {
-    CHECK_CTX_STATE(ctx);
-    CHECK_HANDLE(param, ctx);
+    CHECK_CTX_STATE(ctx, 0.0);
+    CHECK_HANDLE(param, ctx, 0.0);
     
     hal_ctx_entry_t *entry = &ctx->entries[param];
     hal_float_t *val = (hal_float_t *)((char *)ctx->after + entry->offset);
@@ -617,8 +617,8 @@ void hal_ctx_param_float_set(hal_ctx_t *ctx, hal_param_handle_t param, hal_float
 }
 
 hal_s32_t hal_ctx_param_s32_get(hal_ctx_t *ctx, hal_param_handle_t param) {
-    CHECK_CTX_STATE(ctx);
-    CHECK_HANDLE(param, ctx);
+    CHECK_CTX_STATE(ctx, 0);
+    CHECK_HANDLE(param, ctx, 0);
     
     hal_ctx_entry_t *entry = &ctx->entries[param];
     hal_s32_t *val = (hal_s32_t *)((char *)ctx->after + entry->offset);
@@ -635,8 +635,8 @@ void hal_ctx_param_s32_set(hal_ctx_t *ctx, hal_param_handle_t param, hal_s32_t v
 }
 
 hal_u32_t hal_ctx_param_u32_get(hal_ctx_t *ctx, hal_param_handle_t param) {
-    CHECK_CTX_STATE(ctx);
-    CHECK_HANDLE(param, ctx);
+    CHECK_CTX_STATE(ctx, 0);
+    CHECK_HANDLE(param, ctx, 0);
     
     hal_ctx_entry_t *entry = &ctx->entries[param];
     hal_u32_t *val = (hal_u32_t *)((char *)ctx->after + entry->offset);
