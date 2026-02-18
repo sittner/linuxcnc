@@ -1916,9 +1916,12 @@ static PyObject *pyhalcontext_set_pin(PyObject *_self, PyObject *args) {
     
     // Call appropriate set function based on type
     switch(item->type) {
-        case HAL_BIT:
-            hal_ctx_pin_bit_set(self->ctx, handle, PyObject_IsTrue(value));
+        case HAL_BIT: {
+            int bit_val = PyObject_IsTrue(value);
+            if(bit_val < 0) return NULL; // Error in conversion
+            hal_ctx_pin_bit_set(self->ctx, handle, bit_val);
             break;
+        }
         case HAL_FLOAT: {
             double tmp;
             if(!from_python(value, &tmp)) return NULL;
@@ -2026,9 +2029,12 @@ static PyObject *pyhalcontext_set_param(PyObject *_self, PyObject *args) {
     
     // Call appropriate set function based on type
     switch(item->type) {
-        case HAL_BIT:
-            hal_ctx_param_bit_set(self->ctx, handle, PyObject_IsTrue(value));
+        case HAL_BIT: {
+            int bit_val = PyObject_IsTrue(value);
+            if(bit_val < 0) return NULL; // Error in conversion
+            hal_ctx_param_bit_set(self->ctx, handle, bit_val);
             break;
+        }
         case HAL_FLOAT: {
             double tmp;
             if(!from_python(value, &tmp)) return NULL;
@@ -2161,11 +2167,17 @@ static PyObject *pyhal_context_new(PyObject *_self, PyObject *args) {
     ctx_obj->pin_handles = new handlemap_pin();
     ctx_obj->param_handles = new handlemap_param();
     
-    // Build handle maps from component's pins and params
-    // Note: We cannot create handles for existing pins/params created with the old API
-    // The context API requires pins/params to be created with the handle-based API
-    // So for now, the handle maps will be empty - users need to create pins with the new API
-    // or we need to add a way to get handles for existing pins
+    // Note: The context API requires pins and params to be created with the
+    // handle-based API (hal_pin_*_new_handle, hal_param_*_new_handle).
+    // Pins created with the old API (component.newpin()) are not accessible
+    // through the context API.
+    //
+    // To use the context API, pins and params must be created directly in C
+    // or through a future enhancement that provides handle-based creation
+    // in Python (e.g., component.newpin_handle()).
+    //
+    // For now, the handle maps remain empty. Users attempting to access pins
+    // will receive a NameError indicating the pin was not found.
     
     return (PyObject *)ctx_obj;
 }

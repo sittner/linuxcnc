@@ -116,13 +116,7 @@ func (c *Context) SetPinBit(handle PinHandle, val bool) {
 	if c.ctx == nil {
 		return
 	}
-	var cVal C.hal_bit_t
-	if val {
-		cVal = C.hal_bit_t(true)
-	} else {
-		cVal = C.hal_bit_t(false)
-	}
-	C.hal_ctx_pin_bit_set(c.ctx, C.hal_pin_handle_t(handle), cVal)
+	C.hal_ctx_pin_bit_set(c.ctx, C.hal_pin_handle_t(handle), C.hal_bit_t(val))
 }
 
 // GetPinFloat gets a float pin value from the thread-local context.
@@ -214,13 +208,7 @@ func (c *Context) SetParamBit(handle ParamHandle, val bool) {
 	if c.ctx == nil {
 		return
 	}
-	var cVal C.hal_bit_t
-	if val {
-		cVal = C.hal_bit_t(true)
-	} else {
-		cVal = C.hal_bit_t(false)
-	}
-	C.hal_ctx_param_bit_set(c.ctx, C.hal_param_handle_t(handle), cVal)
+	C.hal_ctx_param_bit_set(c.ctx, C.hal_param_handle_t(handle), C.hal_bit_t(val))
 }
 
 // GetParamFloat gets a float parameter value from the thread-local context.
