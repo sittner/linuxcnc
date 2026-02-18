@@ -1000,8 +1000,15 @@ extern void hal_thread_sync_write(void);
 typedef struct hal_ctx hal_ctx_t;
 
 /** Handle types for pins and parameters */
-typedef int hal_pin_handle_t;
-typedef int hal_param_handle_t;
+typedef struct {
+    int data_offset;        /* offset to data in HAL memory */
+    hal_type_t type;        /* data type for validation */
+} hal_pin_handle_t;
+
+typedef struct {
+    int data_offset;        /* offset to data in HAL memory */
+    hal_type_t type;        /* data type for validation */
+} hal_param_handle_t;
 
 /***********************************************************************
 *                     CONTEXT LIFECYCLE                                *
@@ -1029,27 +1036,52 @@ extern void hal_ctx_destroy(hal_ctx_t *ctx);
 *                     SYNC OPERATIONS                                  *
 ***********************************************************************/
 
-/** Sync read: Copy shared memory to local buffers
+/** Sync read: Copy allocated HAL data to working buffer
  *  
  * Must be called before accessing any pins/params through the context.
- * Copies current values from shared memory to the thread-local "after" buffer.
- * Also creates a snapshot in the "before" buffer for diff detection.
+ * Uses allocation_bitmap to copy only allocated 8-byte blocks from
+ * shared memory to the thread-local working buffer. Clears dirty bitmap.
  * 
  * @param ctx Context to sync
- * @return 0 on success, -EINVAL if called twice without sync_write
+ * @return 0 on success, -EINVAL on error
  */
 extern int hal_ctx_sync_read(hal_ctx_t *ctx);
 
-/** Sync write: Copy modified local values to shared memory
+/** Sync write: Write dirty data from working buffer to shared memory
  *  
  * Must be called after sync_read and pin/param modifications.
- * Compares "after" vs "before" buffers and writes only changed values.
- * After this call, must call sync_read again before accessing data.
+ * Uses dirty_bitmap to write only modified 8-byte blocks from
+ * working buffer to shared memory. Clears dirty flags.
  * 
  * @param ctx Context to sync
- * @return 0 on success, -EINVAL if called without prior sync_read
+ * @return 0 on success, -EINVAL on error
  */
 extern int hal_ctx_sync_write(hal_ctx_t *ctx);
+
+/***********************************************************************
+*                     CONTEXT ACCESSORS                                *
+***********************************************************************/
+
+/** Get thread period in nanoseconds
+ * 
+ * @param ctx Context to query
+ * @return Thread period in nanoseconds, or 0 if ctx is NULL
+ */
+extern long hal_ctx_period(hal_ctx_t *ctx);
+
+/** Get iteration count
+ * 
+ * @param ctx Context to query
+ * @return Number of iterations executed, or 0 if ctx is NULL
+ */
+extern unsigned long hal_ctx_iteration(hal_ctx_t *ctx);
+
+/** Get overrun count
+ * 
+ * @param ctx Context to query
+ * @return Number of overruns detected, or 0 if ctx is NULL
+ */
+extern unsigned long hal_ctx_overruns(hal_ctx_t *ctx);
 
 /***********************************************************************
 *                     PIN CREATION (HANDLE-BASED)                      *

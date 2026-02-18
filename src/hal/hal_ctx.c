@@ -1,6 +1,6 @@
-/** HAL Context Implementation
-    This file implements the thread-local HAL context API as a shim
-    layer on top of the existing single-image HAL.
+/** HAL Context Implementation - Phase 2
+    This file implements the thread-local HAL context API using the
+    Phase 1 infrastructure (allocation_bitmap, dirty tracking fields).
 */
 
 /********************************************************************
@@ -20,51 +20,159 @@
 #include <string.h>
 #include <errno.h>
 
-/* Initial capacity for entry registry */
-#define INITIAL_CAPACITY 16
+/***********************************************************************
+*                     CONTEXT LIFECYCLE                                *
+***********************************************************************/
 
-/* Global registry to map handles to pointers */
-typedef struct {
-    void **shmem_ptr_addr;  /* Address of pointer to shared memory */
-    hal_type_t type;
-    int is_param;
-} handle_entry_t;
+hal_ctx_t *hal_ctx_create(int comp_id) {
+    hal_ctx_t *ctx = malloc(sizeof(hal_ctx_t));
+    if (!ctx) {
+        rtapi_print_msg(RTAPI_MSG_ERR,
+            "HAL: ERROR: Failed to allocate context structure\n");
+        return NULL;
+    }
+    
+    ctx->working_buf = malloc(HAL_SIZE);
+    if (!ctx->working_buf) {
+        rtapi_print_msg(RTAPI_MSG_ERR,
+            "HAL: ERROR: Failed to allocate working buffer\n");
+        free(ctx);
+        return NULL;
+    }
+    
+    ctx->dirty_bitmap = calloc(HAL_DIRTY_BITMAP_SIZE / sizeof(uint32_t), sizeof(uint32_t));
+    if (!ctx->dirty_bitmap) {
+        rtapi_print_msg(RTAPI_MSG_ERR,
+            "HAL: ERROR: Failed to allocate dirty bitmap\n");
+        free(ctx->working_buf);
+        free(ctx);
+        return NULL;
+    }
+    
+    ctx->thread_name = NULL;
+    ctx->period_ns = 0;
+    ctx->actual_period_ns = 0;
+    ctx->iteration_count = 0;
+    ctx->overruns = 0;
+    ctx->comp_id = comp_id;
+    ctx->valid = 0;
+    
+    return ctx;
+}
 
-static handle_entry_t *handle_registry = NULL;
-static int num_handles = 0;
-static int max_handles = 0;
-
-/* Get size of a HAL type in bytes */
-static size_t hal_type_size(hal_type_t type) {
-    switch(type) {
-        case HAL_BIT:   return sizeof(hal_bit_t);
-        case HAL_FLOAT: return sizeof(hal_float_t);
-        case HAL_S32:   return sizeof(hal_s32_t);
-        case HAL_U32:   return sizeof(hal_u32_t);
-        default:        return 0;
+void hal_ctx_destroy(hal_ctx_t *ctx) {
+    if (ctx) {
+        free(ctx->dirty_bitmap);
+        free(ctx->working_buf);
+        free(ctx);
     }
 }
 
-/* Register a new handle */
-static int register_handle(void **shmem_ptr_addr, hal_type_t type, int is_param) {
-    /* Expand registry if needed */
-    if (num_handles >= max_handles) {
-        int new_max = max_handles == 0 ? INITIAL_CAPACITY : max_handles * 2;
-        handle_entry_t *new_registry = realloc(handle_registry, 
-                                               new_max * sizeof(handle_entry_t));
-        if (!new_registry) {
-            return -ENOMEM;
-        }
-        handle_registry = new_registry;
-        max_handles = new_max;
+/***********************************************************************
+*                     SYNC OPERATIONS (OPTIMIZED)                      *
+***********************************************************************/
+
+int hal_ctx_sync_read(hal_ctx_t *ctx) {
+    if (!ctx) {
+        return -EINVAL;
     }
     
-    /* Add entry */
-    handle_registry[num_handles].shmem_ptr_addr = shmem_ptr_addr;
-    handle_registry[num_handles].type = type;
-    handle_registry[num_handles].is_param = is_param;
+    if (!hal_data) {
+        rtapi_print_msg(RTAPI_MSG_ERR,
+            "HAL: ERROR: hal_ctx_sync_read called before HAL init\n");
+        return -EINVAL;
+    }
     
-    return num_handles++;
+    uint64_t *alloc = (uint64_t *)hal_data->allocation_bitmap;
+    uint64_t *dst = (uint64_t *)ctx->working_buf;
+    uint64_t *src = (uint64_t *)hal_shmem_base;
+    
+    /* Only scan up to actual allocation boundary (not full HAL_SIZE) */
+    size_t max_block = (hal_data->shmem_bot + 7) / 8;
+    size_t max_word = (max_block + 63) / 64;
+    
+    for (size_t w = 0; w < max_word; w++) {
+        uint64_t bits = alloc[w];
+        if (bits == 0) continue;  /* Skip 64 blocks at once */
+        
+        /* Fast iteration using count-trailing-zeros */
+        while (bits) {
+            size_t bit = __builtin_ctzll(bits);  /* Find lowest set bit */
+            size_t block = w * 64 + bit;
+            
+            /* Direct 8-byte assignment (faster than memcpy) */
+            dst[block] = src[block];
+            
+            bits &= bits - 1;  /* Clear lowest set bit */
+        }
+    }
+    
+    /* Clear only the portion of dirty bitmap that's in use */
+    size_t dirty_bytes = (max_block + 7) / 8;
+    memset(ctx->dirty_bitmap, 0, dirty_bytes);
+    
+    ctx->valid = 1;
+    return 0;
+}
+
+int hal_ctx_sync_write(hal_ctx_t *ctx) {
+    if (!ctx) {
+        return -EINVAL;
+    }
+    
+    if (!hal_data) {
+        rtapi_print_msg(RTAPI_MSG_ERR,
+            "HAL: ERROR: hal_ctx_sync_write called before HAL init\n");
+        return -EINVAL;
+    }
+    
+    uint64_t *alloc = (uint64_t *)hal_data->allocation_bitmap;
+    uint64_t *dst = (uint64_t *)hal_shmem_base;
+    uint64_t *src = (uint64_t *)ctx->working_buf;
+    uint8_t *dirty = (uint8_t *)ctx->dirty_bitmap;
+    
+    /* Only scan up to actual allocation boundary */
+    size_t max_block = (hal_data->shmem_bot + 7) / 8;
+    size_t max_word = (max_block + 63) / 64;
+    
+    for (size_t w = 0; w < max_word; w++) {
+        uint64_t bits = alloc[w];
+        if (bits == 0) continue;  /* Skip 64 blocks at once */
+        
+        /* Fast iteration using count-trailing-zeros */
+        while (bits) {
+            size_t bit = __builtin_ctzll(bits);
+            size_t block = w * 64 + bit;
+            size_t offset = block * 8;
+            
+            /* Check if any byte dirty in this block (fast 8-byte check) */
+            if (*(uint64_t *)(dirty + offset)) {
+                dst[block] = src[block];
+                *(uint64_t *)(dirty + offset) = 0;  /* Clear dirty flags */
+            }
+            
+            bits &= bits - 1;  /* Clear lowest set bit */
+        }
+    }
+    
+    ctx->valid = 0;
+    return 0;
+}
+
+/***********************************************************************
+*                     CONTEXT ACCESSORS                                *
+***********************************************************************/
+
+long hal_ctx_period(hal_ctx_t *ctx) {
+    return ctx ? ctx->period_ns : 0;
+}
+
+unsigned long hal_ctx_iteration(hal_ctx_t *ctx) {
+    return ctx ? ctx->iteration_count : 0;
+}
+
+unsigned long hal_ctx_overruns(hal_ctx_t *ctx) {
+    return ctx ? ctx->overruns : 0;
 }
 
 /***********************************************************************
@@ -74,6 +182,7 @@ static int register_handle(void **shmem_ptr_addr, hal_type_t type, int is_param)
 int hal_pin_bit_new_handle(const char *name, hal_pin_dir_t dir,
                            hal_pin_handle_t *handle, int comp_id) {
     hal_bit_t **data_ptr_addr;
+    hal_pin_t *pin;
     int ret;
     
     /* Allocate space for the pointer in shared memory */
@@ -88,19 +197,30 @@ int hal_pin_bit_new_handle(const char *name, hal_pin_dir_t dir,
         return ret;
     }
     
-    /* Register and return handle */
-    ret = register_handle((void **)data_ptr_addr, HAL_BIT, 0);
-    if (ret < 0) {
-        return ret;
+    /* Find the pin we just created to get signal info */
+    rtapi_mutex_get(&(hal_data->mutex));
+    pin = halpr_find_pin_by_name(name);
+    if (!pin) {
+        rtapi_mutex_give(&(hal_data->mutex));
+        rtapi_print_msg(RTAPI_MSG_ERR,
+            "HAL: ERROR: Failed to find pin '%s' after creation\n", name);
+        return -EINVAL;
     }
     
-    *handle = ret;
+    /* Get the data offset from the pin's current data pointer */
+    void *data_ptr = *data_ptr_addr;
+    handle->data_offset = SHMOFF(data_ptr);
+    handle->type = HAL_BIT;
+    
+    rtapi_mutex_give(&(hal_data->mutex));
+    
     return 0;
 }
 
 int hal_pin_float_new_handle(const char *name, hal_pin_dir_t dir,
                              hal_pin_handle_t *handle, int comp_id) {
     hal_float_t **data_ptr_addr;
+    hal_pin_t *pin;
     int ret;
     
     data_ptr_addr = (hal_float_t **)hal_malloc(sizeof(hal_float_t *));
@@ -113,18 +233,26 @@ int hal_pin_float_new_handle(const char *name, hal_pin_dir_t dir,
         return ret;
     }
     
-    ret = register_handle((void **)data_ptr_addr, HAL_FLOAT, 0);
-    if (ret < 0) {
-        return ret;
+    rtapi_mutex_get(&(hal_data->mutex));
+    pin = halpr_find_pin_by_name(name);
+    if (!pin) {
+        rtapi_mutex_give(&(hal_data->mutex));
+        return -EINVAL;
     }
     
-    *handle = ret;
+    void *data_ptr = *data_ptr_addr;
+    handle->data_offset = SHMOFF(data_ptr);
+    handle->type = HAL_FLOAT;
+    
+    rtapi_mutex_give(&(hal_data->mutex));
+    
     return 0;
 }
 
 int hal_pin_s32_new_handle(const char *name, hal_pin_dir_t dir,
                            hal_pin_handle_t *handle, int comp_id) {
     hal_s32_t **data_ptr_addr;
+    hal_pin_t *pin;
     int ret;
     
     data_ptr_addr = (hal_s32_t **)hal_malloc(sizeof(hal_s32_t *));
@@ -137,18 +265,26 @@ int hal_pin_s32_new_handle(const char *name, hal_pin_dir_t dir,
         return ret;
     }
     
-    ret = register_handle((void **)data_ptr_addr, HAL_S32, 0);
-    if (ret < 0) {
-        return ret;
+    rtapi_mutex_get(&(hal_data->mutex));
+    pin = halpr_find_pin_by_name(name);
+    if (!pin) {
+        rtapi_mutex_give(&(hal_data->mutex));
+        return -EINVAL;
     }
     
-    *handle = ret;
+    void *data_ptr = *data_ptr_addr;
+    handle->data_offset = SHMOFF(data_ptr);
+    handle->type = HAL_S32;
+    
+    rtapi_mutex_give(&(hal_data->mutex));
+    
     return 0;
 }
 
 int hal_pin_u32_new_handle(const char *name, hal_pin_dir_t dir,
                            hal_pin_handle_t *handle, int comp_id) {
     hal_u32_t **data_ptr_addr;
+    hal_pin_t *pin;
     int ret;
     
     data_ptr_addr = (hal_u32_t **)hal_malloc(sizeof(hal_u32_t *));
@@ -161,12 +297,19 @@ int hal_pin_u32_new_handle(const char *name, hal_pin_dir_t dir,
         return ret;
     }
     
-    ret = register_handle((void **)data_ptr_addr, HAL_U32, 0);
-    if (ret < 0) {
-        return ret;
+    rtapi_mutex_get(&(hal_data->mutex));
+    pin = halpr_find_pin_by_name(name);
+    if (!pin) {
+        rtapi_mutex_give(&(hal_data->mutex));
+        return -EINVAL;
     }
     
-    *handle = ret;
+    void *data_ptr = *data_ptr_addr;
+    handle->data_offset = SHMOFF(data_ptr);
+    handle->type = HAL_U32;
+    
+    rtapi_mutex_give(&(hal_data->mutex));
+    
     return 0;
 }
 
@@ -177,6 +320,7 @@ int hal_pin_u32_new_handle(const char *name, hal_pin_dir_t dir,
 int hal_param_bit_new_handle(const char *name, hal_param_dir_t dir,
                              hal_param_handle_t *handle, int comp_id) {
     hal_bit_t *data_ptr;
+    hal_param_t *param;
     int ret;
     
     /* Allocate space for the parameter value in shared memory */
@@ -191,26 +335,28 @@ int hal_param_bit_new_handle(const char *name, hal_param_dir_t dir,
         return ret;
     }
     
-    /* For params, we create a synthetic double-pointer entry */
-    hal_bit_t **ptr_addr = (hal_bit_t **)hal_malloc(sizeof(hal_bit_t *));
-    if (!ptr_addr) {
-        return -ENOMEM;
-    }
-    *ptr_addr = data_ptr;
-    
-    /* Register and return handle */
-    ret = register_handle((void **)ptr_addr, HAL_BIT, 1);
-    if (ret < 0) {
-        return ret;
+    /* Find the param we just created to get its offset */
+    rtapi_mutex_get(&(hal_data->mutex));
+    param = halpr_find_param_by_name(name);
+    if (!param) {
+        rtapi_mutex_give(&(hal_data->mutex));
+        rtapi_print_msg(RTAPI_MSG_ERR,
+            "HAL: ERROR: Failed to find param '%s' after creation\n", name);
+        return -EINVAL;
     }
     
-    *handle = ret;
+    handle->data_offset = SHMOFF(data_ptr);
+    handle->type = HAL_BIT;
+    
+    rtapi_mutex_give(&(hal_data->mutex));
+    
     return 0;
 }
 
 int hal_param_float_new_handle(const char *name, hal_param_dir_t dir,
                                hal_param_handle_t *handle, int comp_id) {
     hal_float_t *data_ptr;
+    hal_param_t *param;
     int ret;
     
     data_ptr = (hal_float_t *)hal_malloc(sizeof(hal_float_t));
@@ -223,24 +369,25 @@ int hal_param_float_new_handle(const char *name, hal_param_dir_t dir,
         return ret;
     }
     
-    hal_float_t **ptr_addr = (hal_float_t **)hal_malloc(sizeof(hal_float_t *));
-    if (!ptr_addr) {
-        return -ENOMEM;
-    }
-    *ptr_addr = data_ptr;
-    
-    ret = register_handle((void **)ptr_addr, HAL_FLOAT, 1);
-    if (ret < 0) {
-        return ret;
+    rtapi_mutex_get(&(hal_data->mutex));
+    param = halpr_find_param_by_name(name);
+    if (!param) {
+        rtapi_mutex_give(&(hal_data->mutex));
+        return -EINVAL;
     }
     
-    *handle = ret;
+    handle->data_offset = SHMOFF(data_ptr);
+    handle->type = HAL_FLOAT;
+    
+    rtapi_mutex_give(&(hal_data->mutex));
+    
     return 0;
 }
 
 int hal_param_s32_new_handle(const char *name, hal_param_dir_t dir,
                              hal_param_handle_t *handle, int comp_id) {
     hal_s32_t *data_ptr;
+    hal_param_t *param;
     int ret;
     
     data_ptr = (hal_s32_t *)hal_malloc(sizeof(hal_s32_t));
@@ -253,24 +400,25 @@ int hal_param_s32_new_handle(const char *name, hal_param_dir_t dir,
         return ret;
     }
     
-    hal_s32_t **ptr_addr = (hal_s32_t **)hal_malloc(sizeof(hal_s32_t *));
-    if (!ptr_addr) {
-        return -ENOMEM;
-    }
-    *ptr_addr = data_ptr;
-    
-    ret = register_handle((void **)ptr_addr, HAL_S32, 1);
-    if (ret < 0) {
-        return ret;
+    rtapi_mutex_get(&(hal_data->mutex));
+    param = halpr_find_param_by_name(name);
+    if (!param) {
+        rtapi_mutex_give(&(hal_data->mutex));
+        return -EINVAL;
     }
     
-    *handle = ret;
+    handle->data_offset = SHMOFF(data_ptr);
+    handle->type = HAL_S32;
+    
+    rtapi_mutex_give(&(hal_data->mutex));
+    
     return 0;
 }
 
 int hal_param_u32_new_handle(const char *name, hal_param_dir_t dir,
                              hal_param_handle_t *handle, int comp_id) {
     hal_u32_t *data_ptr;
+    hal_param_t *param;
     int ret;
     
     data_ptr = (hal_u32_t *)hal_malloc(sizeof(hal_u32_t));
@@ -283,297 +431,167 @@ int hal_param_u32_new_handle(const char *name, hal_param_dir_t dir,
         return ret;
     }
     
-    hal_u32_t **ptr_addr = (hal_u32_t **)hal_malloc(sizeof(hal_u32_t *));
-    if (!ptr_addr) {
-        return -ENOMEM;
-    }
-    *ptr_addr = data_ptr;
-    
-    ret = register_handle((void **)ptr_addr, HAL_U32, 1);
-    if (ret < 0) {
-        return ret;
+    rtapi_mutex_get(&(hal_data->mutex));
+    param = halpr_find_param_by_name(name);
+    if (!param) {
+        rtapi_mutex_give(&(hal_data->mutex));
+        return -EINVAL;
     }
     
-    *handle = ret;
+    handle->data_offset = SHMOFF(data_ptr);
+    handle->type = HAL_U32;
+    
+    rtapi_mutex_give(&(hal_data->mutex));
+    
     return 0;
 }
 
 /***********************************************************************
-*                     CONTEXT LIFECYCLE                                *
+*                     HELPER: Find signal/param for dirty marking      *
 ***********************************************************************/
 
-hal_ctx_t *hal_ctx_create(int comp_id) {
-    hal_ctx_t *ctx;
-    size_t total_size = 0;
-    int i;
+/* Helper to find signal from pin handle data offset */
+static hal_sig_t *find_signal_by_data_offset(int data_offset) {
+    hal_sig_t *sig;
+    rtapi_intptr_t next;
     
-    /* Allocate context structure */
-    ctx = (hal_ctx_t *)malloc(sizeof(hal_ctx_t));
-    if (!ctx) {
-        rtapi_print_msg(RTAPI_MSG_ERR, 
-            "HAL: ERROR: Failed to allocate context structure\n");
-        return NULL;
-    }
-    
-    ctx->comp_id = comp_id;
-    ctx->state = HAL_CTX_STATE_CREATED;
-    ctx->num_entries = 0;
-    ctx->max_entries = 0;
-    ctx->entries = NULL;
-    ctx->before = NULL;
-    ctx->after = NULL;
-    ctx->buffer_size = 0;
-    
-    /* Build entry list from global handle registry */
-    for (i = 0; i < num_handles; i++) {
-        /* Expand entries array if needed */
-        if (ctx->num_entries >= ctx->max_entries) {
-            int new_max = ctx->max_entries == 0 ? INITIAL_CAPACITY : ctx->max_entries * 2;
-            hal_ctx_entry_t *new_entries = realloc(ctx->entries, 
-                                                   new_max * sizeof(hal_ctx_entry_t));
-            if (!new_entries) {
-                rtapi_print_msg(RTAPI_MSG_ERR,
-                    "HAL: ERROR: Failed to allocate entry array\n");
-                hal_ctx_destroy(ctx);
-                return NULL;
-            }
-            ctx->entries = new_entries;
-            ctx->max_entries = new_max;
+    /* Scan signal list to find one with matching data_ptr */
+    rtapi_mutex_get(&(hal_data->mutex));
+    next = hal_data->sig_list_ptr;
+    while (next != 0) {
+        sig = SHMPTR(next);
+        if (sig->data_ptr == data_offset) {
+            rtapi_mutex_give(&(hal_data->mutex));
+            return sig;
         }
-        
-        /* Add entry with offset */
-        ctx->entries[ctx->num_entries].shmem_ptr_addr = handle_registry[i].shmem_ptr_addr;
-        ctx->entries[ctx->num_entries].offset = total_size;
-        ctx->entries[ctx->num_entries].type = handle_registry[i].type;
-        ctx->entries[ctx->num_entries].is_param = handle_registry[i].is_param;
-        
-        total_size += hal_type_size(handle_registry[i].type);
-        ctx->num_entries++;
+        next = sig->next_ptr;
     }
-    
-    ctx->buffer_size = total_size;
-    
-    /* Allocate buffers */
-    if (total_size > 0) {
-        ctx->before = malloc(total_size);
-        ctx->after = malloc(total_size);
-        
-        if (!ctx->before || !ctx->after) {
-            rtapi_print_msg(RTAPI_MSG_ERR,
-                "HAL: ERROR: Failed to allocate context buffers\n");
-            hal_ctx_destroy(ctx);
-            return NULL;
-        }
-        
-        /* Initialize buffers to zero */
-        memset(ctx->before, 0, total_size);
-        memset(ctx->after, 0, total_size);
-    }
-    
-    return ctx;
+    rtapi_mutex_give(&(hal_data->mutex));
+    return NULL;
 }
 
-void hal_ctx_destroy(hal_ctx_t *ctx) {
-    if (!ctx) {
-        return;
-    }
+/* Helper to find param by data offset */
+static hal_param_t *find_param_by_data_offset(int data_offset) {
+    hal_param_t *param;
+    rtapi_intptr_t next;
     
-    if (ctx->before) {
-        free(ctx->before);
-    }
-    if (ctx->after) {
-        free(ctx->after);
-    }
-    if (ctx->entries) {
-        free(ctx->entries);
-    }
-    free(ctx);
-}
-
-/***********************************************************************
-*                     SYNC OPERATIONS                                  *
-***********************************************************************/
-
-int hal_ctx_sync_read(hal_ctx_t *ctx) {
-    int i;
-    
-    if (!ctx) {
-        return -EINVAL;
-    }
-    
-    /* Check state - cannot call sync_read twice */
-    if (ctx->state == HAL_CTX_STATE_READ) {
-        rtapi_print_msg(RTAPI_MSG_ERR,
-            "HAL: ERROR: hal_ctx_sync_read called twice without sync_write\n");
-        return -EINVAL;
-    }
-    
-    /* Copy all values from shared memory to before buffer */
-    for (i = 0; i < ctx->num_entries; i++) {
-        hal_ctx_entry_t *entry = &ctx->entries[i];
-        void *src = *entry->shmem_ptr_addr;  /* Dereference to get actual data pointer */
-        void *dst = (char *)ctx->before + entry->offset;
-        size_t size = hal_type_size(entry->type);
-        
-        if (src) {
-            memcpy(dst, src, size);
+    /* Scan param list to find one with matching data_ptr */
+    rtapi_mutex_get(&(hal_data->mutex));
+    next = hal_data->param_list_ptr;
+    while (next != 0) {
+        param = SHMPTR(next);
+        if (param->data_ptr == data_offset) {
+            rtapi_mutex_give(&(hal_data->mutex));
+            return param;
         }
+        next = param->next_ptr;
     }
-    
-    /* Copy before to after */
-    memcpy(ctx->after, ctx->before, ctx->buffer_size);
-    
-    /* Update state */
-    ctx->state = HAL_CTX_STATE_READ;
-    
-    return 0;
-}
-
-int hal_ctx_sync_write(hal_ctx_t *ctx) {
-    int i;
-    
-    if (!ctx) {
-        return -EINVAL;
-    }
-    
-    /* Check state - must have called sync_read first */
-    if (ctx->state != HAL_CTX_STATE_READ) {
-        rtapi_print_msg(RTAPI_MSG_ERR,
-            "HAL: ERROR: hal_ctx_sync_write called without prior sync_read\n");
-        return -EINVAL;
-    }
-    
-    /* Compare after vs before and write only changes */
-    for (i = 0; i < ctx->num_entries; i++) {
-        hal_ctx_entry_t *entry = &ctx->entries[i];
-        void *before_val = (char *)ctx->before + entry->offset;
-        void *after_val = (char *)ctx->after + entry->offset;
-        void *dst = *entry->shmem_ptr_addr;
-        size_t size = hal_type_size(entry->type);
-        
-        /* Only write if value changed */
-        if (dst && memcmp(before_val, after_val, size) != 0) {
-            memcpy(dst, after_val, size);
-        }
-    }
-    
-    /* Update state */
-    ctx->state = HAL_CTX_STATE_WRITTEN;
-    
-    return 0;
+    rtapi_mutex_give(&(hal_data->mutex));
+    return NULL;
 }
 
 /***********************************************************************
 *                     PIN ACCESS (CONTEXT-AWARE)                       *
 ***********************************************************************/
 
-/* Helper macro to check context state */
-#define CHECK_CTX_STATE(ctx, retval) \
-    do { \
-        if (!ctx || ctx->state != HAL_CTX_STATE_READ) { \
-            rtapi_print_msg(RTAPI_MSG_ERR, \
-                "HAL: ERROR: Context access without active sync_read\n"); \
-            return (retval); \
-        } \
-    } while(0)
-
-#define CHECK_CTX_STATE_VOID(ctx) \
-    do { \
-        if (!ctx || ctx->state != HAL_CTX_STATE_READ) { \
-            rtapi_print_msg(RTAPI_MSG_ERR, \
-                "HAL: ERROR: Context access without active sync_read\n"); \
-            return; \
-        } \
-    } while(0)
-
-#define CHECK_HANDLE(handle, ctx, retval) \
-    do { \
-        if (handle < 0 || handle >= ctx->num_entries) { \
-            rtapi_print_msg(RTAPI_MSG_ERR, \
-                "HAL: ERROR: Invalid handle %d\n", handle); \
-            return (retval); \
-        } \
-    } while(0)
-
-#define CHECK_HANDLE_VOID(handle, ctx) \
-    do { \
-        if (handle < 0 || handle >= ctx->num_entries) { \
-            rtapi_print_msg(RTAPI_MSG_ERR, \
-                "HAL: ERROR: Invalid handle %d\n", handle); \
-            return; \
-        } \
-    } while(0)
-
 hal_bit_t hal_ctx_pin_bit_get(hal_ctx_t *ctx, hal_pin_handle_t pin) {
-    CHECK_CTX_STATE(ctx, 0);
-    CHECK_HANDLE(pin, ctx, 0);
+    if (!ctx) {
+        return 0;
+    }
     
-    hal_ctx_entry_t *entry = &ctx->entries[pin];
-    hal_bit_t *val = (hal_bit_t *)((char *)ctx->after + entry->offset);
+    hal_bit_t *val = (hal_bit_t *)(ctx->working_buf + pin.data_offset);
     return *val;
 }
 
 void hal_ctx_pin_bit_set(hal_ctx_t *ctx, hal_pin_handle_t pin, hal_bit_t val) {
-    CHECK_CTX_STATE_VOID(ctx);
-    CHECK_HANDLE_VOID(pin, ctx);
+    if (!ctx) {
+        return;
+    }
     
-    hal_ctx_entry_t *entry = &ctx->entries[pin];
-    hal_bit_t *dst = (hal_bit_t *)((char *)ctx->after + entry->offset);
-    *dst = val;
+    /* Write value to working buffer */
+    *(hal_bit_t *)(ctx->working_buf + pin.data_offset) = val;
+    
+    /* Mark dirty using precomputed values from signal */
+    hal_sig_t *sig = find_signal_by_data_offset(pin.data_offset);
+    if (sig) {
+        ctx->dirty_bitmap[sig->dirty_offset]     |= sig->dirty_mask[0];
+        ctx->dirty_bitmap[sig->dirty_offset + 1] |= sig->dirty_mask[1];
+    }
 }
 
 hal_float_t hal_ctx_pin_float_get(hal_ctx_t *ctx, hal_pin_handle_t pin) {
-    CHECK_CTX_STATE(ctx, 0.0);
-    CHECK_HANDLE(pin, ctx, 0.0);
+    if (!ctx) {
+        return 0.0;
+    }
     
-    hal_ctx_entry_t *entry = &ctx->entries[pin];
-    hal_float_t *val = (hal_float_t *)((char *)ctx->after + entry->offset);
+    hal_float_t *val = (hal_float_t *)(ctx->working_buf + pin.data_offset);
     return *val;
 }
 
 void hal_ctx_pin_float_set(hal_ctx_t *ctx, hal_pin_handle_t pin, hal_float_t val) {
-    CHECK_CTX_STATE_VOID(ctx);
-    CHECK_HANDLE_VOID(pin, ctx);
+    if (!ctx) {
+        return;
+    }
     
-    hal_ctx_entry_t *entry = &ctx->entries[pin];
-    hal_float_t *dst = (hal_float_t *)((char *)ctx->after + entry->offset);
-    *dst = val;
+    /* Write value to working buffer */
+    *(hal_float_t *)(ctx->working_buf + pin.data_offset) = val;
+    
+    /* Mark dirty using precomputed values from signal */
+    hal_sig_t *sig = find_signal_by_data_offset(pin.data_offset);
+    if (sig) {
+        ctx->dirty_bitmap[sig->dirty_offset]     |= sig->dirty_mask[0];
+        ctx->dirty_bitmap[sig->dirty_offset + 1] |= sig->dirty_mask[1];
+    }
 }
 
 hal_s32_t hal_ctx_pin_s32_get(hal_ctx_t *ctx, hal_pin_handle_t pin) {
-    CHECK_CTX_STATE(ctx, 0);
-    CHECK_HANDLE(pin, ctx, 0);
+    if (!ctx) {
+        return 0;
+    }
     
-    hal_ctx_entry_t *entry = &ctx->entries[pin];
-    hal_s32_t *val = (hal_s32_t *)((char *)ctx->after + entry->offset);
+    hal_s32_t *val = (hal_s32_t *)(ctx->working_buf + pin.data_offset);
     return *val;
 }
 
 void hal_ctx_pin_s32_set(hal_ctx_t *ctx, hal_pin_handle_t pin, hal_s32_t val) {
-    CHECK_CTX_STATE_VOID(ctx);
-    CHECK_HANDLE_VOID(pin, ctx);
+    if (!ctx) {
+        return;
+    }
     
-    hal_ctx_entry_t *entry = &ctx->entries[pin];
-    hal_s32_t *dst = (hal_s32_t *)((char *)ctx->after + entry->offset);
-    *dst = val;
+    /* Write value to working buffer */
+    *(hal_s32_t *)(ctx->working_buf + pin.data_offset) = val;
+    
+    /* Mark dirty using precomputed values from signal */
+    hal_sig_t *sig = find_signal_by_data_offset(pin.data_offset);
+    if (sig) {
+        ctx->dirty_bitmap[sig->dirty_offset]     |= sig->dirty_mask[0];
+        ctx->dirty_bitmap[sig->dirty_offset + 1] |= sig->dirty_mask[1];
+    }
 }
 
 hal_u32_t hal_ctx_pin_u32_get(hal_ctx_t *ctx, hal_pin_handle_t pin) {
-    CHECK_CTX_STATE(ctx, 0);
-    CHECK_HANDLE(pin, ctx, 0);
+    if (!ctx) {
+        return 0;
+    }
     
-    hal_ctx_entry_t *entry = &ctx->entries[pin];
-    hal_u32_t *val = (hal_u32_t *)((char *)ctx->after + entry->offset);
+    hal_u32_t *val = (hal_u32_t *)(ctx->working_buf + pin.data_offset);
     return *val;
 }
 
 void hal_ctx_pin_u32_set(hal_ctx_t *ctx, hal_pin_handle_t pin, hal_u32_t val) {
-    CHECK_CTX_STATE_VOID(ctx);
-    CHECK_HANDLE_VOID(pin, ctx);
+    if (!ctx) {
+        return;
+    }
     
-    hal_ctx_entry_t *entry = &ctx->entries[pin];
-    hal_u32_t *dst = (hal_u32_t *)((char *)ctx->after + entry->offset);
-    *dst = val;
+    /* Write value to working buffer */
+    *(hal_u32_t *)(ctx->working_buf + pin.data_offset) = val;
+    
+    /* Mark dirty using precomputed values from signal */
+    hal_sig_t *sig = find_signal_by_data_offset(pin.data_offset);
+    if (sig) {
+        ctx->dirty_bitmap[sig->dirty_offset]     |= sig->dirty_mask[0];
+        ctx->dirty_bitmap[sig->dirty_offset + 1] |= sig->dirty_mask[1];
+    }
 }
 
 /***********************************************************************
@@ -581,75 +599,103 @@ void hal_ctx_pin_u32_set(hal_ctx_t *ctx, hal_pin_handle_t pin, hal_u32_t val) {
 ***********************************************************************/
 
 hal_bit_t hal_ctx_param_bit_get(hal_ctx_t *ctx, hal_param_handle_t param) {
-    CHECK_CTX_STATE(ctx, 0);
-    CHECK_HANDLE(param, ctx, 0);
+    if (!ctx) {
+        return 0;
+    }
     
-    hal_ctx_entry_t *entry = &ctx->entries[param];
-    hal_bit_t *val = (hal_bit_t *)((char *)ctx->after + entry->offset);
+    hal_bit_t *val = (hal_bit_t *)(ctx->working_buf + param.data_offset);
     return *val;
 }
 
 void hal_ctx_param_bit_set(hal_ctx_t *ctx, hal_param_handle_t param, hal_bit_t val) {
-    CHECK_CTX_STATE_VOID(ctx);
-    CHECK_HANDLE_VOID(param, ctx);
+    if (!ctx) {
+        return;
+    }
     
-    hal_ctx_entry_t *entry = &ctx->entries[param];
-    hal_bit_t *dst = (hal_bit_t *)((char *)ctx->after + entry->offset);
-    *dst = val;
+    /* Write value to working buffer */
+    *(hal_bit_t *)(ctx->working_buf + param.data_offset) = val;
+    
+    /* Mark dirty using precomputed values from param */
+    hal_param_t *p = find_param_by_data_offset(param.data_offset);
+    if (p) {
+        ctx->dirty_bitmap[p->dirty_offset]     |= p->dirty_mask[0];
+        ctx->dirty_bitmap[p->dirty_offset + 1] |= p->dirty_mask[1];
+    }
 }
 
 hal_float_t hal_ctx_param_float_get(hal_ctx_t *ctx, hal_param_handle_t param) {
-    CHECK_CTX_STATE(ctx, 0.0);
-    CHECK_HANDLE(param, ctx, 0.0);
+    if (!ctx) {
+        return 0.0;
+    }
     
-    hal_ctx_entry_t *entry = &ctx->entries[param];
-    hal_float_t *val = (hal_float_t *)((char *)ctx->after + entry->offset);
+    hal_float_t *val = (hal_float_t *)(ctx->working_buf + param.data_offset);
     return *val;
 }
 
 void hal_ctx_param_float_set(hal_ctx_t *ctx, hal_param_handle_t param, hal_float_t val) {
-    CHECK_CTX_STATE_VOID(ctx);
-    CHECK_HANDLE_VOID(param, ctx);
+    if (!ctx) {
+        return;
+    }
     
-    hal_ctx_entry_t *entry = &ctx->entries[param];
-    hal_float_t *dst = (hal_float_t *)((char *)ctx->after + entry->offset);
-    *dst = val;
+    /* Write value to working buffer */
+    *(hal_float_t *)(ctx->working_buf + param.data_offset) = val;
+    
+    /* Mark dirty using precomputed values from param */
+    hal_param_t *p = find_param_by_data_offset(param.data_offset);
+    if (p) {
+        ctx->dirty_bitmap[p->dirty_offset]     |= p->dirty_mask[0];
+        ctx->dirty_bitmap[p->dirty_offset + 1] |= p->dirty_mask[1];
+    }
 }
 
 hal_s32_t hal_ctx_param_s32_get(hal_ctx_t *ctx, hal_param_handle_t param) {
-    CHECK_CTX_STATE(ctx, 0);
-    CHECK_HANDLE(param, ctx, 0);
+    if (!ctx) {
+        return 0;
+    }
     
-    hal_ctx_entry_t *entry = &ctx->entries[param];
-    hal_s32_t *val = (hal_s32_t *)((char *)ctx->after + entry->offset);
+    hal_s32_t *val = (hal_s32_t *)(ctx->working_buf + param.data_offset);
     return *val;
 }
 
 void hal_ctx_param_s32_set(hal_ctx_t *ctx, hal_param_handle_t param, hal_s32_t val) {
-    CHECK_CTX_STATE_VOID(ctx);
-    CHECK_HANDLE_VOID(param, ctx);
+    if (!ctx) {
+        return;
+    }
     
-    hal_ctx_entry_t *entry = &ctx->entries[param];
-    hal_s32_t *dst = (hal_s32_t *)((char *)ctx->after + entry->offset);
-    *dst = val;
+    /* Write value to working buffer */
+    *(hal_s32_t *)(ctx->working_buf + param.data_offset) = val;
+    
+    /* Mark dirty using precomputed values from param */
+    hal_param_t *p = find_param_by_data_offset(param.data_offset);
+    if (p) {
+        ctx->dirty_bitmap[p->dirty_offset]     |= p->dirty_mask[0];
+        ctx->dirty_bitmap[p->dirty_offset + 1] |= p->dirty_mask[1];
+    }
 }
 
 hal_u32_t hal_ctx_param_u32_get(hal_ctx_t *ctx, hal_param_handle_t param) {
-    CHECK_CTX_STATE(ctx, 0);
-    CHECK_HANDLE(param, ctx, 0);
+    if (!ctx) {
+        return 0;
+    }
     
-    hal_ctx_entry_t *entry = &ctx->entries[param];
-    hal_u32_t *val = (hal_u32_t *)((char *)ctx->after + entry->offset);
+    hal_u32_t *val = (hal_u32_t *)(ctx->working_buf + param.data_offset);
     return *val;
 }
 
 void hal_ctx_param_u32_set(hal_ctx_t *ctx, hal_param_handle_t param, hal_u32_t val) {
-    CHECK_CTX_STATE_VOID(ctx);
-    CHECK_HANDLE_VOID(param, ctx);
+    if (!ctx) {
+        return;
+    }
     
-    hal_ctx_entry_t *entry = &ctx->entries[param];
-    hal_u32_t *dst = (hal_u32_t *)((char *)ctx->after + entry->offset);
-    *dst = val;
+    /* Write value to working buffer */
+    *(hal_u32_t *)(ctx->working_buf + param.data_offset) = val;
+    
+    /* Mark dirty using precomputed values from param */
+    hal_param_t *p = find_param_by_data_offset(param.data_offset);
+    if (p) {
+        ctx->dirty_bitmap[p->dirty_offset]     |= p->dirty_mask[0];
+        ctx->dirty_bitmap[p->dirty_offset + 1] |= p->dirty_mask[1];
+    }
 }
 
 /***********************************************************************
@@ -666,6 +712,11 @@ EXPORT_SYMBOL(hal_ctx_destroy);
 /* Sync operations */
 EXPORT_SYMBOL(hal_ctx_sync_read);
 EXPORT_SYMBOL(hal_ctx_sync_write);
+
+/* Context accessors */
+EXPORT_SYMBOL(hal_ctx_period);
+EXPORT_SYMBOL(hal_ctx_iteration);
+EXPORT_SYMBOL(hal_ctx_overruns);
 
 /* Pin creation (handle-based) */
 EXPORT_SYMBOL(hal_pin_bit_new_handle);

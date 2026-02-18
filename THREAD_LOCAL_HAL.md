@@ -651,14 +651,15 @@ During the design phase, we considered a hybrid approach where numeric pins coul
 - Update signal/param allocation to set bitmap bits
 - Add `dirty_offset`, `dirty_mask[2]` to signal/param structs
 - Precompute dirty access on allocation
-- **Status:** Planned
+- **Status:** ✅ Complete
 
 ### Phase 2: Context Implementation
 - Implement `hal_ctx_t` with working_buf + dirty_bitmap
 - Implement `hal_ctx_create/destroy`
 - Implement `hal_ctx_sync_read/write`
 - Implement `hal_ctx_pin_*_get/set` with dirty marking
-- **Status:** Planned
+- Implement handle-based pin/param creation APIs
+- **Status:** 🚧 In Progress
 
 ### Phase 3: Thread Integration
 - Change `hal_funct_t` signature (breaking change)

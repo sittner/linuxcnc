@@ -18,43 +18,29 @@
 ********************************************************************/
 
 #include "hal.h"
+#include "hal_priv.h"
 #include <stddef.h>
+#include <stdint.h>
 
-/** Context state machine
- * Enforces proper sync_read/sync_write sequencing
- */
-typedef enum {
-    HAL_CTX_STATE_CREATED,   /* After create, before first sync_read */
-    HAL_CTX_STATE_READ,      /* After sync_read, ready for access */
-    HAL_CTX_STATE_WRITTEN,   /* After sync_write, must sync_read again */
-} hal_ctx_state_t;
+/* Size of dirty bitmap: 1 bit per byte of HAL memory */
+#define HAL_DIRTY_BITMAP_SIZE   (HAL_SIZE / 8)  /* 128KB for 1MB HAL */
 
-/** Pin/param registry entry
- * Maps handles to buffer offsets and shared memory locations
- */
-typedef struct {
-    void **shmem_ptr_addr;  /* Address of pointer to shared memory value */
-    size_t offset;          /* Offset into before/after buffers */
-    hal_type_t type;        /* Data type (HAL_BIT, HAL_FLOAT, etc.) */
-    int is_param;           /* 1 if parameter, 0 if pin */
-} hal_ctx_entry_t;
-
-/** Thread-local HAL context structure
- * Each thread creates its own context for accessing HAL data
- */
+/** Thread-local HAL context structure */
 struct hal_ctx {
-    int comp_id;            /* Component ID this context is associated with */
-    hal_ctx_state_t state;  /* Current state for sync enforcement */
+    /* Buffers */
+    char *working_buf;              /* HAL_SIZE copy of HAL memory */
+    uint32_t *dirty_bitmap;         /* HAL_DIRTY_BITMAP_SIZE bits tracking modifications */
     
-    /* Double buffer for diff detection */
-    void *before;           /* Snapshot at sync_read */
-    void *after;            /* Working copy, modified during cycle */
-    size_t buffer_size;     /* Size of each buffer in bytes */
+    /* Thread timing info (set by RT executor or user) */
+    const char *thread_name;
+    long period_ns;                 /* Configured period */
+    long actual_period_ns;          /* Measured actual period */
+    unsigned long iteration_count;
+    unsigned long overruns;
     
-    /* Pin/param registry */
-    hal_ctx_entry_t *entries;  /* Array of entries */
-    int num_entries;           /* Number of registered entries */
-    int max_entries;           /* Allocated capacity */
+    /* State */
+    int comp_id;                    /* Component that owns this context */
+    unsigned char valid;            /* Non-zero if sync_read was called */
 };
 
 #endif /* HAL_CTX_INTERNAL_H */
