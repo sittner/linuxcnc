@@ -5,7 +5,6 @@ package hal
 #include "hal.h"
 */
 import "C"
-import "unsafe"
 
 // Context represents a thread-local HAL context for efficient pin/param access.
 //
@@ -106,7 +105,7 @@ func (c *Context) GetPinBit(handle PinHandle) bool {
 		return false
 	}
 	cHandle := C.hal_pin_handle_t{
-		_pin:  unsafe.Pointer(handle._pin),
+		_pin:  handle._pin,
 		_type: C.hal_type_t(handle.pinType),
 	}
 	val := C.hal_ctx_pin_bit_get(c.ctx, cHandle)
@@ -122,7 +121,7 @@ func (c *Context) SetPinBit(handle PinHandle, val bool) {
 		return
 	}
 	cHandle := C.hal_pin_handle_t{
-		_pin:  unsafe.Pointer(handle._pin),
+		_pin:  handle._pin,
 		_type: C.hal_type_t(handle.pinType),
 	}
 	C.hal_ctx_pin_bit_set(c.ctx, cHandle, C.hal_bit_t(val))
@@ -137,7 +136,7 @@ func (c *Context) GetPinFloat(handle PinHandle) float64 {
 		return 0.0
 	}
 	cHandle := C.hal_pin_handle_t{
-		_pin:  unsafe.Pointer(handle._pin),
+		_pin:  handle._pin,
 		_type: C.hal_type_t(handle.pinType),
 	}
 	val := C.hal_ctx_pin_float_get(c.ctx, cHandle)
@@ -153,7 +152,7 @@ func (c *Context) SetPinFloat(handle PinHandle, val float64) {
 		return
 	}
 	cHandle := C.hal_pin_handle_t{
-		_pin:  unsafe.Pointer(handle._pin),
+		_pin:  handle._pin,
 		_type: C.hal_type_t(handle.pinType),
 	}
 	C.hal_ctx_pin_float_set(c.ctx, cHandle, C.hal_float_t(val))
@@ -168,7 +167,7 @@ func (c *Context) GetPinS32(handle PinHandle) int32 {
 		return 0
 	}
 	cHandle := C.hal_pin_handle_t{
-		_pin:  unsafe.Pointer(handle._pin),
+		_pin:  handle._pin,
 		_type: C.hal_type_t(handle.pinType),
 	}
 	val := C.hal_ctx_pin_s32_get(c.ctx, cHandle)
@@ -184,7 +183,7 @@ func (c *Context) SetPinS32(handle PinHandle, val int32) {
 		return
 	}
 	cHandle := C.hal_pin_handle_t{
-		_pin:  unsafe.Pointer(handle._pin),
+		_pin:  handle._pin,
 		_type: C.hal_type_t(handle.pinType),
 	}
 	C.hal_ctx_pin_s32_set(c.ctx, cHandle, C.hal_s32_t(val))
@@ -199,7 +198,7 @@ func (c *Context) GetPinU32(handle PinHandle) uint32 {
 		return 0
 	}
 	cHandle := C.hal_pin_handle_t{
-		_pin:  unsafe.Pointer(handle._pin),
+		_pin:  handle._pin,
 		_type: C.hal_type_t(handle.pinType),
 	}
 	val := C.hal_ctx_pin_u32_get(c.ctx, cHandle)
@@ -215,7 +214,7 @@ func (c *Context) SetPinU32(handle PinHandle, val uint32) {
 		return
 	}
 	cHandle := C.hal_pin_handle_t{
-		_pin:  unsafe.Pointer(handle._pin),
+		_pin:  handle._pin,
 		_type: C.hal_type_t(handle.pinType),
 	}
 	C.hal_ctx_pin_u32_set(c.ctx, cHandle, C.hal_u32_t(val))
@@ -230,7 +229,7 @@ func (c *Context) GetParamBit(handle ParamHandle) bool {
 		return false
 	}
 	cHandle := C.hal_param_handle_t{
-		_param: unsafe.Pointer(handle._param),
+		_param: handle._param,
 		_type:  C.hal_type_t(handle.paramType),
 	}
 	val := C.hal_ctx_param_bit_get(c.ctx, cHandle)
@@ -246,7 +245,7 @@ func (c *Context) SetParamBit(handle ParamHandle, val bool) {
 		return
 	}
 	cHandle := C.hal_param_handle_t{
-		_param: unsafe.Pointer(handle._param),
+		_param: handle._param,
 		_type:  C.hal_type_t(handle.paramType),
 	}
 	C.hal_ctx_param_bit_set(c.ctx, cHandle, C.hal_bit_t(val))
@@ -261,7 +260,7 @@ func (c *Context) GetParamFloat(handle ParamHandle) float64 {
 		return 0.0
 	}
 	cHandle := C.hal_param_handle_t{
-		_param: unsafe.Pointer(handle._param),
+		_param: handle._param,
 		_type:  C.hal_type_t(handle.paramType),
 	}
 	val := C.hal_ctx_param_float_get(c.ctx, cHandle)
@@ -277,7 +276,7 @@ func (c *Context) SetParamFloat(handle ParamHandle, val float64) {
 		return
 	}
 	cHandle := C.hal_param_handle_t{
-		_param: unsafe.Pointer(handle._param),
+		_param: handle._param,
 		_type:  C.hal_type_t(handle.paramType),
 	}
 	C.hal_ctx_param_float_set(c.ctx, cHandle, C.hal_float_t(val))
@@ -292,7 +291,7 @@ func (c *Context) GetParamS32(handle ParamHandle) int32 {
 		return 0
 	}
 	cHandle := C.hal_param_handle_t{
-		_param: unsafe.Pointer(handle._param),
+		_param: handle._param,
 		_type:  C.hal_type_t(handle.paramType),
 	}
 	val := C.hal_ctx_param_s32_get(c.ctx, cHandle)
@@ -308,7 +307,7 @@ func (c *Context) SetParamS32(handle ParamHandle, val int32) {
 		return
 	}
 	cHandle := C.hal_param_handle_t{
-		_param: unsafe.Pointer(handle._param),
+		_param: handle._param,
 		_type:  C.hal_type_t(handle.paramType),
 	}
 	C.hal_ctx_param_s32_set(c.ctx, cHandle, C.hal_s32_t(val))
@@ -323,7 +322,7 @@ func (c *Context) GetParamU32(handle ParamHandle) uint32 {
 		return 0
 	}
 	cHandle := C.hal_param_handle_t{
-		_param: unsafe.Pointer(handle._param),
+		_param: handle._param,
 		_type:  C.hal_type_t(handle.paramType),
 	}
 	val := C.hal_ctx_param_u32_get(c.ctx, cHandle)
@@ -339,7 +338,7 @@ func (c *Context) SetParamU32(handle ParamHandle, val uint32) {
 		return
 	}
 	cHandle := C.hal_param_handle_t{
-		_param: unsafe.Pointer(handle._param),
+		_param: handle._param,
 		_type:  C.hal_type_t(handle.paramType),
 	}
 	C.hal_ctx_param_u32_set(c.ctx, cHandle, C.hal_u32_t(val))

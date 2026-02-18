@@ -19,8 +19,8 @@ import (
 // The struct is returned by the NewPin*Handle functions and used with
 // Context.GetPin*/SetPin* methods.
 type PinHandle struct {
-	_pin    uintptr // opaque pointer, matches void* in C
-	pinType int32   // matches hal_type_t (int enum) in C
+	_pin    unsafe.Pointer // opaque pointer, matches void* in C
+	pinType int32          // matches hal_type_t (int enum) in C
 }
 
 // ParamHandle represents a handle to a HAL parameter for use with the context API.
@@ -32,8 +32,8 @@ type PinHandle struct {
 // The struct is returned by the NewParam*Handle functions and used with
 // Context.GetParam*/SetParam* methods.
 type ParamHandle struct {
-	_param    uintptr // opaque pointer, matches void* in C
-	paramType int32   // matches hal_type_t (int enum) in C
+	_param    unsafe.Pointer // opaque pointer, matches void* in C
+	paramType int32          // matches hal_type_t (int enum) in C
 }
 
 // NewPinBitHandle creates a new bit (boolean) pin and returns a handle.
@@ -47,15 +47,15 @@ type ParamHandle struct {
 // This calls hal_pin_bit_new_handle() via CGO.
 func NewPinBitHandle(comp *Component, name string, dir Direction) (PinHandle, error) {
 	if comp == nil {
-		return 0, newError("NewPinBitHandle", "component is nil", -22)
+		return PinHandle{}, newError("NewPinBitHandle", "component is nil", -22)
 	}
 
 	if name == "" || len(name) > 47 {
-		return 0, newError("NewPinBitHandle", ErrInvalidName.Message, ErrInvalidName.Code)
+		return PinHandle{}, newError("NewPinBitHandle", ErrInvalidName.Message, ErrInvalidName.Code)
 	}
 
 	if dir != In && dir != Out && dir != IO {
-		return 0, newError("NewPinBitHandle", "invalid direction", -22)
+		return PinHandle{}, newError("NewPinBitHandle", "invalid direction", -22)
 	}
 
 	// Build fully-qualified pin name
@@ -70,7 +70,7 @@ func NewPinBitHandle(comp *Component, name string, dir Direction) (PinHandle, er
 	}
 
 	return PinHandle{
-		_pin:    uintptr(handle._pin),
+		_pin:    handle._pin,
 		pinType: int32(handle._type),
 	}, nil
 }
@@ -83,15 +83,15 @@ func NewPinBitHandle(comp *Component, name string, dir Direction) (PinHandle, er
 // This calls hal_pin_float_new_handle() via CGO.
 func NewPinFloatHandle(comp *Component, name string, dir Direction) (PinHandle, error) {
 	if comp == nil {
-		return 0, newError("NewPinFloatHandle", "component is nil", -22)
+		return PinHandle{}, newError("NewPinFloatHandle", "component is nil", -22)
 	}
 
 	if name == "" || len(name) > 47 {
-		return 0, newError("NewPinFloatHandle", ErrInvalidName.Message, ErrInvalidName.Code)
+		return PinHandle{}, newError("NewPinFloatHandle", ErrInvalidName.Message, ErrInvalidName.Code)
 	}
 
 	if dir != In && dir != Out && dir != IO {
-		return 0, newError("NewPinFloatHandle", "invalid direction", -22)
+		return PinHandle{}, newError("NewPinFloatHandle", "invalid direction", -22)
 	}
 
 	// Build fully-qualified pin name
@@ -106,7 +106,7 @@ func NewPinFloatHandle(comp *Component, name string, dir Direction) (PinHandle, 
 	}
 
 	return PinHandle{
-		_pin:    uintptr(handle._pin),
+		_pin:    handle._pin,
 		pinType: int32(handle._type),
 	}, nil
 }
@@ -119,15 +119,15 @@ func NewPinFloatHandle(comp *Component, name string, dir Direction) (PinHandle, 
 // This calls hal_pin_s32_new_handle() via CGO.
 func NewPinS32Handle(comp *Component, name string, dir Direction) (PinHandle, error) {
 	if comp == nil {
-		return 0, newError("NewPinS32Handle", "component is nil", -22)
+		return PinHandle{}, newError("NewPinS32Handle", "component is nil", -22)
 	}
 
 	if name == "" || len(name) > 47 {
-		return 0, newError("NewPinS32Handle", ErrInvalidName.Message, ErrInvalidName.Code)
+		return PinHandle{}, newError("NewPinS32Handle", ErrInvalidName.Message, ErrInvalidName.Code)
 	}
 
 	if dir != In && dir != Out && dir != IO {
-		return 0, newError("NewPinS32Handle", "invalid direction", -22)
+		return PinHandle{}, newError("NewPinS32Handle", "invalid direction", -22)
 	}
 
 	// Build fully-qualified pin name
@@ -142,7 +142,7 @@ func NewPinS32Handle(comp *Component, name string, dir Direction) (PinHandle, er
 	}
 
 	return PinHandle{
-		_pin:    uintptr(handle._pin),
+		_pin:    handle._pin,
 		pinType: int32(handle._type),
 	}, nil
 }
@@ -155,15 +155,15 @@ func NewPinS32Handle(comp *Component, name string, dir Direction) (PinHandle, er
 // This calls hal_pin_u32_new_handle() via CGO.
 func NewPinU32Handle(comp *Component, name string, dir Direction) (PinHandle, error) {
 	if comp == nil {
-		return 0, newError("NewPinU32Handle", "component is nil", -22)
+		return PinHandle{}, newError("NewPinU32Handle", "component is nil", -22)
 	}
 
 	if name == "" || len(name) > 47 {
-		return 0, newError("NewPinU32Handle", ErrInvalidName.Message, ErrInvalidName.Code)
+		return PinHandle{}, newError("NewPinU32Handle", ErrInvalidName.Message, ErrInvalidName.Code)
 	}
 
 	if dir != In && dir != Out && dir != IO {
-		return 0, newError("NewPinU32Handle", "invalid direction", -22)
+		return PinHandle{}, newError("NewPinU32Handle", "invalid direction", -22)
 	}
 
 	// Build fully-qualified pin name
@@ -178,7 +178,7 @@ func NewPinU32Handle(comp *Component, name string, dir Direction) (PinHandle, er
 	}
 
 	return PinHandle{
-		_pin:    uintptr(handle._pin),
+		_pin:    handle._pin,
 		pinType: int32(handle._type),
 	}, nil
 }
@@ -193,15 +193,15 @@ func NewPinU32Handle(comp *Component, name string, dir Direction) (PinHandle, er
 // This calls hal_param_bit_new_handle() via CGO.
 func NewParamBitHandle(comp *Component, name string, dir ParamDirection) (ParamHandle, error) {
 	if comp == nil {
-		return 0, newError("NewParamBitHandle", "component is nil", -22)
+		return ParamHandle{}, newError("NewParamBitHandle", "component is nil", -22)
 	}
 
 	if name == "" || len(name) > 47 {
-		return 0, newError("NewParamBitHandle", ErrInvalidName.Message, ErrInvalidName.Code)
+		return ParamHandle{}, newError("NewParamBitHandle", ErrInvalidName.Message, ErrInvalidName.Code)
 	}
 
 	if dir != RO && dir != RW {
-		return 0, newError("NewParamBitHandle", "invalid direction (must be RO or RW)", -22)
+		return ParamHandle{}, newError("NewParamBitHandle", "invalid direction (must be RO or RW)", -22)
 	}
 
 	// Build fully-qualified parameter name
@@ -216,7 +216,7 @@ func NewParamBitHandle(comp *Component, name string, dir ParamDirection) (ParamH
 	}
 
 	return ParamHandle{
-		_param:    uintptr(handle._param),
+		_param:    handle._param,
 		paramType: int32(handle._type),
 	}, nil
 }
@@ -231,15 +231,15 @@ func NewParamBitHandle(comp *Component, name string, dir ParamDirection) (ParamH
 // This calls hal_param_float_new_handle() via CGO.
 func NewParamFloatHandle(comp *Component, name string, dir ParamDirection) (ParamHandle, error) {
 	if comp == nil {
-		return 0, newError("NewParamFloatHandle", "component is nil", -22)
+		return ParamHandle{}, newError("NewParamFloatHandle", "component is nil", -22)
 	}
 
 	if name == "" || len(name) > 47 {
-		return 0, newError("NewParamFloatHandle", ErrInvalidName.Message, ErrInvalidName.Code)
+		return ParamHandle{}, newError("NewParamFloatHandle", ErrInvalidName.Message, ErrInvalidName.Code)
 	}
 
 	if dir != RO && dir != RW {
-		return 0, newError("NewParamFloatHandle", "invalid direction (must be RO or RW)", -22)
+		return ParamHandle{}, newError("NewParamFloatHandle", "invalid direction (must be RO or RW)", -22)
 	}
 
 	// Build fully-qualified parameter name
@@ -254,7 +254,7 @@ func NewParamFloatHandle(comp *Component, name string, dir ParamDirection) (Para
 	}
 
 	return ParamHandle{
-		_param:    uintptr(handle._param),
+		_param:    handle._param,
 		paramType: int32(handle._type),
 	}, nil
 }
@@ -269,15 +269,15 @@ func NewParamFloatHandle(comp *Component, name string, dir ParamDirection) (Para
 // This calls hal_param_s32_new_handle() via CGO.
 func NewParamS32Handle(comp *Component, name string, dir ParamDirection) (ParamHandle, error) {
 	if comp == nil {
-		return 0, newError("NewParamS32Handle", "component is nil", -22)
+		return ParamHandle{}, newError("NewParamS32Handle", "component is nil", -22)
 	}
 
 	if name == "" || len(name) > 47 {
-		return 0, newError("NewParamS32Handle", ErrInvalidName.Message, ErrInvalidName.Code)
+		return ParamHandle{}, newError("NewParamS32Handle", ErrInvalidName.Message, ErrInvalidName.Code)
 	}
 
 	if dir != RO && dir != RW {
-		return 0, newError("NewParamS32Handle", "invalid direction (must be RO or RW)", -22)
+		return ParamHandle{}, newError("NewParamS32Handle", "invalid direction (must be RO or RW)", -22)
 	}
 
 	// Build fully-qualified parameter name
@@ -292,7 +292,7 @@ func NewParamS32Handle(comp *Component, name string, dir ParamDirection) (ParamH
 	}
 
 	return ParamHandle{
-		_param:    uintptr(handle._param),
+		_param:    handle._param,
 		paramType: int32(handle._type),
 	}, nil
 }
@@ -307,15 +307,15 @@ func NewParamS32Handle(comp *Component, name string, dir ParamDirection) (ParamH
 // This calls hal_param_u32_new_handle() via CGO.
 func NewParamU32Handle(comp *Component, name string, dir ParamDirection) (ParamHandle, error) {
 	if comp == nil {
-		return 0, newError("NewParamU32Handle", "component is nil", -22)
+		return ParamHandle{}, newError("NewParamU32Handle", "component is nil", -22)
 	}
 
 	if name == "" || len(name) > 47 {
-		return 0, newError("NewParamU32Handle", ErrInvalidName.Message, ErrInvalidName.Code)
+		return ParamHandle{}, newError("NewParamU32Handle", ErrInvalidName.Message, ErrInvalidName.Code)
 	}
 
 	if dir != RO && dir != RW {
-		return 0, newError("NewParamU32Handle", "invalid direction (must be RO or RW)", -22)
+		return ParamHandle{}, newError("NewParamU32Handle", "invalid direction (must be RO or RW)", -22)
 	}
 
 	// Build fully-qualified parameter name
@@ -330,7 +330,7 @@ func NewParamU32Handle(comp *Component, name string, dir ParamDirection) (ParamH
 	}
 
 	return ParamHandle{
-		_param:    uintptr(handle._param),
+		_param:    handle._param,
 		paramType: int32(handle._type),
 	}, nil
 }
