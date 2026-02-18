@@ -224,7 +224,7 @@ int hal_pin_bit_new_handle(const char *name, hal_pin_dir_t dir,
         return -EINVAL;
     }
     
-    handle->pin = pin;
+    handle->_pin = (void *)pin;
     handle->type = HAL_BIT;
     
     return 0;
@@ -252,7 +252,7 @@ int hal_pin_float_new_handle(const char *name, hal_pin_dir_t dir,
     
     if (!pin) return -EINVAL;
     
-    handle->pin = pin;
+    handle->_pin = (void *)pin;
     handle->type = HAL_FLOAT;
     return 0;
 }
@@ -279,7 +279,7 @@ int hal_pin_s32_new_handle(const char *name, hal_pin_dir_t dir,
     
     if (!pin) return -EINVAL;
     
-    handle->pin = pin;
+    handle->_pin = (void *)pin;
     handle->type = HAL_S32;
     return 0;
 }
@@ -306,7 +306,7 @@ int hal_pin_u32_new_handle(const char *name, hal_pin_dir_t dir,
     
     if (!pin) return -EINVAL;
     
-    handle->pin = pin;
+    handle->_pin = (void *)pin;
     handle->type = HAL_U32;
     return 0;
 }
@@ -344,7 +344,7 @@ int hal_param_bit_new_handle(const char *name, hal_param_dir_t dir,
         return -EINVAL;
     }
     
-    handle->param = param;
+    handle->_param = (void *)param;
     handle->type = HAL_BIT;
     
     return 0;
@@ -372,7 +372,7 @@ int hal_param_float_new_handle(const char *name, hal_param_dir_t dir,
     
     if (!param) return -EINVAL;
     
-    handle->param = param;
+    handle->_param = (void *)param;
     handle->type = HAL_FLOAT;
     return 0;
 }
@@ -399,7 +399,7 @@ int hal_param_s32_new_handle(const char *name, hal_param_dir_t dir,
     
     if (!param) return -EINVAL;
     
-    handle->param = param;
+    handle->_param = (void *)param;
     handle->type = HAL_S32;
     return 0;
 }
@@ -426,7 +426,7 @@ int hal_param_u32_new_handle(const char *name, hal_param_dir_t dir,
     
     if (!param) return -EINVAL;
     
-    handle->param = param;
+    handle->_param = (void *)param;
     handle->type = HAL_U32;
     return 0;
 }
@@ -438,7 +438,8 @@ int hal_param_u32_new_handle(const char *name, hal_param_dir_t dir,
 hal_bit_t hal_ctx_pin_bit_get(hal_ctx_t *ctx, hal_pin_handle_t h) {
     if (!ctx) return 0;
     
-    hal_sig_t *sig = SHMPTR(h.pin->signal);
+    hal_pin_t *pin = (hal_pin_t *)h._pin;
+    hal_sig_t *sig = SHMPTR(pin->signal);
     if (!sig) return 0;  /* Unlinked - return default */
     
     return *(hal_bit_t *)(ctx->working_buf + sig->data_ptr);
@@ -447,7 +448,8 @@ hal_bit_t hal_ctx_pin_bit_get(hal_ctx_t *ctx, hal_pin_handle_t h) {
 void hal_ctx_pin_bit_set(hal_ctx_t *ctx, hal_pin_handle_t h, hal_bit_t val) {
     if (!ctx) return;
     
-    hal_sig_t *sig = SHMPTR(h.pin->signal);
+    hal_pin_t *pin = (hal_pin_t *)h._pin;
+    hal_sig_t *sig = SHMPTR(pin->signal);
     if (!sig) return;  /* Unlinked - nothing to do */
     
     /* Write to working buffer */
@@ -461,7 +463,8 @@ void hal_ctx_pin_bit_set(hal_ctx_t *ctx, hal_pin_handle_t h, hal_bit_t val) {
 hal_float_t hal_ctx_pin_float_get(hal_ctx_t *ctx, hal_pin_handle_t h) {
     if (!ctx) return 0.0;
     
-    hal_sig_t *sig = SHMPTR(h.pin->signal);
+    hal_pin_t *pin = (hal_pin_t *)h._pin;
+    hal_sig_t *sig = SHMPTR(pin->signal);
     if (!sig) return 0.0;  /* Unlinked - return default */
     
     return *(hal_float_t *)(ctx->working_buf + sig->data_ptr);
@@ -470,7 +473,8 @@ hal_float_t hal_ctx_pin_float_get(hal_ctx_t *ctx, hal_pin_handle_t h) {
 void hal_ctx_pin_float_set(hal_ctx_t *ctx, hal_pin_handle_t h, hal_float_t val) {
     if (!ctx) return;
     
-    hal_sig_t *sig = SHMPTR(h.pin->signal);
+    hal_pin_t *pin = (hal_pin_t *)h._pin;
+    hal_sig_t *sig = SHMPTR(pin->signal);
     if (!sig) return;  /* Unlinked - nothing to do */
     
     /* Write to working buffer */
@@ -484,7 +488,8 @@ void hal_ctx_pin_float_set(hal_ctx_t *ctx, hal_pin_handle_t h, hal_float_t val) 
 hal_s32_t hal_ctx_pin_s32_get(hal_ctx_t *ctx, hal_pin_handle_t h) {
     if (!ctx) return 0;
     
-    hal_sig_t *sig = SHMPTR(h.pin->signal);
+    hal_pin_t *pin = (hal_pin_t *)h._pin;
+    hal_sig_t *sig = SHMPTR(pin->signal);
     if (!sig) return 0;  /* Unlinked - return default */
     
     return *(hal_s32_t *)(ctx->working_buf + sig->data_ptr);
@@ -493,7 +498,8 @@ hal_s32_t hal_ctx_pin_s32_get(hal_ctx_t *ctx, hal_pin_handle_t h) {
 void hal_ctx_pin_s32_set(hal_ctx_t *ctx, hal_pin_handle_t h, hal_s32_t val) {
     if (!ctx) return;
     
-    hal_sig_t *sig = SHMPTR(h.pin->signal);
+    hal_pin_t *pin = (hal_pin_t *)h._pin;
+    hal_sig_t *sig = SHMPTR(pin->signal);
     if (!sig) return;  /* Unlinked - nothing to do */
     
     /* Write to working buffer */
@@ -507,7 +513,8 @@ void hal_ctx_pin_s32_set(hal_ctx_t *ctx, hal_pin_handle_t h, hal_s32_t val) {
 hal_u32_t hal_ctx_pin_u32_get(hal_ctx_t *ctx, hal_pin_handle_t h) {
     if (!ctx) return 0;
     
-    hal_sig_t *sig = SHMPTR(h.pin->signal);
+    hal_pin_t *pin = (hal_pin_t *)h._pin;
+    hal_sig_t *sig = SHMPTR(pin->signal);
     if (!sig) return 0;  /* Unlinked - return default */
     
     return *(hal_u32_t *)(ctx->working_buf + sig->data_ptr);
@@ -516,7 +523,8 @@ hal_u32_t hal_ctx_pin_u32_get(hal_ctx_t *ctx, hal_pin_handle_t h) {
 void hal_ctx_pin_u32_set(hal_ctx_t *ctx, hal_pin_handle_t h, hal_u32_t val) {
     if (!ctx) return;
     
-    hal_sig_t *sig = SHMPTR(h.pin->signal);
+    hal_pin_t *pin = (hal_pin_t *)h._pin;
+    hal_sig_t *sig = SHMPTR(pin->signal);
     if (!sig) return;  /* Unlinked - nothing to do */
     
     /* Write to working buffer */
@@ -534,69 +542,77 @@ void hal_ctx_pin_u32_set(hal_ctx_t *ctx, hal_pin_handle_t h, hal_u32_t val) {
 hal_bit_t hal_ctx_param_bit_get(hal_ctx_t *ctx, hal_param_handle_t h) {
     if (!ctx) return 0;
     
-    return *(hal_bit_t *)(ctx->working_buf + h.param->data_ptr);
+    hal_param_t *param = (hal_param_t *)h._param;
+    return *(hal_bit_t *)(ctx->working_buf + param->data_ptr);
 }
 
 void hal_ctx_param_bit_set(hal_ctx_t *ctx, hal_param_handle_t h, hal_bit_t val) {
     if (!ctx) return;
     
+    hal_param_t *param = (hal_param_t *)h._param;
     /* Write value to working buffer */
-    *(hal_bit_t *)(ctx->working_buf + h.param->data_ptr) = val;
+    *(hal_bit_t *)(ctx->working_buf + param->data_ptr) = val;
     
     /* Mark dirty using param's precomputed dirty info */
-    ctx->dirty_bitmap[h.param->dirty_offset]     |= h.param->dirty_mask[0];
-    ctx->dirty_bitmap[h.param->dirty_offset + 1] |= h.param->dirty_mask[1];
+    ctx->dirty_bitmap[param->dirty_offset]     |= param->dirty_mask[0];
+    ctx->dirty_bitmap[param->dirty_offset + 1] |= param->dirty_mask[1];
 }
 
 hal_float_t hal_ctx_param_float_get(hal_ctx_t *ctx, hal_param_handle_t h) {
     if (!ctx) return 0.0;
     
-    return *(hal_float_t *)(ctx->working_buf + h.param->data_ptr);
+    hal_param_t *param = (hal_param_t *)h._param;
+    return *(hal_float_t *)(ctx->working_buf + param->data_ptr);
 }
 
 void hal_ctx_param_float_set(hal_ctx_t *ctx, hal_param_handle_t h, hal_float_t val) {
     if (!ctx) return;
     
+    hal_param_t *param = (hal_param_t *)h._param;
     /* Write value to working buffer */
-    *(hal_float_t *)(ctx->working_buf + h.param->data_ptr) = val;
+    *(hal_float_t *)(ctx->working_buf + param->data_ptr) = val;
     
     /* Mark dirty using param's precomputed dirty info */
-    ctx->dirty_bitmap[h.param->dirty_offset]     |= h.param->dirty_mask[0];
-    ctx->dirty_bitmap[h.param->dirty_offset + 1] |= h.param->dirty_mask[1];
+    ctx->dirty_bitmap[param->dirty_offset]     |= param->dirty_mask[0];
+    ctx->dirty_bitmap[param->dirty_offset + 1] |= param->dirty_mask[1];
 }
 
 hal_s32_t hal_ctx_param_s32_get(hal_ctx_t *ctx, hal_param_handle_t h) {
     if (!ctx) return 0;
     
-    return *(hal_s32_t *)(ctx->working_buf + h.param->data_ptr);
+    hal_param_t *param = (hal_param_t *)h._param;
+    return *(hal_s32_t *)(ctx->working_buf + param->data_ptr);
 }
 
 void hal_ctx_param_s32_set(hal_ctx_t *ctx, hal_param_handle_t h, hal_s32_t val) {
     if (!ctx) return;
     
+    hal_param_t *param = (hal_param_t *)h._param;
     /* Write value to working buffer */
-    *(hal_s32_t *)(ctx->working_buf + h.param->data_ptr) = val;
+    *(hal_s32_t *)(ctx->working_buf + param->data_ptr) = val;
     
     /* Mark dirty using param's precomputed dirty info */
-    ctx->dirty_bitmap[h.param->dirty_offset]     |= h.param->dirty_mask[0];
-    ctx->dirty_bitmap[h.param->dirty_offset + 1] |= h.param->dirty_mask[1];
+    ctx->dirty_bitmap[param->dirty_offset]     |= param->dirty_mask[0];
+    ctx->dirty_bitmap[param->dirty_offset + 1] |= param->dirty_mask[1];
 }
 
 hal_u32_t hal_ctx_param_u32_get(hal_ctx_t *ctx, hal_param_handle_t h) {
     if (!ctx) return 0;
     
-    return *(hal_u32_t *)(ctx->working_buf + h.param->data_ptr);
+    hal_param_t *param = (hal_param_t *)h._param;
+    return *(hal_u32_t *)(ctx->working_buf + param->data_ptr);
 }
 
 void hal_ctx_param_u32_set(hal_ctx_t *ctx, hal_param_handle_t h, hal_u32_t val) {
     if (!ctx) return;
     
+    hal_param_t *param = (hal_param_t *)h._param;
     /* Write value to working buffer */
-    *(hal_u32_t *)(ctx->working_buf + h.param->data_ptr) = val;
+    *(hal_u32_t *)(ctx->working_buf + param->data_ptr) = val;
     
     /* Mark dirty using param's precomputed dirty info */
-    ctx->dirty_bitmap[h.param->dirty_offset]     |= h.param->dirty_mask[0];
-    ctx->dirty_bitmap[h.param->dirty_offset + 1] |= h.param->dirty_mask[1];
+    ctx->dirty_bitmap[param->dirty_offset]     |= param->dirty_mask[0];
+    ctx->dirty_bitmap[param->dirty_offset + 1] |= param->dirty_mask[1];
 }
 
 /***********************************************************************

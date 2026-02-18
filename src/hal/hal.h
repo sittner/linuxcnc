@@ -1001,13 +1001,13 @@ typedef struct hal_ctx hal_ctx_t;
 
 /** Handle types for pins and parameters */
 typedef struct {
-    hal_pin_t *pin;         /* Direct pointer to pin struct in shmem */
-    hal_type_t type;        /* For validation */
+    void *_pin;             /* Opaque pointer - internal use only */
+    hal_type_t type;        /* Data type for validation */
 } hal_pin_handle_t;
 
 typedef struct {
-    hal_param_t *param;     /* Direct pointer to param struct in shmem */
-    hal_type_t type;        /* For validation */
+    void *_param;           /* Opaque pointer - internal use only */
+    hal_type_t type;        /* Data type for validation */
 } hal_param_handle_t;
 
 /***********************************************************************
