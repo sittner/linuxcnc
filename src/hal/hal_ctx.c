@@ -651,3 +651,52 @@ void hal_ctx_param_u32_set(hal_ctx_t *ctx, hal_param_handle_t param, hal_u32_t v
     hal_u32_t *dst = (hal_u32_t *)((char *)ctx->after + entry->offset);
     *dst = val;
 }
+
+/***********************************************************************
+*                     SYMBOL EXPORTS                                   *
+***********************************************************************/
+
+#ifdef RTAPI
+/* Export symbols for realtime and userspace */
+
+/* Context lifecycle */
+EXPORT_SYMBOL(hal_ctx_create);
+EXPORT_SYMBOL(hal_ctx_destroy);
+
+/* Sync operations */
+EXPORT_SYMBOL(hal_ctx_sync_read);
+EXPORT_SYMBOL(hal_ctx_sync_write);
+
+/* Pin creation (handle-based) */
+EXPORT_SYMBOL(hal_pin_bit_new_handle);
+EXPORT_SYMBOL(hal_pin_float_new_handle);
+EXPORT_SYMBOL(hal_pin_s32_new_handle);
+EXPORT_SYMBOL(hal_pin_u32_new_handle);
+
+/* Pin access (context-aware) */
+EXPORT_SYMBOL(hal_ctx_pin_bit_get);
+EXPORT_SYMBOL(hal_ctx_pin_bit_set);
+EXPORT_SYMBOL(hal_ctx_pin_float_get);
+EXPORT_SYMBOL(hal_ctx_pin_float_set);
+EXPORT_SYMBOL(hal_ctx_pin_s32_get);
+EXPORT_SYMBOL(hal_ctx_pin_s32_set);
+EXPORT_SYMBOL(hal_ctx_pin_u32_get);
+EXPORT_SYMBOL(hal_ctx_pin_u32_set);
+
+/* Parameter creation (handle-based) */
+EXPORT_SYMBOL(hal_param_bit_new_handle);
+EXPORT_SYMBOL(hal_param_float_new_handle);
+EXPORT_SYMBOL(hal_param_s32_new_handle);
+EXPORT_SYMBOL(hal_param_u32_new_handle);
+
+/* Parameter access (context-aware) */
+EXPORT_SYMBOL(hal_ctx_param_bit_get);
+EXPORT_SYMBOL(hal_ctx_param_bit_set);
+EXPORT_SYMBOL(hal_ctx_param_float_get);
+EXPORT_SYMBOL(hal_ctx_param_float_set);
+EXPORT_SYMBOL(hal_ctx_param_s32_get);
+EXPORT_SYMBOL(hal_ctx_param_s32_set);
+EXPORT_SYMBOL(hal_ctx_param_u32_get);
+EXPORT_SYMBOL(hal_ctx_param_u32_set);
+
+#endif /* RTAPI */
