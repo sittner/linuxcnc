@@ -226,10 +226,10 @@ static void pyhal_exit_impl(halobject *self) {
 
     delete self->items;
     self->items = 0;
-    
+
     delete self->pin_handles;
     self->pin_handles = 0;
-    
+
     delete self->param_handles;
     self->param_handles = 0;
 }
@@ -477,7 +477,8 @@ static PyObject * pyhal_create_pin_handle(halobject *self, char *name, hal_type_
     // Store handle in pin_handles map
     // Note: Handle-based pins are not stored in items map because the handle API
     // does its own memory allocation and doesn't expose the pointer address.
-    // These pins are only accessible through the context API.
+    // These pins are only accessible through the context API (ctx.get_pin/set_pin).
+    // Direct access via component['pin-name'] will NOT work for handle-based pins.
     (*self->pin_handles)[name] = handle;
 
     // Return the handle as an integer
@@ -537,7 +538,8 @@ static PyObject * pyhal_create_param_handle(halobject *self, char *name, hal_typ
     // Store handle in param_handles map
     // Note: Handle-based params are not stored in items map because the handle API
     // does its own memory allocation and doesn't expose the pointer address.
-    // These params are only accessible through the context API.
+    // These params are only accessible through the context API (ctx.get_param/set_param).
+    // Direct access via component['param-name'] will NOT work for handle-based params.
     (*self->param_handles)[name] = handle;
 
     // Return the handle as an integer
