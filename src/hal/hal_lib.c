@@ -3462,6 +3462,7 @@ static void free_sig_struct(hal_sig_t * sig)
 	pin = halpr_find_pin_by_sig(sig, pin);
     }
     /* Thread-local HAL: clear allocation bitmap before clearing data_ptr */
+    /* Note: data_ptr is SHMFIELD(void*), which is rtapi_intptr_t (offset) */
     data_offset = sig->data_ptr;
     if (data_offset != 0) {
         halpr_alloc_bitmap_clear(data_offset, sizeof(hal_data_u));
@@ -3485,6 +3486,7 @@ static void free_param_struct(hal_param_t * p)
     /* clear contents of struct */
     if ( p->oldname != 0 ) free_oldname_struct(SHMPTR(p->oldname));
     /* Thread-local HAL: clear allocation bitmap before clearing data_ptr */
+    /* Note: data_ptr is SHMFIELD(void*), which is rtapi_intptr_t (offset) */
     data_offset = p->data_ptr;
     if (data_offset != 0) {
         halpr_alloc_bitmap_clear(data_offset, sizeof(hal_data_u));

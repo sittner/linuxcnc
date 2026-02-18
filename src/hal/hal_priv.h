@@ -589,7 +589,11 @@ static inline void halpr_compute_dirty_info(int offset, int size,
     if (start_word == end_word) {
         /* Data fits in single 32-bit word - use bit shift for efficiency */
         int num_bits = end_bit - start_bit + 1;
-        dirty_mask[0] = ((1U << num_bits) - 1) << start_bit;
+        if (num_bits == 32) {
+            dirty_mask[0] = ~0U;  /* All 32 bits set */
+        } else {
+            dirty_mask[0] = ((1U << num_bits) - 1) << start_bit;
+        }
         dirty_mask[1] = 0;
     } else {
         /* Data spans two 32-bit words */
