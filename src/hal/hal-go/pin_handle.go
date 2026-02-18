@@ -12,17 +12,29 @@ import (
 
 // PinHandle represents a handle to a HAL pin for use with the context API.
 //
-// Handles are lightweight integer identifiers that can be used to efficiently
-// access pin values through a Context. They are returned by the NewPin*Handle
-// functions and used with Context.GetPin*/SetPin* methods.
-type PinHandle int
+// This must match the C hal_pin_handle_t struct layout:
+//   - _pin: void* opaque pointer to internal pin structure
+//   - pinType: hal_type_t enum for data type validation
+//
+// The struct is returned by the NewPin*Handle functions and used with
+// Context.GetPin*/SetPin* methods.
+type PinHandle struct {
+	_pin    uintptr // opaque pointer, matches void* in C
+	pinType int32   // matches hal_type_t (int enum) in C
+}
 
 // ParamHandle represents a handle to a HAL parameter for use with the context API.
 //
-// Handles are lightweight integer identifiers that can be used to efficiently
-// access parameter values through a Context. They are returned by the NewParam*Handle
-// functions and used with Context.GetParam*/SetParam* methods.
-type ParamHandle int
+// This must match the C hal_param_handle_t struct layout:
+//   - _param: void* opaque pointer to internal param structure
+//   - paramType: hal_type_t enum for data type validation
+//
+// The struct is returned by the NewParam*Handle functions and used with
+// Context.GetParam*/SetParam* methods.
+type ParamHandle struct {
+	_param    uintptr // opaque pointer, matches void* in C
+	paramType int32   // matches hal_type_t (int enum) in C
+}
 
 // NewPinBitHandle creates a new bit (boolean) pin and returns a handle.
 //
@@ -54,10 +66,13 @@ func NewPinBitHandle(comp *Component, name string, dir Direction) (PinHandle, er
 	var handle C.hal_pin_handle_t
 	ret := C.hal_pin_bit_new_handle(cName, C.hal_pin_dir_t(dir), &handle, C.int(comp.id))
 	if ret != 0 {
-		return 0, halError(int(ret), "hal_pin_bit_new_handle")
+		return PinHandle{}, halError(int(ret), "hal_pin_bit_new_handle")
 	}
 
-	return PinHandle(handle), nil
+	return PinHandle{
+		_pin:    uintptr(handle._pin),
+		pinType: int32(handle._type),
+	}, nil
 }
 
 // NewPinFloatHandle creates a new float pin and returns a handle.
@@ -87,10 +102,13 @@ func NewPinFloatHandle(comp *Component, name string, dir Direction) (PinHandle, 
 	var handle C.hal_pin_handle_t
 	ret := C.hal_pin_float_new_handle(cName, C.hal_pin_dir_t(dir), &handle, C.int(comp.id))
 	if ret != 0 {
-		return 0, halError(int(ret), "hal_pin_float_new_handle")
+		return PinHandle{}, halError(int(ret), "hal_pin_float_new_handle")
 	}
 
-	return PinHandle(handle), nil
+	return PinHandle{
+		_pin:    uintptr(handle._pin),
+		pinType: int32(handle._type),
+	}, nil
 }
 
 // NewPinS32Handle creates a new signed 32-bit integer pin and returns a handle.
@@ -120,10 +138,13 @@ func NewPinS32Handle(comp *Component, name string, dir Direction) (PinHandle, er
 	var handle C.hal_pin_handle_t
 	ret := C.hal_pin_s32_new_handle(cName, C.hal_pin_dir_t(dir), &handle, C.int(comp.id))
 	if ret != 0 {
-		return 0, halError(int(ret), "hal_pin_s32_new_handle")
+		return PinHandle{}, halError(int(ret), "hal_pin_s32_new_handle")
 	}
 
-	return PinHandle(handle), nil
+	return PinHandle{
+		_pin:    uintptr(handle._pin),
+		pinType: int32(handle._type),
+	}, nil
 }
 
 // NewPinU32Handle creates a new unsigned 32-bit integer pin and returns a handle.
@@ -153,10 +174,13 @@ func NewPinU32Handle(comp *Component, name string, dir Direction) (PinHandle, er
 	var handle C.hal_pin_handle_t
 	ret := C.hal_pin_u32_new_handle(cName, C.hal_pin_dir_t(dir), &handle, C.int(comp.id))
 	if ret != 0 {
-		return 0, halError(int(ret), "hal_pin_u32_new_handle")
+		return PinHandle{}, halError(int(ret), "hal_pin_u32_new_handle")
 	}
 
-	return PinHandle(handle), nil
+	return PinHandle{
+		_pin:    uintptr(handle._pin),
+		pinType: int32(handle._type),
+	}, nil
 }
 
 // NewParamBitHandle creates a new bit (boolean) parameter and returns a handle.
@@ -188,10 +212,13 @@ func NewParamBitHandle(comp *Component, name string, dir ParamDirection) (ParamH
 	var handle C.hal_param_handle_t
 	ret := C.hal_param_bit_new_handle(cName, C.hal_param_dir_t(dir), &handle, C.int(comp.id))
 	if ret != 0 {
-		return 0, halError(int(ret), "hal_param_bit_new_handle")
+		return ParamHandle{}, halError(int(ret), "hal_param_bit_new_handle")
 	}
 
-	return ParamHandle(handle), nil
+	return ParamHandle{
+		_param:    uintptr(handle._param),
+		paramType: int32(handle._type),
+	}, nil
 }
 
 // NewParamFloatHandle creates a new float parameter and returns a handle.
@@ -223,10 +250,13 @@ func NewParamFloatHandle(comp *Component, name string, dir ParamDirection) (Para
 	var handle C.hal_param_handle_t
 	ret := C.hal_param_float_new_handle(cName, C.hal_param_dir_t(dir), &handle, C.int(comp.id))
 	if ret != 0 {
-		return 0, halError(int(ret), "hal_param_float_new_handle")
+		return ParamHandle{}, halError(int(ret), "hal_param_float_new_handle")
 	}
 
-	return ParamHandle(handle), nil
+	return ParamHandle{
+		_param:    uintptr(handle._param),
+		paramType: int32(handle._type),
+	}, nil
 }
 
 // NewParamS32Handle creates a new signed 32-bit integer parameter and returns a handle.
@@ -258,10 +288,13 @@ func NewParamS32Handle(comp *Component, name string, dir ParamDirection) (ParamH
 	var handle C.hal_param_handle_t
 	ret := C.hal_param_s32_new_handle(cName, C.hal_param_dir_t(dir), &handle, C.int(comp.id))
 	if ret != 0 {
-		return 0, halError(int(ret), "hal_param_s32_new_handle")
+		return ParamHandle{}, halError(int(ret), "hal_param_s32_new_handle")
 	}
 
-	return ParamHandle(handle), nil
+	return ParamHandle{
+		_param:    uintptr(handle._param),
+		paramType: int32(handle._type),
+	}, nil
 }
 
 // NewParamU32Handle creates a new unsigned 32-bit integer parameter and returns a handle.
@@ -293,8 +326,11 @@ func NewParamU32Handle(comp *Component, name string, dir ParamDirection) (ParamH
 	var handle C.hal_param_handle_t
 	ret := C.hal_param_u32_new_handle(cName, C.hal_param_dir_t(dir), &handle, C.int(comp.id))
 	if ret != 0 {
-		return 0, halError(int(ret), "hal_param_u32_new_handle")
+		return ParamHandle{}, halError(int(ret), "hal_param_u32_new_handle")
 	}
 
-	return ParamHandle(handle), nil
+	return ParamHandle{
+		_param:    uintptr(handle._param),
+		paramType: int32(handle._type),
+	}, nil
 }
