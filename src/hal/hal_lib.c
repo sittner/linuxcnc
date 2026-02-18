@@ -1028,6 +1028,10 @@ with the C standard.
     new->writers = 0;
     new->bidirs = 0;
     rtapi_snprintf(new->name, sizeof(new->name), "%s", name);
+    /* Thread-local HAL: set allocation bitmap and compute dirty info */
+    halpr_alloc_bitmap_set(SHMOFF(data_addr), sizeof(hal_data_u));
+    halpr_compute_dirty_info(SHMOFF(data_addr), sizeof(hal_data_u), 
+                            &new->dirty_offset, new->dirty_mask);
     /* search list for 'name' and insert new structure */
     prev = &(hal_data->sig_list_ptr);
     next = *prev;
@@ -1481,6 +1485,12 @@ int hal_param_new(const char *name, hal_type_t type, hal_param_dir_t dir, void *
     new->type = type;
     new->dir = dir;
     rtapi_snprintf(new->name, sizeof(new->name), "%s", name);
+    /* Thread-local HAL: set allocation bitmap and compute dirty info */
+    /* Parameters use data_addr that was allocated by component, which is always
+       aligned to sizeof(hal_data_u) for proper memory alignment */
+    halpr_alloc_bitmap_set(SHMOFF(data_addr), sizeof(hal_data_u));
+    halpr_compute_dirty_info(SHMOFF(data_addr), sizeof(hal_data_u), 
+                            &new->dirty_offset, new->dirty_mask);
     /* search list for 'name' and insert new structure */
     prev = &(hal_data->param_list_ptr);
     next = *prev;
@@ -2993,6 +3003,8 @@ static int init_hal_data(void)
     hal_data->shmem_bot = sizeof(hal_data_t);
     hal_data->shmem_top = HAL_SIZE;
     hal_data->lock = HAL_LOCK_NONE;
+    /* initialize allocation bitmap to zero */
+    memset(hal_data->allocation_bitmap, 0, HAL_ALLOC_BITMAP_SIZE);
     /* done, release mutex */
     rtapi_mutex_give(&(hal_data->mutex));
     return 0;
@@ -3439,6 +3451,7 @@ static void free_pin_struct(hal_pin_t * pin)
 static void free_sig_struct(hal_sig_t * sig)
 {
     hal_pin_t *pin;
+    rtapi_intptr_t data_offset;
 
     /* look for pins linked to this signal */
     pin = halpr_find_pin_by_sig(sig, 0);
@@ -3447,6 +3460,12 @@ static void free_sig_struct(hal_sig_t * sig)
 	unlink_pin(pin);
 	/* check for another pin linked to the signal */
 	pin = halpr_find_pin_by_sig(sig, pin);
+    }
+    /* Thread-local HAL: clear allocation bitmap before clearing data_ptr */
+    /* Note: data_ptr is SHMFIELD(void*), which is rtapi_intptr_t (offset) */
+    data_offset = sig->data_ptr;
+    if (data_offset != 0) {
+        halpr_alloc_bitmap_clear(data_offset, sizeof(hal_data_u));
     }
     /* clear contents of struct */
     sig->data_ptr = 0;
@@ -3462,8 +3481,16 @@ static void free_sig_struct(hal_sig_t * sig)
 
 static void free_param_struct(hal_param_t * p)
 {
+    rtapi_intptr_t data_offset;
+    
     /* clear contents of struct */
     if ( p->oldname != 0 ) free_oldname_struct(SHMPTR(p->oldname));
+    /* Thread-local HAL: clear allocation bitmap before clearing data_ptr */
+    /* Note: data_ptr is SHMFIELD(void*), which is rtapi_intptr_t (offset) */
+    data_offset = p->data_ptr;
+    if (data_offset != 0) {
+        halpr_alloc_bitmap_clear(data_offset, sizeof(hal_data_u));
+    }
     p->data_ptr = 0;
     p->owner_ptr = 0;
     p->type = 0;
