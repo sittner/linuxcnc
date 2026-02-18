@@ -481,8 +481,8 @@ static PyObject * pyhal_create_pin_handle(halobject *self, char *name, hal_type_
     // Direct access via component['pin-name'] will NOT work for handle-based pins.
     (*self->pin_handles)[name] = handle;
 
-    // Return the handle as an integer
-    return PyLong_FromLong(handle);
+    // Return None - handles are stored internally and accessed through the context API
+    Py_RETURN_NONE;
 }
 
 static PyObject *pyhal_new_pin_handle(PyObject *_self, PyObject *o) {
@@ -547,8 +547,8 @@ static PyObject * pyhal_create_param_handle(halobject *self, char *name, hal_typ
     // Direct access via component['param-name'] will NOT work for handle-based params.
     (*self->param_handles)[name] = handle;
 
-    // Return the handle as an integer
-    return PyLong_FromLong(handle);
+    // Return None - handles are stored internally and accessed through the context API
+    Py_RETURN_NONE;
 }
 
 static PyObject *pyhal_new_param_handle(PyObject *_self, PyObject *o) {

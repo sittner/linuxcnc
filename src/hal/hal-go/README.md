@@ -76,7 +76,9 @@ func main() {
 
     // Main loop
     for comp.Running() {
+        comp.SyncRead()       // NEW: sync inputs from HAL
         output.Set(input.Get() * 2.0)
+        comp.SyncWrite()      // NEW: sync outputs to HAL
         time.Sleep(10 * time.Millisecond)
     }
 
@@ -100,11 +102,62 @@ pin2, _ := hal.NewPin[bool](comp, "pin2", hal.Out)
 // Mark component ready
 comp.Ready()
 
-// Main loop
+// Main loop with sync calls
 for comp.Running() {
-    // ... do work ...
+    // Sync inputs from shared memory
+    comp.SyncRead()
+    
+    // Your component logic
+    value := pin1.Get()
+    pin2.Set(value > 0.5)
+    
+    // Sync outputs to shared memory
+    comp.SyncWrite()
+    
+    time.Sleep(10 * time.Millisecond)
 }
 ```
+
+### Thread-Local HAL Context (Sync API)
+
+**Important:** Userspace Go components must use manual sync calls to ensure proper communication with HAL.
+
+```go
+// At the start of each iteration, sync inputs
+comp.SyncRead()   // Copies latest values from HAL shared memory
+
+// Read inputs and compute outputs
+output.Set(input.Get() * 2.0)
+
+// At the end of each iteration, sync outputs
+comp.SyncWrite()  // Writes your output values back to HAL
+```
+
+**Alternative: Using `Synced()` helper**
+
+For simple components, you can use the `Synced()` convenience wrapper:
+
+```go
+for comp.Running() {
+    err := comp.Synced(func() error {
+        output.Set(input.Get() * 2.0)
+        return nil
+    })
+    if err != nil {
+        log.Printf("Error: %v", err)
+    }
+    time.Sleep(10 * time.Millisecond)
+}
+```
+
+The `Synced()` method automatically calls `SyncRead()` before your function and `SyncWrite()` after, even if your function returns an error.
+
+**Why sync is required:**
+
+- **RT (real-time) components**: Get automatic sync from the HAL executor - no manual calls needed
+- **Userspace components**: Must call `SyncRead()` and `SyncWrite()` manually to ensure thread-safe communication
+
+Without sync calls, you may read stale data or your outputs may not be visible to other components. See the [Thread-Local HAL Migration Guide](../../../docs/src/hal/THREAD_LOCAL_HAL.md) for more details.
 
 ### Pin Types
 

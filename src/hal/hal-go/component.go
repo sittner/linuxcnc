@@ -202,3 +202,71 @@ func (c *Component) setupSignalHandler() {
 		}
 	}()
 }
+
+// SyncRead synchronizes input pins from shared memory to thread-local storage.
+// Call this at the start of your main loop iteration before reading any pins.
+//
+// For userspace components, this ensures you read the latest values from other
+// components. RT components get automatic sync from the executor and don't need
+// to call this manually.
+func (c *Component) SyncRead() error {
+	return halCtxSyncRead()
+}
+
+// SyncWrite synchronizes output pins from thread-local storage to shared memory.
+// Call this at the end of your main loop iteration after writing all pins.
+//
+// For userspace components, this ensures your output values are visible to other
+// components. RT components get automatic sync from the executor and don't need
+// to call this manually.
+func (c *Component) SyncWrite() error {
+	return halCtxSyncWrite()
+}
+
+// Synced is a convenience wrapper that calls SyncRead, executes the provided
+// function, and then calls SyncWrite.
+//
+// This is useful for simple components where the entire computation can be
+// expressed as a single function. Similar to Python's context manager pattern.
+//
+// Example:
+//
+//	for comp.Running() {
+//	    err := comp.Synced(func() error {
+//	        output.Set(input.Get() * 2.0)
+//	        return nil
+//	    })
+//	    if err != nil {
+//	        log.Printf("Error: %v", err)
+//	    }
+//	    time.Sleep(10 * time.Millisecond)
+//	}
+//
+// Error handling: If the function returns an error, SyncWrite is still called
+// to ensure partial results are written. If both the function and SyncWrite fail,
+// a warning is logged with both errors, and the function error is returned
+// (since it represents the primary failure). If only SyncWrite fails, its error
+// is returned.
+//
+// Note: This is a method on Component for API consistency and future extensibility
+// (e.g., adding per-component context tracking or error hooks).
+func (c *Component) Synced(fn func() error) error {
+	if err := c.SyncRead(); err != nil {
+		return err
+	}
+	fnErr := fn()
+	if syncErr := c.SyncWrite(); syncErr != nil {
+		// If both function and sync failed, log both errors and return function error
+		// We log here because the sync error is secondary to the function error,
+		// but both failures should be visible for debugging
+		if fnErr != nil {
+			log.Printf("HAL Component %s: SyncWrite failed (%v) after function error (%v)", 
+				c.name, syncErr, fnErr)
+			return fnErr
+		}
+		// If only sync failed, return sync error
+		return syncErr
+	}
+	// Return function error (may be nil)
+	return fnErr
+}
