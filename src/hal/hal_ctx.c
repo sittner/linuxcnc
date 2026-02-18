@@ -208,8 +208,8 @@ int hal_pin_bit_new_handle(const char *name, hal_pin_dir_t dir,
     }
     
     /* Get the data offset from the pin's current data pointer */
-    void *data_ptr = *data_ptr_addr;
-    handle->data_offset = SHMOFF(data_ptr);
+    volatile void *data_ptr = *data_ptr_addr;
+    handle->data_offset = SHMOFF((void*)data_ptr);
     handle->type = HAL_BIT;
     
     rtapi_mutex_give(&(hal_data->mutex));
@@ -240,8 +240,8 @@ int hal_pin_float_new_handle(const char *name, hal_pin_dir_t dir,
         return -EINVAL;
     }
     
-    void *data_ptr = *data_ptr_addr;
-    handle->data_offset = SHMOFF(data_ptr);
+    volatile void *data_ptr = *data_ptr_addr;
+    handle->data_offset = SHMOFF((void*)data_ptr);
     handle->type = HAL_FLOAT;
     
     rtapi_mutex_give(&(hal_data->mutex));
@@ -272,8 +272,8 @@ int hal_pin_s32_new_handle(const char *name, hal_pin_dir_t dir,
         return -EINVAL;
     }
     
-    void *data_ptr = *data_ptr_addr;
-    handle->data_offset = SHMOFF(data_ptr);
+    volatile void *data_ptr = *data_ptr_addr;
+    handle->data_offset = SHMOFF((void*)data_ptr);
     handle->type = HAL_S32;
     
     rtapi_mutex_give(&(hal_data->mutex));
@@ -304,8 +304,8 @@ int hal_pin_u32_new_handle(const char *name, hal_pin_dir_t dir,
         return -EINVAL;
     }
     
-    void *data_ptr = *data_ptr_addr;
-    handle->data_offset = SHMOFF(data_ptr);
+    volatile void *data_ptr = *data_ptr_addr;
+    handle->data_offset = SHMOFF((void*)data_ptr);
     handle->type = HAL_U32;
     
     rtapi_mutex_give(&(hal_data->mutex));
