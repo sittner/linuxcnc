@@ -83,12 +83,19 @@ func main() {
 
 	log.Println("passthrough component ready")
 
-	// Main loop - copy inputs to outputs
+	// Main loop - copy inputs to outputs with sync calls
 	for comp.Running() {
+		// Sync inputs from HAL
+		comp.SyncRead()
+		
+		// Copy inputs to outputs
 		outBit.Set(inBit.Get())
 		outFloat.Set(inFloat.Get())
 		outS32.Set(inS32.Get())
 		outU32.Set(inU32.Get())
+		
+		// Sync outputs to HAL
+		comp.SyncWrite()
 
 		time.Sleep(10 * time.Millisecond)
 	}
