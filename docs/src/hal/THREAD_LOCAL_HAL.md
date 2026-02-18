@@ -836,7 +836,7 @@ This "fail-fast" behavior is intentional - it makes forgotten sync calls **obvio
 
 ## Additional Resources
 
-For detailed technical architecture and implementation specifics of the thread-local HAL system, including memory management, dirty bitmap mechanism, and performance analysis, see the technical architecture document: [THREAD_LOCAL_HAL.md](../../../THREAD_LOCAL_HAL.md) (in the repository root, separate from this migration guide).
+For detailed technical architecture and implementation specifics of the thread-local HAL system, including memory management, dirty bitmap mechanism, and performance analysis, see the technical architecture document: [/THREAD_LOCAL_HAL.md](/THREAD_LOCAL_HAL.md) (in the repository root, separate from this migration guide).
 
 ## Summary
 
