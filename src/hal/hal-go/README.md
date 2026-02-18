@@ -154,7 +154,7 @@ The `Synced()` method automatically calls `SyncRead()` before your function and 
 
 **Why sync is required:**
 
-- **RT components**: Get automatic sync from the HAL executor - no manual calls needed
+- **RT (real-time) components**: Get automatic sync from the HAL executor - no manual calls needed
 - **Userspace components**: Must call `SyncRead()` and `SyncWrite()` manually to ensure thread-safe communication
 
 Without sync calls, you may read stale data or your outputs may not be visible to other components. See the [Thread-Local HAL Migration Guide](../../../docs/src/hal/THREAD_LOCAL_HAL.md) for more details.
