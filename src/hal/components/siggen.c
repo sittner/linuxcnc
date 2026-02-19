@@ -210,7 +210,7 @@ static void calc_siggen(void *arg, hal_ctx_t *ctx)
     double tmp1, tmp2;
     hal_float_t frequency, amplitude, offset;
     hal_bit_t reset;
-    hal_bit_t clock_val;
+    hal_bit_t clock_val;  /* Named clock_val (not clock) to avoid shadowing siggen->clock */
 
     /* point to the data for this signal generator */
     siggen = arg;

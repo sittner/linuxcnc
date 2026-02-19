@@ -538,9 +538,9 @@ Components that still need Phase 3 migration:
 - Driver components in `src/hal/drivers/`
 
 **Note**: Components may be at different migration stages:
-- **Stage 0**: Not yet migrated (still using old `long period` parameter)
-- **Stage 1**: Function signature updated to `(void *arg, hal_ctx_t *ctx)` but still using pointer-based pin access
-- **Stage 2**: Fully migrated to handle-based API (like `siggen.c`)
+- **Stage 0**: Not yet migrated (still using old `long period` parameter and pointer-based pins)
+- **Stage 1**: Function signature updated to `(void *arg, hal_ctx_t *ctx)` but still using pointer-based pin access (data structure has `hal_float_t *` fields, accessed via `*(data->pin)`)
+- **Stage 2**: Fully migrated to handle-based API (data structure has `hal_pin_handle_t` fields, accessed via `hal_ctx_pin_*_get/set()`) - like `siggen.c`
 
 The goal is to eventually migrate all components to Stage 2 for optimal performance with thread-local contexts.
 
