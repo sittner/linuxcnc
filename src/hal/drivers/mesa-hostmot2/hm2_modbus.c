@@ -743,7 +743,7 @@ static rtapi_u32 oldtx;
 static rtapi_u32 oldrx;
 static int oldst = -1;
 #endif
-static void process(void *arg, long period)
+static void process(void *arg, hal_ctx_t *ctx)
 {
 	hm2_modbus_inst_t *inst = (hm2_modbus_inst_t *)arg;
 

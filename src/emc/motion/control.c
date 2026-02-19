@@ -204,8 +204,9 @@ static void handle_kinematicsSwitch(void);
   Inactive axes are still calculated, but the PIDs are inhibited and
   the amp enable/disable are inhibited
   */
-void emcmotController(void *arg, long period)
+void emcmotController(void *arg, hal_ctx_t *ctx)
 {
+    long period = hal_ctx_period(ctx);
     static int do_once = 1;
     if (do_once) {
         pcmd_p[0] = &(emcmotStatus->carte_pos_cmd.tran.x);

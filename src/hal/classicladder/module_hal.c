@@ -132,9 +132,10 @@ void HalWriteFloatOutputs(void) {
 // t0 and t1 are for keeping track of how long the refresh of sections, 
 // and HAL pins take (it is displayed in the 'section display' GUI (in microseconds). 
 
-static void hal_task(void *arg, long period) {
+static void hal_task(void *arg, hal_ctx_t *ctx) {
 	unsigned long t0, t1,milliseconds;
 	static unsigned long leftover=0;
+	long period = hal_ctx_period(ctx);
 	leftover += period;
 	milliseconds= leftover / 1000000;
 	leftover %= 1000000;
