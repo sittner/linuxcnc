@@ -67,7 +67,7 @@ typedef struct {
 
 static int comp_id;
 static lcd_t *lcd;
-static void write(void *arg, long period);
+static void write(void *arg, hal_ctx_t *ctx);
 static void write_one(lcd_inst_t *inst);
 
 static int parse_fmt(char *in, int *ptr, char *out, void *val, char dp);
@@ -254,7 +254,7 @@ int rtapi_app_main(void){
     return 0;
 }
 
-void write(void *arg, long period){
+void write(void *arg, hal_ctx_t *ctx){
     lcd_t *lcd;
     int i;
     

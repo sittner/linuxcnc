@@ -70,7 +70,7 @@ static int comp_id;		/* component ID */
 
 static int export_mod_dir(int num);
 
-static void mod_dir_funct(void *arg, long period);
+static void mod_dir_funct(void *arg, hal_ctx_t *ctx);
 
 
 /***********************************************************************
@@ -113,7 +113,7 @@ void rtapi_app_exit(void)
 *                     REALTIME BLOCK FUNCTIONS                         *
 ************************************************************************/
 
-static void mod_dir_funct(void *arg, long period)
+static void mod_dir_funct(void *arg, hal_ctx_t *ctx)
 {
     mod_dir_t *mod;
     int range, act, des, to_go;

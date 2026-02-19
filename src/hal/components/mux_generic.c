@@ -55,8 +55,8 @@ typedef struct {
 
 static int comp_id;
 static mux_t *mux;
-static void write_fp(void *arg, long period);
-static void write_nofp(void *arg, long period);
+static void write_fp(void *arg, hal_ctx_t *ctx);
+static void write_nofp(void *arg, hal_ctx_t *ctx);
 
 char *config[MAX_CHAN];
 RTAPI_MP_ARRAY_STRING(config, MAX_CHAN, "mux specifiers inNUMout");
@@ -273,9 +273,10 @@ int rtapi_app_main(void){
 
 }
 
-void write_fp(void *arg, long period) {
+void write_fp(void *arg, hal_ctx_t *ctx) {
     mux_inst_t *inst = arg;
     int i = 0, s = 0;
+    long period = hal_ctx_period(ctx);
     if (inst->num_bits > 0) {
         while (i < inst->num_bits) {
             s += (*inst->sel_bit[i] != 0) << i;
@@ -336,9 +337,10 @@ void write_fp(void *arg, long period) {
     }
 }
 
-void write_nofp(void *arg, long period) {
+void write_nofp(void *arg, hal_ctx_t *ctx) {
     mux_inst_t *inst = arg;
     int i = 0, s = 0;
+    long period = hal_ctx_period(ctx);
     if (inst->num_bits > 0) {
         while (i < inst->num_bits) {
             s += (*inst->sel_bit[i] != 0) << i;

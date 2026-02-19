@@ -108,7 +108,7 @@ void keydown(kb_inst_t *inst){
     *inst->hal.key[r * inst->ncols + c] = 1;
 }
 
-    void loop(void *arg, long period){
+    void loop(void *arg, hal_ctx_t *ctx){
     int c;
     hal_u32_t scan = 0;
     kb_inst_t *inst = arg;

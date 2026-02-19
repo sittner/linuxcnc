@@ -18,7 +18,7 @@ typedef struct {
 
 static int comp_id;
 
-static void sync(void *arg, long period);
+static void sync(void *arg, hal_ctx_t *ctx);
 static int sync_read(void);
 
 int rtapi_app_main(void) {
@@ -61,7 +61,7 @@ void rtapi_app_exit(void)
   hal_exit(comp_id);
 }
 
-static void sync(void *arg, long period) {
+static void sync(void *arg, hal_ctx_t *ctx) {
   hal_retain_t *hal = (hal_retain_t *) arg;
   int ret;
 

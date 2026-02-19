@@ -63,8 +63,8 @@ hal_bit_t old_enable;
 *                  LOCAL FUNCTION DECLARATIONS                         *
 ************************************************************************/
 
-static void process(void *arg, long period);
-static void set_timeouts(void *arg, long period);
+static void process(void *arg, hal_ctx_t *ctx);
+static void set_timeouts(void *arg, hal_ctx_t *ctx);
 
 /***********************************************************************
 *                       INIT AND EXIT CODE                             *
@@ -188,9 +188,10 @@ void rtapi_app_exit(void)
     to zero, the output is cleared and enable must go low and high again
     to re-start the watchdog.
 */
-static void process(void *arg, long period)
+static void process(void *arg, hal_ctx_t *ctx)
 {
     int i, fault=0;
+    long period = hal_ctx_period(ctx);
     // set_timeouts has to turn on the output when it detects a valid
     // transition on enable
     if (!(*data->enable) || (!(*data->output))) return;
@@ -215,7 +216,7 @@ static void process(void *arg, long period)
     if (fault) *(data->output)=0;
 }
 
-static void set_timeouts(void *arg, long period)
+static void set_timeouts(void *arg, hal_ctx_t *ctx)
 {
     int i;
     hal_float_t temp;

@@ -94,7 +94,7 @@ static int num_filters;		/* number of individual filters */
 
 static int export_filter(int num, debounce_t * addr, int group_num);
 static int export_group(int num, debounce_group_t * addr, int group_size);
-static void debounce(void *arg, long period);
+static void debounce(void *arg, hal_ctx_t *ctx);
 
 /***********************************************************************
 *                       INIT AND EXIT CODE                             *
@@ -183,7 +183,7 @@ void rtapi_app_exit(void)
 /** this function processes an entire group of filters with the
     same threshold. */
 
-static void debounce(void *arg, long period)
+static void debounce(void *arg, hal_ctx_t *ctx)
 {
     debounce_group_t *group;
     debounce_t *filter;

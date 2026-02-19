@@ -320,7 +320,7 @@ static int Plc_ExportSpindle(Plc *this, int compId, int id, char *name);
 static int Plc_ExportJog(Plc *this, int compId, int id, char *name);
 
 // These methods are exported to the HAL.
-static void Plc_Refresh(void *this, long period);
+static void Plc_Refresh(void *this, hal_ctx_t *ctx);
 
 // Private helper methods.
 static void Plc_RefreshFeed(Plc *this, long period);
@@ -774,9 +774,10 @@ Plc_ExportJog(Plc *this, int compId, int id, char *name)
  */
 
 static void
-Plc_Refresh(void *arg, long period)
+Plc_Refresh(void *arg, hal_ctx_t *ctx)
 {
     Plc                         *this = (Plc *)arg;
+    long period = hal_ctx_period(ctx);
 
     Plc_RefreshFeed(this, period);
     Plc_RefreshLimits(this, period);

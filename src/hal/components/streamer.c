@@ -109,7 +109,7 @@ static streamer_t *streams;
 ************************************************************************/
 
 static int init_streamer(int num, streamer_t *stream);
-static void update(void *arg, long period);
+static void update(void *arg, hal_ctx_t *ctx);
 
 /***********************************************************************
 *                       INIT AND EXIT CODE                             *
@@ -165,7 +165,7 @@ void rtapi_app_exit(void)
 *            REALTIME COUNTER COUNTING AND UPDATE FUNCTIONS            *
 ************************************************************************/
 
-static void update(void *arg, long period)
+static void update(void *arg, hal_ctx_t *ctx)
 {
     streamer_t *str;
     pin_data_t *pptr;

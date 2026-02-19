@@ -117,8 +117,8 @@ static double maxf;		/* max frequency in Hz */
 ************************************************************************/
 
 static int export_sim_enc(sim_enc_t * addr, char *prefix);
-static void make_pulses(void *arg, long period);
-static void update_speed(void *arg, long period);
+static void make_pulses(void *arg, hal_ctx_t *ctx);
+static void update_speed(void *arg, hal_ctx_t *ctx);
 
 /***********************************************************************
 *                       INIT AND EXIT CODE                             *
@@ -236,10 +236,11 @@ void rtapi_app_exit(void)
     (or min) value, and overflow (or underflow) occurs on every cycle.
 */
 
-static void make_pulses(void *arg, long period)
+static void make_pulses(void *arg, hal_ctx_t *ctx)
 {
     sim_enc_t *sim_enc;
     int n, overunder, dir;
+    long period = hal_ctx_period(ctx);
 
     /* store period so scaling constants can be (re)calculated */
     periodns = period;
@@ -315,7 +316,7 @@ static void make_pulses(void *arg, long period)
     /* done */
 }
 
-static void update_speed(void *arg, long period)
+static void update_speed(void *arg, hal_ctx_t *ctx)
 {
     sim_enc_t *sim_enc;
     int n;

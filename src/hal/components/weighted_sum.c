@@ -74,7 +74,7 @@ static int num_summers;		/* number of summers created */
 ************************************************************************/
 
 static int export_wsum(int num, int num_bits, wsum_t *addr, wsum_bit_t *bitaddr);
-static void process_wsums(void *arg, long period);
+static void process_wsums(void *arg, hal_ctx_t *ctx);
 
 /***********************************************************************
 *                       INIT AND EXIT CODE                             *
@@ -169,7 +169,7 @@ void rtapi_app_exit(void)
 /*  The summer works by checking the input bits, and adding the
     weight to the sum if the input is true.
 */
-static void process_wsums(void *arg, long period)
+static void process_wsums(void *arg, hal_ctx_t *ctx)
 {
     wsum_t *wsums, *thissum;
     int n, b, running_total;

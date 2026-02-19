@@ -96,7 +96,7 @@ static sampler_t *samplers;
 ************************************************************************/
 
 static int init_sampler(int num, sampler_t *tmp_fifo);
-static void sample(void *arg, long period);
+static void sample(void *arg, hal_ctx_t *ctx);
 
 /***********************************************************************
 *                       INIT AND EXIT CODE                             *
@@ -150,7 +150,7 @@ void rtapi_app_exit(void)
 *            REALTIME COUNTER COUNTING AND UPDATE FUNCTIONS            *
 ************************************************************************/
 
-static void sample(void *arg, long period)
+static void sample(void *arg, hal_ctx_t *ctx)
 {
     sampler_t *samp;
     pin_data_t *pptr;
