@@ -280,10 +280,10 @@ static void calc_siggen(void *arg, hal_ctx_t *ctx)
     offset = hal_ctx_pin_float_get(ctx, siggen->offset);
     reset = hal_ctx_pin_bit_get(ctx, siggen->reset);
 
-    /* Limit frequency (use local variable, not write back to input) */
+    /* Limit frequency calculation to comply with Nyquist limit */
     tmp2 = frequency * tmp1;
     if (tmp2 > 0.5) {
-        frequency = 0.5 / tmp1;  /* Modify local copy only */
+        /* Just clamp the calculation result - no write-back to input pin */
         tmp2 = 0.5;
     }
     
