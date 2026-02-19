@@ -381,6 +381,23 @@ static int export_siggen(int num, hal_siggen_t *addr, char *prefix)
 1. **Read inputs once**: For efficiency and correctness, read input pins once at the start of the function into local variables. This avoids multiple context lookups and ensures consistent values throughout the function.
 
 2. **No direct writes to inputs**: In the old API, you could write to input pins (even though it's not good practice). In the new API, this doesn't make sense - use local variables for intermediate calculations.
+   
+   **Example from siggen.c**: The old code wrote back to the frequency input pin to clamp it:
+   ```c
+   // Old API - wrote back to input pin
+   if (tmp2 > 0.5) {
+       *(siggen->frequency) = 0.5 / tmp1;  // Modify input pin
+       tmp2 = 0.5;
+   }
+   ```
+   
+   In the new API, we can't write to input pins, so we just clamp the calculation:
+   ```c
+   // New API - just clamp the calculation
+   if (tmp2 > 0.5) {
+       tmp2 = 0.5;  // Only modify local calculation
+   }
+   ```
 
 3. **Pin names are strings, not format strings**: The `hal_pin_*_new_handle()` functions take a complete name string, not a format string. Use `rtapi_snprintf()` to construct the name first.
 
