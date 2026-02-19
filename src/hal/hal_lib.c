@@ -2082,7 +2082,8 @@ int hal_create_thread(const char *name, unsigned long period_nsec, int uses_fp)
 	return -ENOMEM;
     }
     
-    /* Initialize context metadata */
+    /* Initialize context metadata - direct assignment is safe here as this is
+     * internal thread management code that creates and owns the context */
     new->ctx->thread_name = new->name;
     new->ctx->period_ns = new->period;
     
@@ -2967,7 +2968,9 @@ static void thread_task(void *arg)
 	    /* Update context metadata */
 	    if (thread->ctx) {
 		thread->ctx->iteration_count++;
-		/* TODO: Track actual period and overruns if timing info available */
+		/* TODO: Track actual_period_ns and overruns when timing measurement 
+		 * infrastructure is available. This requires comparing expected vs 
+		 * actual period and detecting deadline misses. */
 	    }
 	    
 	    /* Sync write: Copy modified thread-local data back to shared memory */
@@ -3639,7 +3642,6 @@ static void free_thread_struct(hal_thread_t * thread)
     /* Destroy thread-local context */
     if (thread->ctx) {
 	hal_ctx_destroy(thread->ctx);
-	thread->ctx = NULL;
     }
     
     /* clear contents of struct */
