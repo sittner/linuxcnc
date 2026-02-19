@@ -431,9 +431,9 @@ typedef enum CONTROL { POSITION, VELOCITY, INVALID } CONTROL;
 ************************************************************************/
 
 static int export_stepgen(int num, stepgen_t * addr, int step_type, int pos_mode);
-static void make_pulses(void *arg, long period);
-static void update_freq(void *arg, long period);
-static void update_pos(void *arg, long period);
+static void make_pulses(void *arg, hal_ctx_t *ctx);
+static void update_freq(void *arg, hal_ctx_t *ctx);
+static void update_pos(void *arg, hal_ctx_t *ctx);
 static int setup_user_step_type(void);
 static CONTROL parse_ctrl_type(const char *ctrl);
 
@@ -555,12 +555,13 @@ void rtapi_app_exit(void)
     toggles, a step is generated.
 */
 
-static void make_pulses(void *arg, long period)
+static void make_pulses(void *arg, hal_ctx_t *ctx)
 {
     stepgen_t *stepgen;
     long old_addval, target_addval, new_addval, step_now;
     int n, p;
     unsigned char outbits;
+    long period = hal_ctx_period(ctx);
 
     /* store period so scaling constants can be (re)calculated */
     periodns = period;
@@ -711,7 +712,7 @@ static void make_pulses(void *arg, long period)
     /* done */
 }
 
-static void update_pos(void *arg, long period)
+static void update_pos(void *arg, hal_ctx_t *ctx)
 {
     long long int accum_a, accum_b;
     stepgen_t *stepgen;
@@ -762,7 +763,7 @@ static unsigned long ulceil(unsigned long value, unsigned long increment)
     return increment*(((value-1)/increment)+1);
 }
 
-static void update_freq(void *arg, long period)
+static void update_freq(void *arg, hal_ctx_t *ctx)
 {
     stepgen_t *stepgen;
     int n, newperiod;

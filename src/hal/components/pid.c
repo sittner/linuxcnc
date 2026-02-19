@@ -266,7 +266,7 @@ static int comp_id;		/* component ID */
 ************************************************************************/
 
 static int export_pid(hal_pid_t * addr,char * prefix);
-static void calc_pid(void *arg, long period);
+static void calc_pid(void *arg, hal_ctx_t *ctx);
 
 /***********************************************************************
 *                       INIT AND EXIT CODE                             *
@@ -486,12 +486,13 @@ Pid_AutoTune(hal_pid_t *pid, long period)
 *                   REALTIME PID LOOP CALCULATIONS                     *
 ************************************************************************/
 
-static void calc_pid(void *arg, long period)
+static void calc_pid(void *arg, hal_ctx_t *ctx)
 {
     hal_pid_t *pid;
     double tmp1, tmp2, tmp3, command, feedback;
     int enable;
     double periodfp, periodrecip;
+    long period = hal_ctx_period(ctx);
 
     /* point to the data for this PID loop */
     pid = arg;

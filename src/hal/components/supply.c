@@ -82,7 +82,7 @@ static int comp_id;		/* component ID */
 ************************************************************************/
 
 static int export_supply(int num, hal_supply_t * addr);
-static void update_supply(void *arg, long l);
+static void update_supply(void *arg, hal_ctx_t *ctx);
 
 /***********************************************************************
 *                       INIT AND EXIT CODE                             *
@@ -138,7 +138,7 @@ void rtapi_app_exit(void)
 *                       REALTIME FUNCTIONS                             *
 ************************************************************************/
 
-static void update_supply(void *arg, long l)
+static void update_supply(void *arg, hal_ctx_t *ctx)
 {
     hal_supply_t *supply;
 

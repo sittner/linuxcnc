@@ -187,8 +187,8 @@ static int comp_id;		/* component ID */
 ************************************************************************/
 
 static int export_encoder(counter_t * addr,char * prefix);
-static void update(void *arg, long period);
-static void capture(void *arg, long period);
+static void update(void *arg, hal_ctx_t *ctx);
+static void capture(void *arg, hal_ctx_t *ctx);
 
 /***********************************************************************
 *                       INIT AND EXIT CODE                             *
@@ -321,13 +321,14 @@ void rtapi_app_exit(void)
 *            REALTIME ENCODER COUNTING AND UPDATE FUNCTIONS            *
 ************************************************************************/
 
-static void update(void *arg, long period)
+static void update(void *arg, hal_ctx_t *ctx)
 {
     counter_t *cntr;
     atomic *buf;
     int n;
     unsigned char state;
     int latch, old_latch, rising, falling;
+    long period = hal_ctx_period(ctx);
 
     cntr = arg;
     for (n = 0; n < howmany; n++) {
@@ -403,7 +404,7 @@ static void update(void *arg, long period)
 }
 
 
-static void capture(void *arg, long period)
+static void capture(void *arg, hal_ctx_t *ctx)
 {
     counter_t *cntr;
     atomic *buf;

@@ -91,8 +91,8 @@ static int comp_id;		/* component ID */
 ************************************************************************/
 
 static int export_counter(int num, counter_t * addr);
-static void update(void *arg, long period);
-static void capture(void *arg, long period);
+static void update(void *arg, hal_ctx_t *ctx);
+static void capture(void *arg, hal_ctx_t *ctx);
 
 /***********************************************************************
 *                       INIT AND EXIT CODE                             *
@@ -177,7 +177,7 @@ void rtapi_app_exit(void)
 *            REALTIME COUNTER COUNTING AND UPDATE FUNCTIONS            *
 ************************************************************************/
 
-static void update(void *arg, long period)
+static void update(void *arg, hal_ctx_t *ctx)
 {
     counter_t *cntr;
     int n;
@@ -197,7 +197,7 @@ static void update(void *arg, long period)
     }
 }
 
-static void capture(void *arg, long period)
+static void capture(void *arg, hal_ctx_t *ctx)
 {
     counter_t *cntr;
     int n;

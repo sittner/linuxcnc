@@ -135,8 +135,8 @@ static long periodns;		/* makepulses function period in nanosec */
 ************************************************************************/
 
 static int export_pwmgen(int num, pwmgen_t * addr, int output_type);
-static void make_pulses(void *arg, long period);
-static void update(void *arg, long period);
+static void make_pulses(void *arg, hal_ctx_t *ctx);
+static void update(void *arg, hal_ctx_t *ctx);
 
 /***********************************************************************
 *                       INIT AND EXIT CODE                             *
@@ -231,10 +231,11 @@ void rtapi_app_exit(void)
     added and subtracted.
 */
 
-static void make_pulses(void *arg, long period)
+static void make_pulses(void *arg, hal_ctx_t *ctx)
 {
     pwmgen_t *pwmgen;
     int n;
+    long period = hal_ctx_period(ctx);
 
     /* store period for use in update() function */
     periodns = period;
@@ -328,7 +329,7 @@ static void make_pulses(void *arg, long period)
     /* done */
 }
 
-static void update(void *arg, long period)
+static void update(void *arg, hal_ctx_t *ctx)
 {
 	static long oldperiodns=-1;
 
