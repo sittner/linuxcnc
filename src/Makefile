@@ -1107,7 +1107,7 @@ obj-m += scope_rt.o
 scope_rt-objs := hal/utils/scope_rt.o $(MATHSTUB)
 
 obj-m += hal_lib.o
-hal_lib-objs := hal/hal_lib.o $(MATHSTUB)
+hal_lib-objs := hal/hal_lib.o hal/hal_ctx.o $(MATHSTUB)
 
 obj-m += trivkins.o
 trivkins-objs := emc/kinematics/trivkins.o
