@@ -1,8 +1,10 @@
-# Phase 3 Migration Guide: Function Signature Changes
+# Phase 3a Migration Guide: Function Signature Changes
 
 ## Overview
 
-Phase 3 introduces a **BREAKING CHANGE** to all HAL realtime function signatures. Functions now receive a `hal_ctx_t *` context parameter instead of a `long` period parameter.
+Phase 3a introduces a **BREAKING CHANGE** to all HAL realtime function signatures. Functions now receive a `hal_ctx_t *` context parameter instead of a `long` period parameter.
+
+**This is Phase 3a (signature-only migration)** - it updates function signatures but maintains direct pointer-based pin access. Phase 3b (handle-based pin access migration) is deferred to allow components to continue working with minimal changes.
 
 ## Function Signature Change
 
@@ -522,30 +524,37 @@ static void my_function(void *arg, hal_ctx_t *ctx)
 
 ## Migration Progress
 
-### Fully Migrated (Handle-Based Context-Aware API)
+### Phase 3a Complete (Signature-Only Migration)
 
-Components that have completed **full Phase 3 migration** (both function signature AND handle-based pin access):
+**All core components have been updated** to use the new function signature `(void *arg, hal_ctx_t *ctx)` instead of `(void *arg, long period)`. This is Phase 3a - a signature-only migration that maintains direct pointer-based pin access.
 
+**Components Updated**:
+- ✅ All HAL components in `src/hal/components/` (19 files)
+- ✅ All HAL drivers in `src/hal/drivers/` (16 files) 
+- ✅ All HAL utilities in `src/hal/utils/`
+- ✅ ClassicLadder HAL interface
+- ✅ Motion control components (`motmod` controller)
+- ✅ `halcompile` generator (generates new signature for `.comp` files)
+
+### Phase 3b Pending (Handle-Based Pin Access)
+
+The next phase (Phase 3b) will migrate components from pointer-based pin access to handle-based context API:
+
+**Fully Migrated (Phase 3b - Handle-Based Context-Aware API)**:
 - ✅ `siggen.c` - Signal generator component (reference implementation)
 
-### Pending Migration
+**Pending Phase 3b Migration**:
+- All other components still use direct pointer access (`hal_float_t *pin` accessed via `*(data->pin)`)
+- Future migration will convert to handle-based API (`hal_pin_handle_t handle` accessed via `hal_ctx_pin_*_get/set(ctx, handle)`)
 
-Components that still need Phase 3 migration:
+### Migration Stages
 
-- Core motion components (`motmod`, `tpmod`, `homemod`)
-- Kinematics modules (`trivkins`, `genserkins`, etc.)
-- Other HAL components in `src/hal/components/`
-- Driver components in `src/hal/drivers/`
-
-**Note**: Components may be at different migration stages:
-- **Stage 0**: Not yet migrated (still using old `long period` parameter and pointer-based pins)
-- **Stage 1**: Function signature updated to `(void *arg, hal_ctx_t *ctx)` but still using pointer-based pin access (data structure has `hal_float_t *` fields, accessed via `*(data->pin)`)
-- **Stage 2**: Fully migrated to handle-based API (data structure has `hal_pin_handle_t` fields, accessed via `hal_ctx_pin_*_get/set()`) - like `siggen.c`
-
-The goal is to eventually migrate all components to Stage 2 for optimal performance with thread-local contexts.
+- **Stage 0**: Not yet migrated (old `long period` parameter and pointer-based pins) - **NONE**
+- **Stage 1**: Function signature updated to `(void *arg, hal_ctx_t *ctx)` but still using pointer-based pin access - **ALL COMPONENTS**
+- **Stage 2**: Fully migrated to handle-based API (like `siggen.c`) - **ONLY SIGGEN**
 
 ## Backward Compatibility
 
-**This is a breaking change.** Components compiled before Phase 3 will NOT work with Phase 3 executors. All components must be recompiled with the new signature.
+**This is a breaking change.** Components compiled before Phase 3a will NOT work with Phase 3a executors. All components must be recompiled with the new signature.
 
 The migration is mechanical and straightforward - just update the function signature and get the period from context if needed.
