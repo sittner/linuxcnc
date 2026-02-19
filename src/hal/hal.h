@@ -999,16 +999,6 @@ extern void hal_thread_sync_write(void);
 /** Opaque context type - definition in hal_ctx_internal.h */
 typedef struct hal_ctx hal_ctx_t;
 
-/** HAL realtime function typedef - receives context instead of period
- *  BREAKING CHANGE: This changes the function signature for all RT components.
- *  Functions now receive hal_ctx_t* which provides:
- *  - hal_ctx_period(ctx) - thread period in nanoseconds
- *  - hal_ctx_iteration(ctx) - iteration count
- *  - hal_ctx_overruns(ctx) - overrun count
- *  - Context-aware pin/param access functions
- */
-typedef void (*hal_funct_t) (void *, hal_ctx_t *);
-
 /** Handle types for pins and parameters */
 typedef struct {
     void *_pin;             /* Opaque pointer - internal use only */
