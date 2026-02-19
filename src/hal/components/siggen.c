@@ -231,7 +231,9 @@ static void calc_siggen(void *arg, hal_ctx_t *ctx)
     tmp2 = frequency * tmp1;
     /* limit frequency to comply with Nyquist limit */
     if ( tmp2 > 0.5 ) {
-	frequency = 0.5 / tmp1;
+	/* Note: In old API, this wrote back to input pin to clamp frequency.
+	 * With handle-based API, we can't write to input pins. We just
+	 * clamp the calculation result (tmp2) for this cycle. */
 	tmp2 = 0.5;
     }
     /* index ramps from 0.0 to 0.99999 for each output cycle */
