@@ -45,8 +45,8 @@ static int Device_ExportPinsParametersFunctions(board_data_t *pboard, int comp_i
 static int Device_ExportDigitalInPinsParametersFunctions(board_data_t *pboard, int comp_id, int boardId);
 static int Device_ExportDigitalOutPinsParametersFunctions(board_data_t *pboard, int comp_id, int boardId);
 // These methods are exported to the HAL.
-static void Device_DigitalInRead(void *this, long period);
-static void Device_DigitalOutWrite(void *this, long period);
+static void Device_DigitalInRead(void *this, hal_ctx_t *ctx);
+static void Device_DigitalOutWrite(void *this, hal_ctx_t *ctx);
 /*************************************************************************
                                    Globals
 *************************************************************************/

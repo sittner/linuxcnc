@@ -60,8 +60,8 @@ RTAPI_MP_ARRAY_STRING(enums, MAX_CHAN, "states, ; delimited");
 static char *names[MAX_CHAN] = {0,};
 RTAPI_MP_ARRAY_STRING(names, MAX_CHAN, "component names (optional)");
 
-static void decode(void *inst, long period);
-static void encode(void *inst, long period);
+static void decode(void *inst, hal_ctx_t *ctx);
+static void encode(void *inst, hal_ctx_t *ctx);
 
 int rtapi_app_main(void){
     int i, j, v;
@@ -184,7 +184,7 @@ int rtapi_app_main(void){
 
 }
 
-static void decode(void *v_inst, long period){
+static void decode(void *v_inst, hal_ctx_t *ctx){
     int i;
     enum_inst_t *inst = v_inst;
     for (i = 1; i <= inst->num_pins; i++){
@@ -195,7 +195,7 @@ static void decode(void *v_inst, long period){
         }
     }
 }
-static void encode(void *v_inst, long period){
+static void encode(void *v_inst, hal_ctx_t *ctx){
     int i;
     enum_inst_t *inst = v_inst;
     *(inst->hal[0].en) = 0;

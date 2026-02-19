@@ -236,12 +236,12 @@ static int Device_ExportDigitalOutPinsParametersFunctions(Device *this, int comp
 static int Device_ExportMiscPinsParametersFunctions(Device *this, int componentId, int boardId);
 
 // These methods are exported to the HAL.
-static void Device_EncoderRead(void *this, long period);
-static void Device_DacWrite(void *this, long period);
-static void Device_AdcRead(void *this, long period);
-static void Device_DigitalInRead(void *this, long period);
-static void Device_DigitalOutWrite(void *this, long period);
-static void Device_MiscUpdate(void *this, long period);
+static void Device_EncoderRead(void *this, hal_ctx_t *ctx);
+static void Device_DacWrite(void *this, hal_ctx_t *ctx);
+static void Device_AdcRead(void *this, hal_ctx_t *ctx);
+static void Device_DigitalInRead(void *this, hal_ctx_t *ctx);
+static void Device_DigitalOutWrite(void *this, hal_ctx_t *ctx);
+static void Device_MiscUpdate(void *this, hal_ctx_t *ctx);
 
 // Private helper methods.
 static int Device_AdcRead4(Device *this, int startChannel);

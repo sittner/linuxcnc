@@ -74,8 +74,9 @@ static int comp_id;
 // functions exported to LinuxCNC
 //
 
-static void hm2_read_request(void *void_hm2, long period) {
+static void hm2_read_request(void *void_hm2, hal_ctx_t *ctx) {
     hostmot2_t *hm2 = void_hm2;
+    long period = hal_ctx_period(ctx);
     hm2->llio->period = period;
 
     // if there are comm problems, wait for the user to fix it
@@ -91,10 +92,11 @@ static void hm2_read_request(void *void_hm2, long period) {
     hm2->llio->read_time = rtapi_get_time();
 }
 
-static void hm2_read(void *void_hm2, long period) {
+static void hm2_read(void *void_hm2, hal_ctx_t *ctx) {
     hostmot2_t *hm2 = void_hm2;
+    long period = hal_ctx_period(ctx);
 
-    if(!hm2->llio->read_requested) hm2_read_request(void_hm2, period);
+    if(!hm2->llio->read_requested) hm2_read_request(void_hm2, ctx);
     hm2->llio->read_requested = false;
 
     // if there are comm problems, wait for the user to fix it
@@ -122,8 +124,9 @@ static void hm2_read(void *void_hm2, long period) {
 }
 
 
-static void hm2_write(void *void_hm2, long period) {
+static void hm2_write(void *void_hm2, hal_ctx_t *ctx) {
     hostmot2_t *hm2 = void_hm2;
+    long period = hal_ctx_period(ctx);
 
     // if there are comm problems, wait for the user to fix it
     if ((*hm2->llio->io_error) != 0) return;
@@ -174,7 +177,7 @@ static void hm2_write(void *void_hm2, long period) {
 }
 
 
-static void hm2_read_gpio(void *void_hm2, long period) {
+static void hm2_read_gpio(void *void_hm2, hal_ctx_t *ctx) {
     hostmot2_t *hm2 = void_hm2;
 
     // if there are comm problems, wait for the user to fix it
@@ -184,8 +187,9 @@ static void hm2_read_gpio(void *void_hm2, long period) {
 }
 
 
-static void hm2_write_gpio(void *void_hm2, long period) {
+static void hm2_write_gpio(void *void_hm2, hal_ctx_t *ctx) {
     hostmot2_t *hm2 = void_hm2;
+    long period = hal_ctx_period(ctx);
 
     // if there are comm problems, wait for the user to fix it
     if ((*hm2->llio->io_error) != 0) return;
