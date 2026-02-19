@@ -378,7 +378,7 @@ static int export_siggen(int num, hal_siggen_t *addr, char *prefix)
 
 ### Migration Gotchas
 
-1. **Read inputs once**: For efficiency and correctness, read input pins once at the start of the function into local variables. This avoids multiple context lookups and ensures consistent values throughout the function.
+1. **Read inputs once**: For efficiency and correctness, read input pins once at the start of the function into local variables. This avoids multiple context lookups and ensures consistent values throughout the function execution, preventing race conditions if pin values change mid-calculation.
 
 2. **No direct writes to inputs**: In the old API, you could write to input pins (even though it's not good practice). In the new API, this doesn't make sense - use local variables for intermediate calculations.
    
@@ -391,15 +391,15 @@ static int export_siggen(int num, hal_siggen_t *addr, char *prefix)
    }
    ```
    
-   In the new API, we can't write to input pins, so we just clamp the calculation:
+   In the new API, input pins are read-only by design, so we just clamp the calculation:
    ```c
-   /* New API - just clamp the calculation */
+   /* New API - input pins are read-only */
    if (tmp2 > 0.5) {
        tmp2 = 0.5;  /* Only modify local calculation */
    }
    ```
 
-3. **Pin names are strings, not format strings**: The `hal_pin_*_new_handle()` functions take a complete name string (not a format string like the old `hal_pin_*_newf()` functions which accepted printf-style variadic arguments). You must construct the complete pin name using `rtapi_snprintf()` first, then pass it to the creation function.
+3. **Pin names are pre-formatted strings, not format strings**: The `hal_pin_*_new_handle()` functions take a pre-formatted string as the first parameter, unlike `hal_pin_*_newf()` which accepted printf-style format strings and variadic arguments. You must construct the complete pin name using `rtapi_snprintf()` first, then pass it to the creation function.
    
    ```c
    /* Old API - format string with variadic args */
