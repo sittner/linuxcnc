@@ -399,7 +399,17 @@ static int export_siggen(int num, hal_siggen_t *addr, char *prefix)
    }
    ```
 
-3. **Pin names are strings, not format strings**: The `hal_pin_*_new_handle()` functions take a complete name string, not a format string. Use `rtapi_snprintf()` to construct the name first.
+3. **Pin names are strings, not format strings**: The `hal_pin_*_new_handle()` functions take a complete name string (not a format string like the old `hal_pin_*_newf()` functions which accepted printf-style variadic arguments). You must construct the complete pin name using `rtapi_snprintf()` first, then pass it to the creation function.
+   
+   ```c
+   /* Old API - format string with variadic args */
+   hal_pin_float_newf(HAL_OUT, &pin, comp_id, "%s.output-%d", prefix, index);
+   
+   /* New API - pre-formatted string */
+   char name[HAL_NAME_LEN + 1];
+   rtapi_snprintf(name, sizeof(name), "%s.output-%d", prefix, index);
+   hal_pin_float_new_handle(name, HAL_OUT, &handle, comp_id);
+   ```
 
 4. **Don't initialize pin values**: The handle-based API manages pin initialization internally. Only initialize local data members in your structure.
 
