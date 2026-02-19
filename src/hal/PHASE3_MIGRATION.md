@@ -527,7 +527,8 @@ Components that still need Phase 3 migration:
 - Other HAL components in `src/hal/components/`
 - Driver components in `src/hal/drivers/`
 
-**Note**: Components may be at different stages:
+**Note**: Components may be at different migration stages:
+- **Stage 0**: Not yet migrated (still using old `long period` parameter)
 - **Stage 1**: Function signature updated to `(void *arg, hal_ctx_t *ctx)` but still using pointer-based pin access
 - **Stage 2**: Fully migrated to handle-based API (like `siggen.c`)
 
