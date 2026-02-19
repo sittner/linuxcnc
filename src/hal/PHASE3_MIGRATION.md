@@ -384,18 +384,18 @@ static int export_siggen(int num, hal_siggen_t *addr, char *prefix)
    
    **Example from siggen.c**: The old code wrote back to the frequency input pin to clamp it:
    ```c
-   // Old API - wrote back to input pin
+   /* Old API - wrote back to input pin */
    if (tmp2 > 0.5) {
-       *(siggen->frequency) = 0.5 / tmp1;  // Modify input pin
+       *(siggen->frequency) = 0.5 / tmp1;  /* Modify input pin */
        tmp2 = 0.5;
    }
    ```
    
    In the new API, we can't write to input pins, so we just clamp the calculation:
    ```c
-   // New API - just clamp the calculation
+   /* New API - just clamp the calculation */
    if (tmp2 > 0.5) {
-       tmp2 = 0.5;  // Only modify local calculation
+       tmp2 = 0.5;  /* Only modify local calculation */
    }
    ```
 
