@@ -120,7 +120,7 @@ static int num_ports;		/* number of ports configured */
 /* These is the functions that actually do the I/O
    everything else is just init code
 */
-static void update_port(void *arg, long period);
+static void update_port(void *arg, hal_ctx_t *ctx);
 
 /***********************************************************************
 *                       INIT AND EXIT CODE                             *
@@ -281,7 +281,7 @@ void rtapi_app_exit(void)
 * REALTIME PORT WRITE FUNCTION                                *
 **************************************************************/
 
-static void update_port(void *arg, long period)
+static void update_port(void *arg, hal_ctx_t *ctx)
 {
     evoreg_t *port;
     int pin;

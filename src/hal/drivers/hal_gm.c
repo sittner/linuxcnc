@@ -386,22 +386,22 @@ rtapi_pci_device_id gm_pci_tbl[] = {
   static void gm_pci_remove(struct rtapi_pci_dev *dev);
 
 //Methods exported to HAL
-  static void read(void *arg, long period);
-  static void write(void *arg, long period);
-  static void RS485(void *arg, long period);
+  static void read(void *arg, hal_ctx_t *ctx);
+  static void write(void *arg, hal_ctx_t *ctx);
+  static void RS485(void *arg, hal_ctx_t *ctx);
 
 //Private methods
   //StepGens
-  static void stepgen(void *arg, long period);
-  static void stepgenControl(void *arg, long period, unsigned int i);
-  static void stepgenCheckParameters(void *arg, long period, unsigned int channel);
+  static void stepgen(void *arg, hal_ctx_t *ctx);
+  static void stepgenControl(void *arg, hal_ctx_t *ctx, unsigned int i);
+  static void stepgenCheckParameters(void *arg, hal_ctx_t *ctx, unsigned int channel);
   //RS485
   static unsigned int RS485_CheckChecksum(hal_u32_t* data, hal_u32_t length);
   static unsigned int RS485_CalcChecksum(hal_u32_t* data, hal_u32_t length);
   static void RS485_OrderDataRead(hal_u32_t* dataIn32, hal_u32_t* dataOut8, hal_u32_t length);
   static void RS485_OrderDataWrite(hal_u32_t* dataIn8, hal_u32_t* dataOut32, hal_u32_t length);
   //Encoders
-  static void encoder(void *arg, long period); 
+  static void encoder(void *arg, hal_ctx_t *ctx); 
   //CAN
   static void GM_CAN_SERVO(void *arg);
   static void CAN_SendDataFrame(void *arg, CANmsg_t *Msg);
@@ -412,7 +412,7 @@ rtapi_pci_device_id gm_pci_tbl[] = {
 #endif
   static int CAN_ReadStatus(void *arg, hal_u32_t *RxCnt, hal_u32_t *TxCnt);
   //Card management
-  static void card_mgr(void *arg, long period);
+  static void card_mgr(void *arg, hal_ctx_t *ctx);
 
 //////////////////////////////////////////////////////////////////////////////
 //                          PCI driver functions                            //
@@ -1122,7 +1122,7 @@ static int ExportFunctions(void *arg, int comp_id, int boardId)
 //////////////////////////////////////////////////////////////////////////////
 
 static void
-read(void *arg, long period)
+read(void *arg, hal_ctx_t *ctx)
 {
     	gm_device_t	*device = (gm_device_t *)arg;
     	card	*pCard = device->pCard;
@@ -1130,7 +1130,7 @@ read(void *arg, long period)
 	hal_u32_t temp;
 
       //basic card functionality: watchdog, switches, estop
-	card_mgr(arg, period);
+	card_mgr(arg, ctx);
 
       //read parallel IOs
 	temp=pCard->gpio;
@@ -1141,11 +1141,11 @@ read(void *arg, long period)
 	}
 
       //Read Encoders
-	encoder(arg, period);
+	encoder(arg, ctx);
 }
 
 static void
-write(void *arg, long period)
+write(void *arg, hal_ctx_t *ctx)
 {
 	gm_device_t	*device = (gm_device_t *)arg;
 	card	*pCard = device->pCard;
@@ -1399,7 +1399,7 @@ CAN_SetBaud(void *arg, hal_u32_t Baud)
 //                        Card manage functions                             //
 //////////////////////////////////////////////////////////////////////////////
 static void
-card_mgr(void *arg, long period)
+card_mgr(void *arg, hal_ctx_t *ctx)
 {
 	gm_device_t		*device = (gm_device_t *)arg;
     	card	*pCard = device->pCard;
@@ -1468,7 +1468,7 @@ card_mgr(void *arg, long period)
 //                               Encoder                                    //
 //////////////////////////////////////////////////////////////////////////////
 static void
-encoder(void *arg, long period)
+encoder(void *arg, hal_ctx_t *ctx)
 {
     	gm_device_t		*device = (gm_device_t *)arg;
     	card	*pCard = device->pCard;
@@ -1557,7 +1557,7 @@ encoder(void *arg, long period)
 //                               Stepgen                                    //
 //////////////////////////////////////////////////////////////////////////////
 static void
-stepgen(void *arg, long period)
+stepgen(void *arg, hal_ctx_t *ctx)
 {
     	gm_device_t	*device = (gm_device_t *)arg;
     	card		*pCard = device->pCard;
@@ -1580,7 +1580,7 @@ stepgen(void *arg, long period)
 	{
 	  if(*(device->stepgen[i].enable) == 1)
 	  {
-	    stepgenCheckParameters(arg, period, i);
+	    stepgenCheckParameters(arg, ctx, i);
 	  }
 	  
 	}
@@ -1592,7 +1592,7 @@ stepgen(void *arg, long period)
 	{
 	  if(*(device->stepgen[i].enable) == 1)
 	  {
-	    stepgenControl(arg, period, i);
+	    stepgenControl(arg, ctx, i);
 	  }
 	}
 
@@ -1604,8 +1604,9 @@ stepgen(void *arg, long period)
 }
 
 static void
-stepgenCheckParameters(void *arg, long period, unsigned int channel)
+stepgenCheckParameters(void *arg, hal_ctx_t *ctx, unsigned int channel)
 {
+      long period = hal_ctx_period(ctx);
       gm_device_t		*device = (gm_device_t *)arg;
       card	*pCard = device->pCard;
       
@@ -1703,7 +1704,7 @@ stepgenCheckParameters(void *arg, long period, unsigned int channel)
 }
 
 static void
-stepgenControl(void *arg, long period, unsigned int channel)
+stepgenControl(void *arg, hal_ctx_t *ctx, unsigned int channel)
 {
     	gm_device_t		*device = (gm_device_t *)arg;
     	card	*pCard = device->pCard;
@@ -1818,7 +1819,7 @@ stepgenControl(void *arg, long period, unsigned int channel)
 //                               RS485                                      //
 //////////////////////////////////////////////////////////////////////////////
 static void
-RS485(void *arg, long period)
+RS485(void *arg, hal_ctx_t *ctx)
 {
 	gm_device_t		*device = (gm_device_t *)arg;
 	card	*pCard = device->pCard;

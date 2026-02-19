@@ -46,8 +46,8 @@ static port_data_t *port_data;
 
 static const char *modname = MODNAME;
 
-static void write_port(void *arg, long period);
-static void read_port(void *arg, long period);
+static void write_port(void *arg, hal_ctx_t *ctx);
+static void read_port(void *arg, hal_ctx_t *ctx);
 
 static off_t start_addr_for_port(int port);
 static void configure_pin(bb_gpio_pin *pin, char mode);
@@ -387,7 +387,7 @@ void rtapi_app_exit(void) {
     hal_exit(comp_id);
 }
 
-static void write_port(void *arg, long period) {
+static void write_port(void *arg, hal_ctx_t *ctx) {
     int i;
     port_data_t *port = (port_data_t *)arg;
 
@@ -426,7 +426,7 @@ static void write_port(void *arg, long period) {
 }
 
 
-static void read_port(void *arg, long period) {
+static void read_port(void *arg, hal_ctx_t *ctx) {
     int i;
     port_data_t *port = (port_data_t *)arg;
 

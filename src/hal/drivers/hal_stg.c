@@ -254,11 +254,11 @@ static short stg_adc_read(void *arg, int ch);
 static int stg_dio_init(void);
 
 /* periodic functions registered to HAL */
-static void stg_adcs_read(void *arg, long period); //reads adc data from the board, check long description at the beginning of the function
-static void stg_dacs_write(void *arg, long period); //writes dac's to the STG
-static void stg_counter_capture(void *arg, long period); //captures encoder counters
-static void stg_di_read(void *arg, long period); //reads digital inputs from the STG
-static void stg_do_write(void *arg, long period); //writes digital outputs to the STG
+static void stg_adcs_read(void *arg, hal_ctx_t *ctx); //reads adc data from the board, check long description at the beginning of the function
+static void stg_dacs_write(void *arg, hal_ctx_t *ctx); //writes dac's to the STG
+static void stg_counter_capture(void *arg, hal_ctx_t *ctx); //captures encoder counters
+static void stg_di_read(void *arg, hal_ctx_t *ctx); //reads digital inputs from the STG
+static void stg_do_write(void *arg, hal_ctx_t *ctx); //writes digital outputs to the STG
 //static void stg_debug_print( void *, long );
 
 /***********************************************************************
@@ -499,7 +499,7 @@ void rtapi_app_exit(void)
 *            REALTIME ENCODER COUNTING AND UPDATE FUNCTIONS            *
 ************************************************************************/
 
-static void stg_counter_capture(void *arg, long period)
+static void stg_counter_capture(void *arg, hal_ctx_t *ctx)
 {
   stg_struct *stg = arg;
     int n;
@@ -673,7 +673,7 @@ static void stg_debug_print( void *arg, long period )
 
 /* stg_dacs_write() - writes all dac's to the board
     - calls stg_dac_write() */
-static void stg_dacs_write(void *arg, long period)
+static void stg_dacs_write(void *arg, hal_ctx_t *ctx)
 {    
     stg_struct *stg;
     double volts;
@@ -718,7 +718,7 @@ static void stg_dacs_write(void *arg, long period)
     Another improvement might be to let the user chose what channels he would like
     for ADC (having only 2 channels might speed things up considerably).
 */
-static void stg_adcs_read(void *arg, long period)
+static void stg_adcs_read(void *arg, hal_ctx_t *ctx)
 {    
     stg_struct *stg;
     double volts;
@@ -798,7 +798,7 @@ unsigned char build_output(io_pin *src, int num)
 }
 
 
-static void stg_di_read(void *arg, long period) //reads digital inputs from the STG
+static void stg_di_read(void *arg, hal_ctx_t *ctx) //reads digital inputs from the STG
 {
     stg_struct *stg;
     unsigned char val;
@@ -834,7 +834,7 @@ static void stg_di_read(void *arg, long period) //reads digital inputs from the 
     }
 }
 
-static void stg_do_write(void *arg, long period) //writes digital outputs to the STG
+static void stg_do_write(void *arg, hal_ctx_t *ctx) //writes digital outputs to the STG
 {
     stg_struct *stg;
     unsigned char val;

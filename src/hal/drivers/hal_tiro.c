@@ -104,7 +104,7 @@ static int comp_id;								/* component ID */
 ************************************************************************/
 
 static int export_counter(int num, counter_t * addr);
-static void capture(void *arg, long period);
+static void capture(void *arg, hal_ctx_t *ctx);
 static int LS7166Init(int ch);
 static long LS7166Read(int i);
 
@@ -180,7 +180,7 @@ void rtapi_app_exit(void)
 *            REALTIME ENCODER COUNTING AND UPDATE FUNCTIONS            *
 ************************************************************************/
 
-static void capture(void *arg, long period)
+static void capture(void *arg, hal_ctx_t *ctx)
 {
     counter_t *cntr;
     int n;

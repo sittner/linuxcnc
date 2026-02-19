@@ -136,9 +136,9 @@ static long long last_reset;
 *                  LOCAL FUNCTION DECLARATIONS                         *
 ************************************************************************/
 
-static void hal_gpio_read(void *arg, long period);
-static void hal_gpio_write(void *arg, long period);
-static void hal_gpio_reset(void *arg, long period);
+static void hal_gpio_read(void *arg, hal_ctx_t *ctx);
+static void hal_gpio_write(void *arg, hal_ctx_t *ctx);
+static void hal_gpio_reset(void *arg, hal_ctx_t *ctx);
 
 /***********************************************************************
 *                      SETUP AND EXIT CODE                             *
@@ -484,7 +484,7 @@ fail0:
 * REALTIME PORT READ/WRITE FUNCTION                                *
 **************************************************************/
 
-static void hal_gpio_read(void *arg, long period)
+static void hal_gpio_read(void *arg, hal_ctx_t *ctx)
 {
     hal_gpio_t *gpio = arg;
     int i, c;
@@ -501,7 +501,7 @@ static void hal_gpio_read(void *arg, long period)
     }
 }
 
-static void hal_gpio_write(void *arg, long period)
+static void hal_gpio_write(void *arg, hal_ctx_t *ctx)
 {
     hal_gpio_t *gpio = arg;
     int i, c;
@@ -523,8 +523,9 @@ static void hal_gpio_write(void *arg, long period)
     last_reset = rtapi_get_clocks();
 }
 
-static void hal_gpio_reset(void *arg, long period)
+static void hal_gpio_reset(void *arg, hal_ctx_t *ctx)
 {
+    long period = hal_ctx_period(ctx);
     hal_gpio_t *gpio = arg;
     int i, c;
     long long deadline;

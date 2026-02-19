@@ -761,7 +761,7 @@ Device_ExportMiscPinsParametersFunctions(Device *this, int componentId, int boar
  */
 
 static void
-Device_EncoderRead(void *arg, long period)
+Device_EncoderRead(void *arg, hal_ctx_t *ctx)
 {
     Device				*this = (Device *)arg;
     MotencRegMap			*pCard = this->pCard;
@@ -830,7 +830,7 @@ Device_EncoderRead(void *arg, long period)
 
 
 static void
-Device_DacWrite(void *arg, long period)
+Device_DacWrite(void *arg, hal_ctx_t *ctx)
 {
     Device				*this = (Device *)arg;
     MotencRegMap			*pCard = this->pCard;
@@ -865,7 +865,7 @@ Device_DacWrite(void *arg, long period)
 
 
 static void
-Device_AdcRead(void *arg, long period)
+Device_AdcRead(void *arg, hal_ctx_t *ctx)
 {
     Device				*this = (Device *)arg;
     MotencRegMap			*pCard = this->pCard;
@@ -944,7 +944,7 @@ Device_AdcRead4(Device *this, int startChannel)
 
 
 static void
-Device_DigitalInRead(void *arg, long period)
+Device_DigitalInRead(void *arg, hal_ctx_t *ctx)
 {
     Device				*this = (Device *)arg;
     MotencRegMap			*pCard = this->pCard;
@@ -991,7 +991,7 @@ Device_DigitalInRead(void *arg, long period)
 
 
 static void
-Device_DigitalOutWrite(void *arg, long period)
+Device_DigitalOutWrite(void *arg, hal_ctx_t *ctx)
 {
     Device				*this = (Device *)arg;
     MotencRegMap			*pCard = this->pCard;
@@ -1026,7 +1026,7 @@ Device_DigitalOutWrite(void *arg, long period)
 
 
 static void
-Device_MiscUpdate(void *arg, long period)
+Device_MiscUpdate(void *arg, hal_ctx_t *ctx)
 {
     Device				*this = (Device *)arg;
     MotencRegMap			*pCard = this->pCard;

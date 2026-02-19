@@ -355,7 +355,7 @@ static int Device_ExportDigitalOutPinsParametersFunctions(board_data_t *this, in
 // then do it all again on the second port
 
 static void
-Device_DigitalInRead(void *arg, long period)
+Device_DigitalInRead(void *arg, hal_ctx_t *ctx)
 {
     board_data_t			*pboard = (board_data_t *)arg;
     DigitalPinsParams			*pDigital;
@@ -397,7 +397,7 @@ Device_DigitalInRead(void *arg, long period)
 // then do it all again on the second port
 
 static void
-Device_DigitalOutWrite(void *arg, long period)
+Device_DigitalOutWrite(void *arg, hal_ctx_t *ctx)
 {
     board_data_t			*pboard = (board_data_t *)arg;
     DigitalPinsParams			*pDigital;

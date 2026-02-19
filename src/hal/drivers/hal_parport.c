@@ -164,11 +164,11 @@ static unsigned long ns2tsc_factor;
    everything else is just init code
 */
 
-static void read_port(void *arg, long period);
-static void reset_port(void *arg, long period);
-static void write_port(void *arg, long period);
-static void read_all(void *arg, long period);
-static void write_all(void *arg, long period);
+static void read_port(void *arg, hal_ctx_t *ctx);
+static void reset_port(void *arg, hal_ctx_t *ctx);
+static void write_port(void *arg, hal_ctx_t *ctx);
+static void read_all(void *arg, hal_ctx_t *ctx);
+static void write_all(void *arg, hal_ctx_t *ctx);
 
 /* 'pins_and_params()' does most of the work involved in setting up
    the driver.  It parses the command line (argv[]), then if the
@@ -320,7 +320,7 @@ void rtapi_app_exit(void)
 *                  REALTIME PORT READ AND WRITE FUNCTIONS              *
 ************************************************************************/
 
-static void read_port(void *arg, long period)
+static void read_port(void *arg, hal_ctx_t *ctx)
 {
     parport_t *port;
     int b;
@@ -363,7 +363,8 @@ static void read_port(void *arg, long period)
     }
 }
 
-static void reset_port(void *arg, long period) {
+static void reset_port(void *arg, hal_ctx_t *ctx) {
+    long period = hal_ctx_period(ctx);
     parport_t *port = arg;
     long long deadline, reset_time_tsc;
     unsigned char outdata = (port->outdata&~port->reset_mask) ^ port->reset_val;
@@ -388,7 +389,7 @@ static void reset_port(void *arg, long period) {
     }
 }
 
-static void write_port(void *arg, long period)
+static void write_port(void *arg, hal_ctx_t *ctx)
 {
     parport_t *port;
     int b;
@@ -461,23 +462,23 @@ static void write_port(void *arg, long period)
     port->write_time_ctrl = rtapi_get_clocks();
 }
 
-void read_all(void *arg, long period)
+void read_all(void *arg, hal_ctx_t *ctx)
 {
     parport_t *port;
     int n;
     port = arg;
     for (n = 0; n < num_ports; n++) {
-	read_port(&(port[n]), period);
+	read_port(&(port[n]), ctx);
     }
 }
 
-void write_all(void *arg, long period)
+void write_all(void *arg, hal_ctx_t *ctx)
 {
     parport_t *port;
     int n;
     port = arg;
     for (n = 0; n < num_ports; n++) {
-	write_port(&(port[n]), period);
+	write_port(&(port[n]), ctx);
     }
 }
 

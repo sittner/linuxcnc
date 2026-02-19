@@ -80,8 +80,8 @@ static int comp_id;		/* component ID */
 static unsigned char *pins, *gpios;
 hal_bit_t **port_data;
 
-static void write_port(void *arg, long period);
-static void read_port(void *arg, long period);
+static void write_port(void *arg, hal_ctx_t *ctx);
+static void read_port(void *arg, hal_ctx_t *ctx);
 
 static __inline__ uint32_t bcm2835_peri_read(volatile uint32_t* paddr)
 {
@@ -362,7 +362,7 @@ void rtapi_app_exit(void)
   hal_exit(comp_id);
 }
 
-static void write_port(void *arg, long period)
+static void write_port(void *arg, hal_ctx_t *ctx)
 {
   int n;
 
@@ -379,7 +379,7 @@ static void write_port(void *arg, long period)
   }
 }
 
-static void read_port(void *arg, long period)
+static void read_port(void *arg, hal_ctx_t *ctx)
 {
   int n;
 

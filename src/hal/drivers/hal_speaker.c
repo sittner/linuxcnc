@@ -115,7 +115,7 @@ static int num_ports;		/* number of ports configured */
 
 #define SPEAKER_PORT 0x61
 
-static void write_port(void *arg, long period)
+static void write_port(void *arg, hal_ctx_t *ctx)
 {
     uint8_t v = 0;
     uint8_t oldval;

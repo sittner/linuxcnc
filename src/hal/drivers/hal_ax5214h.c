@@ -159,8 +159,8 @@ static int num_boards;		/* number of ports configured */
    everything else is just init code
 */
 
-static void read_board(void *arg, long period);
-static void write_board(void *arg, long period);
+static void read_board(void *arg, hal_ctx_t *ctx);
+static void write_board(void *arg, hal_ctx_t *ctx);
 
 /* 'pins_and_params()' does most of the work involved in setting up
    the driver.  It parses the command line (argv[]), then if the
@@ -312,7 +312,7 @@ static void split_input(unsigned char data, io_pin_t *dest, int num)
     }
 }    
 
-static void read_board(void *arg, long period)
+static void read_board(void *arg, hal_ctx_t *ctx)
 {
     board_t *board;
     unsigned char indata;
@@ -381,7 +381,7 @@ unsigned char build_output(io_pin_t *src, int num)
     return data;
 }
 
-static void write_board(void *arg, long period)
+static void write_board(void *arg, hal_ctx_t *ctx)
 {
     board_t *board;
     unsigned char outdata, tmp;

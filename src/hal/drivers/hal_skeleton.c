@@ -125,7 +125,7 @@ static int num_ports;		/* number of ports configured */
 /* These is the functions that actually do the I/O
    everything else is just init code
 */
-static void write_port(void *arg, long period);
+static void write_port(void *arg, hal_ctx_t *ctx);
 
 /***********************************************************************
 *                       INIT AND EXIT CODE                             *
@@ -198,7 +198,7 @@ void rtapi_app_exit(void)
 * REALTIME PORT WRITE FUNCTION                                *
 **************************************************************/
 
-static void write_port(void *arg, long period)
+static void write_port(void *arg, hal_ctx_t *ctx)
 {
     skeleton_t *port;
     unsigned char outdata;

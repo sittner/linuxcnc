@@ -382,8 +382,8 @@ static int currentbus;             /* made global so SelRead can see which parpo
 *                    REALTIME FUNCTION DECLARATIONS                    *
 ************************************************************************/
 
-static void read_all(void *arg, long period);
-static void write_all(void *arg, long period);
+static void read_all(void *arg, hal_ctx_t *ctx);
+static void write_all(void *arg, hal_ctx_t *ctx);
 
 static void read_digins(slot_data_t *slot);
 static void write_digouts(slot_data_t *slot);
@@ -823,7 +823,7 @@ void rtapi_app_exit(void)
 *                         REALTIME FUNCTIONS                           *
 ************************************************************************/
 
-static void read_all(void *arg, long period)
+static void read_all(void *arg, hal_ctx_t *ctx)
 {
     bus_data_t *bus;
     slot_data_t *slot;
@@ -832,7 +832,7 @@ static void read_all(void *arg, long period)
     unsigned char n, eppaddr;
     rtapi_u32 bitmap;
 
-    read_period = period;          /* make thread period available to called functions */
+    read_period = hal_ctx_period(ctx);          /* make thread period available to called functions */
     /* get pointer to bus data structure */
     bus = *(bus_data_t **)(arg);
     /* test to make sure it hasn't been freed */
@@ -891,7 +891,7 @@ static void read_all(void *arg, long period)
     }
 }
 
-static void write_all(void *arg, long period)
+static void write_all(void *arg, hal_ctx_t *ctx)
 {
     bus_data_t *bus;
     slot_data_t *slot;

@@ -70,7 +70,7 @@ static scope_rt_control_t ctrl_struct;	/* realtime control structure */
 static void init_rt_control_struct(void *shmem);
 static void init_shm_control_struct(void);
 
-static void sample(void *arg, long period);
+static void sample(void *arg, hal_ctx_t *ctx);
 static void capture_sample(void);
 static int check_trigger(void);
 
@@ -143,7 +143,7 @@ void rtapi_app_exit(void)
 *                          REALTIME FUNCTIONS                          *
 ************************************************************************/
 
-static void sample(void *arg, long period)
+static void sample(void *arg, hal_ctx_t *ctx)
 {
     int n;
 

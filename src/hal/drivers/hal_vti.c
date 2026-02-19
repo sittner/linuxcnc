@@ -260,11 +260,11 @@ static int vti_dio_init(int nibbles);
 static int vti_parse_dio(void);
 
 /* periodic functions registered to HAL */
-static void vti_adcs_read(void *arg, long period);	//reads adc data from the board, check long description at the beginning of the function
-static void vti_dacs_write(void *arg, long period);	//writes dac's to the vti
-static void vti_counter_capture(void *arg, long period);	//captures encoder counters
-static void vti_di_read(void *arg, long period);	//reads digital inputs from the vti
-static void vti_do_write(void *arg, long period);	//writes digital outputs to the vti
+static void vti_adcs_read(void *arg, hal_ctx_t *ctx);	//reads adc data from the board, check long description at the beginning of the function
+static void vti_dacs_write(void *arg, hal_ctx_t *ctx);	//writes dac's to the vti
+static void vti_counter_capture(void *arg, hal_ctx_t *ctx);	//captures encoder counters
+static void vti_di_read(void *arg, hal_ctx_t *ctx);	//reads digital inputs from the vti
+static void vti_do_write(void *arg, hal_ctx_t *ctx);	//writes digital outputs to the vti
 
 /***********************************************************************
 *                       INIT AND EXIT CODE                             *
@@ -448,7 +448,7 @@ void rtapi_app_exit(void)
 *            REALTIME ENCODER COUNTING AND UPDATE FUNCTIONS            *
 ************************************************************************/
 
-static void vti_counter_capture(void *arg, long period)
+static void vti_counter_capture(void *arg, hal_ctx_t *ctx)
 {
     vti_struct *vti;
     int i;
@@ -471,7 +471,7 @@ static void vti_counter_capture(void *arg, long period)
 
 /* vti_dacs_write() - writes all dac's to the board
 	- calls vti_dac_write() */
-static void vti_dacs_write(void *arg, long period)
+static void vti_dacs_write(void *arg, hal_ctx_t *ctx)
 {
     vti_struct *vti;
     double volts;
@@ -493,7 +493,7 @@ static void vti_dacs_write(void *arg, long period)
 /* The VTI board has no ADCs. Procedure is retained only as a stub, should it be called from
    elsewhere in the application. */
    
-static void vti_adcs_read(void *arg, long period)
+static void vti_adcs_read(void *arg, hal_ctx_t *ctx)
 {
     return;
 }
@@ -549,7 +549,7 @@ unsigned char build_output(io_pin * src, int num)
     return data;
 }
 
-static void vti_di_read(void *arg, long period)	//reads digital inputs from the vti
+static void vti_di_read(void *arg, hal_ctx_t *ctx)	//reads digital inputs from the vti
 {
     vti_struct *vti;
     int i;
@@ -575,7 +575,7 @@ static void vti_di_read(void *arg, long period)	//reads digital inputs from the 
       }
 }
 
-static void vti_do_write(void *arg, long period)	//writes digital outputs to the vti
+static void vti_do_write(void *arg, hal_ctx_t *ctx)	//writes digital outputs to the vti
 {
     vti_struct *vti;
     int i;
