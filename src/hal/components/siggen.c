@@ -97,17 +97,17 @@ RTAPI_MP_ARRAY_STRING(names, MAX_CHAN, "names of siggen");
 */
 
 typedef struct {
-    hal_float_t *square;	/* pin: output */
-    hal_float_t *sawtooth;	/* pin: output */
-    hal_float_t *triangle;	/* pin: output */
-    hal_float_t *sine;		/* pin: output */
-    hal_float_t *cosine;	/* pin: output */
-    hal_bit_t *clock;		/* pin: output */
-    hal_float_t *frequency;	/* pin: frequency */
-    hal_float_t *amplitude;	/* pin: amplitude */
-    hal_float_t *offset;	/* pin: offset */
-    hal_bit_t *reset;		/* pin: reset */
-    double index;		/* position within output cycle */
+    hal_pin_handle_t square;      /* pin handle: output */
+    hal_pin_handle_t sawtooth;    /* pin handle: output */
+    hal_pin_handle_t triangle;    /* pin handle: output */
+    hal_pin_handle_t sine;        /* pin handle: output */
+    hal_pin_handle_t cosine;      /* pin handle: output */
+    hal_pin_handle_t clock;       /* pin handle: output */
+    hal_pin_handle_t frequency;   /* pin handle: frequency */
+    hal_pin_handle_t amplitude;   /* pin handle: amplitude */
+    hal_pin_handle_t offset;      /* pin handle: offset */
+    hal_pin_handle_t reset;       /* pin handle: reset */
+    double index;                 /* position within output cycle */
 } hal_siggen_t;
 
 /* pointer to array of siggen_t structs in shared memory, 1 per gen */
@@ -121,7 +121,7 @@ static int comp_id;		/* component ID */
 ************************************************************************/
 
 static int export_siggen(int num, hal_siggen_t * addr,char* prefix);
-static void calc_siggen(void *arg, long period);
+static void calc_siggen(void *arg, hal_ctx_t *ctx);
 
 /***********************************************************************
 *                       INIT AND EXIT CODE                             *
@@ -204,25 +204,38 @@ void rtapi_app_exit(void)
 *                       REALTIME LOOP CALCULATIONS                     *
 ************************************************************************/
 
-static void calc_siggen(void *arg, long period)
+static void calc_siggen(void *arg, hal_ctx_t *ctx)
 {
     hal_siggen_t *siggen;
     double tmp1, tmp2;
+    hal_float_t frequency, amplitude, offset;
+    hal_bit_t reset;
+    hal_bit_t clock_val;
 
     /* point to the data for this signal generator */
     siggen = arg;
+    
+    /* Get period from context */
+    long period = hal_ctx_period(ctx);
+    
     /* calculate the time since last execution */
     tmp1 = period * 0.000000001;
 
+    /* Read input pins using context-aware getters */
+    frequency = hal_ctx_pin_float_get(ctx, siggen->frequency);
+    amplitude = hal_ctx_pin_float_get(ctx, siggen->amplitude);
+    offset = hal_ctx_pin_float_get(ctx, siggen->offset);
+    reset = hal_ctx_pin_bit_get(ctx, siggen->reset);
+
     /* calculate how much of an output cycle that has passed */
-    tmp2 = *(siggen->frequency) * tmp1;
+    tmp2 = frequency * tmp1;
     /* limit frequency to comply with Nyquist limit */
     if ( tmp2 > 0.5 ) {
-	*(siggen->frequency) = 0.5 / tmp1;
+	frequency = 0.5 / tmp1;
 	tmp2 = 0.5;
     }
     /* index ramps from 0.0 to 0.99999 for each output cycle */
-    if ( *(siggen->reset) ) {
+    if ( reset ) {
 	siggen->index  = 0.5;
     } else {
 	siggen->index += tmp2;
@@ -236,19 +249,20 @@ static void calc_siggen(void *arg, long period)
     /* tmp1 steps from -1.0 to +1.0 when index passes 0.5 */
     if ( siggen->index > 0.5 ) {
 	tmp1 = 1.0;
-	*(siggen->clock) = 1;
+	clock_val = 1;
     } else {
 	tmp1 = -1.0;
-	*(siggen->clock) = 0;
+	clock_val = 0;
     }
     /* apply scaling and offset, and write to output */
-    *(siggen->square) = (tmp1 * *(siggen->amplitude)) + *(siggen->offset);
+    hal_ctx_pin_float_set(ctx, siggen->square, (tmp1 * amplitude) + offset);
+    hal_ctx_pin_bit_set(ctx, siggen->clock, clock_val);
 
     /* generate the sawtooth wave output */
     /* tmp2 ramps from -1.0 to +1.0 as index goes from 0 to 1 */
     tmp2 = (siggen->index * 2.0) - 1.0;
     /* apply scaling and offset, and write to output */
-    *(siggen->sawtooth) = (tmp2 * *(siggen->amplitude)) + *(siggen->offset);
+    hal_ctx_pin_float_set(ctx, siggen->sawtooth, (tmp2 * amplitude) + offset);
 
     /* generate the triangle wave output */
     /* tmp2 ramps from -2.0 to +2.0 as index goes from 0 to 1 */
@@ -256,17 +270,17 @@ static void calc_siggen(void *arg, long period)
     /* flip first half of ramp, now goes from +1 to -1 to +1 */
     tmp2 = (tmp2 * tmp1) - 1.0;
     /* apply scaling and offset, and write to output */
-    *(siggen->triangle) = (tmp2 * *(siggen->amplitude)) + *(siggen->offset);
+    hal_ctx_pin_float_set(ctx, siggen->triangle, (tmp2 * amplitude) + offset);
 
     /* generate the sine wave output */
     /* tmp1 is angle in radians */
     tmp1 = siggen->index * (2.0 * 3.1415927);
     /* get sine, apply scaling and offset, and write to output */
-    *(siggen->sine) = (sin(tmp1) * *(siggen->amplitude)) + *(siggen->offset);
+    hal_ctx_pin_float_set(ctx, siggen->sine, (sin(tmp1) * amplitude) + offset);
 
     /* generate the cosine wave output */
     /* get cosine, apply scaling and offset, and write to output */
-    *(siggen->cosine) = (cos(tmp1) * *(siggen->amplitude)) + *(siggen->offset);
+    hal_ctx_pin_float_set(ctx, siggen->cosine, (cos(tmp1) * amplitude) + offset);
     /* done */
 }
 
@@ -279,68 +293,70 @@ static int export_siggen(int num, hal_siggen_t * addr,char* prefix)
     int retval;
     char buf[HAL_NAME_LEN + 1];
 
-    /* export pins */
-    retval = hal_pin_float_newf(HAL_OUT, &(addr->square), comp_id,
-				"%s.square", prefix);
+    /* export pins using handle-based API */
+    rtapi_snprintf(buf, sizeof(buf), "%s.square", prefix);
+    retval = hal_pin_float_new_handle(buf, HAL_OUT, &(addr->square), comp_id);
     if (retval != 0) {
 	return retval;
     }
-    retval = hal_pin_float_newf(HAL_OUT, &(addr->sawtooth), comp_id,
-				"%s.sawtooth", prefix);
+    
+    rtapi_snprintf(buf, sizeof(buf), "%s.sawtooth", prefix);
+    retval = hal_pin_float_new_handle(buf, HAL_OUT, &(addr->sawtooth), comp_id);
     if (retval != 0) {
 	return retval;
     }
-    retval = hal_pin_float_newf(HAL_OUT, &(addr->triangle), comp_id,
-				"%s.triangle", prefix);
+    
+    rtapi_snprintf(buf, sizeof(buf), "%s.triangle", prefix);
+    retval = hal_pin_float_new_handle(buf, HAL_OUT, &(addr->triangle), comp_id);
     if (retval != 0) {
 	return retval;
     }
-    retval = hal_pin_float_newf(HAL_OUT, &(addr->sine), comp_id,
-				"%s.sine", prefix);
+    
+    rtapi_snprintf(buf, sizeof(buf), "%s.sine", prefix);
+    retval = hal_pin_float_new_handle(buf, HAL_OUT, &(addr->sine), comp_id);
     if (retval != 0) {
 	return retval;
     }
-    retval = hal_pin_float_newf(HAL_OUT, &(addr->cosine), comp_id,
-				"%s.cosine", prefix);
+    
+    rtapi_snprintf(buf, sizeof(buf), "%s.cosine", prefix);
+    retval = hal_pin_float_new_handle(buf, HAL_OUT, &(addr->cosine), comp_id);
     if (retval != 0) {
 	return retval;
     }
-    retval = hal_pin_bit_newf(HAL_OUT, &(addr->clock), comp_id,
-				"%s.clock", prefix);
+    
+    rtapi_snprintf(buf, sizeof(buf), "%s.clock", prefix);
+    retval = hal_pin_bit_new_handle(buf, HAL_OUT, &(addr->clock), comp_id);
     if (retval != 0) {
 	return retval;
     }
-    retval = hal_pin_float_newf(HAL_IN, &(addr->frequency), comp_id,
-				"%s.frequency", prefix);
+    
+    rtapi_snprintf(buf, sizeof(buf), "%s.frequency", prefix);
+    retval = hal_pin_float_new_handle(buf, HAL_IN, &(addr->frequency), comp_id);
     if (retval != 0) {
 	return retval;
     }
-    retval = hal_pin_float_newf(HAL_IN, &(addr->amplitude), comp_id,
-				"%s.amplitude", prefix);
+    
+    rtapi_snprintf(buf, sizeof(buf), "%s.amplitude", prefix);
+    retval = hal_pin_float_new_handle(buf, HAL_IN, &(addr->amplitude), comp_id);
     if (retval != 0) {
 	return retval;
     }
-    retval = hal_pin_float_newf(HAL_IN, &(addr->offset), comp_id,
-				"%s.offset", prefix);
+    
+    rtapi_snprintf(buf, sizeof(buf), "%s.offset", prefix);
+    retval = hal_pin_float_new_handle(buf, HAL_IN, &(addr->offset), comp_id);
     if (retval != 0) {
 	return retval;
     }
-    retval = hal_pin_bit_newf(HAL_IN, &(addr->reset), comp_id,
-				"%s.reset", prefix);
+    
+    rtapi_snprintf(buf, sizeof(buf), "%s.reset", prefix);
+    retval = hal_pin_bit_new_handle(buf, HAL_IN, &(addr->reset), comp_id);
     if (retval != 0) {
 	return retval;
     }
-    /* init all structure members */
-    *(addr->square) = 0.0;
-    *(addr->sawtooth) = 0.0;
-    *(addr->triangle) = 0.0;
-    *(addr->sine) = 0.0;
-    *(addr->cosine) = 0.0;
-    *(addr->clock) = 0;
-    *(addr->frequency) = 1.0;
-    *(addr->amplitude) = 1.0;
-    *(addr->offset) = 0.0;
+    
+    /* init structure members - only local data needs initialization */
     addr->index = 0.0;
+    
     /* export function for this loop */
     rtapi_snprintf(buf, sizeof(buf), "%s.update", prefix);
     retval =
