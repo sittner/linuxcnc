@@ -707,7 +707,7 @@ extern int hal_get_param_value_by_name(
     Call only from realtime init code, not from user space or
     realtime code.
 */
-extern int hal_export_funct(const char *name, void (*funct) (void *, long),
+extern int hal_export_funct(const char *name, void (*funct) (void *, hal_ctx_t *),
     void *arg, int uses_fp, int reentrant, int comp_id);
 
 /** hal_create_thread() establishes a realtime thread that will

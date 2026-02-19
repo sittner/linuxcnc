@@ -1805,7 +1805,7 @@ int hal_get_param_value_by_name(
 
 #ifdef RTAPI
 
-int hal_export_funct(const char *name, void (*funct) (void *, long),
+int hal_export_funct(const char *name, void (*funct) (void *, hal_ctx_t *),
     void *arg, int uses_fp, int reentrant, int comp_id)
 {
     rtapi_intptr_t *prev, next;
