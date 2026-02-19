@@ -56,6 +56,7 @@
 #include "rtapi.h"		/* RTAPI realtime OS API */
 #include "hal.h"		/* HAL public API decls */
 #include "hal_priv.h"		/* HAL private decls */
+#include "hal_ctx_internal.h"	/* HAL context internal structures */
 
 #include "rtapi_string.h"
 #include "rtapi_atomic.h"
@@ -2068,6 +2069,24 @@ int hal_create_thread(const char *name, unsigned long period_nsec, int uses_fp)
 	    "HAL_LIB: could not start task for thread %s: %d\n", name, retval);
 	return -EINVAL;
     }
+    
+    /* Create thread-local context */
+    new->ctx = hal_ctx_create(lib_module_id);
+    if (!new->ctx) {
+	/* Context creation failed - clean up and return error */
+	rtapi_task_pause(new->task_id);
+	rtapi_task_delete(new->task_id);
+	rtapi_mutex_give(&(hal_data->mutex));
+	rtapi_print_msg(RTAPI_MSG_ERR,
+	    "HAL_LIB: could not create context for thread %s\n", name);
+	return -ENOMEM;
+    }
+    
+    /* Initialize context metadata - direct assignment is safe here as this is
+     * internal thread management code that creates and owns the context */
+    new->ctx->thread_name = new->name;
+    new->ctx->period_ns = new->period;
+    
     /* insert new structure at head of list */
     new->next_ptr = hal_data->thread_list_ptr;
     hal_data->thread_list_ptr = SHMOFF(new);
@@ -2907,6 +2926,11 @@ static void thread_task(void *arg)
     thread = arg;
     while (1) {
 	if (hal_data->threads_running > 0) {
+	    /* Sync read: Copy shared HAL data to thread-local buffer */
+	    if (thread->ctx) {
+		hal_ctx_sync_read(thread->ctx);
+	    }
+	    
 	    /* point at first function on function list */
 	    funct_root = (hal_funct_entry_t *) & (thread->funct_list);
 	    funct_entry = SHMPTR(funct_root->links.next);
@@ -2916,8 +2940,8 @@ static void thread_task(void *arg)
 	    thread_start_time = start_time;
 	    /* run thru function list */
 	    while (funct_entry != funct_root) {
-		/* call the function */
-		funct_entry->funct(funct_entry->arg, thread->period);
+		/* call the function with context instead of period */
+		funct_entry->funct(funct_entry->arg, thread->ctx);
 		/* capture execution time */
 		end_time = rtapi_get_clocks();
 		/* point to function structure */
@@ -2939,6 +2963,19 @@ static void thread_task(void *arg)
 	    *(thread->runtime) = (hal_s32_t)(end_time - thread_start_time);
 	    if ( *(thread->runtime) > thread->maxtime) {
 	        thread->maxtime = *(thread->runtime);
+	    }
+	    
+	    /* Update context metadata */
+	    if (thread->ctx) {
+		thread->ctx->iteration_count++;
+		/* TODO: Track actual_period_ns and overruns when timing measurement 
+		 * infrastructure is available. This requires comparing expected vs 
+		 * actual period and detecting deadline misses. */
+	    }
+	    
+	    /* Sync write: Copy modified thread-local data back to shared memory */
+	    if (thread->ctx) {
+		hal_ctx_sync_write(thread->ctx);
 	    }
 	}
 	/* wait until next period */
@@ -3293,6 +3330,7 @@ static hal_thread_t *alloc_thread_struct(void)
 	p->task_id = 0;
 	list_init_entry(&(p->funct_list));
 	p->name[0] = '\0';
+	p->ctx = NULL;  /* Initialize context pointer to NULL */
     }
     return p;
 }
@@ -3600,6 +3638,12 @@ static void free_thread_struct(hal_thread_t * thread)
     /* and stop the task associated with this thread */
     rtapi_task_pause(thread->task_id);
     rtapi_task_delete(thread->task_id);
+    
+    /* Destroy thread-local context */
+    if (thread->ctx) {
+	hal_ctx_destroy(thread->ctx);
+    }
+    
     /* clear contents of struct */
     thread->uses_fp = 0;
     thread->period = 0;
