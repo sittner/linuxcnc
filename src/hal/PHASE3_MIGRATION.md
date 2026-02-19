@@ -176,6 +176,346 @@ static void advanced_function(void *arg, hal_ctx_t *ctx)
 
 See `src/hal/HAL_CONTEXT_API.md` for details on the handle-based API.
 
+## Full Migration Example: siggen.c
+
+This section shows a **complete, real-world migration** of the `siggen.c` component from the old pointer-based API to the new handle-based context-aware API. This demonstrates the full scope of changes needed for Phase 3 migration.
+
+### Data Structure Migration
+
+**Before (Pointer-based):**
+```c
+typedef struct {
+    hal_float_t *square;      /* pin: output */
+    hal_float_t *sawtooth;    /* pin: output */
+    hal_float_t *triangle;    /* pin: output */
+    hal_float_t *sine;        /* pin: output */
+    hal_float_t *cosine;      /* pin: output */
+    hal_bit_t *clock;         /* pin: output */
+    hal_float_t *frequency;   /* pin: frequency */
+    hal_float_t *amplitude;   /* pin: amplitude */
+    hal_float_t *offset;      /* pin: offset */
+    hal_bit_t *reset;         /* pin: reset */
+    double index;             /* position within output cycle */
+} hal_siggen_t;
+```
+
+**After (Handle-based):**
+```c
+typedef struct {
+    hal_pin_handle_t square;      /* pin handle: output */
+    hal_pin_handle_t sawtooth;    /* pin handle: output */
+    hal_pin_handle_t triangle;    /* pin handle: output */
+    hal_pin_handle_t sine;        /* pin handle: output */
+    hal_pin_handle_t cosine;      /* pin handle: output */
+    hal_pin_handle_t clock;       /* pin handle: output */
+    hal_pin_handle_t frequency;   /* pin handle: frequency */
+    hal_pin_handle_t amplitude;   /* pin handle: amplitude */
+    hal_pin_handle_t offset;      /* pin handle: offset */
+    hal_pin_handle_t reset;       /* pin handle: reset */
+    double index;                 /* position within output cycle */
+} hal_siggen_t;
+```
+
+**Key Changes:**
+- All `hal_float_t *` and `hal_bit_t *` changed to `hal_pin_handle_t`
+- Comments updated to indicate "pin handle" instead of "pin"
+- Local data members (like `index`) remain unchanged
+
+### Realtime Function Migration
+
+**Before (Pointer-based with period parameter):**
+```c
+static void calc_siggen(void *arg, long period)
+{
+    hal_siggen_t *siggen;
+    double tmp1, tmp2;
+
+    siggen = arg;
+    tmp1 = period * 0.000000001;
+
+    /* Access pins directly through pointers */
+    tmp2 = *(siggen->frequency) * tmp1;
+    
+    /* Limit frequency */
+    if (tmp2 > 0.5) {
+        *(siggen->frequency) = 0.5 / tmp1;  /* Direct write to input pin */
+        tmp2 = 0.5;
+    }
+    
+    /* Check reset */
+    if (*(siggen->reset)) {
+        siggen->index = 0.5;
+    } else {
+        siggen->index += tmp2;
+    }
+    
+    /* ... calculations ... */
+    
+    /* Write outputs directly */
+    *(siggen->square) = (tmp1 * *(siggen->amplitude)) + *(siggen->offset);
+    *(siggen->clock) = clock_val;
+    /* ... more outputs ... */
+}
+```
+
+**After (Handle-based with context parameter):**
+```c
+static void calc_siggen(void *arg, hal_ctx_t *ctx)
+{
+    hal_siggen_t *siggen;
+    double tmp1, tmp2;
+    hal_float_t frequency, amplitude, offset;
+    hal_bit_t reset;
+    hal_bit_t clock_val;
+
+    siggen = arg;
+    
+    /* Get period from context */
+    long period = hal_ctx_period(ctx);
+    tmp1 = period * 0.000000001;
+
+    /* Read all input pins once at start using context-aware getters */
+    frequency = hal_ctx_pin_float_get(ctx, siggen->frequency);
+    amplitude = hal_ctx_pin_float_get(ctx, siggen->amplitude);
+    offset = hal_ctx_pin_float_get(ctx, siggen->offset);
+    reset = hal_ctx_pin_bit_get(ctx, siggen->reset);
+
+    /* Limit frequency (use local variable, not write back to input) */
+    tmp2 = frequency * tmp1;
+    if (tmp2 > 0.5) {
+        frequency = 0.5 / tmp1;  /* Modify local copy only */
+        tmp2 = 0.5;
+    }
+    
+    /* Check reset */
+    if (reset) {
+        siggen->index = 0.5;
+    } else {
+        siggen->index += tmp2;
+    }
+    
+    /* ... calculations ... */
+    
+    /* Write outputs using context-aware setters */
+    hal_ctx_pin_float_set(ctx, siggen->square, (tmp1 * amplitude) + offset);
+    hal_ctx_pin_bit_set(ctx, siggen->clock, clock_val);
+    /* ... more outputs ... */
+}
+```
+
+**Key Changes:**
+1. **Function signature**: `(void *arg, long period)` → `(void *arg, hal_ctx_t *ctx)`
+2. **Period access**: Add `long period = hal_ctx_period(ctx);` to get period from context
+3. **Input pins**: Read once at start into local variables using `hal_ctx_pin_float_get()` and `hal_ctx_pin_bit_get()`
+4. **Intermediate calculations**: Use local variables instead of writing back to input pins
+5. **Output pins**: Write using `hal_ctx_pin_float_set()` and `hal_ctx_pin_bit_set()`
+
+### Pin Creation Migration
+
+**Before (Format string API):**
+```c
+static int export_siggen(int num, hal_siggen_t *addr, char *prefix)
+{
+    int retval;
+    char buf[HAL_NAME_LEN + 1];
+
+    /* Create pins with format strings */
+    retval = hal_pin_float_newf(HAL_OUT, &(addr->square), comp_id,
+                                "%s.square", prefix);
+    if (retval != 0) {
+        return retval;
+    }
+    
+    retval = hal_pin_bit_newf(HAL_IN, &(addr->reset), comp_id,
+                              "%s.reset", prefix);
+    if (retval != 0) {
+        return retval;
+    }
+    
+    /* Initialize pins directly */
+    *(addr->square) = 0.0;
+    *(addr->frequency) = 1.0;
+    *(addr->amplitude) = 1.0;
+    *(addr->offset) = 0.0;
+    addr->index = 0.0;
+    
+    /* ... export function ... */
+}
+```
+
+**After (Handle-based API):**
+```c
+static int export_siggen(int num, hal_siggen_t *addr, char *prefix)
+{
+    int retval;
+    char buf[HAL_NAME_LEN + 1];
+
+    /* Create pins with handle-based API - construct name first */
+    rtapi_snprintf(buf, sizeof(buf), "%s.square", prefix);
+    retval = hal_pin_float_new_handle(buf, HAL_OUT, &(addr->square), comp_id);
+    if (retval != 0) {
+        return retval;
+    }
+    
+    rtapi_snprintf(buf, sizeof(buf), "%s.reset", prefix);
+    retval = hal_pin_bit_new_handle(buf, HAL_IN, &(addr->reset), comp_id);
+    if (retval != 0) {
+        return retval;
+    }
+    
+    /* Initialize only local data - pins are initialized by HAL */
+    addr->index = 0.0;
+    
+    /* ... export function ... */
+}
+```
+
+**Key Changes:**
+1. **Pin creation**: `hal_pin_*_newf()` → `hal_pin_*_new_handle()`
+2. **Name construction**: Use `rtapi_snprintf()` to build name string first, then pass to `hal_pin_*_new_handle()`
+3. **Pin initialization**: Remove all pin value initialization (e.g., `*(addr->square) = 0.0;`) - HAL handles this internally
+4. **Keep local initialization**: Still initialize local data members (e.g., `addr->index = 0.0;`)
+
+### Migration Gotchas
+
+1. **Read inputs once**: For efficiency and correctness, read input pins once at the start of the function into local variables. This avoids multiple context lookups and ensures consistent values throughout the function.
+
+2. **No direct writes to inputs**: In the old API, you could write to input pins (even though it's not good practice). In the new API, this doesn't make sense - use local variables for intermediate calculations.
+
+3. **Pin names are strings, not format strings**: The `hal_pin_*_new_handle()` functions take a complete name string, not a format string. Use `rtapi_snprintf()` to construct the name first.
+
+4. **Don't initialize pin values**: The handle-based API manages pin initialization internally. Only initialize local data members in your structure.
+
+5. **Handle type is opaque**: Treat `hal_pin_handle_t` as an opaque type. Don't try to inspect or manipulate its internal structure.
+
+## Handle-Based Pin Creation Patterns
+
+When migrating to the handle-based API, follow these patterns:
+
+### Pattern 1: Simple Pin Creation
+
+```c
+char name[HAL_NAME_LEN + 1];
+hal_pin_handle_t my_pin;
+
+rtapi_snprintf(name, sizeof(name), "component.pin");
+retval = hal_pin_float_new_handle(name, HAL_OUT, &my_pin, comp_id);
+if (retval != 0) {
+    return retval;
+}
+```
+
+### Pattern 2: Pin Creation with Prefix
+
+```c
+char name[HAL_NAME_LEN + 1];
+hal_pin_handle_t my_pin;
+
+rtapi_snprintf(name, sizeof(name), "%s.output", prefix);
+retval = hal_pin_float_new_handle(name, HAL_OUT, &my_pin, comp_id);
+if (retval != 0) {
+    return retval;
+}
+```
+
+### Pattern 3: Multiple Pins in Loop
+
+```c
+char name[HAL_NAME_LEN + 1];
+
+for (int i = 0; i < count; i++) {
+    rtapi_snprintf(name, sizeof(name), "component.input-%d", i);
+    retval = hal_pin_float_new_handle(name, HAL_IN, &(data[i].input), comp_id);
+    if (retval != 0) {
+        return retval;
+    }
+}
+```
+
+## Pin Access Patterns in RT Functions
+
+### Pattern 1: Read All Inputs First
+
+Best practice: Read all input pins at the start into local variables.
+
+```c
+static void my_function(void *arg, hal_ctx_t *ctx)
+{
+    my_data_t *data = arg;
+    
+    /* Read all inputs */
+    hal_float_t input1 = hal_ctx_pin_float_get(ctx, data->input1);
+    hal_float_t input2 = hal_ctx_pin_float_get(ctx, data->input2);
+    hal_bit_t enable = hal_ctx_pin_bit_get(ctx, data->enable);
+    
+    /* Do calculations with local variables */
+    hal_float_t result = input1 * input2;
+    
+    /* Write outputs */
+    hal_ctx_pin_float_set(ctx, data->output, result);
+}
+```
+
+### Pattern 2: Conditional Output Writing
+
+```c
+static void my_function(void *arg, hal_ctx_t *ctx)
+{
+    my_data_t *data = arg;
+    hal_bit_t enable = hal_ctx_pin_bit_get(ctx, data->enable);
+    
+    if (enable) {
+        hal_float_t input = hal_ctx_pin_float_get(ctx, data->input);
+        hal_ctx_pin_float_set(ctx, data->output, input * 2.0);
+    } else {
+        hal_ctx_pin_float_set(ctx, data->output, 0.0);
+    }
+}
+```
+
+### Pattern 3: Using Period from Context
+
+```c
+static void my_function(void *arg, hal_ctx_t *ctx)
+{
+    my_data_t *data = arg;
+    
+    /* Get period for time-based calculations */
+    long period = hal_ctx_period(ctx);
+    double dt = period * 0.000000001;  /* Convert ns to seconds */
+    
+    hal_float_t velocity = hal_ctx_pin_float_get(ctx, data->velocity);
+    
+    /* Integrate velocity to position */
+    data->position += velocity * dt;
+    
+    hal_ctx_pin_float_set(ctx, data->position_out, data->position);
+}
+```
+
+## Migration Progress
+
+### Fully Migrated (Handle-Based Context-Aware API)
+
+Components that have completed **full Phase 3 migration** (both function signature AND handle-based pin access):
+
+- ✅ `siggen.c` - Signal generator component (reference implementation)
+
+### Pending Migration
+
+Components that still need Phase 3 migration:
+
+- Core motion components (`motmod`, `tpmod`, `homemod`)
+- Kinematics modules (`trivkins`, `genserkins`, etc.)
+- Other HAL components in `src/hal/components/`
+- Driver components in `src/hal/drivers/`
+
+**Note**: Components may be at different stages:
+- **Stage 1**: Function signature updated to `(void *arg, hal_ctx_t *ctx)` but still using pointer-based pin access
+- **Stage 2**: Fully migrated to handle-based API (like `siggen.c`)
+
+The goal is to eventually migrate all components to Stage 2 for optimal performance with thread-local contexts.
+
 ## Backward Compatibility
 
 **This is a breaking change.** Components compiled before Phase 3 will NOT work with Phase 3 executors. All components must be recompiled with the new signature.
