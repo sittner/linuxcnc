@@ -278,23 +278,29 @@ func TestSymbolTableSumRead(t *testing.T) {
 	if errCode != ErrNoError {
 		t.Fatalf("SumRead error: 0x%X", errCode)
 	}
-	// Response: 2×4 error codes + 1 byte (bool) + 4 bytes (dint) = 13 bytes.
-	if len(resp) != 13 {
-		t.Fatalf("SumRead response length = %d, want 13", len(resp))
+	// Response: 2×8 (errCode+length) + 1 byte (bool) + 4 bytes (dint) = 21 bytes.
+	if len(resp) != 21 {
+		t.Fatalf("SumRead response length = %d, want 21", len(resp))
 	}
 	if binary.LittleEndian.Uint32(resp[0:4]) != ErrNoError {
 		t.Errorf("SumRead s1 errCode = 0x%X", binary.LittleEndian.Uint32(resp[0:4]))
 	}
-	if binary.LittleEndian.Uint32(resp[4:8]) != ErrNoError {
-		t.Errorf("SumRead s2 errCode = 0x%X", binary.LittleEndian.Uint32(resp[4:8]))
+	if binary.LittleEndian.Uint32(resp[4:8]) != 1 { // length of s1 (bool = 1 byte)
+		t.Errorf("SumRead s1 length = %d, want 1", binary.LittleEndian.Uint32(resp[4:8]))
 	}
-	// s1 value: byte 8.
-	if resp[8] != 1 {
-		t.Errorf("SumRead s1 value = %d, want 1", resp[8])
+	if binary.LittleEndian.Uint32(resp[8:12]) != ErrNoError {
+		t.Errorf("SumRead s2 errCode = 0x%X", binary.LittleEndian.Uint32(resp[8:12]))
 	}
-	// s2 value: bytes 9–12.
-	if int32(binary.LittleEndian.Uint32(resp[9:13])) != 42 {
-		t.Errorf("SumRead s2 value = %d, want 42", int32(binary.LittleEndian.Uint32(resp[9:13])))
+	if binary.LittleEndian.Uint32(resp[12:16]) != 4 { // length of s2 (dint = 4 bytes)
+		t.Errorf("SumRead s2 length = %d, want 4", binary.LittleEndian.Uint32(resp[12:16]))
+	}
+	// s1 value: byte 16.
+	if resp[16] != 1 {
+		t.Errorf("SumRead s1 value = %d, want 1", resp[16])
+	}
+	// s2 value: bytes 17–20.
+	if int32(binary.LittleEndian.Uint32(resp[17:21])) != 42 {
+		t.Errorf("SumRead s2 value = %d, want 42", int32(binary.LittleEndian.Uint32(resp[17:21])))
 	}
 }
 
