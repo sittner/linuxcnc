@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync"
 
 	"linuxcnc.org/hal"
 
@@ -205,28 +206,48 @@ func newFloatAccessor(pin *hal.Pin[float64], ti typeInfo) *halPinAccessor {
 	}
 }
 
-// newStringAccessor creates a PinAccessor for a string HAL pin.
-// ADS STRING(n) is stored as n+1 bytes (null-terminated).
-func newStringAccessor(pin *hal.Pin[string], ti typeInfo) *halPinAccessor {
-	return &halPinAccessor{
-		ti: ti,
-		readFn: func() ([]byte, error) {
-			v := pin.Get()
-			b := make([]byte, ti.byteSize) // initialised to zero (null-terminator)
-			copy(b, []byte(v))
-			return b, nil
-		},
-		writeFn: func(data []byte) error {
-			// Strip trailing null bytes.
-			s := string(data)
-			if idx := strings.IndexByte(s, 0); idx >= 0 {
-				s = s[:idx]
-			}
-			pin.Set(s)
-			return nil
-		},
+// stringMemAccessor is a memory-backed PinAccessor for ADS STRING(n) symbols.
+// It does NOT use a HAL pin; instead it holds an internal []byte buffer of size
+// n+1 (null-terminated), served directly to ADS reads/writes as a flat byte array.
+type stringMemAccessor struct {
+	mu  sync.RWMutex
+	buf []byte
+	ti  typeInfo
+}
+
+func newStringMemAccessor(ti typeInfo) *stringMemAccessor {
+	return &stringMemAccessor{
+		buf: make([]byte, ti.byteSize),
+		ti:  ti,
 	}
 }
+
+func (a *stringMemAccessor) ReadBytes() ([]byte, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	out := make([]byte, len(a.buf))
+	copy(out, a.buf)
+	return out, nil
+}
+
+func (a *stringMemAccessor) WriteBytes(data []byte) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	n := copy(a.buf, data)
+	// Zero-fill remainder and ensure null termination.
+	for i := n; i < len(a.buf); i++ {
+		a.buf[i] = 0
+	}
+	// If data was longer than the buffer, truncate and null-terminate.
+	if len(data) >= len(a.buf) {
+		a.buf[len(a.buf)-1] = 0
+	}
+	return nil
+}
+
+func (a *stringMemAccessor) Size() uint32     { return a.ti.byteSize }
+func (a *stringMemAccessor) TypeName() string { return a.ti.adsTypeName }
+func (a *stringMemAccessor) TypeID() uint32   { return a.ti.adstID }
 
 // Bridge holds all HAL pins and their corresponding ADS symbol registrations.
 type Bridge struct {
@@ -285,12 +306,7 @@ func NewBridge(comp *hal.Component, pins []ConfigPin, st *ads.SymbolTable) (*Bri
 			b.pins = append(b.pins, p)
 
 		case ti.adstID == ads.ADSTString:
-			p, err := hal.NewPin[string](comp, cp.HALPath, dir)
-			if err != nil {
-				return nil, fmt.Errorf("create HAL pin %q: %w", cp.HALPath, err)
-			}
-			acc = newStringAccessor(p, ti)
-			b.pins = append(b.pins, p)
+			acc = newStringMemAccessor(ti)
 
 		default:
 			return nil, fmt.Errorf("symbol %q: unsupported type %q", cp.ADSName, cp.TypeName)
