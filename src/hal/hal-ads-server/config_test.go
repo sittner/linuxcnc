@@ -207,3 +207,115 @@ func TestParseTypeInfo(t *testing.T) {
 		}
 	}
 }
+
+func TestStringMemAccessorReadEmpty(t *testing.T) {
+	ti := typeInfo{adsTypeName: "STRING(31)", adstID: 30, byteSize: 32, strLen: 31}
+	acc := newStringMemAccessor(ti)
+
+	data, err := acc.ReadBytes()
+	if err != nil {
+		t.Fatalf("ReadBytes error: %v", err)
+	}
+	if len(data) != 32 {
+		t.Fatalf("ReadBytes length = %d, want 32", len(data))
+	}
+	for i, b := range data {
+		if b != 0 {
+			t.Errorf("byte[%d] = %d, want 0", i, b)
+		}
+	}
+}
+
+func TestStringMemAccessorWriteAndRead(t *testing.T) {
+	ti := typeInfo{adsTypeName: "STRING(31)", adstID: 30, byteSize: 32, strLen: 31}
+	acc := newStringMemAccessor(ti)
+
+	// Write a short string (shorter than n).
+	if err := acc.WriteBytes([]byte("hello")); err != nil {
+		t.Fatalf("WriteBytes error: %v", err)
+	}
+	data, _ := acc.ReadBytes()
+	if len(data) != 32 {
+		t.Fatalf("ReadBytes length = %d, want 32", len(data))
+	}
+	if string(data[:5]) != "hello" {
+		t.Errorf("first 5 bytes = %q, want %q", string(data[:5]), "hello")
+	}
+	// Remainder must be zero.
+	for i := 5; i < 32; i++ {
+		if data[i] != 0 {
+			t.Errorf("byte[%d] = %d, want 0 (null-padding)", i, data[i])
+		}
+	}
+}
+
+func TestStringMemAccessorWriteExactN(t *testing.T) {
+	// STRING(4) → buffer of 5 bytes; write exactly 4 chars.
+	ti := typeInfo{adsTypeName: "STRING(4)", adstID: 30, byteSize: 5, strLen: 4}
+	acc := newStringMemAccessor(ti)
+
+	if err := acc.WriteBytes([]byte("abcd")); err != nil {
+		t.Fatalf("WriteBytes error: %v", err)
+	}
+	data, _ := acc.ReadBytes()
+	if string(data[:4]) != "abcd" {
+		t.Errorf("data[:4] = %q, want %q", string(data[:4]), "abcd")
+	}
+	if data[4] != 0 {
+		t.Errorf("null terminator byte[4] = %d, want 0", data[4])
+	}
+}
+
+func TestStringMemAccessorWriteLongerThanN(t *testing.T) {
+	// STRING(4) → buffer of 5 bytes; write 6 chars (longer than n+1).
+	ti := typeInfo{adsTypeName: "STRING(4)", adstID: 30, byteSize: 5, strLen: 4}
+	acc := newStringMemAccessor(ti)
+
+	if err := acc.WriteBytes([]byte("toolong")); err != nil {
+		t.Fatalf("WriteBytes error: %v", err)
+	}
+	data, _ := acc.ReadBytes()
+	if len(data) != 5 {
+		t.Fatalf("ReadBytes length = %d, want 5", len(data))
+	}
+	// Buffer must be null-terminated.
+	if data[4] != 0 {
+		t.Errorf("null terminator byte[4] = %d, want 0", data[4])
+	}
+	// First 4 bytes should be first 4 chars of input.
+	if string(data[:4]) != "tool" {
+		t.Errorf("data[:4] = %q, want %q", string(data[:4]), "tool")
+	}
+}
+
+func TestStringMemAccessorMetadata(t *testing.T) {
+	ti := typeInfo{adsTypeName: "STRING(31)", adstID: 30, byteSize: 32, strLen: 31}
+	acc := newStringMemAccessor(ti)
+
+	if acc.Size() != 32 {
+		t.Errorf("Size() = %d, want 32", acc.Size())
+	}
+	if acc.TypeName() != "STRING(31)" {
+		t.Errorf("TypeName() = %q, want %q", acc.TypeName(), "STRING(31)")
+	}
+	if acc.TypeID() != 30 {
+		t.Errorf("TypeID() = %d, want 30", acc.TypeID())
+	}
+}
+
+func TestStringMemAccessorReadReturnsCopy(t *testing.T) {
+	ti := typeInfo{adsTypeName: "STRING(4)", adstID: 30, byteSize: 5, strLen: 4}
+	acc := newStringMemAccessor(ti)
+
+	_ = acc.WriteBytes([]byte("abcd"))
+	data, _ := acc.ReadBytes()
+
+	// Mutate the returned slice.
+	data[0] = 'X'
+
+	// Internal buffer must be unchanged.
+	data2, _ := acc.ReadBytes()
+	if data2[0] != 'a' {
+		t.Errorf("internal buffer modified by caller: data2[0] = %q, want 'a'", data2[0])
+	}
+}
