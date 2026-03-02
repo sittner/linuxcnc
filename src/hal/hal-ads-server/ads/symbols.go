@@ -105,6 +105,31 @@ func (st *SymbolTable) EndContainer(alignment uint32) {
 	st.nextOffset = alignUp(st.nextOffset, alignment)
 }
 
+// CurrentOffset returns the current process-image offset (the next byte to be assigned).
+func (st *SymbolTable) CurrentOffset() uint32 {
+	st.mu.RLock()
+	defer st.mu.RUnlock()
+	return st.nextOffset
+}
+
+// RegisterContainer adds a container (struct or array-element) symbol to the table at a
+// specific process-image offset without advancing nextOffset.  The container is registered
+// in byName, byOffset (overriding any leaf at the same offset), and symbolOrder.
+func (st *SymbolTable) RegisterContainer(name string, acc PinAccessor, offset uint32) *Symbol {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	sym := &Symbol{
+		Name:        name,
+		IndexGroup:  IdxGrpProcessImageRW,
+		IndexOffset: offset,
+		Accessor:    acc,
+	}
+	st.byName[name] = sym
+	st.byOffset[offset] = sym
+	st.symbolOrder = append(st.symbolOrder, sym)
+	return sym
+}
+
 // Register adds a symbol to the table. The symbol's IndexGroup is set to
 // IdxGrpProcessImageRW and IndexOffset is assigned automatically.
 func (st *SymbolTable) Register(name string, acc PinAccessor) *Symbol {

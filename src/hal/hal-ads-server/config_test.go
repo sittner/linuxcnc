@@ -482,3 +482,182 @@ func TestParseConfigActionsAlignmentForType(t *testing.T) {
 		}
 	}
 }
+
+func TestParseConfigActionsADSName(t *testing.T) {
+	cfg := `
+stRoot
+  stInner
+    out fVal real
+`
+	actions, err := ParseConfigActions(strings.NewReader(cfg))
+	if err != nil {
+		t.Fatalf("ParseConfigActions error: %v", err)
+	}
+
+	// Expected:
+	//  0: BeginContainer ADSName="stRoot"
+	//  1: BeginContainer ADSName="stRoot.stInner"
+	//  2: Pin fVal
+	//  3: EndContainer ADSName="stRoot.stInner"
+	//  4: EndContainer ADSName="stRoot"
+	if len(actions) != 5 {
+		t.Fatalf("expected 5 actions, got %d: %+v", len(actions), actions)
+	}
+
+	if actions[0].Kind != ConfigActionBeginContainer || actions[0].ADSName != "stRoot" {
+		t.Errorf("actions[0]: Kind=%d ADSName=%q", actions[0].Kind, actions[0].ADSName)
+	}
+	if actions[1].Kind != ConfigActionBeginContainer || actions[1].ADSName != "stRoot.stInner" {
+		t.Errorf("actions[1]: Kind=%d ADSName=%q", actions[1].Kind, actions[1].ADSName)
+	}
+	if actions[3].Kind != ConfigActionEndContainer || actions[3].ADSName != "stRoot.stInner" {
+		t.Errorf("actions[3]: Kind=%d ADSName=%q", actions[3].Kind, actions[3].ADSName)
+	}
+	if actions[4].Kind != ConfigActionEndContainer || actions[4].ADSName != "stRoot" {
+		t.Errorf("actions[4]: Kind=%d ADSName=%q", actions[4].Kind, actions[4].ADSName)
+	}
+}
+
+func TestParseConfigActionsADSNameArray(t *testing.T) {
+	cfg := `
+stRoot
+  aPools[1..2]
+    out fVal real
+`
+	actions, err := ParseConfigActions(strings.NewReader(cfg))
+	if err != nil {
+		t.Fatalf("ParseConfigActions error: %v", err)
+	}
+
+	// Each array instance gets its own Begin/End pair with the full ADS name.
+	// Expected:
+	//  0: BeginContainer ADSName="stRoot"
+	//  1: BeginContainer ADSName="stRoot.aPools[1]"
+	//  2: Pin
+	//  3: EndContainer ADSName="stRoot.aPools[1]"
+	//  4: BeginContainer ADSName="stRoot.aPools[2]"
+	//  5: Pin
+	//  6: EndContainer ADSName="stRoot.aPools[2]"
+	//  7: EndContainer ADSName="stRoot"
+	if len(actions) != 8 {
+		t.Fatalf("expected 8 actions, got %d: %+v", len(actions), actions)
+	}
+	if actions[1].ADSName != "stRoot.aPools[1]" {
+		t.Errorf("actions[1].ADSName = %q, want %q", actions[1].ADSName, "stRoot.aPools[1]")
+	}
+	if actions[4].ADSName != "stRoot.aPools[2]" {
+		t.Errorf("actions[4].ADSName = %q, want %q", actions[4].ADSName, "stRoot.aPools[2]")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ContainerAccessor tests
+// ---------------------------------------------------------------------------
+
+func TestContainerAccessorReadBytes(t *testing.T) {
+	// Container with two children: a 1-byte bool at offset 0 and a 4-byte dint
+	// at offset 4 (3 bytes of implicit padding at offsets 1-3).
+	boolAcc := newStringMemAccessor(typeInfo{adsTypeName: "BOOL", adstID: 33, byteSize: 1})
+	dintAcc := newStringMemAccessor(typeInfo{adsTypeName: "DINT", adstID: 3, byteSize: 4})
+
+	_ = boolAcc.WriteBytes([]byte{1})
+	_ = dintAcc.WriteBytes([]byte{0x01, 0x02, 0x03, 0x04})
+
+	acc := &ContainerAccessor{
+		children: []containerChild{
+			{relativeOffset: 0, accessor: boolAcc},
+			{relativeOffset: 4, accessor: dintAcc},
+		},
+		size:     8,
+		typeName: "ST_FOO",
+	}
+
+	data, err := acc.ReadBytes()
+	if err != nil {
+		t.Fatalf("ReadBytes error: %v", err)
+	}
+	if len(data) != 8 {
+		t.Fatalf("ReadBytes length = %d, want 8", len(data))
+	}
+	if data[0] != 1 {
+		t.Errorf("data[0] = %d, want 1 (bool)", data[0])
+	}
+	// Padding bytes 1-3 should be zero.
+	for i := 1; i < 4; i++ {
+		if data[i] != 0 {
+			t.Errorf("data[%d] = %d, want 0 (padding)", i, data[i])
+		}
+	}
+	if data[4] != 0x01 || data[5] != 0x02 || data[6] != 0x03 || data[7] != 0x04 {
+		t.Errorf("dint bytes = %v, want [1 2 3 4]", data[4:8])
+	}
+}
+
+func TestContainerAccessorWriteBytes(t *testing.T) {
+	boolAcc := newStringMemAccessor(typeInfo{adsTypeName: "BOOL", adstID: 33, byteSize: 1})
+	dintAcc := newStringMemAccessor(typeInfo{adsTypeName: "DINT", adstID: 3, byteSize: 4})
+
+	acc := &ContainerAccessor{
+		children: []containerChild{
+			{relativeOffset: 0, accessor: boolAcc},
+			{relativeOffset: 4, accessor: dintAcc},
+		},
+		size:     8,
+		typeName: "ST_FOO",
+	}
+
+	input := []byte{0xFF, 0x00, 0x00, 0x00, 0xAA, 0xBB, 0xCC, 0xDD}
+	if err := acc.WriteBytes(input); err != nil {
+		t.Fatalf("WriteBytes error: %v", err)
+	}
+
+	boolData, _ := boolAcc.ReadBytes()
+	if boolData[0] != 0xFF {
+		t.Errorf("bool after write = %d, want 0xFF", boolData[0])
+	}
+
+	dintData, _ := dintAcc.ReadBytes()
+	if dintData[0] != 0xAA || dintData[1] != 0xBB || dintData[2] != 0xCC || dintData[3] != 0xDD {
+		t.Errorf("dint bytes = %v, want [AA BB CC DD]", dintData)
+	}
+}
+
+func TestContainerAccessorMetadata(t *testing.T) {
+	acc := &ContainerAccessor{size: 12, typeName: "ST_BAR"}
+	if acc.Size() != 12 {
+		t.Errorf("Size() = %d, want 12", acc.Size())
+	}
+	if acc.TypeName() != "ST_BAR" {
+		t.Errorf("TypeName() = %q, want %q", acc.TypeName(), "ST_BAR")
+	}
+	if acc.TypeID() != 0 {
+		t.Errorf("TypeID() = %d, want 0", acc.TypeID())
+	}
+}
+
+func TestContainerAccessorWriteTooShort(t *testing.T) {
+	acc := &ContainerAccessor{size: 8, typeName: "ST_X"}
+	err := acc.WriteBytes([]byte{1, 2, 3}) // only 3 bytes, need 8
+	if err == nil {
+		t.Error("expected error for WriteBytes with too-short data, got nil")
+	}
+}
+
+func TestContainerTypeName(t *testing.T) {
+	tests := []struct {
+		adsName  string
+		wantName string
+	}{
+		{"stRoot", "stRoot"},
+		{"stRoot.stInner", "stInner"},
+		{"stRoot.aPools[1]", "aPools"},
+		{"stRoot.stInner.stMsg", "stMsg"},
+		{"DISPLAY_DATA", "DISPLAY_DATA"},
+	}
+	for _, tc := range tests {
+		got := containerTypeName(tc.adsName)
+		if got != tc.wantName {
+			t.Errorf("containerTypeName(%q) = %q, want %q", tc.adsName, got, tc.wantName)
+		}
+	}
+}
