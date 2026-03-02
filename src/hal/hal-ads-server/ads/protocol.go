@@ -86,7 +86,7 @@ const (
 	// IdxGrpSumRead performs a batch read of multiple symbols in one round-trip (ReadWrite).
 	// indexOffset = number of sub-requests.
 	// WriteData: N × 12 bytes: IndexGroup(4) + IndexOffset(4) + Length(4).
-	// Response: N × 4 bytes error codes, then concatenated data for successful reads.
+	// Response: N × 8 bytes (errCode(4) + length(4)), then concatenated data for successful reads.
 	IdxGrpSumRead uint32 = 0x0000F080
 )
 
@@ -198,7 +198,7 @@ func (s *Server) sendAMSResponse(conn net.Conn, req *AMSHeader, cmdID uint16, er
 		TargetNetID: req.SourceNetID,
 		TargetPort:  req.SourcePort,
 		SourceNetID: s.netID,
-		SourcePort:  s.port,
+		SourcePort:  req.TargetPort,
 		CommandID:   cmdID,
 		StateFlags:  StateFlagResponse,
 		DataLength:  uint32(len(data)),

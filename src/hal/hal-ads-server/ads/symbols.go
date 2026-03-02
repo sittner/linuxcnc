@@ -272,7 +272,7 @@ func (st *SymbolTable) ReadWriteData(indexGroup, indexOffset, readLen uint32, wr
 	case IdxGrpSumRead:
 		// indexOffset = number of read sub-requests.
 		// writeData = N × 12 bytes: IndexGroup(4) + IndexOffset(4) + Length(4).
-		// Response = N × 4-byte error codes, then concatenated data for successful reads.
+		// Response = N × 8 bytes (errCode(4) + length(4)), then concatenated data for successful reads.
 		numReads := indexOffset
 		type readResult struct {
 			errCode uint32
@@ -291,8 +291,8 @@ func (st *SymbolTable) ReadWriteData(indexGroup, indexOffset, readLen uint32, wr
 			data, ec := st.ReadData(ig, io, ln)
 			results[i] = readResult{errCode: ec, data: data}
 		}
-		// Build response: all error codes first, then all data payloads.
-		totalLen := numReads * 4
+		// Build response: N × (errCode + length) header, then all data payloads.
+		totalLen := numReads * 8
 		for _, r := range results {
 			if r.errCode == ErrNoError {
 				totalLen += uint32(len(r.data))
@@ -302,6 +302,12 @@ func (st *SymbolTable) ReadWriteData(indexGroup, indexOffset, readLen uint32, wr
 		pos := 0
 		for _, r := range results {
 			binary.LittleEndian.PutUint32(resp[pos:], r.errCode)
+			pos += 4
+			dataLen := uint32(0)
+			if r.errCode == ErrNoError {
+				dataLen = uint32(len(r.data))
+			}
+			binary.LittleEndian.PutUint32(resp[pos:], dataLen)
 			pos += 4
 		}
 		for _, r := range results {
