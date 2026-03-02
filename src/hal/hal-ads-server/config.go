@@ -31,6 +31,116 @@ type ConfigPin struct {
 	TypeName string
 }
 
+// ConfigActionKind identifies the type of a ConfigAction.
+type ConfigActionKind int
+
+const (
+	// ConfigActionPin is a leaf symbol that maps to a HAL pin.
+	ConfigActionPin ConfigActionKind = 0
+	// ConfigActionBeginContainer marks the start of a struct or array-element
+	// container.  Alignment is the natural alignment of the container (max of its
+	// members' alignments).
+	ConfigActionBeginContainer ConfigActionKind = 1
+	// ConfigActionEndContainer marks the end of a struct or array-element
+	// container.  Alignment matches the corresponding ConfigActionBeginContainer.
+	ConfigActionEndContainer ConfigActionKind = 2
+)
+
+// ConfigAction is one step in the ordered sequence produced by ParseConfigActions.
+// BeginContainer / EndContainer bracket a set of ConfigActionPin entries so that
+// the symbol table can apply correct struct-start and struct-end padding.
+type ConfigAction struct {
+	// Kind identifies whether this is a leaf pin or a container boundary.
+	Kind ConfigActionKind
+	// Pin is populated for ConfigActionPin actions.
+	Pin ConfigPin
+	// Alignment is the natural alignment in bytes for this action:
+	//   ConfigActionPin:            the type's natural alignment
+	//   ConfigActionBeginContainer: the container's alignment (max of members)
+	//   ConfigActionEndContainer:   the container's alignment (same as Begin)
+	Alignment uint32
+}
+
+// alignmentForType returns the natural alignment in bytes for the given ADS type
+// name (already normalized to upper case). Unknown types default to 1.
+func alignmentForType(typeName string) uint32 {
+	if strings.HasPrefix(typeName, "STRING(") {
+		return 1
+	}
+	switch typeName {
+	case "WORD", "UINT", "INT":
+		return 2
+	case "DWORD", "UDINT", "DINT", "REAL", "TIME", "TOD", "DATE", "DT":
+		return 4
+	case "LREAL":
+		return 8
+	default:
+		// BOOL, BYTE, USINT, SINT and unrecognised types: 1-byte alignment.
+		return 1
+	}
+}
+
+// configNode is an internal tree node produced by parseBlockTree.
+type configNode interface {
+	// maxAlignment returns the natural alignment of this node
+	// (leaf: type alignment; container: max of children's alignments).
+	maxAlignment() uint32
+	// emitActions appends the corresponding ConfigActions to the slice.
+	emitActions(actions *[]ConfigAction)
+	// emitPins appends the leaf ConfigPins to the slice.
+	emitPins(pins *[]ConfigPin)
+}
+
+// configLeafNode represents a single leaf symbol in the config tree.
+type configLeafNode struct {
+	pin       ConfigPin
+	alignment uint32
+}
+
+func (n *configLeafNode) maxAlignment() uint32 { return n.alignment }
+
+func (n *configLeafNode) emitActions(actions *[]ConfigAction) {
+	*actions = append(*actions, ConfigAction{
+		Kind:      ConfigActionPin,
+		Pin:       n.pin,
+		Alignment: n.alignment,
+	})
+}
+
+func (n *configLeafNode) emitPins(pins *[]ConfigPin) {
+	*pins = append(*pins, n.pin)
+}
+
+// configContainerNode represents a struct or array-element container.
+type configContainerNode struct {
+	children []configNode
+}
+
+func (n *configContainerNode) maxAlignment() uint32 {
+	var max uint32 = 1
+	for _, child := range n.children {
+		if a := child.maxAlignment(); a > max {
+			max = a
+		}
+	}
+	return max
+}
+
+func (n *configContainerNode) emitActions(actions *[]ConfigAction) {
+	align := n.maxAlignment()
+	*actions = append(*actions, ConfigAction{Kind: ConfigActionBeginContainer, Alignment: align})
+	for _, child := range n.children {
+		child.emitActions(actions)
+	}
+	*actions = append(*actions, ConfigAction{Kind: ConfigActionEndContainer, Alignment: align})
+}
+
+func (n *configContainerNode) emitPins(pins *[]ConfigPin) {
+	for _, child := range n.children {
+		child.emitPins(pins)
+	}
+}
+
 // configLine is a pre-processed line from the config file.
 type configLine struct {
 	lineNo  int
@@ -59,17 +169,40 @@ type pathFrame struct {
 //	  ArrayName[start..end]
 //	    in leafName TYPE
 func ParseConfig(r io.Reader) ([]ConfigPin, error) {
+	actions, err := ParseConfigActions(r)
+	if err != nil {
+		return nil, err
+	}
+	var pins []ConfigPin
+	for _, a := range actions {
+		if a.Kind == ConfigActionPin {
+			pins = append(pins, a.Pin)
+		}
+	}
+	return pins, nil
+}
+
+// ParseConfigActions parses the HAL-ADS config format and returns an ordered
+// sequence of ConfigActions that describes the symbol tree with alignment
+// information.  Container boundaries are marked with ConfigActionBeginContainer
+// and ConfigActionEndContainer, each carrying the container's natural alignment
+// (the maximum natural alignment of all its members, computed recursively).
+func ParseConfigActions(r io.Reader) ([]ConfigAction, error) {
 	lines, err := readConfigLines(r)
 	if err != nil {
 		return nil, err
 	}
 	stack := []pathFrame{{halSeg: "", adsSeg: "", depth: -1}}
-	var pins []ConfigPin
 	idx := 0
-	if err := parseBlock(lines, &idx, -1, stack, &pins); err != nil {
+	nodes, err := parseBlockTree(lines, &idx, -1, stack)
+	if err != nil {
 		return nil, err
 	}
-	return pins, nil
+	var actions []ConfigAction
+	for _, node := range nodes {
+		node.emitActions(&actions)
+	}
+	return actions, nil
 }
 
 // readConfigLines reads and pre-processes all non-blank, non-comment lines.
@@ -97,20 +230,22 @@ func readConfigLines(r io.Reader) ([]configLine, error) {
 	return lines, nil
 }
 
-// parseBlock processes lines from idx up to (but not including) the first line at
-// depth <= minDepth, appending any discovered pins to *pins.
-// It advances *idx past all consumed lines.
-func parseBlock(lines []configLine, idx *int, minDepth int, stack []pathFrame, pins *[]ConfigPin) error {
+// parseBlockTree processes config lines starting at *idx, building an internal
+// tree of configNodes.  It returns all top-level nodes in this block.
+//
+//   - minDepth: lines with depth <= minDepth are left to the parent caller.
+//   - stack: current path-frame stack used for building leaf symbol paths.
+//
+// For each container (struct or array), sub-lines (those at depth > container
+// depth) are collected and processed recursively, so that alignment can be
+// computed bottom-up before emitting BeginContainer actions.
+func parseBlockTree(lines []configLine, idx *int, minDepth int, stack []pathFrame) ([]configNode, error) {
+	var nodes []configNode
+
 	for *idx < len(lines) {
 		cl := lines[*idx]
 		if cl.depth <= minDepth {
-			// This line belongs to a parent block; leave it for the caller.
-			return nil
-		}
-
-		// Pop stack frames that are deeper than or equal to current depth.
-		for len(stack) > 1 && stack[len(stack)-1].depth >= cl.depth {
-			stack = stack[:len(stack)-1]
+			return nodes, nil
 		}
 
 		tokens := strings.Fields(cl.trimmed)
@@ -122,19 +257,23 @@ func parseBlock(lines []configLine, idx *int, minDepth int, stack []pathFrame, p
 		// Leaf line (starts with "in" or "out").
 		if tokens[0] == "in" || tokens[0] == "out" {
 			if len(tokens) < 3 {
-				return fmt.Errorf("line %d: leaf line requires direction, name, and type", cl.lineNo)
+				return nil, fmt.Errorf("line %d: leaf line requires direction, name, and type", cl.lineNo)
 			}
 			dir := PinDir(tokens[0])
 			name := tokens[1]
 			typeName := parseTypeName(tokens[2:])
 			halPath := buildPath(stack, name, false)
 			adsName := buildPath(stack, name, true)
-			*pins = append(*pins, ConfigPin{
-				Dir:      dir,
-				HALPath:  halPath,
-				ADSName:  adsName,
-				TypeName: typeName,
-			})
+			node := &configLeafNode{
+				pin: ConfigPin{
+					Dir:      dir,
+					HALPath:  halPath,
+					ADSName:  adsName,
+					TypeName: typeName,
+				},
+				alignment: alignmentForType(typeName),
+			}
+			nodes = append(nodes, node)
 			*idx++
 			continue
 		}
@@ -142,43 +281,36 @@ func parseBlock(lines []configLine, idx *int, minDepth int, stack []pathFrame, p
 		// Container line: plain struct or array.
 		expanded, err := expandContainer(tokens[0])
 		if err != nil {
-			return fmt.Errorf("line %d: %w", cl.lineNo, err)
+			return nil, fmt.Errorf("line %d: %w", cl.lineNo, err)
 		}
 
-		*idx++ // consume this container line
+		*idx++ // consume container line
 
-		if len(expanded) == 1 {
-			// Simple struct: push a frame and continue parsing child lines.
-			stack = append(stack, pathFrame{
-				halSeg: expanded[0].halSeg,
-				adsSeg: expanded[0].adsSeg,
+		// Collect sub-block: all lines at depth > cl.depth.
+		subStart := *idx
+		for *idx < len(lines) && lines[*idx].depth > cl.depth {
+			*idx++
+		}
+		subLines := lines[subStart:*idx]
+
+		for _, inst := range expanded {
+			newStack := make([]pathFrame, len(stack))
+			copy(newStack, stack)
+			newStack = append(newStack, pathFrame{
+				halSeg: inst.halSeg,
+				adsSeg: inst.adsSeg,
 				depth:  cl.depth,
 			})
-		} else {
-			// Array: collect the sub-block indices, then expand for each instance.
-			subStart := *idx
-			// Advance idx past all lines belonging to this sub-block.
-			for *idx < len(lines) && lines[*idx].depth > cl.depth {
-				*idx++
+			subIdx := 0
+			children, err := parseBlockTree(subLines, &subIdx, cl.depth-1, newStack)
+			if err != nil {
+				return nil, err
 			}
-			subLines := lines[subStart:*idx]
-
-			for _, inst := range expanded {
-				innerStack := make([]pathFrame, len(stack))
-				copy(innerStack, stack)
-				innerStack = append(innerStack, pathFrame{
-					halSeg: inst.halSeg,
-					adsSeg: inst.adsSeg,
-					depth:  cl.depth,
-				})
-				subIdx := 0
-				if err := parseBlock(subLines, &subIdx, cl.depth-1, innerStack, pins); err != nil {
-					return err
-				}
-			}
+			nodes = append(nodes, &configContainerNode{children: children})
 		}
 	}
-	return nil
+
+	return nodes, nil
 }
 
 // containerInstance represents one element of a parsed container path.
@@ -255,4 +387,3 @@ func parseTypeName(tokens []string) string {
 	// Normalize to upper case for ADS type names.
 	return strings.ToUpper(strings.Join(tokens, ""))
 }
-

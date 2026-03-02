@@ -138,7 +138,6 @@ stROOT
 	}
 }
 
-
 func TestParseConfigInvalidArray(t *testing.T) {
 	cfg := `
 stBad[1..0]
@@ -317,5 +316,169 @@ func TestStringMemAccessorReadReturnsCopy(t *testing.T) {
 	data2, _ := acc.ReadBytes()
 	if data2[0] != 'a' {
 		t.Errorf("internal buffer modified by caller: data2[0] = %q, want 'a'", data2[0])
+	}
+}
+
+func TestParseConfigActionsSimple(t *testing.T) {
+	cfg := `
+stDISPLAY_DATA
+  out dtTime DT
+  in bFlag bool
+`
+	actions, err := ParseConfigActions(strings.NewReader(cfg))
+	if err != nil {
+		t.Fatalf("ParseConfigActions error: %v", err)
+	}
+
+	// Expected sequence: BeginContainer + 2×Pin + EndContainer
+	if len(actions) != 4 {
+		t.Fatalf("expected 4 actions, got %d: %+v", len(actions), actions)
+	}
+
+	if actions[0].Kind != ConfigActionBeginContainer {
+		t.Errorf("actions[0].Kind = %d, want BeginContainer", actions[0].Kind)
+	}
+	// stDISPLAY_DATA has DT (align 4) and BOOL (align 1) → max = 4
+	if actions[0].Alignment != 4 {
+		t.Errorf("actions[0].Alignment = %d, want 4", actions[0].Alignment)
+	}
+
+	if actions[1].Kind != ConfigActionPin {
+		t.Errorf("actions[1].Kind = %d, want Pin", actions[1].Kind)
+	}
+	if actions[1].Pin.TypeName != "DT" {
+		t.Errorf("actions[1].Pin.TypeName = %q, want DT", actions[1].Pin.TypeName)
+	}
+	if actions[1].Alignment != 4 {
+		t.Errorf("actions[1].Alignment = %d, want 4 (DT)", actions[1].Alignment)
+	}
+
+	if actions[2].Kind != ConfigActionPin {
+		t.Errorf("actions[2].Kind = %d, want Pin", actions[2].Kind)
+	}
+	if actions[2].Alignment != 1 {
+		t.Errorf("actions[2].Alignment = %d, want 1 (BOOL)", actions[2].Alignment)
+	}
+
+	if actions[3].Kind != ConfigActionEndContainer {
+		t.Errorf("actions[3].Kind = %d, want EndContainer", actions[3].Kind)
+	}
+	if actions[3].Alignment != 4 {
+		t.Errorf("actions[3].Alignment = %d, want 4", actions[3].Alignment)
+	}
+}
+
+func TestParseConfigActionsNestedStruct(t *testing.T) {
+	cfg := `
+stRoot
+  stInner
+    out fVal real
+    in bFlag bool
+  out nOuter dint
+`
+	actions, err := ParseConfigActions(strings.NewReader(cfg))
+	if err != nil {
+		t.Fatalf("ParseConfigActions error: %v", err)
+	}
+
+	// stInner: max(REAL:4, BOOL:1) = 4
+	// stRoot: max(stInner:4, DINT:4) = 4
+	// Expected:
+	//
+	//	0: BeginContainer(4)  – stRoot
+	//	1: BeginContainer(4)  – stInner
+	//	2: Pin fVal (REAL, align 4)
+	//	3: Pin bFlag (BOOL, align 1)
+	//	4: EndContainer(4)    – stInner
+	//	5: Pin nOuter (DINT, align 4)
+	//	6: EndContainer(4)    – stRoot
+	if len(actions) != 7 {
+		t.Fatalf("expected 7 actions, got %d: %+v", len(actions), actions)
+	}
+	if actions[0].Kind != ConfigActionBeginContainer || actions[0].Alignment != 4 {
+		t.Errorf("actions[0]: %+v", actions[0])
+	}
+	if actions[1].Kind != ConfigActionBeginContainer || actions[1].Alignment != 4 {
+		t.Errorf("actions[1]: %+v", actions[1])
+	}
+	if actions[4].Kind != ConfigActionEndContainer || actions[4].Alignment != 4 {
+		t.Errorf("actions[4]: %+v", actions[4])
+	}
+	if actions[5].Kind != ConfigActionPin || actions[5].Pin.TypeName != "DINT" {
+		t.Errorf("actions[5]: %+v", actions[5])
+	}
+	if actions[6].Kind != ConfigActionEndContainer || actions[6].Alignment != 4 {
+		t.Errorf("actions[6]: %+v", actions[6])
+	}
+}
+
+func TestParseConfigActionsArray(t *testing.T) {
+	cfg := `
+stRoot
+  stPool[1..2]
+    out fVal real
+    in bFlag bool
+`
+	actions, err := ParseConfigActions(strings.NewReader(cfg))
+	if err != nil {
+		t.Fatalf("ParseConfigActions error: %v", err)
+	}
+
+	// stRoot: max of two pool containers, each with max(REAL:4, BOOL:1)=4 → root align 4
+	// Expected (each pool element: BeginContainer(4) + 2 Pins + EndContainer(4)):
+	//
+	//	0: BeginContainer(4)    – stRoot
+	//	1: BeginContainer(4)    – stPool[1]
+	//	2: Pin fVal (REAL, align 4)
+	//	3: Pin bFlag (BOOL, align 1)
+	//	4: EndContainer(4)      – stPool[1]
+	//	5: BeginContainer(4)    – stPool[2]
+	//	6: Pin fVal
+	//	7: Pin bFlag
+	//	8: EndContainer(4)      – stPool[2]
+	//	9: EndContainer(4)      – stRoot
+	if len(actions) != 10 {
+		t.Fatalf("expected 10 actions, got %d: %+v", len(actions), actions)
+	}
+
+	// Check first pool instance pin name
+	if actions[2].Pin.ADSName != "stRoot.stPool[1].fVal" {
+		t.Errorf("actions[2] ADSName = %q", actions[2].Pin.ADSName)
+	}
+	// Check second pool instance pin name
+	if actions[6].Pin.ADSName != "stRoot.stPool[2].fVal" {
+		t.Errorf("actions[6] ADSName = %q", actions[6].Pin.ADSName)
+	}
+}
+
+func TestParseConfigActionsAlignmentForType(t *testing.T) {
+	tests := []struct {
+		typeName  string
+		wantAlign uint32
+	}{
+		{"BOOL", 1},
+		{"BYTE", 1},
+		{"USINT", 1},
+		{"SINT", 1},
+		{"WORD", 2},
+		{"UINT", 2},
+		{"INT", 2},
+		{"DWORD", 4},
+		{"UDINT", 4},
+		{"DINT", 4},
+		{"REAL", 4},
+		{"TIME", 4},
+		{"TOD", 4},
+		{"DATE", 4},
+		{"DT", 4},
+		{"LREAL", 8},
+		{"STRING(31)", 1},
+		{"STRING(80)", 1},
+	}
+	for _, tc := range tests {
+		got := alignmentForType(tc.typeName)
+		if got != tc.wantAlign {
+			t.Errorf("alignmentForType(%q) = %d, want %d", tc.typeName, got, tc.wantAlign)
+		}
 	}
 }

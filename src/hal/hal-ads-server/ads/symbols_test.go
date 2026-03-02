@@ -25,9 +25,9 @@ func (m *mockPin) WriteBytes(data []byte) error {
 	return nil
 }
 
-func (m *mockPin) Size() uint32    { return m.size }
+func (m *mockPin) Size() uint32     { return m.size }
 func (m *mockPin) TypeName() string { return m.typeName }
-func (m *mockPin) TypeID() uint32  { return m.typeID }
+func (m *mockPin) TypeID() uint32   { return m.typeID }
 
 func newBoolPin(val bool) *mockPin {
 	b := byte(0)
@@ -318,5 +318,335 @@ func TestSymbolTableFallbackMatching(t *testing.T) {
 	}
 	if st.GetByHandle(handle2) == nil {
 		t.Error("fallback case: handle should resolve")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Alignment helper tests
+// ---------------------------------------------------------------------------
+
+func TestAlignUp(t *testing.T) {
+	tests := []struct {
+		offset    uint32
+		alignment uint32
+		want      uint32
+	}{
+		{0, 1, 0},
+		{1, 1, 1},
+		{3, 1, 3},
+		{0, 4, 0},
+		{1, 4, 4},
+		{4, 4, 4},
+		{5, 4, 8},
+		{6, 4, 8},
+		{7, 4, 8},
+		{8, 4, 8},
+		{0, 8, 0},
+		{1, 8, 8},
+		{8, 8, 8},
+		{9, 8, 16},
+		{6, 2, 6},
+		{7, 2, 8},
+		// alignment 0 treated same as 1 (no-op)
+		{5, 0, 5},
+	}
+	for _, tc := range tests {
+		got := alignUp(tc.offset, tc.alignment)
+		if got != tc.want {
+			t.Errorf("alignUp(%d, %d) = %d, want %d", tc.offset, tc.alignment, got, tc.want)
+		}
+	}
+}
+
+func TestRegisterAligned(t *testing.T) {
+	st := NewSymbolTable()
+
+	// BOOL at offset 0 (align 1) → offset 0
+	p1 := newBoolPin(false)
+	sym1 := st.RegisterAligned("s1", p1, 1)
+	if sym1.IndexOffset != 0 {
+		t.Errorf("s1 offset = %d, want 0", sym1.IndexOffset)
+	}
+
+	// DINT at offset 1 (align 4) → padded to 4
+	p2 := newDintPin(0)
+	sym2 := st.RegisterAligned("s2", p2, 4)
+	if sym2.IndexOffset != 4 {
+		t.Errorf("s2 offset = %d, want 4 (3-byte padding after bool)", sym2.IndexOffset)
+	}
+
+	// BOOL at offset 8 (align 1) → offset 8
+	p3 := newBoolPin(false)
+	sym3 := st.RegisterAligned("s3", p3, 1)
+	if sym3.IndexOffset != 8 {
+		t.Errorf("s3 offset = %d, want 8", sym3.IndexOffset)
+	}
+
+	// WORD at offset 9 (align 2) → padded to 10
+	p4 := &mockPin{typeName: "WORD", typeID: ADSTUInt16, size: 2, data: make([]byte, 2)}
+	sym4 := st.RegisterAligned("s4", p4, 2)
+	if sym4.IndexOffset != 10 {
+		t.Errorf("s4 offset = %d, want 10 (1-byte padding)", sym4.IndexOffset)
+	}
+}
+
+func TestBeginEndContainer(t *testing.T) {
+	st := NewSymbolTable()
+
+	// BOOL at 0
+	st.RegisterAligned("bA", newBoolPin(false), 1) // offset 0, next=1
+	st.RegisterAligned("bB", newBoolPin(false), 1) // offset 1, next=2
+
+	// Enter struct with alignment 4 → pad to 4
+	st.BeginContainer(4)
+	if st.nextOffset != 4 {
+		t.Errorf("after BeginContainer(4): nextOffset = %d, want 4", st.nextOffset)
+	}
+
+	st.RegisterAligned("nVal", newDintPin(0), 4)      // offset 4, next=8
+	st.RegisterAligned("bFlag", newBoolPin(false), 1) // offset 8, next=9
+
+	// Exit struct with alignment 4 → pad 9 to 12
+	st.EndContainer(4)
+	if st.nextOffset != 12 {
+		t.Errorf("after EndContainer(4): nextOffset = %d, want 12", st.nextOffset)
+	}
+
+	// Next symbol starts at 12
+	sym := st.RegisterAligned("bNext", newBoolPin(false), 1)
+	if sym.IndexOffset != 12 {
+		t.Errorf("bNext offset = %d, want 12", sym.IndexOffset)
+	}
+}
+
+// TestGalvDisplayLayout verifies that the natural-alignment padding for the
+// DISPLAY_DATA / ST_DISP_DATA / ST_DISP_POOL hierarchy matches the expected
+// process-image offsets.  The sequence of BeginContainer / RegisterAligned /
+// EndContainer calls mirrors what NewBridge produces when processing
+// configs/galv-display.cfg via ParseConfigActions.
+func TestGalvDisplayLayout(t *testing.T) {
+	st := NewSymbolTable()
+	mk := func(size uint32) *mockPin {
+		return &mockPin{size: size, data: make([]byte, size)}
+	}
+
+	// DISPLAY_DATA container (align 4 = max of stData:4, stErrors:1)
+	st.BeginContainer(4)
+
+	// stData container (align 4 = max of DT:4, BOOLs:1, ST_DISP_POOL:4)
+	st.BeginContainer(4)
+
+	assertOffset := func(name string, sym *Symbol, want uint32) {
+		t.Helper()
+		if sym.IndexOffset != want {
+			t.Errorf("%s: IndexOffset = %d, want %d", name, sym.IndexOffset, want)
+		}
+	}
+
+	s := st.RegisterAligned("dtCurrentTime", mk(4), 4)
+	assertOffset("dtCurrentTime", s, 0)
+
+	s = st.RegisterAligned("bGlobalErr", mk(1), 1)
+	assertOffset("bGlobalErr", s, 4)
+
+	s = st.RegisterAligned("bAckErr", mk(1), 1)
+	assertOffset("bAckErr", s, 5)
+
+	// aPools[1]: ST_DISP_POOL (align 4 – has DWORD/REAL/TIME members)
+	// BeginContainer should pad offset 6 → 8
+	st.BeginContainer(4)
+	if st.nextOffset != 8 {
+		t.Errorf("aPools[1] start: nextOffset = %d, want 8 (2-byte padding)", st.nextOffset)
+	}
+
+	s = st.RegisterAligned("sPoolName", mk(32), 1) // STRING(31)
+	assertOffset("sPoolName", s, 8)
+
+	s = st.RegisterAligned("nFormulaId", mk(4), 4)
+	assertOffset("nFormulaId", s, 40)
+
+	s = st.RegisterAligned("sFormulaName", mk(32), 1) // STRING(31)
+	assertOffset("sFormulaName", s, 44)
+
+	s = st.RegisterAligned("eState", mk(2), 2) // WORD – already 2-aligned at 76
+	assertOffset("eState", s, 76)
+
+	s = st.RegisterAligned("fTemp", mk(4), 4) // REAL – pad 78 → 80
+	assertOffset("fTemp", s, 80)
+
+	// Skip to bPumpOnIdle (after fCurrent..fLeakPress + four TIME fields + four WORD fields + fTempSetpoint)
+	// fCurrent(4) fVoltage(4) fTiltPos(4) fTiltVelo(4) fSectPos(4) fSectVelo(4) fLeakPress(4) = 7×4=28
+	// tProcTimeTotal tProcTimeRem tPhaseTimeTotal tPhaseTimeRem = 4×4=16
+	// nShiftCurr nShiftCount nRepeatCurr nRepeatCount = 4×2=8
+	// fTempSetpoint = 4
+	// All start at 84; total = 28+16+8+4 = 56 bytes → next = 84+56 = 140
+	for _, size := range []uint32{4, 4, 4, 4, 4, 4, 4} { // fCurrent..fLeakPress
+		st.RegisterAligned("_", mk(size), 4)
+	}
+	for i := 0; i < 4; i++ { // four TIME fields
+		st.RegisterAligned("_", mk(4), 4)
+	}
+	for i := 0; i < 4; i++ { // four WORD fields
+		st.RegisterAligned("_", mk(2), 2)
+	}
+	st.RegisterAligned("fTempSetpoint", mk(4), 4)
+
+	s = st.RegisterAligned("bPumpOnIdle", mk(1), 1)
+	assertOffset("bPumpOnIdle", s, 140)
+
+	// tMixerTimeManual: TIME (align 4) – pad 141 → 144 (3 bytes)
+	s = st.RegisterAligned("tMixerTimeManual", mk(4), 4)
+	assertOffset("tMixerTimeManual", s, 144)
+
+	s = st.RegisterAligned("tMixerTimeAuto", mk(4), 4)
+	assertOffset("tMixerTimeAuto", s, 148)
+
+	// bManuEnable..bSectJogNeg: 7 BOOLs at 152..158
+	for i := 0; i < 7; i++ {
+		st.RegisterAligned("_", mk(1), 1)
+	}
+	// next = 159
+
+	// stMsg container (align 2 = max of WORD:2, BOOLs:1)
+	// BeginContainer should pad 159 → 160 (1 byte)
+	st.BeginContainer(2)
+	if st.nextOffset != 160 {
+		t.Errorf("stMsg start: nextOffset = %d, want 160 (1-byte padding after bSectJogNeg)", st.nextOffset)
+	}
+
+	s = st.RegisterAligned("stMsg.eType", mk(2), 2)
+	assertOffset("stMsg.eType", s, 160)
+
+	st.RegisterAligned("stMsg.bEnableOk", mk(1), 1)     // 162
+	st.RegisterAligned("stMsg.bEnableCancel", mk(1), 1) // 163
+	st.RegisterAligned("stMsg.bOk", mk(1), 1)           // 164
+	st.RegisterAligned("stMsg.bCancel", mk(1), 1)       // 165
+
+	// EndContainer(stMsg, align 2): pad 166 → 166 (already even)
+	st.EndContainer(2)
+	if st.nextOffset != 166 {
+		t.Errorf("after stMsg EndContainer: nextOffset = %d, want 166", st.nextOffset)
+	}
+
+	// aMixers[1]: ST_DISP_MIXER (align 4 = max of REAL:4, BOOL:1)
+	// BeginContainer should pad 166 → 168 (2 bytes)
+	st.BeginContainer(4)
+	if st.nextOffset != 168 {
+		t.Errorf("aMixers[1] start: nextOffset = %d, want 168 (2-byte padding after stMsg)", st.nextOffset)
+	}
+
+	s = st.RegisterAligned("aMixers[1].fPower", mk(4), 4)
+	assertOffset("aMixers[1].fPower", s, 168)
+
+	st.RegisterAligned("aMixers[1].bManu", mk(1), 1) // 172, next=173
+
+	// EndContainer(aMixers[1], align 4): pad 173 → 176 (3 bytes)
+	st.EndContainer(4)
+	if st.nextOffset != 176 {
+		t.Errorf("after aMixers[1] EndContainer: nextOffset = %d, want 176 (3-byte end padding)", st.nextOffset)
+	}
+
+	// aMixers[2..4]: each element is 8 bytes (BeginContainer+fPower+bManu+EndContainer)
+	for i := uint32(2); i <= 4; i++ {
+		base := 168 + (i-1)*8
+		st.BeginContainer(4)
+		s = st.RegisterAligned("fPower", mk(4), 4)
+		if s.IndexOffset != base {
+			t.Errorf("aMixers[%d].fPower offset = %d, want %d", i, s.IndexOffset, base)
+		}
+		st.RegisterAligned("bManu", mk(1), 1)
+		st.EndContainer(4)
+	}
+	// After aMixers[4]: nextOffset = 168 + 4*8 = 200
+
+	// EndContainer(aPools[1], align 4): 200 already aligned
+	st.EndContainer(4)
+	if st.nextOffset != 200 {
+		t.Errorf("after aPools[1] EndContainer: nextOffset = %d, want 200", st.nextOffset)
+	}
+
+	// EndContainer(stData, align 4): still 200
+	st.EndContainer(4)
+
+	// stErrors container (align 1 – all BOOL members)
+	st.BeginContainer(1)
+	if st.nextOffset != 200 {
+		t.Errorf("stErrors start: nextOffset = %d, want 200", st.nextOffset)
+	}
+
+	// stGlobalErrors (align 1, 4 BOOLs)
+	st.BeginContainer(1)
+	s = st.RegisterAligned("bEmergStop", mk(1), 1)
+	assertOffset("bEmergStop", s, 200)
+	st.RegisterAligned("bDriveSupplyErr", mk(1), 1)
+	st.RegisterAligned("bTempWarn", mk(1), 1)
+	st.RegisterAligned("bTempErr", mk(1), 1)
+	st.EndContainer(1)
+	if st.nextOffset != 204 {
+		t.Errorf("after stGlobalErrors: nextOffset = %d, want 204", st.nextOffset)
+	}
+
+	// aPoolErrors[1] (align 1, 14 BOOLs + 4×aMixerErrors)
+	st.BeginContainer(1)
+	s = st.RegisterAligned("bHeaterTempWarn", mk(1), 1)
+	assertOffset("bHeaterTempWarn", s, 204)
+
+	// 13 more pool-error BOOLs
+	for i := 0; i < 13; i++ {
+		st.RegisterAligned("_", mk(1), 1)
+	}
+	// nextOffset = 204 + 14 = 218
+
+	// aMixerErrors[1..4]: each 5 BOOLs (align 1, no end-padding)
+	s = st.RegisterAligned("_dummy_begin_check", mk(0), 1) // peek at offset
+	mixErrBase := s.IndexOffset
+	if mixErrBase != 218 {
+		t.Errorf("aMixerErrors[1] start: nextOffset = %d, want 218", mixErrBase)
+	}
+	// undo the dummy registration by just continuing (offset was 218, size 0 → still 218)
+
+	for i := uint32(1); i <= 4; i++ {
+		base := 218 + (i-1)*5
+		st.BeginContainer(1)
+		s = st.RegisterAligned("bDriveWarn", mk(1), 1)
+		if s.IndexOffset != base {
+			t.Errorf("aMixerErrors[%d].bDriveWarn offset = %d, want %d", i, s.IndexOffset, base)
+		}
+		st.RegisterAligned("bDriveErr", mk(1), 1)
+		st.RegisterAligned("bOverloadErr", mk(1), 1)
+		st.RegisterAligned("bUnderloadWarn", mk(1), 1)
+		st.RegisterAligned("bVeloErr", mk(1), 1)
+		st.EndContainer(1) // no end-padding (align 1)
+	}
+
+	st.EndContainer(1) // aPoolErrors[1]
+	st.EndContainer(1) // stErrors
+	st.EndContainer(4) // DISPLAY_DATA (align 4: pad 238 → 240)
+
+	if st.nextOffset != 240 {
+		t.Errorf("final process image size: nextOffset = %d, want 240", st.nextOffset)
+	}
+}
+
+func TestFindSymbolWithFallbackDisplayData(t *testing.T) {
+	st := NewSymbolTable()
+	st.Register("DISPLAY_DATA.stData.bGlobalErr", newBoolPin(true))
+
+	// TwinCAT HMI may query with "DISPLAY_DATA." prefix; it should be stripped.
+	handle, errCode := st.CreateHandle("DISPLAY_DATA.stData.bGlobalErr")
+	if errCode != ErrNoError {
+		t.Fatalf("exact match failed: 0x%X", errCode)
+	}
+	if st.GetByHandle(handle) == nil {
+		t.Error("exact match: handle should resolve")
+	}
+
+	// display_data. prefix strip (lowercase)
+	handle2, errCode2 := st.CreateHandle("display_data.stData.bGlobalErr")
+	if errCode2 != ErrNoError {
+		t.Fatalf("display_data prefix strip failed: 0x%X", errCode2)
+	}
+	if st.GetByHandle(handle2) == nil {
+		t.Error("display_data prefix strip: handle should resolve")
 	}
 }
