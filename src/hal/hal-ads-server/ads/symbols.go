@@ -96,13 +96,16 @@ func (st *SymbolTable) BeginContainer(alignment uint32) {
 	st.nextOffset = alignUp(st.nextOffset, alignment)
 }
 
-// EndContainer pads nextOffset up to the given alignment, adding trailing
-// padding bytes at the end of a struct or array-element container so that the
-// next container or symbol starts on the correct boundary.
-func (st *SymbolTable) EndContainer(alignment uint32) {
+// EndContainer pads nextOffset so that the container's size (measured from
+// startOffset) is a multiple of alignment, adding trailing padding bytes at
+// the end of a struct or array-element container.  Using the element size
+// rather than the absolute offset ensures that array elements with the correct
+// stride even when the container start is not itself a multiple of alignment.
+func (st *SymbolTable) EndContainer(startOffset, alignment uint32) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
-	st.nextOffset = alignUp(st.nextOffset, alignment)
+	size := st.nextOffset - startOffset
+	st.nextOffset = startOffset + alignUp(size, alignment)
 }
 
 // CurrentOffset returns the current process-image offset (the next byte to be assigned).

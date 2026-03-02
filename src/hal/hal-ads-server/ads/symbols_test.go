@@ -405,15 +405,16 @@ func TestBeginEndContainer(t *testing.T) {
 
 	// Enter struct with alignment 4 → pad to 4
 	st.BeginContainer(4)
-	if st.nextOffset != 4 {
-		t.Errorf("after BeginContainer(4): nextOffset = %d, want 4", st.nextOffset)
+	containerStart := st.CurrentOffset() // = 4 after alignment bump
+	if containerStart != 4 {
+		t.Errorf("after BeginContainer(4): nextOffset = %d, want 4", containerStart)
 	}
 
 	st.RegisterAligned("nVal", newDintPin(0), 4)      // offset 4, next=8
 	st.RegisterAligned("bFlag", newBoolPin(false), 1) // offset 8, next=9
 
-	// Exit struct with alignment 4 → pad 9 to 12
-	st.EndContainer(4)
+	// Exit struct with alignment 4: element size = 9-4 = 5, alignUp(5,4) = 8 → next=12
+	st.EndContainer(containerStart, 4)
 	if st.nextOffset != 12 {
 		t.Errorf("after EndContainer(4): nextOffset = %d, want 12", st.nextOffset)
 	}
@@ -430,17 +431,25 @@ func TestBeginEndContainer(t *testing.T) {
 // process-image offsets.  The sequence of BeginContainer / RegisterAligned /
 // EndContainer calls mirrors what NewBridge produces when processing
 // configs/galv-display.cfg via ParseConfigActions.
+//
+// With TwinCAT pack_mode=3 parent-alignment propagation, all-BOOL containers
+// (own alignment=1) that are nested inside a parent with higher alignment
+// inherit that parent's alignment for struct-end padding.  This gives
+// aMixerErrors elements a stride of 8 bytes (5 BOOLs + 3 padding) rather than
+// the incorrect 5-byte stride the server produced before this fix.
 func TestGalvDisplayLayout(t *testing.T) {
 	st := NewSymbolTable()
 	mk := func(size uint32) *mockPin {
 		return &mockPin{size: size, data: make([]byte, size)}
 	}
 
-	// DISPLAY_DATA container (align 4 = max of stData:4, stErrors:1)
+	// DISPLAY_DATA container (own align 4 = max of stData:4, stErrors:1)
 	st.BeginContainer(4)
+	displayDataStart := st.CurrentOffset() // = 0
 
-	// stData container (align 4 = max of DT:4, BOOLs:1, ST_DISP_POOL:4)
+	// stData container (own align 4 = max of DT:4, BOOLs:1, ST_DISP_POOL:4)
 	st.BeginContainer(4)
+	stDataStart := st.CurrentOffset() // = 0
 
 	assertOffset := func(name string, sym *Symbol, want uint32) {
 		t.Helper()
@@ -458,11 +467,12 @@ func TestGalvDisplayLayout(t *testing.T) {
 	s = st.RegisterAligned("bAckErr", mk(1), 1)
 	assertOffset("bAckErr", s, 5)
 
-	// aPools[1]: ST_DISP_POOL (align 4 – has DWORD/REAL/TIME members)
+	// aPools[1]: ST_DISP_POOL (own align 4 – has DWORD/REAL/TIME members)
 	// BeginContainer should pad offset 6 → 8
 	st.BeginContainer(4)
-	if st.nextOffset != 8 {
-		t.Errorf("aPools[1] start: nextOffset = %d, want 8 (2-byte padding)", st.nextOffset)
+	aPoolsStart := st.CurrentOffset() // = 8 after 2-byte padding
+	if aPoolsStart != 8 {
+		t.Errorf("aPools[1] start: nextOffset = %d, want 8 (2-byte padding)", aPoolsStart)
 	}
 
 	s = st.RegisterAligned("sPoolName", mk(32), 1) // STRING(31)
@@ -513,11 +523,12 @@ func TestGalvDisplayLayout(t *testing.T) {
 	}
 	// next = 159
 
-	// stMsg container (align 2 = max of WORD:2, BOOLs:1)
+	// stMsg container (own align 2 = max of WORD:2, BOOLs:1)
 	// BeginContainer should pad 159 → 160 (1 byte)
 	st.BeginContainer(2)
-	if st.nextOffset != 160 {
-		t.Errorf("stMsg start: nextOffset = %d, want 160 (1-byte padding after bSectJogNeg)", st.nextOffset)
+	stMsgStart := st.CurrentOffset() // = 160 after 1-byte padding
+	if stMsgStart != 160 {
+		t.Errorf("stMsg start: nextOffset = %d, want 160 (1-byte padding after bSectJogNeg)", stMsgStart)
 	}
 
 	s = st.RegisterAligned("stMsg.eType", mk(2), 2)
@@ -528,17 +539,18 @@ func TestGalvDisplayLayout(t *testing.T) {
 	st.RegisterAligned("stMsg.bOk", mk(1), 1)           // 164
 	st.RegisterAligned("stMsg.bCancel", mk(1), 1)       // 165
 
-	// EndContainer(stMsg, align 2): pad 166 → 166 (already even)
-	st.EndContainer(2)
+	// EndContainer(stMsg): own align=2, size=6, alignUp(6,2)=6 → next=166 (no padding)
+	st.EndContainer(stMsgStart, 2)
 	if st.nextOffset != 166 {
 		t.Errorf("after stMsg EndContainer: nextOffset = %d, want 166", st.nextOffset)
 	}
 
-	// aMixers[1]: ST_DISP_MIXER (align 4 = max of REAL:4, BOOL:1)
+	// aMixers[1]: ST_DISP_MIXER (own align 4 = max of REAL:4, BOOL:1)
 	// BeginContainer should pad 166 → 168 (2 bytes)
 	st.BeginContainer(4)
-	if st.nextOffset != 168 {
-		t.Errorf("aMixers[1] start: nextOffset = %d, want 168 (2-byte padding after stMsg)", st.nextOffset)
+	aMixers1Start := st.CurrentOffset() // = 168 after 2-byte padding
+	if aMixers1Start != 168 {
+		t.Errorf("aMixers[1] start: nextOffset = %d, want 168 (2-byte padding after stMsg)", aMixers1Start)
 	}
 
 	s = st.RegisterAligned("aMixers[1].fPower", mk(4), 4)
@@ -546,8 +558,8 @@ func TestGalvDisplayLayout(t *testing.T) {
 
 	st.RegisterAligned("aMixers[1].bManu", mk(1), 1) // 172, next=173
 
-	// EndContainer(aMixers[1], align 4): pad 173 → 176 (3 bytes)
-	st.EndContainer(4)
+	// EndContainer(aMixers[1]): own align=4, size=5, alignUp(5,4)=8 → next=176 (3-byte padding)
+	st.EndContainer(aMixers1Start, 4)
 	if st.nextOffset != 176 {
 		t.Errorf("after aMixers[1] EndContainer: nextOffset = %d, want 176 (3-byte end padding)", st.nextOffset)
 	}
@@ -556,44 +568,49 @@ func TestGalvDisplayLayout(t *testing.T) {
 	for i := uint32(2); i <= 4; i++ {
 		base := 168 + (i-1)*8
 		st.BeginContainer(4)
+		mixerStart := st.CurrentOffset()
 		s = st.RegisterAligned("fPower", mk(4), 4)
 		if s.IndexOffset != base {
 			t.Errorf("aMixers[%d].fPower offset = %d, want %d", i, s.IndexOffset, base)
 		}
 		st.RegisterAligned("bManu", mk(1), 1)
-		st.EndContainer(4)
+		st.EndContainer(mixerStart, 4)
 	}
 	// After aMixers[4]: nextOffset = 168 + 4*8 = 200
 
-	// EndContainer(aPools[1], align 4): 200 already aligned
-	st.EndContainer(4)
+	// EndContainer(aPools[1]): own align=4, size=200-8=192, alignUp(192,4)=192 → 200 (already aligned)
+	st.EndContainer(aPoolsStart, 4)
 	if st.nextOffset != 200 {
 		t.Errorf("after aPools[1] EndContainer: nextOffset = %d, want 200", st.nextOffset)
 	}
 
-	// EndContainer(stData, align 4): still 200
-	st.EndContainer(4)
+	// EndContainer(stData): own align=4, size=200, alignUp(200,4)=200 → still 200
+	st.EndContainer(stDataStart, 4)
 
-	// stErrors container (align 1 – all BOOL members)
+	// stErrors container (own align 1 – all BOOL members; effective align=4 from DISPLAY_DATA)
 	st.BeginContainer(1)
-	if st.nextOffset != 200 {
-		t.Errorf("stErrors start: nextOffset = %d, want 200", st.nextOffset)
+	stErrorsStart := st.CurrentOffset() // = 200 (BeginContainer(1) is a no-op)
+	if stErrorsStart != 200 {
+		t.Errorf("stErrors start: nextOffset = %d, want 200", stErrorsStart)
 	}
 
-	// stGlobalErrors (align 1, 4 BOOLs)
+	// stGlobalErrors (own align 1, 4 BOOLs; effective align=4 from parent)
 	st.BeginContainer(1)
+	stGlobalErrStart := st.CurrentOffset() // = 200
 	s = st.RegisterAligned("bEmergStop", mk(1), 1)
 	assertOffset("bEmergStop", s, 200)
 	st.RegisterAligned("bDriveSupplyErr", mk(1), 1)
 	st.RegisterAligned("bTempWarn", mk(1), 1)
 	st.RegisterAligned("bTempErr", mk(1), 1)
-	st.EndContainer(1)
+	// EndContainer(stGlobalErrors): own align=1, effective=4 (from parent); size=4, alignUp(4,4)=4 → no padding
+	st.EndContainer(stGlobalErrStart, 4)
 	if st.nextOffset != 204 {
 		t.Errorf("after stGlobalErrors: nextOffset = %d, want 204", st.nextOffset)
 	}
 
-	// aPoolErrors[1] (align 1, 14 BOOLs + 4×aMixerErrors)
+	// aPoolErrors[1] (own align 1, 14 BOOLs + 4×aMixerErrors; effective align=4 from parent)
 	st.BeginContainer(1)
+	aPoolErrStart := st.CurrentOffset() // = 204
 	s = st.RegisterAligned("bHeaterTempWarn", mk(1), 1)
 	assertOffset("bHeaterTempWarn", s, 204)
 
@@ -603,17 +620,16 @@ func TestGalvDisplayLayout(t *testing.T) {
 	}
 	// nextOffset = 204 + 14 = 218
 
-	// aMixerErrors[1..4]: each 5 BOOLs (align 1, no end-padding)
-	s = st.RegisterAligned("_dummy_begin_check", mk(0), 1) // peek at offset
-	mixErrBase := s.IndexOffset
-	if mixErrBase != 218 {
-		t.Errorf("aMixerErrors[1] start: nextOffset = %d, want 218", mixErrBase)
+	// aMixerErrors[1..4]: each 5 BOOLs, padded to 8 bytes (effective alignment=4 from parent)
+	// Stride = alignUp(5, 4) = 8 even though the container start is not 4-aligned.
+	if st.CurrentOffset() != 218 {
+		t.Errorf("aMixerErrors[1] start: nextOffset = %d, want 218", st.CurrentOffset())
 	}
-	// undo the dummy registration by just continuing (offset was 218, size 0 → still 218)
 
 	for i := uint32(1); i <= 4; i++ {
-		base := 218 + (i-1)*5
-		st.BeginContainer(1)
+		base := 218 + (i-1)*8 // stride 8 (5 BOOLs + 3 bytes trailing padding)
+		mixErrStart := st.CurrentOffset()
+		st.BeginContainer(1) // own align=1: no alignment bump at start
 		s = st.RegisterAligned("bDriveWarn", mk(1), 1)
 		if s.IndexOffset != base {
 			t.Errorf("aMixerErrors[%d].bDriveWarn offset = %d, want %d", i, s.IndexOffset, base)
@@ -622,15 +638,28 @@ func TestGalvDisplayLayout(t *testing.T) {
 		st.RegisterAligned("bOverloadErr", mk(1), 1)
 		st.RegisterAligned("bUnderloadWarn", mk(1), 1)
 		st.RegisterAligned("bVeloErr", mk(1), 1)
-		st.EndContainer(1) // no end-padding (align 1)
+		// EndContainer: effective align=4 (inherited from parent), size=5, alignUp(5,4)=8
+		st.EndContainer(mixErrStart, 4)
+	}
+	// After aMixerErrors[4]: nextOffset = 218 + 4*8 = 250
+
+	// EndContainer(aPoolErrors[1]): effective align=4, size=250-204=46, alignUp(46,4)=48 → next=252
+	st.EndContainer(aPoolErrStart, 4)
+	if st.nextOffset != 252 {
+		t.Errorf("after aPoolErrors[1] EndContainer: nextOffset = %d, want 252", st.nextOffset)
 	}
 
-	st.EndContainer(1) // aPoolErrors[1]
-	st.EndContainer(1) // stErrors
-	st.EndContainer(4) // DISPLAY_DATA (align 4: pad 238 → 240)
+	// EndContainer(stErrors): effective align=4, size=252-200=52, alignUp(52,4)=52 → next=252
+	st.EndContainer(stErrorsStart, 4)
+	if st.nextOffset != 252 {
+		t.Errorf("after stErrors EndContainer: nextOffset = %d, want 252", st.nextOffset)
+	}
 
-	if st.nextOffset != 240 {
-		t.Errorf("final process image size: nextOffset = %d, want 240", st.nextOffset)
+	// EndContainer(DISPLAY_DATA): own align=4, size=252, alignUp(252,4)=252 → no change
+	st.EndContainer(displayDataStart, 4)
+
+	if st.nextOffset != 252 {
+		t.Errorf("final process image size: nextOffset = %d, want 252", st.nextOffset)
 	}
 }
 
@@ -724,8 +753,9 @@ func TestRegisterContainerSymbolInfoByName(t *testing.T) {
 	// Verify that SymbolInfoByName (compact form) works for a registered container.
 	st := NewSymbolTable()
 	st.BeginContainer(4)
+	containerStart := st.CurrentOffset()               // = 0
 	st.RegisterAligned("stFoo.nVal", newDintPin(0), 4) // offset 0, size 4
-	st.EndContainer(4)
+	st.EndContainer(containerStart, 4)
 	cont := newContainerPin(4)
 	st.RegisterContainer("stFoo", cont, 0)
 

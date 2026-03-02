@@ -550,6 +550,135 @@ stRoot
 	}
 }
 
+// TestParseConfigActionsParentAlignmentPropagation verifies that all-BOOL
+// containers (own alignment == 1) inherit the enclosing container's effective
+// alignment for their EndContainer alignment value, matching TwinCAT pack_mode=3
+// behaviour where struct-end padding is determined by the parent context.
+func TestParseConfigActionsParentAlignmentPropagation(t *testing.T) {
+	cfg := `
+stRoot
+  out fVal real
+  stBoolOnly
+    out bA bool
+    out bB bool
+  stWithWord
+    out eType word
+    out bFlag bool
+`
+	actions, err := ParseConfigActions(strings.NewReader(cfg))
+	if err != nil {
+		t.Fatalf("ParseConfigActions error: %v", err)
+	}
+
+	// stRoot: own=4 (REAL), parent=1 → effective=4.
+	// stBoolOnly: own=1 (all BOOLs), parent=4 → effective=4 (propagated).
+	// stWithWord: own=2 (WORD), parent=4 → effective=2 (own > 1, no propagation).
+	//
+	// Expected action sequence:
+	//  0: BeginContainer(4)   – stRoot
+	//  1: Pin fVal REAL
+	//  2: BeginContainer(1)   – stBoolOnly (own align=1)
+	//  3: Pin bA
+	//  4: Pin bB
+	//  5: EndContainer(4)     – stBoolOnly (effective=4, inherited from stRoot)
+	//  6: BeginContainer(2)   – stWithWord (own align=2)
+	//  7: Pin eType
+	//  8: Pin bFlag
+	//  9: EndContainer(2)     – stWithWord (effective=2, own > 1 → no propagation)
+	// 10: EndContainer(4)     – stRoot
+	if len(actions) != 11 {
+		t.Fatalf("expected 11 actions, got %d: %+v", len(actions), actions)
+	}
+
+	// stRoot BeginContainer
+	if actions[0].Kind != ConfigActionBeginContainer || actions[0].Alignment != 4 {
+		t.Errorf("actions[0] (stRoot Begin): %+v", actions[0])
+	}
+
+	// stBoolOnly BeginContainer uses own alignment (1)
+	if actions[2].Kind != ConfigActionBeginContainer || actions[2].Alignment != 1 {
+		t.Errorf("actions[2] (stBoolOnly Begin): want BeginContainer(1), got %+v", actions[2])
+	}
+
+	// stBoolOnly EndContainer inherits parent alignment (4)
+	if actions[5].Kind != ConfigActionEndContainer || actions[5].Alignment != 4 {
+		t.Errorf("actions[5] (stBoolOnly End): want EndContainer(4), got %+v", actions[5])
+	}
+
+	// stWithWord BeginContainer uses own alignment (2)
+	if actions[6].Kind != ConfigActionBeginContainer || actions[6].Alignment != 2 {
+		t.Errorf("actions[6] (stWithWord Begin): want BeginContainer(2), got %+v", actions[6])
+	}
+
+	// stWithWord EndContainer uses own alignment (2), NOT propagated parent (4)
+	if actions[9].Kind != ConfigActionEndContainer || actions[9].Alignment != 2 {
+		t.Errorf("actions[9] (stWithWord End): want EndContainer(2), got %+v", actions[9])
+	}
+
+	// stRoot EndContainer
+	if actions[10].Kind != ConfigActionEndContainer || actions[10].Alignment != 4 {
+		t.Errorf("actions[10] (stRoot End): %+v", actions[10])
+	}
+}
+
+// TestParseConfigActionsAllBoolArrayInHigherAlignParent verifies the full
+// aMixerErrors scenario from galvplc.cfg: a 5-BOOL struct used as an array
+// element inside an all-BOOL parent, inside a higher-alignment grandparent.
+// The all-BOOL containers should receive the grandparent's alignment for
+// struct-end padding, giving each element an 8-byte stride.
+func TestParseConfigActionsAllBoolArrayInHigherAlignParent(t *testing.T) {
+	cfg := `
+stRoot
+  out fVal real
+  stErrors
+    aMixerErrors[1..2]
+      out bA bool
+      out bB bool
+`
+	actions, err := ParseConfigActions(strings.NewReader(cfg))
+	if err != nil {
+		t.Fatalf("ParseConfigActions error: %v", err)
+	}
+
+	// stRoot: own=4, effective=4.  Propagates parent=4 to stErrors.
+	// stErrors: own=1, effective=4 (from stRoot).  Propagates parent=4 to aMixerErrors[i].
+	// aMixerErrors[i]: own=1, effective=4 (from stErrors).
+	//
+	//  0: BeginContainer(4)  – stRoot
+	//  1: Pin fVal
+	//  2: BeginContainer(1)  – stErrors
+	//  3: BeginContainer(1)  – aMixerErrors[1] (own=1)
+	//  4: Pin bA
+	//  5: Pin bB
+	//  6: EndContainer(4)    – aMixerErrors[1] (effective=4, inherited)
+	//  7: BeginContainer(1)  – aMixerErrors[2]
+	//  8: Pin bA
+	//  9: Pin bB
+	// 10: EndContainer(4)    – aMixerErrors[2]
+	// 11: EndContainer(4)    – stErrors
+	// 12: EndContainer(4)    – stRoot
+	if len(actions) != 13 {
+		t.Fatalf("expected 13 actions, got %d: %+v", len(actions), actions)
+	}
+
+	// aMixerErrors[1] Begin: own alignment = 1
+	if actions[3].Kind != ConfigActionBeginContainer || actions[3].Alignment != 1 {
+		t.Errorf("actions[3] (aMixerErrors[1] Begin): want BeginContainer(1), got %+v", actions[3])
+	}
+	// aMixerErrors[1] End: effective alignment = 4 (propagated from stRoot)
+	if actions[6].Kind != ConfigActionEndContainer || actions[6].Alignment != 4 {
+		t.Errorf("actions[6] (aMixerErrors[1] End): want EndContainer(4), got %+v", actions[6])
+	}
+	// aMixerErrors[2] End: same
+	if actions[10].Kind != ConfigActionEndContainer || actions[10].Alignment != 4 {
+		t.Errorf("actions[10] (aMixerErrors[2] End): want EndContainer(4), got %+v", actions[10])
+	}
+	// stErrors End: effective = 4
+	if actions[11].Kind != ConfigActionEndContainer || actions[11].Alignment != 4 {
+		t.Errorf("actions[11] (stErrors End): want EndContainer(4), got %+v", actions[11])
+	}
+}
+
 // ---------------------------------------------------------------------------
 // ContainerAccessor tests
 // ---------------------------------------------------------------------------

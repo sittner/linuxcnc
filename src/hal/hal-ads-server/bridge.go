@@ -357,10 +357,11 @@ func NewBridge(comp *hal.Component, actions []ConfigAction, st *ads.SymbolTable)
 			})
 
 		case ConfigActionEndContainer:
-			st.EndContainer(action.Alignment)
 			if len(containerStack) > 0 {
 				frame := containerStack[len(containerStack)-1]
 				containerStack = containerStack[:len(containerStack)-1]
+
+				st.EndContainer(frame.startOffset, action.Alignment)
 
 				size := st.CurrentOffset() - frame.startOffset
 				acc := &ContainerAccessor{

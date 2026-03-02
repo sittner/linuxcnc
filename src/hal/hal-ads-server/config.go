@@ -90,7 +90,11 @@ type configNode interface {
 	// (leaf: type alignment; container: max of children's alignments).
 	maxAlignment() uint32
 	// emitActions appends the corresponding ConfigActions to the slice.
-	emitActions(actions *[]ConfigAction)
+	// parentAlignment is the effective alignment of the enclosing container;
+	// it is propagated into all-byte-aligned (own alignment == 1) child
+	// containers so their trailing padding matches TwinCAT's pack_mode=3
+	// behavior.
+	emitActions(actions *[]ConfigAction, parentAlignment uint32)
 	// emitPins appends the leaf ConfigPins to the slice.
 	emitPins(pins *[]ConfigPin)
 }
@@ -103,7 +107,7 @@ type configLeafNode struct {
 
 func (n *configLeafNode) maxAlignment() uint32 { return n.alignment }
 
-func (n *configLeafNode) emitActions(actions *[]ConfigAction) {
+func (n *configLeafNode) emitActions(actions *[]ConfigAction, _ uint32) {
 	*actions = append(*actions, ConfigAction{
 		Kind:      ConfigActionPin,
 		Pin:       n.pin,
@@ -131,13 +135,22 @@ func (n *configContainerNode) maxAlignment() uint32 {
 	return max
 }
 
-func (n *configContainerNode) emitActions(actions *[]ConfigAction) {
-	align := n.maxAlignment()
-	*actions = append(*actions, ConfigAction{Kind: ConfigActionBeginContainer, Alignment: align, ADSName: n.adsName})
-	for _, child := range n.children {
-		child.emitActions(actions)
+func (n *configContainerNode) emitActions(actions *[]ConfigAction, parentAlignment uint32) {
+	ownAlignment := n.maxAlignment()
+	// TwinCAT pack_mode=3 (default 8-byte pack boundary): when a struct has
+	// only byte-aligned members (own alignment == 1) it inherits the enclosing
+	// container's effective alignment for trailing padding.  Structs with own
+	// alignment > 1 use their own alignment (e.g. a struct containing WORD or
+	// REAL is padded to a multiple of 2 or 4 respectively).
+	effectiveAlignment := ownAlignment
+	if ownAlignment == 1 && parentAlignment > 1 {
+		effectiveAlignment = parentAlignment
 	}
-	*actions = append(*actions, ConfigAction{Kind: ConfigActionEndContainer, Alignment: align, ADSName: n.adsName})
+	*actions = append(*actions, ConfigAction{Kind: ConfigActionBeginContainer, Alignment: ownAlignment, ADSName: n.adsName})
+	for _, child := range n.children {
+		child.emitActions(actions, effectiveAlignment)
+	}
+	*actions = append(*actions, ConfigAction{Kind: ConfigActionEndContainer, Alignment: effectiveAlignment, ADSName: n.adsName})
 }
 
 func (n *configContainerNode) emitPins(pins *[]ConfigPin) {
@@ -205,7 +218,7 @@ func ParseConfigActions(r io.Reader) ([]ConfigAction, error) {
 	}
 	var actions []ConfigAction
 	for _, node := range nodes {
-		node.emitActions(&actions)
+		node.emitActions(&actions, 1)
 	}
 	return actions, nil
 }
