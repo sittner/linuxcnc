@@ -55,6 +55,56 @@ func NewSymbolTable() *SymbolTable {
 	}
 }
 
+// alignUp rounds offset up to the nearest multiple of alignment.
+// alignment must be a non-zero power of two; if alignment is 0 or 1 the offset
+// is returned unchanged.
+func alignUp(offset, alignment uint32) uint32 {
+	if alignment <= 1 {
+		return offset
+	}
+	return (offset + alignment - 1) &^ (alignment - 1)
+}
+
+// RegisterAligned adds a symbol to the table, first padding nextOffset to the
+// given alignment boundary.  Use this in preference to Register when the symbol
+// has a natural alignment requirement (e.g. WORD → 2, DWORD/REAL → 4, LREAL → 8).
+func (st *SymbolTable) RegisterAligned(name string, acc PinAccessor, alignment uint32) *Symbol {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+
+	st.nextOffset = alignUp(st.nextOffset, alignment)
+	sym := &Symbol{
+		Name:        name,
+		IndexGroup:  IdxGrpProcessImageRW,
+		IndexOffset: st.nextOffset,
+		Accessor:    acc,
+	}
+	st.nextOffset += acc.Size()
+	st.byName[name] = sym
+	st.byOffset[sym.IndexOffset] = sym
+	st.symbolOrder = append(st.symbolOrder, sym)
+	return sym
+}
+
+// BeginContainer aligns nextOffset to the given alignment, marking the start of
+// a struct or array-element container in the process image.  The alignment
+// should be the maximum natural alignment of all members of the container
+// (computed recursively for nested structs).
+func (st *SymbolTable) BeginContainer(alignment uint32) {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	st.nextOffset = alignUp(st.nextOffset, alignment)
+}
+
+// EndContainer pads nextOffset up to the given alignment, adding trailing
+// padding bytes at the end of a struct or array-element container so that the
+// next container or symbol starts on the correct boundary.
+func (st *SymbolTable) EndContainer(alignment uint32) {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	st.nextOffset = alignUp(st.nextOffset, alignment)
+}
+
 // Register adds a symbol to the table. The symbol's IndexGroup is set to
 // IdxGrpProcessImageRW and IndexOffset is assigned automatically.
 func (st *SymbolTable) Register(name string, acc PinAccessor) *Symbol {
@@ -385,7 +435,7 @@ func (st *SymbolTable) findSymbolWithFallback(name string) *Symbol {
 	// Strip common PLC namespace prefixes (match case-insensitively so "GVL.",
 	// "gvl.", etc. all work).
 	nameLower := strings.ToLower(name)
-	for _, prefix := range []string{"gvl.", "main.", "plc."} {
+	for _, prefix := range []string{"gvl.", "main.", "plc.", "display_data."} {
 		if strings.HasPrefix(nameLower, prefix) {
 			stripped := name[len(prefix):]
 			if sym := st.byName[stripped]; sym != nil {

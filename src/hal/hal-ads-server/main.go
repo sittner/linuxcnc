@@ -53,16 +53,22 @@ func main() {
 	if err != nil {
 		log.Fatalf("Cannot open config file %q: %v", configFile, err)
 	}
-	configPins, err := ParseConfig(f)
+	configActions, err := ParseConfigActions(f)
 	f.Close()
 	if err != nil {
 		log.Fatalf("Config parse error: %v", err)
 	}
 
-	if len(configPins) == 0 {
+	pinCount := 0
+	for _, a := range configActions {
+		if a.Kind == ConfigActionPin {
+			pinCount++
+		}
+	}
+	if pinCount == 0 {
 		log.Fatalf("Config file %q defines no pins", configFile)
 	}
-	log.Printf("Loaded %d symbol(s) from %s", len(configPins), configFile)
+	log.Printf("Loaded %d symbol(s) from %s", pinCount, configFile)
 
 	// Create HAL component.
 	comp, err := hal.NewComponent(*name)
@@ -73,7 +79,7 @@ func main() {
 
 	// Build symbol table and HAL pins.
 	st := ads.NewSymbolTable()
-	if _, err := NewBridge(comp, configPins, st); err != nil {
+	if _, err := NewBridge(comp, configActions, st); err != nil {
 		log.Fatalf("Failed to create HAL pins: %v", err)
 	}
 
@@ -81,7 +87,7 @@ func main() {
 	if err := comp.Ready(); err != nil {
 		log.Fatalf("Failed to mark component ready: %v", err)
 	}
-	log.Printf("HAL component %q ready with %d pin(s)", *name, len(configPins))
+	log.Printf("HAL component %q ready with %d pin(s)", *name, pinCount)
 
 	// Start ADS TCP server.
 	addr := *bind + ":" + strconv.Itoa(*port)
