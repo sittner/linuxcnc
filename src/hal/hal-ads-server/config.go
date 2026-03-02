@@ -59,6 +59,10 @@ type ConfigAction struct {
 	//   ConfigActionBeginContainer: the container's alignment (max of members)
 	//   ConfigActionEndContainer:   the container's alignment (same as Begin)
 	Alignment uint32
+	// ADSName is the full ADS name of the container, populated for
+	// ConfigActionBeginContainer and ConfigActionEndContainer actions.
+	// Example: "DISPLAY_DATA.stData.aPools[1].stMsg"
+	ADSName string
 }
 
 // alignmentForType returns the natural alignment in bytes for the given ADS type
@@ -113,6 +117,7 @@ func (n *configLeafNode) emitPins(pins *[]ConfigPin) {
 
 // configContainerNode represents a struct or array-element container.
 type configContainerNode struct {
+	adsName  string // full ADS symbol name for this container, e.g. "DISPLAY_DATA.stData.aPools[1]" for array elements or "DISPLAY_DATA.stData" for structs
 	children []configNode
 }
 
@@ -128,11 +133,11 @@ func (n *configContainerNode) maxAlignment() uint32 {
 
 func (n *configContainerNode) emitActions(actions *[]ConfigAction) {
 	align := n.maxAlignment()
-	*actions = append(*actions, ConfigAction{Kind: ConfigActionBeginContainer, Alignment: align})
+	*actions = append(*actions, ConfigAction{Kind: ConfigActionBeginContainer, Alignment: align, ADSName: n.adsName})
 	for _, child := range n.children {
 		child.emitActions(actions)
 	}
-	*actions = append(*actions, ConfigAction{Kind: ConfigActionEndContainer, Alignment: align})
+	*actions = append(*actions, ConfigAction{Kind: ConfigActionEndContainer, Alignment: align, ADSName: n.adsName})
 }
 
 func (n *configContainerNode) emitPins(pins *[]ConfigPin) {
@@ -301,12 +306,13 @@ func parseBlockTree(lines []configLine, idx *int, minDepth int, stack []pathFram
 				adsSeg: inst.adsSeg,
 				depth:  cl.depth,
 			})
+			containerADSName := buildPath(stack, inst.adsSeg, true)
 			subIdx := 0
 			children, err := parseBlockTree(subLines, &subIdx, cl.depth-1, newStack)
 			if err != nil {
 				return nil, err
 			}
-			nodes = append(nodes, &configContainerNode{children: children})
+			nodes = append(nodes, &configContainerNode{adsName: containerADSName, children: children})
 		}
 	}
 

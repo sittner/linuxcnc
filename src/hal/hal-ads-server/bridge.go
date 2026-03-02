@@ -251,25 +251,132 @@ func (a *stringMemAccessor) Size() uint32     { return a.ti.byteSize }
 func (a *stringMemAccessor) TypeName() string { return a.ti.adsTypeName }
 func (a *stringMemAccessor) TypeID() uint32   { return a.ti.adstID }
 
+// containerChild is one child PinAccessor within a ContainerAccessor, together
+// with its byte offset relative to the start of the container.
+type containerChild struct {
+	relativeOffset uint32
+	accessor       ads.PinAccessor
+}
+
+// ContainerAccessor implements ads.PinAccessor for a struct or array-element
+// container symbol.  ReadBytes concatenates all children at their correct
+// relative offsets (zero-padding gaps); WriteBytes distributes incoming bytes
+// to each child.
+type ContainerAccessor struct {
+	children []containerChild
+	size     uint32
+	typeName string
+}
+
+func (c *ContainerAccessor) ReadBytes() ([]byte, error) {
+	buf := make([]byte, c.size)
+	for _, ch := range c.children {
+		data, err := ch.accessor.ReadBytes()
+		if err != nil {
+			return nil, err
+		}
+		end := ch.relativeOffset + uint32(len(data))
+		if end > c.size {
+			end = c.size
+		}
+		copy(buf[ch.relativeOffset:end], data)
+	}
+	return buf, nil
+}
+
+func (c *ContainerAccessor) WriteBytes(data []byte) error {
+	if uint32(len(data)) < c.size {
+		return fmt.Errorf("container write: need %d bytes, got %d", c.size, len(data))
+	}
+	for _, ch := range c.children {
+		end := ch.relativeOffset + ch.accessor.Size()
+		if err := ch.accessor.WriteBytes(data[ch.relativeOffset:end]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *ContainerAccessor) Size() uint32     { return c.size }
+func (c *ContainerAccessor) TypeName() string { return c.typeName }
+func (c *ContainerAccessor) TypeID() uint32   { return 0 }
+
+// containerTypeName extracts a short type name from a full container ADS name.
+// E.g. "DISPLAY_DATA.stData.aPools[1]" → "aPools", "stMsg" → "stMsg".
+func containerTypeName(adsName string) string {
+	name := adsName
+	if idx := strings.LastIndex(adsName, "."); idx >= 0 {
+		name = adsName[idx+1:]
+	}
+	if idx := strings.Index(name, "["); idx >= 0 {
+		name = name[:idx]
+	}
+	return name
+}
+
 // Bridge holds all HAL pins and their corresponding ADS symbol registrations.
 type Bridge struct {
 	// pins retains references so the GC does not collect them.
 	pins []interface{}
 }
 
+// containerFrame tracks one in-progress container during NewBridge construction.
+type containerFrame struct {
+	adsName     string
+	startOffset uint32
+	children    []containerChild
+}
+
+// addChild appends acc as a direct child of the frame at the given absolute
+// process-image offset.
+func (f *containerFrame) addChild(absoluteOffset uint32, acc ads.PinAccessor) {
+	f.children = append(f.children, containerChild{
+		relativeOffset: absoluteOffset - f.startOffset,
+		accessor:       acc,
+	})
+}
+
 // NewBridge creates HAL pins for all ConfigActionPin actions and registers them
 // in the provided SymbolTable with natural-alignment padding.  Container
 // boundary actions (ConfigActionBeginContainer / ConfigActionEndContainer)
 // trigger the corresponding SymbolTable alignment calls so that struct-start and
-// struct-end padding match TwinCAT's C-style natural alignment.
+// struct-end padding match TwinCAT's C-style natural alignment.  A
+// ContainerAccessor is also registered for each container so that the TwinCAT
+// HMI can look up the container via SymbolInfoByName and read its bytes in one
+// CmdRead request.
 func NewBridge(comp *hal.Component, actions []ConfigAction, st *ads.SymbolTable) (*Bridge, error) {
 	b := &Bridge{}
+	var containerStack []containerFrame
 	for _, action := range actions {
 		switch action.Kind {
 		case ConfigActionBeginContainer:
 			st.BeginContainer(action.Alignment)
+			containerStack = append(containerStack, containerFrame{
+				adsName:     action.ADSName,
+				startOffset: st.CurrentOffset(),
+			})
+
 		case ConfigActionEndContainer:
 			st.EndContainer(action.Alignment)
+			if len(containerStack) > 0 {
+				frame := containerStack[len(containerStack)-1]
+				containerStack = containerStack[:len(containerStack)-1]
+
+				size := st.CurrentOffset() - frame.startOffset
+				acc := &ContainerAccessor{
+					children: frame.children,
+					size:     size,
+					typeName: containerTypeName(frame.adsName),
+				}
+				st.RegisterContainer(frame.adsName, acc, frame.startOffset)
+
+				// Add this container as a direct child of the parent frame (if any)
+				// so the parent can recursively read its bytes.
+				if len(containerStack) > 0 {
+					containerStack[len(containerStack)-1].addChild(frame.startOffset, acc)
+				}
+			}
+
 		case ConfigActionPin:
 			cp := action.Pin
 			ti, err := parseTypeInfo(cp.TypeName)
@@ -324,7 +431,12 @@ func NewBridge(comp *hal.Component, actions []ConfigAction, st *ads.SymbolTable)
 				return nil, fmt.Errorf("symbol %q: unsupported type %q", cp.ADSName, cp.TypeName)
 			}
 
-			st.RegisterAligned(cp.ADSName, acc, ti.alignment)
+			sym := st.RegisterAligned(cp.ADSName, acc, ti.alignment)
+
+			// Add this leaf as a direct child of the innermost container frame.
+			if len(containerStack) > 0 {
+				containerStack[len(containerStack)-1].addChild(sym.IndexOffset, acc)
+			}
 		}
 	}
 	return b, nil

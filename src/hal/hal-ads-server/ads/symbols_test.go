@@ -656,3 +656,142 @@ func TestFindSymbolWithFallbackDisplayData(t *testing.T) {
 		t.Error("display_data prefix strip: handle should resolve")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Container symbol registration tests
+// ---------------------------------------------------------------------------
+
+// mockContainerAccessor is a simple container-like PinAccessor for testing.
+type mockContainerAccessor struct {
+	size uint32
+	data []byte
+}
+
+func (m *mockContainerAccessor) ReadBytes() ([]byte, error) {
+	out := make([]byte, len(m.data))
+	copy(out, m.data)
+	return out, nil
+}
+func (m *mockContainerAccessor) WriteBytes(d []byte) error {
+	m.data = make([]byte, len(d))
+	copy(m.data, d)
+	return nil
+}
+func (m *mockContainerAccessor) Size() uint32     { return m.size }
+func (m *mockContainerAccessor) TypeName() string { return "ST_FOO" }
+func (m *mockContainerAccessor) TypeID() uint32   { return 0 }
+
+func newContainerPin(size uint32) *mockContainerAccessor {
+	return &mockContainerAccessor{size: size, data: make([]byte, size)}
+}
+
+func TestRegisterContainerDoesNotAdvanceOffset(t *testing.T) {
+	st := NewSymbolTable()
+
+	// Register a leaf at offset 0, size 4.
+	st.RegisterAligned("leaf", newDintPin(0), 4)
+	offsetAfterLeaf := st.CurrentOffset()
+	if offsetAfterLeaf != 4 {
+		t.Fatalf("offset after leaf = %d, want 4", offsetAfterLeaf)
+	}
+
+	// RegisterContainer at offset 0 with size 4 must NOT advance nextOffset.
+	st.RegisterContainer("parent", newContainerPin(4), 0)
+	if st.CurrentOffset() != offsetAfterLeaf {
+		t.Errorf("RegisterContainer advanced nextOffset to %d, want %d", st.CurrentOffset(), offsetAfterLeaf)
+	}
+}
+
+func TestRegisterContainerByName(t *testing.T) {
+	st := NewSymbolTable()
+	st.RegisterAligned("stFoo.nVal", newDintPin(42), 4)
+	cont := newContainerPin(4)
+	st.RegisterContainer("stFoo", cont, 0)
+
+	sym := st.GetByName("stFoo")
+	if sym == nil {
+		t.Fatal("RegisterContainer: GetByName returned nil")
+	}
+	if sym.IndexOffset != 0 {
+		t.Errorf("container IndexOffset = %d, want 0", sym.IndexOffset)
+	}
+	if sym.Accessor.Size() != 4 {
+		t.Errorf("container Size = %d, want 4", sym.Accessor.Size())
+	}
+}
+
+func TestRegisterContainerSymbolInfoByName(t *testing.T) {
+	// Verify that SymbolInfoByName (compact form) works for a registered container.
+	st := NewSymbolTable()
+	st.BeginContainer(4)
+	st.RegisterAligned("stFoo.nVal", newDintPin(0), 4) // offset 0, size 4
+	st.EndContainer(4)
+	cont := newContainerPin(4)
+	st.RegisterContainer("stFoo", cont, 0)
+
+	data, errCode := st.ReadWriteData(IdxGrpSymbolInfoByName, 0, 12, []byte("stFoo"))
+	if errCode != ErrNoError {
+		t.Fatalf("SymbolInfoByName error: 0x%X", errCode)
+	}
+	if len(data) != 12 {
+		t.Fatalf("expected 12 bytes, got %d", len(data))
+	}
+	ig := binary.LittleEndian.Uint32(data[0:4])
+	io := binary.LittleEndian.Uint32(data[4:8])
+	sz := binary.LittleEndian.Uint32(data[8:12])
+	if ig != IdxGrpProcessImageRW {
+		t.Errorf("IndexGroup = 0x%X, want 0x%X", ig, IdxGrpProcessImageRW)
+	}
+	if io != 0 {
+		t.Errorf("IndexOffset = %d, want 0", io)
+	}
+	if sz != 4 {
+		t.Errorf("Size = %d, want 4", sz)
+	}
+}
+
+func TestRegisterContainerReadByOffset(t *testing.T) {
+	// After RegisterContainer, reading by process image offset should return the container data.
+	st := NewSymbolTable()
+	cont := newContainerPin(8)
+	copy(cont.data, []byte{1, 2, 3, 4, 5, 6, 7, 8})
+	st.RegisterContainer("stBar", cont, 0)
+
+	data, errCode := st.ReadData(IdxGrpProcessImageRW, 0, 8)
+	if errCode != ErrNoError {
+		t.Fatalf("ReadData error: 0x%X", errCode)
+	}
+	if len(data) != 8 {
+		t.Fatalf("expected 8 bytes, got %d", len(data))
+	}
+	for i, b := range data {
+		if b != byte(i+1) {
+			t.Errorf("data[%d] = %d, want %d", i, b, i+1)
+		}
+	}
+}
+
+func TestRegisterContainerHandleByName(t *testing.T) {
+	// Container symbols must be accessible via SymbolHandleByName.
+	st := NewSymbolTable()
+	cont := newContainerPin(4)
+	copy(cont.data, []byte{0xAA, 0xBB, 0xCC, 0xDD})
+	st.RegisterContainer("stMsg", cont, 0)
+
+	handleData, errCode := st.ReadWriteData(IdxGrpSymbolHandleByName, 0, 4, []byte("stMsg\x00"))
+	if errCode != ErrNoError {
+		t.Fatalf("HandleByName error: 0x%X", errCode)
+	}
+	handle := binary.LittleEndian.Uint32(handleData)
+
+	readData, errCode := st.ReadData(IdxGrpSymbolValueByHandle, handle, 4)
+	if errCode != ErrNoError {
+		t.Fatalf("ReadData by handle error: 0x%X", errCode)
+	}
+	if len(readData) != 4 {
+		t.Fatalf("expected 4 bytes, got %d", len(readData))
+	}
+	if readData[0] != 0xAA || readData[1] != 0xBB {
+		t.Errorf("unexpected data: %v", readData)
+	}
+}
