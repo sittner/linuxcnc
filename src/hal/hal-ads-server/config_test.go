@@ -259,6 +259,89 @@ func TestExpandContainer(t *testing.T) {
 	}
 }
 
+func TestParseConfigTabIndent(t *testing.T) {
+	// Config using tab indentation — should produce identical results to 2-space version.
+	cfg := "stROOT\n\tstPOOL[1..2]\n\t\tin bReady bool\n\t\tout nCount dint\n"
+	pins, err := ParseConfig(strings.NewReader(cfg))
+	if err != nil {
+		t.Fatalf("ParseConfig error: %v", err)
+	}
+	// 2 instances × 2 pins = 4
+	if len(pins) != 4 {
+		t.Fatalf("expected 4 pins, got %d: %+v", len(pins), pins)
+	}
+	if pins[0].HALPath != "stROOT.stPOOL.1.bReady" {
+		t.Errorf("pins[0].HALPath = %q", pins[0].HALPath)
+	}
+	if pins[0].ADSName != "stROOT.stPOOL[1].bReady" {
+		t.Errorf("pins[0].ADSName = %q", pins[0].ADSName)
+	}
+	if pins[3].HALPath != "stROOT.stPOOL.2.nCount" {
+		t.Errorf("pins[3].HALPath = %q", pins[3].HALPath)
+	}
+}
+
+func TestParseConfigFourSpaceIndent(t *testing.T) {
+	cfg := `
+stDISPLAY_DATA
+    in bErrRest bool
+    out nState dint
+`
+	pins, err := ParseConfig(strings.NewReader(cfg))
+	if err != nil {
+		t.Fatalf("ParseConfig error: %v", err)
+	}
+	if len(pins) != 2 {
+		t.Fatalf("expected 2 pins, got %d", len(pins))
+	}
+	if pins[0].HALPath != "stDISPLAY_DATA.bErrRest" {
+		t.Errorf("pins[0].HALPath = %q", pins[0].HALPath)
+	}
+	if pins[1].HALPath != "stDISPLAY_DATA.nState" {
+		t.Errorf("pins[1].HALPath = %q", pins[1].HALPath)
+	}
+}
+
+func TestParseConfigSingleSpaceIndent(t *testing.T) {
+	cfg := `
+stDISPLAY_DATA
+ in bErrRest bool
+ out nState dint
+`
+	pins, err := ParseConfig(strings.NewReader(cfg))
+	if err != nil {
+		t.Fatalf("ParseConfig error: %v", err)
+	}
+	if len(pins) != 2 {
+		t.Fatalf("expected 2 pins, got %d", len(pins))
+	}
+	if pins[0].HALPath != "stDISPLAY_DATA.bErrRest" {
+		t.Errorf("pins[0].HALPath = %q", pins[0].HALPath)
+	}
+}
+
+func TestParseConfigMixedIndentError(t *testing.T) {
+	// First indented line uses spaces; second uses a tab — should error.
+	cfg := "stROOT\n  in bFlag bool\n\tin bOther bool\n"
+	_, err := ParseConfig(strings.NewReader(cfg))
+	if err == nil {
+		t.Error("expected error for mixed indent styles, got nil")
+	}
+}
+
+func TestParseConfigInconsistentIndentError(t *testing.T) {
+	// First indented line uses 2 spaces; a later line uses 3 spaces (not a multiple).
+	cfg := `
+stROOT
+  in bFlag bool
+   in bOther bool
+`
+	_, err := ParseConfig(strings.NewReader(cfg))
+	if err == nil {
+		t.Error("expected error for inconsistent indentation, got nil")
+	}
+}
+
 func TestParseTypeInfo(t *testing.T) {
 	tests := []struct {
 		typeName string

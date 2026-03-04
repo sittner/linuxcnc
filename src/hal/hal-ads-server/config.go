@@ -38,7 +38,7 @@ type ConfigPin struct {
 // configLine is a pre-processed line from the config file.
 type configLine struct {
 	lineNo  int
-	depth   int    // indent depth (1 unit = 2 spaces)
+	depth   int    // indent depth (1 unit = dynamically detected leading whitespace unit)
 	trimmed string // content without leading whitespace
 }
 
@@ -55,7 +55,7 @@ type pathFrame struct {
 // ParseConfig reads the HAL-ADS config format from r and returns the list of
 // leaf symbols to create as HAL pins.
 //
-// Format (2-space indentation):
+// Format (any consistent indentation — spaces or tabs):
 //
 //	ContainerName
 //	  in leafName TYPE
@@ -77,10 +77,15 @@ func ParseConfig(r io.Reader) ([]ConfigPin, error) {
 }
 
 // readConfigLines reads and pre-processes all non-blank, non-comment lines.
+// It auto-detects the indentation style from the first indented line and
+// validates that all subsequent indented lines use the same style consistently.
 func readConfigLines(r io.Reader) ([]configLine, error) {
 	scanner := bufio.NewScanner(r)
 	var lines []configLine
 	lineNo := 0
+	indentUnit := 0         // detected indent unit width
+	indentDetected := false // true once the first indented line has been seen
+	var indentChar byte     // detected indent character (' ' or '\t')
 	for scanner.Scan() {
 		lineNo++
 		rawLine := scanner.Text()
@@ -88,10 +93,34 @@ func readConfigLines(r io.Reader) ([]configLine, error) {
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
-		// Calculate indent depth: count leading 2-space pairs.
+		// Count leading whitespace characters.
+		wsCount := 0
+		for wsCount < len(rawLine) && (rawLine[wsCount] == ' ' || rawLine[wsCount] == '\t') {
+			wsCount++
+		}
 		depth := 0
-		for depth*2+2 <= len(rawLine) && strings.HasPrefix(rawLine[depth*2:], "  ") {
-			depth++
+		if wsCount > 0 {
+			// All leading whitespace must be the same character type.
+			lineChar := rawLine[0]
+			for i := 1; i < wsCount; i++ {
+				if rawLine[i] != lineChar {
+					return nil, fmt.Errorf("line %d: mixed tabs and spaces in indentation", lineNo)
+				}
+			}
+			if !indentDetected {
+				// Auto-detect indent style from the first indented line.
+				indentUnit = wsCount
+				indentChar = lineChar
+				indentDetected = true
+			} else if lineChar != indentChar {
+				return nil, fmt.Errorf("line %d: indentation uses %s but file uses %s",
+					lineNo, indentCharName(lineChar), indentCharName(indentChar))
+			}
+			if wsCount%indentUnit != 0 {
+				return nil, fmt.Errorf("line %d: indentation (%d chars) is not a multiple of indent unit (%d chars)",
+					lineNo, wsCount, indentUnit)
+			}
+			depth = wsCount / indentUnit
 		}
 		lines = append(lines, configLine{lineNo: lineNo, depth: depth, trimmed: trimmed})
 	}
@@ -99,6 +128,14 @@ func readConfigLines(r io.Reader) ([]configLine, error) {
 		return nil, fmt.Errorf("config read error: %w", err)
 	}
 	return lines, nil
+}
+
+// indentCharName returns a human-readable name for the given indent character.
+func indentCharName(c byte) string {
+	if c == '\t' {
+		return "tabs"
+	}
+	return "spaces"
 }
 
 // parseBlock processes lines from idx up to (but not including) the first line at
