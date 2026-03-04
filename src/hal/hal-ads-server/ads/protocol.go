@@ -29,11 +29,27 @@ func ParseAMSNetID(s string) (AMSNetID, error) {
 	if err != nil || n != 6 {
 		return AMSNetID{}, fmt.Errorf("invalid AMS Net ID %q: expected 6 dot-separated octets", s)
 	}
-	// Reject trailing garbage: reconstruct and compare
-	reconstructed := fmt.Sprintf("%d.%d.%d.%d.%d.%d",
-		parts[0], parts[1], parts[2], parts[3], parts[4], parts[5])
-	if reconstructed != s {
-		return AMSNetID{}, fmt.Errorf("invalid AMS Net ID %q: trailing characters", s)
+	// Reject trailing garbage by verifying the string only contains
+	// digits and exactly 5 dots, with no empty segments.
+	dots := 0
+	prevDot := true // start true to catch leading dot
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c == '.':
+			if prevDot {
+				return AMSNetID{}, fmt.Errorf("invalid AMS Net ID %q: empty segment", s)
+			}
+			dots++
+			prevDot = true
+		case c >= '0' && c <= '9':
+			prevDot = false
+		default:
+			return AMSNetID{}, fmt.Errorf("invalid AMS Net ID %q: invalid character %q", s, c)
+		}
+	}
+	if dots != 5 || prevDot {
+		return AMSNetID{}, fmt.Errorf("invalid AMS Net ID %q: expected 6 dot-separated octets", s)
 	}
 	var id AMSNetID
 	for i, v := range parts {

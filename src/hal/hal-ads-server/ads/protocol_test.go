@@ -15,6 +15,18 @@ func TestParseAMSNetID(t *testing.T) {
 	}{
 		{"5.80.201.232.1.1", false, AMSNetID{5, 80, 201, 232, 1, 1}},
 		{"0.0.0.0.0.0", false, AMSNetID{}},
+		// Leading zeros must be accepted.
+		{"192.168.001.099.1.1", false, AMSNetID{192, 168, 1, 99, 1, 1}},
+		{"01.02.03.04.05.06", false, AMSNetID{1, 2, 3, 4, 5, 6}},
+		// Trailing garbage must be rejected.
+		{"1.2.3.4.5.6.7", true, AMSNetID{}},
+		{"1.2.3.4.5.6 ", true, AMSNetID{}},
+		// Empty segments must be rejected.
+		{"1..2.3.4.5", true, AMSNetID{}},
+		{".1.2.3.4.5", true, AMSNetID{}},
+		{"1.2.3.4.5.", true, AMSNetID{}},
+		// Out-of-range octets must be rejected.
+		{"256.0.0.0.0.0", true, AMSNetID{}},
 		{"invalid", true, AMSNetID{}},
 	}
 	for _, tc := range tests {
