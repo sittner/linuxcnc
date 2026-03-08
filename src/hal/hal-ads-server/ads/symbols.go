@@ -6,7 +6,7 @@ import (
 	"sync"
 )
 
-// BufferIO is implemented by the Bridge. The SymbolTable calls it for actual
+// BufferIO is implemented by ProcessImage. The SymbolTable calls it for actual
 // data reads and writes to/from the process image buffer.
 type BufferIO interface {
 	// ReadBuffer syncs HAL pins in the requested range to the buffer and
@@ -49,7 +49,7 @@ type SymbolTable struct {
 	nextHandle  uint32
 	nextOffset  uint32 // next available byte offset in process image
 	symbolOrder []*Symbol
-	bufIO       BufferIO // set by Bridge via SetBufferIO
+	bufIO       BufferIO // set by ProcessImage via SetBufferIO
 }
 
 // NewSymbolTable creates an empty SymbolTable.
@@ -62,7 +62,7 @@ func NewSymbolTable() *SymbolTable {
 	}
 }
 
-// SetBufferIO registers the BufferIO implementation (provided by Bridge) that
+// SetBufferIO registers the BufferIO implementation (provided by ProcessImage) that
 // the SymbolTable will use for all process-image reads and writes.
 func (st *SymbolTable) SetBufferIO(b BufferIO) {
 	st.mu.Lock()

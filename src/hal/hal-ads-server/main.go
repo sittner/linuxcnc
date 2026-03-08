@@ -95,7 +95,7 @@ func main() {
 
 	// Build symbol table and HAL pins.
 	st := ads.NewSymbolTable()
-	if _, err := NewBridge(comp, layoutPins, st); err != nil {
+	if _, err := BuildProcessImage(comp, layoutPins, st); err != nil {
 		log.Fatalf("Failed to create HAL pins: %v", err)
 	}
 

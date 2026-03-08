@@ -23,10 +23,10 @@ type PinDescriptor struct {
 	syncGen   uint64 // last generation this pin was synced (used by ReadBuffer/WriteBuffer)
 }
 
-// Bridge owns the single global process-image buffer, the byteMap, and all
+// ProcessImage owns the single global process-image buffer, the byteMap, and all
 // HAL pins. It implements ads.BufferIO so that the SymbolTable can call back
 // for buffer reads/writes without knowing about HAL.
-type Bridge struct {
+type ProcessImage struct {
 	buf         []byte
 	byteMap     []*PinDescriptor // indexed by byte offset; nil = padding
 	descriptors []*PinDescriptor // all leaf pin descriptors
@@ -37,7 +37,7 @@ type Bridge struct {
 // It syncs all HAL pins in [offset, offset+length) to the buffer, then
 // returns the buffer slice. Callers must copy the slice if they need it beyond
 // the next ReadBuffer/WriteBuffer call.
-func (b *Bridge) ReadBuffer(offset, length uint32) ([]byte, error) {
+func (b *ProcessImage) ReadBuffer(offset, length uint32) ([]byte, error) {
 	if offset+length > uint32(len(b.buf)) {
 		return nil, fmt.Errorf("ReadBuffer: range [%d,%d) exceeds buffer size %d",
 			offset, offset+length, len(b.buf))
@@ -57,7 +57,7 @@ func (b *Bridge) ReadBuffer(offset, length uint32) ([]byte, error) {
 // WriteBuffer implements ads.BufferIO.
 // It copies data into the buffer at offset, then syncs all affected HAL pins
 // from the buffer.
-func (b *Bridge) WriteBuffer(offset uint32, data []byte) error {
+func (b *ProcessImage) WriteBuffer(offset uint32, data []byte) error {
 	if offset+uint32(len(data)) > uint32(len(b.buf)) {
 		return fmt.Errorf("WriteBuffer: range [%d,%d) exceeds buffer size %d",
 			offset, offset+uint32(len(data)), len(b.buf))
@@ -173,11 +173,11 @@ func readFromBuffer(pd *PinDescriptor, buf []byte) {
 	}
 }
 
-// NewBridge creates HAL pins for all LayoutPins and registers them in the
+// BuildProcessImage creates HAL pins for all LayoutPins and registers them in the
 // provided SymbolTable using pre-computed byte offsets from the layout.
 // Pad entries (Dir == DirPad) occupy process-image space but do not create
 // HAL pins and are not registered in the ADS symbol list.
-func NewBridge(comp *hal.Component, pins []LayoutPin, st *ads.SymbolTable) (*Bridge, error) {
+func BuildProcessImage(comp *hal.Component, pins []LayoutPin, st *ads.SymbolTable) (*ProcessImage, error) {
 	// Compute total buffer size from all pins (including pads).
 	var totalSize uint32
 	for _, cp := range pins {
@@ -186,7 +186,7 @@ func NewBridge(comp *hal.Component, pins []LayoutPin, st *ads.SymbolTable) (*Bri
 		}
 	}
 
-	b := &Bridge{
+	b := &ProcessImage{
 		buf:     make([]byte, totalSize),
 		byteMap: make([]*PinDescriptor, totalSize),
 	}
