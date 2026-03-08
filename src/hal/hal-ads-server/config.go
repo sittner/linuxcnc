@@ -229,6 +229,3 @@ func parseContainerNode(token string, lineNo int) (*Node, error) {
 	}
 	return &Node{Name: baseName, ArrayStart: start, ArrayEnd: end}, nil
 }
-
-
-
