@@ -36,8 +36,8 @@ stDISPLAY_DATA
 	if c0.Name != "bErrRest" {
 		t.Errorf("children[0].Name = %q", c0.Name)
 	}
-	if c0.TypeName != "BOOL" {
-		t.Errorf("children[0].TypeName = %q, want BOOL", c0.TypeName)
+	if c0.Type.ADSTypeName != "BOOL" {
+		t.Errorf("children[0].Type.ADSTypeName = %q, want BOOL", c0.Type.ADSTypeName)
 	}
 
 	c1 := root.Children[1]
@@ -47,8 +47,8 @@ stDISPLAY_DATA
 	if c1.Name != "nState" {
 		t.Errorf("children[1].Name = %q", c1.Name)
 	}
-	if c1.TypeName != "DINT" {
-		t.Errorf("children[1].TypeName = %q, want DINT", c1.TypeName)
+	if c1.Type.ADSTypeName != "DINT" {
+		t.Errorf("children[1].Type.ADSTypeName = %q, want DINT", c1.Type.ADSTypeName)
 	}
 }
 
@@ -102,8 +102,8 @@ stBlock
 		t.Fatalf("unexpected structure")
 	}
 	c := roots[0].Children[0]
-	if c.TypeName != "STRING(32)" {
-		t.Errorf("TypeName = %q, want STRING(32)", c.TypeName)
+	if c.Type.ADSTypeName != "STRING(32)" {
+		t.Errorf("TypeName = %q, want STRING(32)", c.Type.ADSTypeName)
 	}
 }
 
@@ -172,17 +172,17 @@ stMsg
 		t.Fatalf("expected 4 children, got %d", len(children))
 	}
 
-	if children[0].Dir != DirPad || children[0].TypeName != "BYTE" {
-		t.Errorf("children[0]: Dir=%q TypeName=%q, want pad BYTE", children[0].Dir, children[0].TypeName)
+	if children[0].Dir != DirPad || children[0].Type.ADSTypeName != "BYTE" {
+		t.Errorf("children[0]: Dir=%q TypeName=%q, want pad BYTE", children[0].Dir, children[0].Type.ADSTypeName)
 	}
-	if children[1].Dir != DirIn || children[1].TypeName != "INT" {
-		t.Errorf("children[1]: Dir=%q TypeName=%q, want in INT", children[1].Dir, children[1].TypeName)
+	if children[1].Dir != DirIn || children[1].Type.ADSTypeName != "INT" {
+		t.Errorf("children[1]: Dir=%q TypeName=%q, want in INT", children[1].Dir, children[1].Type.ADSTypeName)
 	}
-	if children[2].Dir != DirPad || children[2].TypeName != "WORD" {
-		t.Errorf("children[2]: Dir=%q TypeName=%q, want pad WORD", children[2].Dir, children[2].TypeName)
+	if children[2].Dir != DirPad || children[2].Type.ADSTypeName != "WORD" {
+		t.Errorf("children[2]: Dir=%q TypeName=%q, want pad WORD", children[2].Dir, children[2].Type.ADSTypeName)
 	}
-	if children[3].Dir != DirOut || children[3].TypeName != "REAL" {
-		t.Errorf("children[3]: Dir=%q TypeName=%q, want out REAL", children[3].Dir, children[3].TypeName)
+	if children[3].Dir != DirOut || children[3].Type.ADSTypeName != "REAL" {
+		t.Errorf("children[3]: Dir=%q TypeName=%q, want out REAL", children[3].Dir, children[3].Type.ADSTypeName)
 	}
 }
 
@@ -206,8 +206,8 @@ stBlock
 	if c0.Name != "fSetpoint" {
 		t.Errorf("children[0].Name = %q, want fSetpoint", c0.Name)
 	}
-	if c0.TypeName != "REAL" {
-		t.Errorf("children[0].TypeName = %q, want REAL", c0.TypeName)
+	if c0.Type.ADSTypeName != "REAL" {
+		t.Errorf("children[0].Type.ADSTypeName = %q, want REAL", c0.Type.ADSTypeName)
 	}
 }
 
@@ -402,7 +402,7 @@ stBlock
 	}
 }
 
-func TestParseTypeInfo(t *testing.T) {
+func TestResolveType(t *testing.T) {
 	tests := []struct {
 		typeName string
 		wantSize uint32
@@ -417,19 +417,19 @@ func TestParseTypeInfo(t *testing.T) {
 		{"UNKNOWN_TYPE", 0, true},
 	}
 	for _, tc := range tests {
-		ti, err := parseTypeInfo(tc.typeName)
+		te, _, err := resolveType(tc.typeName)
 		if tc.wantErr {
 			if err == nil {
-				t.Errorf("parseTypeInfo(%q) want error, got nil", tc.typeName)
+				t.Errorf("resolveType(%q) want error, got nil", tc.typeName)
 			}
 			continue
 		}
 		if err != nil {
-			t.Errorf("parseTypeInfo(%q) unexpected error: %v", tc.typeName, err)
+			t.Errorf("resolveType(%q) unexpected error: %v", tc.typeName, err)
 			continue
 		}
-		if ti.byteSize != tc.wantSize {
-			t.Errorf("parseTypeInfo(%q).byteSize = %d, want %d", tc.typeName, ti.byteSize, tc.wantSize)
+		if te.ByteSize != tc.wantSize {
+			t.Errorf("resolveType(%q).ByteSize = %d, want %d", tc.typeName, te.ByteSize, tc.wantSize)
 		}
 	}
 }
