@@ -5,48 +5,45 @@ import (
 	"testing"
 )
 
-// mockPin is a simple in-memory PinAccessor for testing.
-type mockPin struct {
-	typeName string
-	typeID   uint32
-	size     uint32
-	data     []byte
+// mockBuffer implements BufferIO using a plain byte slice.
+// It provides full control over buffer contents for tests.
+type mockBuffer struct {
+	buf []byte
 }
 
-func (m *mockPin) ReadBytes() ([]byte, error) {
-	out := make([]byte, len(m.data))
-	copy(out, m.data)
-	return out, nil
+func newMockBuffer(size int) *mockBuffer {
+	return &mockBuffer{buf: make([]byte, size)}
 }
 
-func (m *mockPin) WriteBytes(data []byte) error {
-	m.data = make([]byte, len(data))
-	copy(m.data, data)
+func (m *mockBuffer) ReadBuffer(offset, length uint32) ([]byte, error) {
+	return m.buf[offset : offset+length], nil
+}
+
+func (m *mockBuffer) WriteBuffer(offset uint32, data []byte) error {
+	copy(m.buf[offset:], data)
 	return nil
 }
 
-func (m *mockPin) Size() uint32     { return m.size }
-func (m *mockPin) TypeName() string { return m.typeName }
-func (m *mockPin) TypeID() uint32   { return m.typeID }
-
-func newBoolPin(val bool) *mockPin {
-	b := byte(0)
-	if val {
-		b = 1
-	}
-	return &mockPin{typeName: "BOOL", typeID: ADSTBool, size: 1, data: []byte{b}}
+// seedDint seeds a DINT value at the given offset in the mock buffer.
+func (m *mockBuffer) seedDint(offset uint32, val int32) {
+	binary.LittleEndian.PutUint32(m.buf[offset:], uint32(val))
 }
 
-func newDintPin(val int32) *mockPin {
-	b := make([]byte, 4)
-	binary.LittleEndian.PutUint32(b, uint32(val))
-	return &mockPin{typeName: "DINT", typeID: ADSTInt32, size: 4, data: b}
+// seedBool seeds a BOOL value at the given offset in the mock buffer.
+func (m *mockBuffer) seedBool(offset uint32, val bool) {
+	if val {
+		m.buf[offset] = 1
+	} else {
+		m.buf[offset] = 0
+	}
 }
 
 func TestSymbolTableRegisterAndGetByName(t *testing.T) {
+	mb := newMockBuffer(5)
 	st := NewSymbolTable()
-	p := newBoolPin(true)
-	sym := st.Register("stFoo.bReady", p)
+	st.SetBufferIO(mb)
+
+	sym := st.Register("stFoo.bReady", 1, "BOOL", ADSTBool)
 
 	if sym.Name != "stFoo.bReady" {
 		t.Errorf("Name = %q", sym.Name)
@@ -64,8 +61,7 @@ func TestSymbolTableRegisterAndGetByName(t *testing.T) {
 	}
 
 	// Second symbol offset should advance by size of first.
-	p2 := newDintPin(42)
-	sym2 := st.Register("stFoo.nVal", p2)
+	sym2 := st.Register("stFoo.nVal", 4, "DINT", ADSTInt32)
 	if sym2.IndexOffset != 1 { // 1 byte for the bool
 		t.Errorf("second symbol offset = %d, want 1", sym2.IndexOffset)
 	}
@@ -73,7 +69,7 @@ func TestSymbolTableRegisterAndGetByName(t *testing.T) {
 
 func TestSymbolTableHandleLifecycle(t *testing.T) {
 	st := NewSymbolTable()
-	st.Register("stX.bFlag", newBoolPin(false))
+	st.Register("stX.bFlag", 1, "BOOL", ADSTBool)
 
 	handle, errCode := st.CreateHandle("stX.bFlag")
 	if errCode != ErrNoError {
@@ -98,9 +94,12 @@ func TestSymbolTableHandleLifecycle(t *testing.T) {
 }
 
 func TestSymbolTableReadDataByHandle(t *testing.T) {
+	mb := newMockBuffer(4)
+	mb.seedDint(0, 12345)
+
 	st := NewSymbolTable()
-	p := newDintPin(12345)
-	st.Register("stA.nVal", p)
+	st.SetBufferIO(mb)
+	st.Register("stA.nVal", 4, "DINT", ADSTInt32)
 
 	handle, _ := st.CreateHandle("stA.nVal")
 
@@ -118,9 +117,11 @@ func TestSymbolTableReadDataByHandle(t *testing.T) {
 }
 
 func TestSymbolTableWriteDataByHandle(t *testing.T) {
+	mb := newMockBuffer(1)
+
 	st := NewSymbolTable()
-	p := newBoolPin(false)
-	st.Register("stA.bFlag", p)
+	st.SetBufferIO(mb)
+	st.Register("stA.bFlag", 1, "BOOL", ADSTBool)
 
 	handle, _ := st.CreateHandle("stA.bFlag")
 
@@ -128,14 +129,16 @@ func TestSymbolTableWriteDataByHandle(t *testing.T) {
 	if errCode != ErrNoError {
 		t.Fatalf("WriteData error: 0x%X", errCode)
 	}
-	if p.data[0] != 1 {
-		t.Errorf("pin value after write = %d, want 1", p.data[0])
+	if mb.buf[0] != 1 {
+		t.Errorf("buffer value after write = %d, want 1", mb.buf[0])
 	}
 }
 
 func TestSymbolTableHandleByName(t *testing.T) {
+	mb := newMockBuffer(4)
 	st := NewSymbolTable()
-	st.Register("stB.nCount", newDintPin(0))
+	st.SetBufferIO(mb)
+	st.Register("stB.nCount", 4, "DINT", ADSTInt32)
 
 	// ReadWriteData with IdxGrpSymbolHandleByName should return a 4-byte handle.
 	data, errCode := st.ReadWriteData(IdxGrpSymbolHandleByName, 0, 4, []byte("stB.nCount"))
@@ -158,7 +161,7 @@ func TestSymbolTableHandleByName(t *testing.T) {
 
 func TestSymbolTableReleaseHandleViaWrite(t *testing.T) {
 	st := NewSymbolTable()
-	st.Register("stC.bX", newBoolPin(true))
+	st.Register("stC.bX", 1, "BOOL", ADSTBool)
 
 	handle, _ := st.CreateHandle("stC.bX")
 
@@ -181,8 +184,8 @@ func TestSymbolTableReleaseHandleViaWrite(t *testing.T) {
 
 func TestSymbolTableSymbolCount(t *testing.T) {
 	st := NewSymbolTable()
-	st.Register("s1", newBoolPin(false))
-	st.Register("s2", newDintPin(0))
+	st.Register("s1", 1, "BOOL", ADSTBool)
+	st.Register("s2", 4, "DINT", ADSTInt32)
 
 	data, errCode := st.ReadData(IdxGrpSymbolCount, 0, 4)
 	if errCode != ErrNoError {
@@ -195,11 +198,14 @@ func TestSymbolTableSymbolCount(t *testing.T) {
 }
 
 func TestSymbolTableProcessImage(t *testing.T) {
+	mb := newMockBuffer(5)
+	mb.seedBool(0, true)
+	mb.seedDint(1, 99)
+
 	st := NewSymbolTable()
-	p1 := newBoolPin(true)
-	p2 := newDintPin(99)
-	sym1 := st.Register("s1", p1) // offset 0, size 1
-	sym2 := st.Register("s2", p2) // offset 1, size 4
+	st.SetBufferIO(mb)
+	sym1 := st.Register("s1", 1, "BOOL", ADSTBool)  // offset 0, size 1
+	sym2 := st.Register("s2", 4, "DINT", ADSTInt32) // offset 1, size 4
 
 	// Read s1 by process image offset.
 	data, errCode := st.ReadData(IdxGrpProcessImageRW, sym1.IndexOffset, 1)
@@ -218,14 +224,16 @@ func TestSymbolTableProcessImage(t *testing.T) {
 	if errCode != ErrNoError {
 		t.Fatalf("write s2 error: 0x%X", errCode)
 	}
-	if int32(binary.LittleEndian.Uint32(p2.data)) != -1 {
-		t.Errorf("s2 value = %d, want -1", int32(binary.LittleEndian.Uint32(p2.data)))
+	if int32(binary.LittleEndian.Uint32(mb.buf[1:5])) != -1 {
+		t.Errorf("s2 value = %d, want -1", int32(binary.LittleEndian.Uint32(mb.buf[1:5])))
 	}
 }
 
 func TestSymbolTableNullTerminatedName(t *testing.T) {
+	mb := newMockBuffer(1)
 	st := NewSymbolTable()
-	st.Register("stFoo.bFlag", newBoolPin(true))
+	st.SetBufferIO(mb)
+	st.Register("stFoo.bFlag", 1, "BOOL", ADSTBool)
 
 	// TwinCAT sends null-terminated symbol names; the server must strip them.
 	nameWithNull := []byte("stFoo.bFlag\x00")
@@ -240,8 +248,10 @@ func TestSymbolTableNullTerminatedName(t *testing.T) {
 }
 
 func TestSymbolTableCompactSymbolInfo(t *testing.T) {
+	mb := newMockBuffer(4)
 	st := NewSymbolTable()
-	sym := st.Register("stFoo.nVal", newDintPin(0))
+	st.SetBufferIO(mb)
+	sym := st.Register("stFoo.nVal", 4, "DINT", ADSTInt32)
 
 	// Request compact form (readLen == 12).
 	data, errCode := st.ReadWriteData(IdxGrpSymbolInfoByName, 0, 12, []byte("stFoo.nVal"))
@@ -266,20 +276,23 @@ func TestSymbolTableCompactSymbolInfo(t *testing.T) {
 }
 
 func TestSymbolTableSumRead(t *testing.T) {
+	mb := newMockBuffer(5)
+	mb.seedBool(0, true)
+	mb.seedDint(1, 42)
+
 	st := NewSymbolTable()
-	p1 := newBoolPin(true)
-	p2 := newDintPin(42)
-	sym1 := st.Register("s1", p1) // offset 0, size 1
-	sym2 := st.Register("s2", p2) // offset 1, size 4
+	st.SetBufferIO(mb)
+	sym1 := st.Register("s1", 1, "BOOL", ADSTBool)  // offset 0, size 1
+	sym2 := st.Register("s2", 4, "DINT", ADSTInt32) // offset 1, size 4
 
 	// Build a SumRead request for both symbols.
 	writeData := make([]byte, 24) // 2 × 12 bytes
 	binary.LittleEndian.PutUint32(writeData[0:], sym1.IndexGroup)
 	binary.LittleEndian.PutUint32(writeData[4:], sym1.IndexOffset)
-	binary.LittleEndian.PutUint32(writeData[8:], sym1.Accessor.Size())
+	binary.LittleEndian.PutUint32(writeData[8:], sym1.Size)
 	binary.LittleEndian.PutUint32(writeData[12:], sym2.IndexGroup)
 	binary.LittleEndian.PutUint32(writeData[16:], sym2.IndexOffset)
-	binary.LittleEndian.PutUint32(writeData[20:], sym2.Accessor.Size())
+	binary.LittleEndian.PutUint32(writeData[20:], sym2.Size)
 
 	resp, errCode := st.ReadWriteData(IdxGrpSumRead, 2, 0, writeData)
 	if errCode != ErrNoError {
@@ -306,8 +319,10 @@ func TestSymbolTableSumRead(t *testing.T) {
 }
 
 func TestSymbolTableFallbackMatching(t *testing.T) {
+	mb := newMockBuffer(1)
 	st := NewSymbolTable()
-	st.Register("stFoo.bFlag", newBoolPin(true))
+	st.SetBufferIO(mb)
+	st.Register("stFoo.bFlag", 1, "BOOL", ADSTBool)
 
 	// Prefix stripping: "GVL.stFoo.bFlag" should resolve to "stFoo.bFlag".
 	handle, errCode := st.CreateHandle("GVL.stFoo.bFlag")
@@ -332,8 +347,8 @@ func TestSymbolTableFallbackMatching(t *testing.T) {
 // symbols for every ancestor path prefix.
 func TestGroupSymbolAutoCreate(t *testing.T) {
 	st := NewSymbolTable()
-	st.Register("stFoo.stBar.nVal", newDintPin(0))
-	st.Register("stFoo.stBar.bFlag", newBoolPin(false))
+	st.Register("stFoo.stBar.nVal", 4, "DINT", ADSTInt32)
+	st.Register("stFoo.stBar.bFlag", 1, "BOOL", ADSTBool)
 
 	for _, prefix := range []string{"stFoo", "stFoo.stBar"} {
 		sym := st.GetByName(prefix)
@@ -344,17 +359,19 @@ func TestGroupSymbolAutoCreate(t *testing.T) {
 		if sym.IndexGroup != IdxGrpProcessImageRW {
 			t.Errorf("%q IndexGroup = 0x%X, want 0x%X", prefix, sym.IndexGroup, IdxGrpProcessImageRW)
 		}
-		if _, ok := sym.Accessor.(*groupAccessor); !ok {
-			t.Errorf("%q Accessor is not *groupAccessor", prefix)
+		if !sym.IsGroup() {
+			t.Errorf("%q IsGroup() = false, want true", prefix)
 		}
 	}
 }
 
 // TestGroupSymbolInfoByName verifies SymbolInfoByName (0xF007) for a group symbol.
 func TestGroupSymbolInfoByName(t *testing.T) {
+	mb := newMockBuffer(5)
 	st := NewSymbolTable()
-	nVal := st.Register("stFoo.stBar.nVal", newDintPin(0)) // offset 0, size 4
-	st.Register("stFoo.stBar.bFlag", newBoolPin(false))    // offset 4, size 1
+	st.SetBufferIO(mb)
+	nVal := st.Register("stFoo.stBar.nVal", 4, "DINT", ADSTInt32) // offset 0, size 4
+	st.Register("stFoo.stBar.bFlag", 1, "BOOL", ADSTBool)         // offset 4, size 1
 
 	data, errCode := st.ReadWriteData(IdxGrpSymbolInfoByName, 0, 12, []byte("stFoo.stBar"))
 	if errCode != ErrNoError {
@@ -379,9 +396,13 @@ func TestGroupSymbolInfoByName(t *testing.T) {
 
 // TestGroupSymbolCreateHandle verifies CreateHandle succeeds for a group symbol.
 func TestGroupSymbolCreateHandle(t *testing.T) {
+	mb := newMockBuffer(5)
 	st := NewSymbolTable()
-	st.Register("stFoo.stBar.nVal", newDintPin(7))
-	st.Register("stFoo.stBar.bFlag", newBoolPin(true))
+	st.SetBufferIO(mb)
+	mb.seedDint(0, 7)
+	mb.seedBool(4, true)
+	st.Register("stFoo.stBar.nVal", 4, "DINT", ADSTInt32)
+	st.Register("stFoo.stBar.bFlag", 1, "BOOL", ADSTBool)
 
 	handle, errCode := st.CreateHandle("stFoo.stBar")
 	if errCode != ErrNoError {
@@ -399,11 +420,14 @@ func TestGroupSymbolCreateHandle(t *testing.T) {
 // TestGroupSymbolReadByHandle verifies that reading a group handle returns
 // the concatenated child bytes in offset order.
 func TestGroupSymbolReadByHandle(t *testing.T) {
+	mb := newMockBuffer(5)
+	mb.seedDint(0, 42)
+	mb.seedBool(4, true)
+
 	st := NewSymbolTable()
-	nValPin := newDintPin(42)
-	bFlagPin := newBoolPin(true)
-	st.Register("stFoo.stBar.nVal", nValPin)   // offset 0, size 4
-	st.Register("stFoo.stBar.bFlag", bFlagPin) // offset 4, size 1
+	st.SetBufferIO(mb)
+	st.Register("stFoo.stBar.nVal", 4, "DINT", ADSTInt32) // offset 0, size 4
+	st.Register("stFoo.stBar.bFlag", 1, "BOOL", ADSTBool) // offset 4, size 1
 
 	handle, _ := st.CreateHandle("stFoo.stBar")
 
@@ -425,11 +449,12 @@ func TestGroupSymbolReadByHandle(t *testing.T) {
 // TestGroupSymbolWriteByHandle verifies that writing a group handle distributes
 // the bytes to the correct child leaf symbols.
 func TestGroupSymbolWriteByHandle(t *testing.T) {
+	mb := newMockBuffer(5)
+
 	st := NewSymbolTable()
-	nValPin := newDintPin(0)
-	bFlagPin := newBoolPin(false)
-	st.Register("stFoo.stBar.nVal", nValPin)   // offset 0, size 4
-	st.Register("stFoo.stBar.bFlag", bFlagPin) // offset 4, size 1
+	st.SetBufferIO(mb)
+	st.Register("stFoo.stBar.nVal", 4, "DINT", ADSTInt32) // offset 0, size 4
+	st.Register("stFoo.stBar.bFlag", 1, "BOOL", ADSTBool) // offset 4, size 1
 
 	handle, _ := st.CreateHandle("stFoo.stBar")
 
@@ -442,11 +467,11 @@ func TestGroupSymbolWriteByHandle(t *testing.T) {
 	if errCode != ErrNoError {
 		t.Fatalf("WriteData group handle error: 0x%X", errCode)
 	}
-	if int32(binary.LittleEndian.Uint32(nValPin.data)) != 99 {
-		t.Errorf("nVal after group write = %d, want 99", int32(binary.LittleEndian.Uint32(nValPin.data)))
+	if int32(binary.LittleEndian.Uint32(mb.buf[0:4])) != 99 {
+		t.Errorf("nVal after group write = %d, want 99", int32(binary.LittleEndian.Uint32(mb.buf[0:4])))
 	}
-	if bFlagPin.data[0] != 1 {
-		t.Errorf("bFlag after group write = %d, want 1", bFlagPin.data[0])
+	if mb.buf[4] != 1 {
+		t.Errorf("bFlag after group write = %d, want 1", mb.buf[4])
 	}
 }
 
@@ -454,7 +479,7 @@ func TestGroupSymbolWriteByHandle(t *testing.T) {
 // segments (e.g. "aPools[1]") creates the correct group symbols.
 func TestGroupSymbolArrayBracketNotation(t *testing.T) {
 	st := NewSymbolTable()
-	st.Register("stData.aPools[1].stMsg.eType", newDintPin(0))
+	st.Register("stData.aPools[1].stMsg.eType", 4, "DINT", ADSTInt32)
 
 	for _, prefix := range []string{"stData", "stData.aPools[1]", "stData.aPools[1].stMsg"} {
 		if sym := st.GetByName(prefix); sym == nil {
@@ -467,8 +492,8 @@ func TestGroupSymbolArrayBracketNotation(t *testing.T) {
 // in the SymbolCount response.
 func TestGroupSymbolNotInSymbolCount(t *testing.T) {
 	st := NewSymbolTable()
-	st.Register("stFoo.stBar.nVal", newDintPin(0))
-	st.Register("stFoo.stBar.bFlag", newBoolPin(false))
+	st.Register("stFoo.stBar.nVal", 4, "DINT", ADSTInt32)
+	st.Register("stFoo.stBar.bFlag", 1, "BOOL", ADSTBool)
 
 	data, errCode := st.ReadData(IdxGrpSymbolCount, 0, 4)
 	if errCode != ErrNoError {
@@ -483,13 +508,16 @@ func TestGroupSymbolNotInSymbolCount(t *testing.T) {
 // TestProcessImageRangeRead verifies that a ProcessImageRW bulk read returns
 // all symbols whose offsets fall within the requested range.
 func TestProcessImageRangeRead(t *testing.T) {
+	mb := newMockBuffer(9)
+	mb.seedBool(0, true)
+	binary.LittleEndian.PutUint32(mb.buf[1:], 0x12345678)
+	binary.LittleEndian.PutUint32(mb.buf[5:], 0xFFFFFFFF)
+
 	st := NewSymbolTable()
-	p1 := newBoolPin(true)       // offset 0, size 1
-	p2 := newDintPin(0x12345678) // offset 1, size 4
-	p3 := newDintPin(-1)         // offset 5, size 4
-	st.Register("s1", p1)
-	st.Register("s2", p2)
-	st.Register("s3", p3)
+	st.SetBufferIO(mb)
+	st.Register("s1", 1, "BOOL", ADSTBool)  // offset 0, size 1
+	st.Register("s2", 4, "DINT", ADSTInt32) // offset 1, size 4
+	st.Register("s3", 4, "DINT", ADSTInt32) // offset 5, size 4
 
 	// Range read covering all 3 symbols (offset=0, length=9).
 	data, errCode := st.ReadData(IdxGrpProcessImageRW, 0, 9)
@@ -513,13 +541,13 @@ func TestProcessImageRangeRead(t *testing.T) {
 // TestProcessImageRangeWrite verifies that a ProcessImageRW bulk write
 // distributes bytes to all symbols whose offsets fall within the range.
 func TestProcessImageRangeWrite(t *testing.T) {
+	mb := newMockBuffer(9)
+
 	st := NewSymbolTable()
-	p1 := newBoolPin(false) // offset 0, size 1
-	p2 := newDintPin(0)     // offset 1, size 4
-	p3 := newDintPin(0)     // offset 5, size 4
-	st.Register("s1", p1)
-	st.Register("s2", p2)
-	st.Register("s3", p3)
+	st.SetBufferIO(mb)
+	st.Register("s1", 1, "BOOL", ADSTBool)  // offset 0, size 1
+	st.Register("s2", 4, "DINT", ADSTInt32) // offset 1, size 4
+	st.Register("s3", 4, "DINT", ADSTInt32) // offset 5, size 4
 
 	// Range write: 9-byte payload covering all 3 symbols.
 	payload := make([]byte, 9)
@@ -530,19 +558,22 @@ func TestProcessImageRangeWrite(t *testing.T) {
 	if errCode != ErrNoError {
 		t.Fatalf("range write error: 0x%X", errCode)
 	}
-	if p1.data[0] != 1 {
-		t.Errorf("s1 after range write = %d, want 1", p1.data[0])
+	if mb.buf[0] != 1 {
+		t.Errorf("s1 after range write = %d, want 1", mb.buf[0])
 	}
-	if binary.LittleEndian.Uint32(p2.data) != 0xABCD1234 {
-		t.Errorf("s2 after range write = 0x%X, want 0xABCD1234", binary.LittleEndian.Uint32(p2.data))
+	if binary.LittleEndian.Uint32(mb.buf[1:5]) != 0xABCD1234 {
+		t.Errorf("s2 after range write = 0x%X, want 0xABCD1234", binary.LittleEndian.Uint32(mb.buf[1:5]))
 	}
-	if binary.LittleEndian.Uint32(p3.data) != 0xFFEE0099 {
-		t.Errorf("s3 after range write = 0x%X, want 0xFFEE0099", binary.LittleEndian.Uint32(p3.data))
+	if binary.LittleEndian.Uint32(mb.buf[5:9]) != 0xFFEE0099 {
+		t.Errorf("s3 after range write = 0x%X, want 0xFFEE0099", binary.LittleEndian.Uint32(mb.buf[5:9]))
 	}
 }
+
 func TestGroupSymbolFallbackMatching(t *testing.T) {
+	mb := newMockBuffer(4)
 	st := NewSymbolTable()
-	st.Register("stFoo.stBar.nVal", newDintPin(0))
+	st.SetBufferIO(mb)
+	st.Register("stFoo.stBar.nVal", 4, "DINT", ADSTInt32)
 
 	// Case-insensitive lookup for the group.
 	handle, errCode := st.CreateHandle("STFOO.STBAR")
@@ -555,85 +586,45 @@ func TestGroupSymbolFallbackMatching(t *testing.T) {
 	}
 }
 
-// zeroPadPin is a PinAccessor that mimics padAccessor: reads return zeros,
-// writes are silently discarded. Used to test pad-symbol offset accounting.
-type zeroPadPin struct {
-	size     uint32
-	typeName string
-	typeID   uint32
-}
-
-func (z *zeroPadPin) ReadBytes() ([]byte, error) { return make([]byte, z.size), nil }
-func (z *zeroPadPin) WriteBytes([]byte) error    { return nil }
-func (z *zeroPadPin) Size() uint32               { return z.size }
-func (z *zeroPadPin) TypeName() string           { return z.typeName }
-func (z *zeroPadPin) TypeID() uint32             { return z.typeID }
-
-// TestPadOffsetAdvance verifies that a padding symbol correctly advances
-// the process-image offset for the symbols that follow it.
+// TestPadOffsetAdvance verifies that registering two sequential symbols
+// correctly assigns sequential offsets.
 func TestPadOffsetAdvance(t *testing.T) {
 	st := NewSymbolTable()
-	pad := &zeroPadPin{size: 1, typeName: "BYTE", typeID: ADSTUInt8}
-	sym1 := st.Register("stMsg._reserved1", pad)      // offset 0, size 1
-	sym2 := st.Register("stMsg.eType", newDintPin(0)) // offset 1, size 4
+	sym1 := st.Register("stMsg._reserved1", 1, "BYTE", ADSTUInt8) // offset 0, size 1
+	sym2 := st.Register("stMsg.eType", 4, "DINT", ADSTInt32)      // offset 1, size 4
 
 	if sym1.IndexOffset != 0 {
-		t.Errorf("pad symbol offset = %d, want 0", sym1.IndexOffset)
+		t.Errorf("sym1 offset = %d, want 0", sym1.IndexOffset)
 	}
 	if sym2.IndexOffset != 1 {
 		t.Errorf("eType offset = %d, want 1", sym2.IndexOffset)
 	}
 }
 
-// TestPadReadReturnsZeros verifies that a pad accessor read returns zero bytes.
-func TestPadReadReturnsZeros(t *testing.T) {
-	pad := &zeroPadPin{size: 2, typeName: "WORD", typeID: ADSTUInt16}
-	data, err := pad.ReadBytes()
-	if err != nil {
-		t.Fatalf("ReadBytes error: %v", err)
-	}
-	if len(data) != 2 {
-		t.Fatalf("ReadBytes length = %d, want 2", len(data))
-	}
-	for i, b := range data {
-		if b != 0 {
-			t.Errorf("data[%d] = %d, want 0", i, b)
-		}
-	}
-}
-
-// TestPadWriteDiscards verifies that writing to a pad accessor has no effect.
-func TestPadWriteDiscards(t *testing.T) {
-	pad := &zeroPadPin{size: 1, typeName: "BYTE", typeID: ADSTUInt8}
-	if err := pad.WriteBytes([]byte{0xFF}); err != nil {
-		t.Fatalf("WriteBytes error: %v", err)
-	}
-	// Read back: should still be zero.
-	data, _ := pad.ReadBytes()
-	if data[0] != 0 {
-		t.Errorf("after write, pad data = %d, want 0", data[0])
-	}
-}
-
-// TestGroupWithPadding verifies that a group symbol containing a pad field
-// returns the correct total size and zero-fills the pad bytes on reads.
+// TestGroupWithPadding verifies that a group symbol containing pad-adjacent
+// fields covers the correct byte range, and that zero bytes in the buffer
+// appear as zeros in group reads.
 func TestGroupWithPadding(t *testing.T) {
-	st := NewSymbolTable()
-	pad1 := &zeroPadPin{size: 1, typeName: "BYTE", typeID: ADSTUInt8}
-	real := newDintPin(0x01020304)
-	pad2 := &zeroPadPin{size: 2, typeName: "WORD", typeID: ADSTUInt16}
+	// Buffer: [0, 0x04, 0x03, 0x02, 0x01, 0, 0]
+	// offset 0: pad (1 byte) → 0
+	// offset 1: nVal DINT (4 bytes) → 0x01020304
+	// offset 5-6: pad (2 bytes) → 0
+	mb := newMockBuffer(7)
+	mb.seedDint(1, 0x01020304)
 
-	st.Register("stMsg._reserved1", pad1) // offset 0, size 1
-	st.Register("stMsg.nVal", real)       // offset 1, size 4
-	st.Register("stMsg._align", pad2)     // offset 5, size 2
+	st := NewSymbolTable()
+	st.SetBufferIO(mb)
+	st.Register("stMsg._reserved1", 1, "BYTE", ADSTUInt8) // offset 0, size 1
+	st.Register("stMsg.nVal", 4, "DINT", ADSTInt32)       // offset 1, size 4
+	st.Register("stMsg._align", 2, "WORD", ADSTUInt16)    // offset 5, size 2
 
 	// The group symbol stMsg should cover offsets 0–6 (7 bytes total).
 	groupSym := st.GetByName("stMsg")
 	if groupSym == nil {
 		t.Fatal("group symbol stMsg not created")
 	}
-	if groupSym.Accessor.Size() != 7 {
-		t.Errorf("group Size = %d, want 7", groupSym.Accessor.Size())
+	if groupSym.Size != 7 {
+		t.Errorf("group Size = %d, want 7", groupSym.Size)
 	}
 
 	// Read the group: padding bytes should be zero, nVal bytes should be present.
@@ -666,11 +657,15 @@ func TestGroupWithPadding(t *testing.T) {
 // TestRegisterAt verifies that RegisterAt places a symbol at an explicit
 // byte offset, updates nextOffset, and creates parent group symbols.
 func TestRegisterAt(t *testing.T) {
+	mb := newMockBuffer(9)
+	mb.seedDint(4, 99)
+	mb.seedBool(8, true)
+
 	st := NewSymbolTable()
+	st.SetBufferIO(mb)
 
 	// Place a DINT at offset 4 (leaving a 4-byte gap at 0..3).
-	p := newDintPin(99)
-	sym := st.RegisterAt("stFoo.nVal", 4, p)
+	sym := st.RegisterAt("stFoo.nVal", 4, 4, "DINT", ADSTInt32)
 
 	if sym.IndexOffset != 4 {
 		t.Errorf("IndexOffset = %d, want 4", sym.IndexOffset)
@@ -679,10 +674,7 @@ func TestRegisterAt(t *testing.T) {
 		t.Errorf("IndexGroup = 0x%X", sym.IndexGroup)
 	}
 
-	// nextOffset should be 4+4=8.
-	// Verify by placing another symbol at auto-incremented offset would use Register.
-	p2 := newBoolPin(true)
-	sym2 := st.RegisterAt("stFoo.bFlag", 8, p2)
+	sym2 := st.RegisterAt("stFoo.bFlag", 8, 1, "BOOL", ADSTBool)
 	if sym2.IndexOffset != 8 {
 		t.Errorf("second symbol offset = %d, want 8", sym2.IndexOffset)
 	}
@@ -692,8 +684,8 @@ func TestRegisterAt(t *testing.T) {
 	if grp == nil {
 		t.Fatal("group symbol stFoo not created by RegisterAt")
 	}
-	if _, ok := grp.Accessor.(*groupAccessor); !ok {
-		t.Error("stFoo accessor is not *groupAccessor")
+	if !grp.IsGroup() {
+		t.Error("stFoo IsGroup() = false")
 	}
 
 	// GetByName should return the leaf symbol.
@@ -716,9 +708,12 @@ func TestRegisterAt(t *testing.T) {
 // TestRegisterAtExplicitOffsetRead verifies that reading a symbol registered
 // with RegisterAt returns the correct value.
 func TestRegisterAtExplicitOffsetRead(t *testing.T) {
+	mb := newMockBuffer(12)
+	mb.seedDint(8, 42)
+
 	st := NewSymbolTable()
-	p := newDintPin(42)
-	sym := st.RegisterAt("stA.nVal", 8, p)
+	st.SetBufferIO(mb)
+	sym := st.RegisterAt("stA.nVal", 8, 4, "DINT", ADSTInt32)
 
 	handle, errCode := st.CreateHandle("stA.nVal")
 	if errCode != ErrNoError {
@@ -746,13 +741,17 @@ func TestRegisterAtExplicitOffsetRead(t *testing.T) {
 // TestRegisterPadAt verifies that RegisterPadAt:
 //   - does NOT add the pad to byName
 //   - does NOT add the pad to symbolOrder (not in symbol list/count)
-//   - adds to byOffset so process-image range reads cover that range and return zeros
 //   - updates nextOffset
+//   - buffer reads over the padded range return zero bytes
 func TestRegisterPadAt(t *testing.T) {
+	mb := newMockBuffer(3)
+	mb.seedBool(0, true) // bFlag at offset 0
+
 	st := NewSymbolTable()
+	st.SetBufferIO(mb)
 
 	// Register a real pin at offset 0 and a pad at offset 1.
-	st.RegisterAt("stX.bFlag", 0, newBoolPin(true))
+	st.RegisterAt("stX.bFlag", 0, 1, "BOOL", ADSTBool)
 	st.RegisterPadAt(1, 2) // 2-byte pad at offset 1
 
 	// Pad must NOT appear in byName.
@@ -777,7 +776,7 @@ func TestRegisterPadAt(t *testing.T) {
 	}
 
 	// Process-image range read covering [0..2] (bFlag + pad):
-	// byte 0 = 1 (bFlag=true), bytes 1-2 = 0 (pad).
+	// byte 0 = 1 (bFlag=true), bytes 1-2 = 0 (pad, zero in buffer).
 	imgData, imgErr := st.ReadData(IdxGrpProcessImageRW, 0, 3)
 	if imgErr != ErrNoError {
 		t.Fatalf("process-image read error: 0x%X", imgErr)
@@ -794,32 +793,37 @@ func TestRegisterPadAt(t *testing.T) {
 }
 
 // TestSetGroupSizeTailPadding verifies that SetGroupSize overrides the computed
-// span so that groupAccessor.Size() returns the full aligned struct size
-// including tail padding. This is required so that TwinCAT clients reading a
-// struct-level symbol get a correctly-sized buffer.
+// span so that group reads return the full aligned struct size including tail
+// padding. This is required so that TwinCAT clients reading a struct-level
+// symbol get a correctly-sized buffer.
 func TestSetGroupSizeTailPadding(t *testing.T) {
-	st := NewSymbolTable()
+	// Buffer: DINT at 0 (size 4), BOOL at 4 (size 1), tail pad 5-7 (size 3) = 8 bytes.
+	mb := newMockBuffer(8)
+	mb.seedDint(0, 0x01020304)
+	mb.seedBool(4, true)
+	// bytes 5-7 are zero (tail padding, already 0 in make([]byte, 8))
 
-	// Struct: DINT at 0 (size 4), BOOL at 4 (size 1).
-	// Without tail padding: Size() = 5. With tail padding to 4-byte boundary: 8.
-	st.RegisterAt("stFoo.nVal", 0, newDintPin(0x01020304))
-	st.RegisterAt("stFoo.bFlag", 4, newBoolPin(true))
+	st := NewSymbolTable()
+	st.SetBufferIO(mb)
+
+	st.RegisterAt("stFoo.nVal", 0, 4, "DINT", ADSTInt32)
+	st.RegisterAt("stFoo.bFlag", 4, 1, "BOOL", ADSTBool)
 
 	grp := st.GetByName("stFoo")
 	if grp == nil {
 		t.Fatal("group symbol stFoo not found")
 	}
 
-	// Before SetGroupSize: Size() == 5 (computed span, no tail padding).
-	if got := grp.Accessor.Size(); got != 5 {
-		t.Errorf("initial Size() = %d, want 5", got)
+	// Before SetGroupSize: Size == 5 (computed span, no tail padding).
+	if got := grp.Size; got != 5 {
+		t.Errorf("initial Size = %d, want 5", got)
 	}
 
 	// Set the aligned size (8 bytes, including 3 bytes of tail padding).
 	st.SetGroupSize("stFoo", 8)
 
-	if got := grp.Accessor.Size(); got != 8 {
-		t.Errorf("after SetGroupSize(8), Size() = %d, want 8", got)
+	if got := grp.Size; got != 8 {
+		t.Errorf("after SetGroupSize(8), Size = %d, want 8", got)
 	}
 
 	// ReadBytes should return 8 bytes; tail padding bytes must be zero.

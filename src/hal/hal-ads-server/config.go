@@ -37,9 +37,12 @@ type Node struct {
 	// Dir is the direction for leaf nodes ("in", "out", "inout", "pad").
 	// Empty for container nodes.
 	Dir PinDir
-	// TypeName is the ADS/TwinCAT type name for leaf nodes, e.g. "BOOL", "REAL".
-	// Empty for container nodes.
-	TypeName string
+	// Type is the resolved TypeEntry for leaf nodes. Nil for container nodes.
+	// Access the ADS type name via Type.ADSTypeName.
+	Type *TypeEntry
+	// StrLen is the string length for STRING(n) leaf nodes (n > 0).
+	// Zero for all other node types.
+	StrLen int
 	// ArrayStart and ArrayEnd are >0 for array containers, e.g. [1..4] gives
 	// ArrayStart=1, ArrayEnd=4. Both are 0 for plain struct containers.
 	ArrayStart int
@@ -165,10 +168,16 @@ func parseTreeBlock(lines []configLine, idx *int, minDepth int, nodes *[]*Node) 
 			if len(tokens) < 3 {
 				return fmt.Errorf("line %d: leaf line requires direction, name, and type", cl.lineNo)
 			}
+			rawType := strings.ToUpper(strings.Join(tokens[2:], ""))
+			te, strLen, err := resolveType(rawType)
+			if err != nil {
+				return fmt.Errorf("line %d: %w", cl.lineNo, err)
+			}
 			*nodes = append(*nodes, &Node{
-				Name:     tokens[1],
-				Dir:      PinDir(tokens[0]),
-				TypeName: parseTypeName(tokens[2:]),
+				Name:   tokens[1],
+				Dir:    PinDir(tokens[0]),
+				Type:   te,
+				StrLen: strLen,
 			})
 			*idx++
 			continue
@@ -219,14 +228,4 @@ func parseContainerNode(token string, lineNo int) (*Node, error) {
 		return nil, fmt.Errorf("line %d: array range start %d > end %d", lineNo, start, end)
 	}
 	return &Node{Name: baseName, ArrayStart: start, ArrayEnd: end}, nil
-}
-
-// parseTypeName reconstructs the type name from the remaining tokens on a leaf line.
-// Handles "bool", "dint", "string(32)" etc. Returns the normalised upper-case name.
-func parseTypeName(tokens []string) string {
-	if len(tokens) == 0 {
-		return ""
-	}
-	// Normalize to upper case for ADS type names.
-	return strings.ToUpper(strings.Join(tokens, ""))
 }

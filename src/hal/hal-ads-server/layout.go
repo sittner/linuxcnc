@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strings"
 )
 
 // LayoutPin describes a single leaf symbol with its pre-computed byte offset
@@ -16,47 +15,16 @@ type LayoutPin struct {
 	// ADSName is the ADS symbol name with bracket notation for array indices,
 	// e.g. "DISPLAY_DATA.stData.aPools[1].fTemp".
 	ADSName string
-	// TypeName is the ADS/TwinCAT type name, e.g. "BOOL", "REAL", "STRING(31)".
-	TypeName string
+	// Type is the resolved TypeEntry for this pin. Non-nil for all leaf nodes.
+	Type *TypeEntry
+	// StrLen is > 0 only for STRING(n) types (the n value, not the wire size).
+	StrLen int
 	// Offset is the byte offset of this field in the process image.
 	Offset uint32
-	// Size is the wire size in bytes.
+	// Size is the wire size in bytes (same as Type.ByteSize).
 	Size uint32
-	// Align is the natural alignment of this type (1, 2, 4, or 8).
+	// Align is the natural alignment of this type (same as Type.Alignment).
 	Align uint32
-}
-
-// TypeSize returns the wire size and natural alignment for an ADS/TwinCAT type
-// name. Both size and align are in bytes.
-//
-// Alignment table (TwinCAT default pack mode 0, natural alignment):
-//
-//	BOOL, BYTE, SINT, USINT  → size 1, align 1
-//	WORD, UINT, INT          → size 2, align 2
-//	DWORD, UDINT, DINT,
-//	REAL, TIME, TOD, DATE, DT → size 4, align 4
-//	LREAL                    → size 8, align 8
-//	STRING(n)                → size n+1, align 1
-func TypeSize(typeName string) (size, align uint32, err error) {
-	if strings.HasPrefix(typeName, "STRING(") {
-		var n int
-		if _, err2 := fmt.Sscanf(typeName, "STRING(%d)", &n); err2 != nil || n <= 0 {
-			return 0, 0, fmt.Errorf("invalid string type %q", typeName)
-		}
-		return uint32(n + 1), 1, nil
-	}
-	switch typeName {
-	case "BOOL", "BYTE", "SINT", "USINT":
-		return 1, 1, nil
-	case "WORD", "UINT", "INT":
-		return 2, 2, nil
-	case "DWORD", "UDINT", "DINT", "REAL", "TIME", "TOD", "DATE", "DT":
-		return 4, 4, nil
-	case "LREAL":
-		return 8, 8, nil
-	default:
-		return 0, 0, fmt.Errorf("unsupported type %q", typeName)
-	}
 }
 
 // ComputeLayout walks a Node tree and assigns byte offsets to every leaf,
@@ -101,8 +69,7 @@ func alignUp(n, align uint32) uint32 {
 // for a container it is the maximum alignment of all descendants.
 func nodeMaxAlign(node *Node) (uint32, error) {
 	if len(node.Children) == 0 {
-		_, al, err := TypeSize(node.TypeName)
-		return al, err
+		return node.Type.Alignment, nil
 	}
 	var maxAl uint32 = 1
 	for _, child := range node.Children {
@@ -125,20 +92,19 @@ func layoutNode(node *Node, offset uint32, halPfx, adsPfx string, pins *[]Layout
 
 	if len(node.Children) == 0 {
 		// Leaf node.
-		sz, al, err := TypeSize(node.TypeName)
-		if err != nil {
-			return 0, fmt.Errorf("field %q: %w", node.Name, err)
-		}
+		sz := node.Type.ByteSize
+		al := node.Type.Alignment
 		offset = alignUp(offset, al)
 		if pins != nil {
 			*pins = append(*pins, LayoutPin{
-				Dir:      node.Dir,
-				HALPath:  halName,
-				ADSName:  adsName,
-				TypeName: node.TypeName,
-				Offset:   offset,
-				Size:     sz,
-				Align:    al,
+				Dir:     node.Dir,
+				HALPath: halName,
+				ADSName: adsName,
+				Type:    node.Type,
+				StrLen:  node.StrLen,
+				Offset:  offset,
+				Size:    sz,
+				Align:   al,
 			})
 		}
 		return offset + sz, nil

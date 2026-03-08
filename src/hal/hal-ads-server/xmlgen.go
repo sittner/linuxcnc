@@ -225,7 +225,7 @@ func emitVariable(e *errEncoder, node *Node, tm nodeTypeMap) error {
 func emitTypeRef(e *errEncoder, node *Node, tm nodeTypeMap) error {
 	if len(node.Children) == 0 {
 		// Leaf: primitive or string type.
-		return emitPrimitiveTypeElem(e, node.TypeName)
+		return emitPrimitiveTypeElem(e, node.Type.ADSTypeName)
 	}
 	if node.ArrayStart > 0 {
 		// Array container.

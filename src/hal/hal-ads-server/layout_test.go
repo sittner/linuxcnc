@@ -6,8 +6,9 @@ import (
 	"testing"
 )
 
-// TestTypeSize checks the size and alignment for all basic ADS types.
-func TestTypeSize(t *testing.T) {
+// TestTypeRegistry checks the size and alignment for all basic ADS types
+// using the global TypeEntries registry.
+func TestTypeRegistry(t *testing.T) {
 	tests := []struct {
 		typeName  string
 		wantSize  uint32
@@ -43,22 +44,22 @@ func TestTypeSize(t *testing.T) {
 		{"UNKNOWN", 0, 0, true},
 	}
 	for _, tc := range tests {
-		sz, al, err := TypeSize(tc.typeName)
+		te, _, err := resolveType(tc.typeName)
 		if tc.wantErr {
 			if err == nil {
-				t.Errorf("TypeSize(%q): expected error, got nil", tc.typeName)
+				t.Errorf("resolveType(%q): expected error, got nil", tc.typeName)
 			}
 			continue
 		}
 		if err != nil {
-			t.Errorf("TypeSize(%q): unexpected error: %v", tc.typeName, err)
+			t.Errorf("resolveType(%q): unexpected error: %v", tc.typeName, err)
 			continue
 		}
-		if sz != tc.wantSize {
-			t.Errorf("TypeSize(%q): size = %d, want %d", tc.typeName, sz, tc.wantSize)
+		if te.ByteSize != tc.wantSize {
+			t.Errorf("resolveType(%q): ByteSize = %d, want %d", tc.typeName, te.ByteSize, tc.wantSize)
 		}
-		if al != tc.wantAlign {
-			t.Errorf("TypeSize(%q): align = %d, want %d", tc.typeName, al, tc.wantAlign)
+		if te.Alignment != tc.wantAlign {
+			t.Errorf("resolveType(%q): Alignment = %d, want %d", tc.typeName, te.Alignment, tc.wantAlign)
 		}
 	}
 }
