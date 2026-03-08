@@ -20,6 +20,7 @@ type PinDescriptor struct {
 	StrLen    int    // > 0 for STRING(n) types only
 	HALPath   string
 	ADSName   string
+	syncGen   uint64 // last generation this pin was synced (used by ReadBuffer/WriteBuffer)
 }
 
 // Bridge owns the single global process-image buffer, the byteMap, and all
@@ -29,6 +30,7 @@ type Bridge struct {
 	buf         []byte
 	byteMap     []*PinDescriptor // indexed by byte offset; nil = padding
 	descriptors []*PinDescriptor // all leaf pin descriptors
+	gen         uint64           // incremented on each ReadBuffer/WriteBuffer call
 }
 
 // ReadBuffer implements ads.BufferIO.
@@ -40,14 +42,13 @@ func (b *Bridge) ReadBuffer(offset, length uint32) ([]byte, error) {
 		return nil, fmt.Errorf("ReadBuffer: range [%d,%d) exceeds buffer size %d",
 			offset, offset+length, len(b.buf))
 	}
-	// Sync each unique pin in the range from HAL to buffer.
-	seen := make(map[*PinDescriptor]bool)
+	b.gen++
 	for i := offset; i < offset+length; i++ {
 		pd := b.byteMap[i]
-		if pd == nil || seen[pd] {
+		if pd == nil || pd.syncGen == b.gen {
 			continue
 		}
-		seen[pd] = true
+		pd.syncGen = b.gen
 		writeToBuffer(pd, b.buf)
 	}
 	return b.buf[offset : offset+length], nil
@@ -62,14 +63,13 @@ func (b *Bridge) WriteBuffer(offset uint32, data []byte) error {
 			offset, offset+uint32(len(data)), len(b.buf))
 	}
 	copy(b.buf[offset:], data)
-	// Sync each unique pin in the written range from buffer to HAL.
-	seen := make(map[*PinDescriptor]bool)
+	b.gen++
 	for i := offset; i < offset+uint32(len(data)); i++ {
 		pd := b.byteMap[i]
-		if pd == nil || seen[pd] {
+		if pd == nil || pd.syncGen == b.gen {
 			continue
 		}
-		seen[pd] = true
+		pd.syncGen = b.gen
 		readFromBuffer(pd, b.buf)
 	}
 	return nil
@@ -164,8 +164,7 @@ func readFromBuffer(pd *PinDescriptor, buf []byte) {
 		}
 		p.Set(v)
 	case *hal.Pin[string]:
-		n := pd.StrLen
-		slice := buf[off : off+uint32(n)]
+		slice := buf[off : off+pd.Type.ByteSize]
 		s := string(slice)
 		if idx := bytes.IndexByte(slice, 0); idx >= 0 {
 			s = s[:idx]
