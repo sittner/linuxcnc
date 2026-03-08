@@ -160,7 +160,7 @@ func collectTypeDefs(node *Node, nameSet map[string]int, tm nodeTypeMap, typeDef
 
 	// Determine base name for this type.
 	baseName := node.Name
-	if node.ArrayStart > 0 {
+	if node.IsArray {
 		baseName += "_ITEM"
 	}
 	typeName := uniqueName("T_"+baseName, nameSet)
@@ -227,7 +227,7 @@ func emitTypeRef(e *errEncoder, node *Node, tm nodeTypeMap) error {
 		// Leaf: primitive or string type.
 		return emitPrimitiveTypeElem(e, node.Type.ADSTypeName)
 	}
-	if node.ArrayStart > 0 {
+	if node.IsArray {
 		// Array container.
 		elemTypeName := tm[node]
 		e.start("array")

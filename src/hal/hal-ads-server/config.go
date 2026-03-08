@@ -43,8 +43,11 @@ type Node struct {
 	// StrLen is the string length for STRING(n) leaf nodes (n > 0).
 	// Zero for all other node types.
 	StrLen int
-	// ArrayStart and ArrayEnd are >0 for array containers, e.g. [1..4] gives
-	// ArrayStart=1, ArrayEnd=4. Both are 0 for plain struct containers.
+	// IsArray is true for array containers (e.g. [0..4] or [1..4]).
+	// ArrayStart and ArrayEnd give the element index range.
+	// Use IsArray (not ArrayStart > 0) to distinguish arrays from structs,
+	// because arrays with a 0-based start (e.g. [0..N]) also have ArrayStart == 0.
+	IsArray    bool
 	ArrayStart int
 	ArrayEnd   int
 	// Children holds child nodes for containers (nil for leaves).
@@ -227,5 +230,5 @@ func parseContainerNode(token string, lineNo int) (*Node, error) {
 	if start > end {
 		return nil, fmt.Errorf("line %d: array range start %d > end %d", lineNo, start, end)
 	}
-	return &Node{Name: baseName, ArrayStart: start, ArrayEnd: end}, nil
+	return &Node{Name: baseName, IsArray: true, ArrayStart: start, ArrayEnd: end}, nil
 }

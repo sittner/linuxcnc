@@ -74,6 +74,52 @@ func TestGenerateXMLEmpty(t *testing.T) {
 	}
 }
 
+// TestGenerateXMLZeroBasedArray verifies that an array declared with a 0-based
+// start index (e.g. [0..2]) is emitted as an <array> type with lower="0",
+// not silently treated as a struct.
+func TestGenerateXMLZeroBasedArray(t *testing.T) {
+	cfg := `
+stRoot
+  aItems[0..2]
+    in bReady BOOL
+`
+	roots, err := ParseTree(strings.NewReader(cfg))
+	if err != nil {
+		t.Fatalf("ParseTree: %v", err)
+	}
+	// Verify the parsed node is flagged as an array.
+	arr := roots[0].Children[0]
+	if !arr.IsArray {
+		t.Fatalf("expected IsArray=true for [0..2], got false")
+	}
+	if arr.ArrayStart != 0 || arr.ArrayEnd != 2 {
+		t.Errorf("array range = [%d..%d], want [0..2]", arr.ArrayStart, arr.ArrayEnd)
+	}
+
+	var buf bytes.Buffer
+	if err := GenerateXML(&buf, roots); err != nil {
+		t.Fatalf("GenerateXML: %v", err)
+	}
+
+	out := buf.String()
+	// The XML must contain an <array> with lower="0" and upper="2".
+	for _, want := range []string{
+		`<array>`,
+		`lower="0"`,
+		`upper="2"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("generated XML missing %q\nfull output:\n%s", want, out)
+		}
+	}
+	// It must NOT contain a <struct> for the array node itself (it should be
+	// a <derived> inside <array><baseType>, not a top-level struct variable).
+	// Verify the item type name contains "_ITEM".
+	if !strings.Contains(out, "T_aItems_ITEM") {
+		t.Errorf("generated XML missing T_aItems_ITEM type\nfull output:\n%s", out)
+	}
+}
+
 // TestGenerateXMLGalvHmi generates XML from galv-hmi.conf and verifies it is
 // a syntactically valid PLCopen TC6 XML document.
 func TestGenerateXMLGalvHmi(t *testing.T) {
@@ -386,6 +432,7 @@ func xmlVarToNode(name string, td *xmlTypeDef, typeMap map[string]*xmlDataType) 
 		}
 		return &Node{
 			Name:       name,
+			IsArray:    true,
 			ArrayStart: arr.Dimension.Lower,
 			ArrayEnd:   arr.Dimension.Upper,
 			Children:   elemChildren,
@@ -409,7 +456,7 @@ func xmlVarToNode(name string, td *xmlTypeDef, typeMap map[string]*xmlDataType) 
 		}
 		// Enum → WORD leaf.
 		if dt.BaseType.Enum != nil {
-			return &Node{Name: name, Dir: DirIn, TypeName: "WORD"}, nil
+			return &Node{Name: name, Dir: DirIn, Type: TypesByADSName["WORD"]}, nil
 		}
 		// Struct → container node.
 		if dt.BaseType.Struct != nil {
@@ -427,7 +474,11 @@ func xmlVarToNode(name string, td *xmlTypeDef, typeMap map[string]*xmlDataType) 
 	if typeName == "" {
 		return nil, fmt.Errorf("field %q: unrecognized type", name)
 	}
-	return &Node{Name: name, Dir: DirIn, TypeName: typeName}, nil
+	te, _, err := resolveType(typeName)
+	if err != nil {
+		return nil, fmt.Errorf("field %q: %w", name, err)
+	}
+	return &Node{Name: name, Dir: DirIn, Type: te}, nil
 }
 
 // xmlTypeToChildren resolves a typeRef (used as an array element base type) to

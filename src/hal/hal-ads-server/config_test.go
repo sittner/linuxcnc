@@ -264,6 +264,34 @@ outer
 	}
 }
 
+func TestParseTreeZeroBasedArray(t *testing.T) {
+	cfg := `
+stROOT
+  stItems[0..2]
+    in bReady bool
+`
+	roots, err := ParseTree(strings.NewReader(cfg))
+	if err != nil {
+		t.Fatalf("ParseTree error: %v", err)
+	}
+	if len(roots) != 1 {
+		t.Fatalf("expected 1 root, got %d", len(roots))
+	}
+	arr := roots[0].Children[0]
+	if arr.Name != "stItems" {
+		t.Errorf("array.Name = %q, want stItems", arr.Name)
+	}
+	if !arr.IsArray {
+		t.Errorf("IsArray = false, want true for [0..2]")
+	}
+	if arr.ArrayStart != 0 {
+		t.Errorf("ArrayStart = %d, want 0", arr.ArrayStart)
+	}
+	if arr.ArrayEnd != 2 {
+		t.Errorf("ArrayEnd = %d, want 2", arr.ArrayEnd)
+	}
+}
+
 func TestParseTreeInvalidArray(t *testing.T) {
 	cfg := `
 stBad[1..0]

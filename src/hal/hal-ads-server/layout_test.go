@@ -296,6 +296,55 @@ root
 	}
 }
 
+// TestLayoutZeroBasedArray verifies that an array declared with a 0-based start
+// index (e.g. [0..1]) is laid out correctly as an array, not mistakenly treated
+// as a plain struct container.
+func TestLayoutZeroBasedArray(t *testing.T) {
+	// struct { REAL f; BOOL b; } → size 5, maxAlign 4, alignedSize 8
+	// aSt[0..1] → elements at offsets [0, 8]
+	cfg := `
+root
+  aSt[0..1]
+    in fPower REAL
+    out bManu BOOL
+`
+	roots, err := ParseTree(strings.NewReader(cfg))
+	if err != nil {
+		t.Fatalf("ParseTree: %v", err)
+	}
+	// Confirm the parser sets IsArray for the 0-based array.
+	arr := roots[0].Children[0]
+	if !arr.IsArray {
+		t.Fatalf("expected IsArray=true for aSt[0..1], got false")
+	}
+
+	pins, err := ComputeLayout(roots)
+	if err != nil {
+		t.Fatalf("ComputeLayout: %v", err)
+	}
+	// 2 elements × 2 fields = 4 pins.
+	if len(pins) != 4 {
+		t.Fatalf("expected 4 pins, got %d", len(pins))
+	}
+	expected := []struct {
+		path   string
+		offset uint32
+	}{
+		{"root.aSt.0.fPower", 0},
+		{"root.aSt.0.bManu", 4},
+		{"root.aSt.1.fPower", 8},
+		{"root.aSt.1.bManu", 12},
+	}
+	for i, e := range expected {
+		if pins[i].HALPath != e.path {
+			t.Errorf("pins[%d].HALPath = %q, want %q", i, pins[i].HALPath, e.path)
+		}
+		if pins[i].Offset != e.offset {
+			t.Errorf("pins[%d].Offset = %d, want %d", i, pins[i].Offset, e.offset)
+		}
+	}
+}
+
 // TestLayoutGalvHmiSelectedOffsets parses the clean galv-hmi.conf and checks
 // the computed offsets for a selected set of leaf pins in the stData section.
 func TestLayoutGalvHmiSelectedOffsets(t *testing.T) {

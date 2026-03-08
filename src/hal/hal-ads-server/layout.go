@@ -110,7 +110,7 @@ func layoutNode(node *Node, offset uint32, halPfx, adsPfx string, pins *[]Layout
 		return offset + sz, nil
 	}
 
-	if node.ArrayStart > 0 {
+	if node.IsArray {
 		return layoutArray(node, offset, halName, adsName, pins)
 	}
 	// Struct container.
