@@ -4,6 +4,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 )
 
@@ -206,17 +207,12 @@ func emitAliasDataTypes(e *errEncoder, aliases TypeAliasMap) error {
 	if len(aliases) == 0 {
 		return nil
 	}
-	// Emit in a stable order (sorted by alias name).
+	// Emit in stable sorted order for deterministic output.
 	names := make([]string, 0, len(aliases))
 	for name := range aliases {
 		names = append(names, name)
 	}
-	// Simple insertion sort for deterministic output.
-	for i := 1; i < len(names); i++ {
-		for j := i; j > 0 && names[j] < names[j-1]; j-- {
-			names[j], names[j-1] = names[j-1], names[j]
-		}
-	}
+	sort.Strings(names)
 	for _, name := range names {
 		alias := aliases[name]
 		e.start("dataType", xml.Attr{Name: xml.Name{Local: "name"}, Value: name})

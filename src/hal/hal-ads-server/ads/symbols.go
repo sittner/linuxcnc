@@ -153,8 +153,13 @@ func parentPrefixes(name string) []string {
 			} else {
 				barePrefix = bareSeg
 			}
-			// Only add if different from the bracket version (it always is).
-			prefixes = append(prefixes, barePrefix)
+			// The bare prefix always differs from the bracket prefix because one
+			// contains "[N]" and the other does not (e.g. "stData.aPools" vs
+			// "stData.aPools[1]"). Add only if non-empty (handles edge case of
+			// a single-segment name like "aPools[1]" where bareSeg would be "aPools").
+			if barePrefix != "" && barePrefix != prefix {
+				prefixes = append(prefixes, barePrefix)
+			}
 		}
 	}
 	return prefixes
