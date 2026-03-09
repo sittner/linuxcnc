@@ -163,6 +163,8 @@ func GenerateXML(w io.Writer, roots []*Node, aliasOpts ...TypeAliasMap) error {
 
 // collectTypeDefs walks the node tree (post-order) and appends a genTypeDef
 // for each container node. It also populates tm with type name mappings.
+// When a container node has a TypeName set (referencing a @type alias), that
+// alias name is used directly instead of generating a synthetic "T_..." name.
 func collectTypeDefs(node *Node, nameSet map[string]int, tm nodeTypeMap, typeDefs *[]genTypeDef) {
 	if len(node.Children) == 0 {
 		return // leaf; no type definition needed
@@ -173,12 +175,23 @@ func collectTypeDefs(node *Node, nameSet map[string]int, tm nodeTypeMap, typeDef
 		collectTypeDefs(child, nameSet, tm, typeDefs)
 	}
 
-	// Determine base name for this type.
-	baseName := node.Name
-	if node.ArrayStart > 0 {
-		baseName += "_ITEM"
+	// Determine type name for this container.
+	var typeName string
+	if node.TypeName != "" {
+		// Use the explicitly declared alias name (e.g. "ST_DISP_DATA") so that
+		// the exported XML uses real TwinCAT type names for easy reimport.
+		typeName = node.TypeName
+		if _, exists := nameSet[typeName]; !exists {
+			nameSet[typeName] = 1
+		}
+	} else {
+		// Generate a synthetic name from the node name.
+		baseName := node.Name
+		if node.ArrayStart > 0 {
+			baseName += "_ITEM"
+		}
+		typeName = uniqueName("T_"+baseName, nameSet)
 	}
-	typeName := uniqueName("T_"+baseName, nameSet)
 
 	tm[node] = typeName
 	*typeDefs = append(*typeDefs, genTypeDef{typeName: typeName, node: node})
@@ -201,8 +214,11 @@ func uniqueName(prefix string, nameSet map[string]int) string {
 	}
 }
 
-// emitAliasDataTypes emits <dataType> entries for each @type alias.
+// emitAliasDataTypes emits <dataType> entries for each @type leaf/enum alias.
 // Each alias produces a <dataType name="AliasName"><baseType><BaseType /></baseType></dataType>.
+// Struct/container aliases (those with an empty BaseType, i.e. declared with the
+// 2-arg @type form) are skipped here because their definitions are emitted
+// inline as struct dataType entries via collectTypeDefs.
 func emitAliasDataTypes(e *errEncoder, aliases TypeAliasMap) error {
 	if len(aliases) == 0 {
 		return nil
@@ -215,6 +231,10 @@ func emitAliasDataTypes(e *errEncoder, aliases TypeAliasMap) error {
 	sort.Strings(names)
 	for _, name := range names {
 		alias := aliases[name]
+		if alias.BaseType == "" {
+			// Struct/container alias: definition comes from the container node itself.
+			continue
+		}
 		e.start("dataType", xml.Attr{Name: xml.Name{Local: "name"}, Value: name})
 		e.start("baseType")
 		if err := emitPrimitiveTypeElem(e, alias.BaseType); err != nil {

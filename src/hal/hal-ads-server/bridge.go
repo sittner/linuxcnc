@@ -438,3 +438,30 @@ func NewBridge(comp *hal.Component, pins []LayoutPin, st *ads.SymbolTable, alias
 
 	return b, nil
 }
+
+// applyContainerTypeInfo walks the Node tree and calls st.SetGroupTypeInfo for
+// each container node whose TypeName matches a @type alias in aliases.
+// This ensures that ADSIGRP_SYM_INFOBYNAMEEX (0xF009) responses return the
+// correct type name and data-type GUID for struct/array container symbols.
+func applyContainerTypeInfo(roots []*Node, adsPrefix string, st *ads.SymbolTable, aliases TypeAliasMap) {
+	for _, node := range roots {
+		if len(node.Children) == 0 {
+			continue // leaf node; type info is already set via the PinAccessor
+		}
+		path := joinName(adsPrefix, node.Name)
+		if node.TypeName != "" {
+			if alias, ok := aliases[node.TypeName]; ok {
+				st.SetGroupTypeInfo(path, node.TypeName, alias.GUID)
+			}
+		}
+		if node.ArrayStart > 0 {
+			// For array containers, recurse into each element using bracket notation.
+			for i := node.ArrayStart; i <= node.ArrayEnd; i++ {
+				elemPath := fmt.Sprintf("%s[%d]", path, i)
+				applyContainerTypeInfo(node.Children, elemPath, st, aliases)
+			}
+		} else {
+			applyContainerTypeInfo(node.Children, path, st, aliases)
+		}
+	}
+}

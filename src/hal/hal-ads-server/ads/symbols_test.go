@@ -1098,3 +1098,133 @@ type mockPinWithGUID struct {
 }
 
 func (m *mockPinWithGUID) TypeGUID() [16]byte { return m.guid }
+
+// ---------------------------------------------------------------------------
+// Tests for SetGroupTypeInfo / groupAccessor type name and GUID overrides
+// ---------------------------------------------------------------------------
+
+// TestSetGroupTypeInfo verifies that SetGroupTypeInfo sets the override type
+// name and GUID on the named group symbol's accessor.
+func TestSetGroupTypeInfo(t *testing.T) {
+	guid := [16]byte{0xa5, 0x6e, 0x65, 0x96, 0xb7, 0x0d, 0xb0, 0x49,
+		0x86, 0xec, 0x56, 0xce, 0xf2, 0x6b, 0x56, 0xd0}
+
+	st := NewSymbolTable()
+	st.Register("stFoo.nVal", newDintPin(0))
+
+	st.SetGroupTypeInfo("stFoo", "ST_FOO", guid)
+
+	sym := st.GetByName("stFoo")
+	if sym == nil {
+		t.Fatal("group symbol stFoo not found")
+	}
+	if sym.Accessor.TypeName() != "ST_FOO" {
+		t.Errorf("TypeName() = %q, want %q", sym.Accessor.TypeName(), "ST_FOO")
+	}
+	if sym.Accessor.TypeGUID() != guid {
+		t.Errorf("TypeGUID() = %x, want %x", sym.Accessor.TypeGUID(), guid)
+	}
+}
+
+// TestSetGroupTypeInfoNoOverride verifies that a group symbol without a type
+// override still returns its path-segment-derived name and a zero GUID.
+func TestSetGroupTypeInfoNoOverride(t *testing.T) {
+	st := NewSymbolTable()
+	st.Register("stFoo.nVal", newDintPin(0))
+
+	sym := st.GetByName("stFoo")
+	if sym == nil {
+		t.Fatal("group symbol stFoo not found")
+	}
+	// Default: TypeName() returns last path segment; TypeGUID() returns zeros.
+	if sym.Accessor.TypeName() != "stFoo" {
+		t.Errorf("TypeName() = %q, want %q", sym.Accessor.TypeName(), "stFoo")
+	}
+	var zeroGUID [16]byte
+	if sym.Accessor.TypeGUID() != zeroGUID {
+		t.Errorf("TypeGUID() = %x, want all zeros", sym.Accessor.TypeGUID())
+	}
+}
+
+// TestSetGroupTypeInfoNonExistent verifies that SetGroupTypeInfo on a
+// non-existent name does not panic.
+func TestSetGroupTypeInfoNonExistent(t *testing.T) {
+	st := NewSymbolTable()
+	st.Register("stFoo.nVal", newDintPin(0))
+	// Must not panic.
+	st.SetGroupTypeInfo("doesNotExist", "ST_SOMETHING", [16]byte{1})
+}
+
+// TestBuildSymbolInfoExGroupTypeInfo verifies that buildSymbolInfoEx returns
+// the correct type name and GUID for a group symbol with SetGroupTypeInfo.
+func TestBuildSymbolInfoExGroupTypeInfo(t *testing.T) {
+	guid := [16]byte{0xa5, 0x6e, 0x65, 0x96, 0xb7, 0x0d, 0xb0, 0x49,
+		0x86, 0xec, 0x56, 0xce, 0xf2, 0x6b, 0x56, 0xd0}
+
+	st := NewSymbolTable()
+	st.Register("stFoo.nVal", newDintPin(0))
+	st.SetGroupTypeInfo("stFoo", "ST_FOO", guid)
+
+	sym := st.GetByName("stFoo")
+	if sym == nil {
+		t.Fatal("group symbol stFoo not found")
+	}
+
+	buf := buildSymbolInfoEx(sym)
+	base := buildSymbolInfo(sym)
+	extOff := len(base)
+
+	// Verify that buildSymbolInfo embeds "ST_FOO" as the type name in the base.
+	// The base response contains: 30-byte header, name bytes, 0x00, type bytes, 0x00, 0x00.
+	// Type name starts at offset 30 + len("stFoo") + 1.
+	nameLen := len("stFoo")
+	typeOff := 30 + nameLen + 1
+	typeEnd := typeOff + len("ST_FOO")
+	if typeEnd > len(base)-2 {
+		t.Fatalf("base buffer too short to contain type name")
+	}
+	gotType := string(base[typeOff:typeEnd])
+	if gotType != "ST_FOO" {
+		t.Errorf("TypeName in base = %q, want %q", gotType, "ST_FOO")
+	}
+
+	// Verify the GUID in the extended part.
+	for i := 0; i < 16; i++ {
+		if buf[extOff+2+i] != guid[i] {
+			t.Errorf("GUID[%d] = %d, want %d", i, buf[extOff+2+i], guid[i])
+		}
+	}
+}
+
+// TestReadWriteDataSymbolInfoByNameExGroupTypeInfo verifies that the 0xF009
+// ReadWrite handler returns the correct type name and GUID for a group symbol
+// that has been annotated with SetGroupTypeInfo.
+func TestReadWriteDataSymbolInfoByNameExGroupTypeInfo(t *testing.T) {
+	guid := [16]byte{0xa5, 0x6e, 0x65, 0x96, 0xb7, 0x0d, 0xb0, 0x49,
+		0x86, 0xec, 0x56, 0xce, 0xf2, 0x6b, 0x56, 0xd0}
+
+	st := NewSymbolTable()
+	st.Register("stFoo.nVal", newDintPin(0))
+	st.SetGroupTypeInfo("stFoo", "ST_FOO", guid)
+
+	data, errCode := st.ReadWriteData(IdxGrpSymbolInfoByNameEx, 0, 256, []byte("stFoo"))
+	if errCode != ErrNoError {
+		t.Fatalf("ReadWriteData(IdxGrpSymbolInfoByNameEx) error: 0x%X", errCode)
+	}
+
+	// Locate extension offset via buildSymbolInfo on the same symbol.
+	sym := st.GetByName("stFoo")
+	base := buildSymbolInfo(sym)
+	extOff := len(base)
+
+	if len(data) < extOff+2+16 {
+		t.Fatalf("response too short: got %d bytes, want ≥ %d", len(data), extOff+2+16)
+	}
+
+	// Verify GUID in the extended part.
+	for i := 0; i < 16; i++ {
+		if data[extOff+2+i] != guid[i] {
+			t.Errorf("GUID[%d] = %d, want %d", i, data[extOff+2+i], guid[i])
+		}
+	}
+}

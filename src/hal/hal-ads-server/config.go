@@ -52,9 +52,12 @@ type Node struct {
 	// Dir is the direction for leaf nodes ("in", "out", "inout", "pad").
 	// Empty for container nodes.
 	Dir PinDir
-	// TypeName is the ADS/TwinCAT type name for leaf nodes, e.g. "BOOL", "REAL".
-	// When a @type alias is referenced, TypeName holds the alias name (not the base type).
-	// Empty for container nodes.
+	// TypeName is the ADS/TwinCAT type name.
+	// For leaf nodes it holds the primitive type (e.g. "BOOL", "REAL") or the
+	// @type alias name when the leaf references an alias.
+	// For container nodes it holds the optional @type alias name that provides
+	// the struct/array type name and GUID (e.g. "ST_DISP_DATA").
+	// Empty when no type name was specified.
 	TypeName string
 	// ArrayStart and ArrayEnd are >0 for array containers, e.g. [1..4] gives
 	// ArrayStart=1, ArrayEnd=4. Both are 0 for plain struct containers.
@@ -76,13 +79,20 @@ type configLine struct {
 // the symbol hierarchy.
 //
 // @type directives must appear at depth 0 (before any indented block) and have
-// the form:
+// one of the following forms:
 //
-//	@type <AliasName> <BaseType> <GUID>
+//	@type <AliasName> <GUID>                    (struct/container type alias)
+//	@type <AliasName> <BaseType> <GUID>         (leaf/enum type alias)
 //
 // Example:
 //
+//	@type ST_DISP_DATA a1b2c3d4-e5f6-7890-abcd-ef1234567890
 //	@type EN_DISP_MSGTYPE WORD 96656ea5-0db7-49b0-86ec-56cef26b56d0
+//
+// Container lines may optionally include a @type alias name as a second token:
+//
+//	stData ST_DISP_DATA
+//	  in bGlobalErr BOOL
 func ParseTreeWithAliases(r io.Reader) (TypeAliasMap, []*Node, error) {
 	aliases, lines, err := readConfigLinesWithAliases(r)
 	if err != nil {
@@ -139,14 +149,27 @@ func readConfigLinesWithAliases(r io.Reader) (TypeAliasMap, []configLine, error)
 		// Handle @type directives at depth 0 (no leading whitespace).
 		if strings.HasPrefix(trimmed, "@type ") {
 			tokens := strings.Fields(trimmed)
-			if len(tokens) != 4 {
-				return nil, nil, fmt.Errorf("line %d: @type requires exactly 3 arguments: @type <AliasName> <BaseType> <GUID>", lineNo)
-			}
-			aliasName := strings.ToUpper(tokens[1])
-			baseType := strings.ToUpper(tokens[2])
-			guid, err := parseGUID(tokens[3])
-			if err != nil {
-				return nil, nil, fmt.Errorf("line %d: @type %q invalid GUID: %w", lineNo, aliasName, err)
+			var aliasName, baseType string
+			var guid [16]byte
+			var err error
+			switch len(tokens) {
+			case 3:
+				// 2-arg form: @type <AliasName> <GUID>  (struct/container type alias)
+				aliasName = strings.ToUpper(tokens[1])
+				guid, err = parseGUID(tokens[2])
+				if err != nil {
+					return nil, nil, fmt.Errorf("line %d: @type %q invalid GUID: %w", lineNo, aliasName, err)
+				}
+			case 4:
+				// 3-arg form: @type <AliasName> <BaseType> <GUID>  (leaf/enum type alias)
+				aliasName = strings.ToUpper(tokens[1])
+				baseType = strings.ToUpper(tokens[2])
+				guid, err = parseGUID(tokens[3])
+				if err != nil {
+					return nil, nil, fmt.Errorf("line %d: @type %q invalid GUID: %w", lineNo, aliasName, err)
+				}
+			default:
+				return nil, nil, fmt.Errorf("line %d: @type requires 2 or 3 arguments: @type <AliasName> [<BaseType>] <GUID>", lineNo)
 			}
 			aliases[aliasName] = TypeAlias{BaseType: baseType, GUID: guid}
 			continue
@@ -285,6 +308,10 @@ func parseTreeBlock(lines []configLine, idx *int, minDepth int, nodes *[]*Node) 
 		node, err := parseContainerNode(tokens[0], cl.lineNo)
 		if err != nil {
 			return err
+		}
+		// Optional second token on a container line is a @type alias name.
+		if len(tokens) > 1 {
+			node.TypeName = strings.ToUpper(tokens[1])
 		}
 		*idx++ // consume the container line
 

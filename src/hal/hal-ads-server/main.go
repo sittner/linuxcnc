@@ -98,6 +98,7 @@ func main() {
 	if _, err := NewBridge(comp, layoutPins, st, aliases); err != nil {
 		log.Fatalf("Failed to create HAL pins: %v", err)
 	}
+	applyContainerTypeInfo(tree, "", st, aliases)
 
 	// Mark component ready (allows 'loadusr -W' to proceed).
 	if err := comp.Ready(); err != nil {

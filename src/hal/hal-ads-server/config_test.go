@@ -538,6 +538,129 @@ stBlock
 	}
 }
 
+// ---------------------------------------------------------------------------
+// @type 2-arg form (struct/container alias) tests
+// ---------------------------------------------------------------------------
+
+// TestParseTypeAliasStructForm verifies that @type with 2 arguments (name + GUID,
+// no base type) is accepted as a struct/container alias.
+func TestParseTypeAliasStructForm(t *testing.T) {
+	cfg := `
+@type ST_DISP_DATA a1b2c3d4-e5f6-7890-abcd-ef1234567890
+
+stData ST_DISP_DATA
+  in bReady BOOL
+`
+	aliases, roots, err := ParseTreeWithAliases(strings.NewReader(cfg))
+	if err != nil {
+		t.Fatalf("ParseTreeWithAliases: %v", err)
+	}
+
+	// Alias should be in the map with an empty BaseType.
+	alias, ok := aliases["ST_DISP_DATA"]
+	if !ok {
+		t.Fatal("alias ST_DISP_DATA not found")
+	}
+	if alias.BaseType != "" {
+		t.Errorf("BaseType = %q, want empty (struct alias)", alias.BaseType)
+	}
+	// Check GUID encoding: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+	// Data1=0xa1b2c3d4 LE: d4 c3 b2 a1
+	// Data2=0xe5f6 LE: f6 e5
+	// Data3=0x7890 LE: 90 78
+	// Data4: ab cd ef 12 34 56 78 90
+	want := [16]byte{0xd4, 0xc3, 0xb2, 0xa1, 0xf6, 0xe5, 0x90, 0x78,
+		0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78, 0x90}
+	if alias.GUID != want {
+		t.Errorf("GUID = %x, want %x", alias.GUID, want)
+	}
+
+	// Container node should have TypeName set to the alias name.
+	if len(roots) != 1 {
+		t.Fatalf("expected 1 root, got %d", len(roots))
+	}
+	container := roots[0]
+	if container.TypeName != "ST_DISP_DATA" {
+		t.Errorf("container TypeName = %q, want ST_DISP_DATA", container.TypeName)
+	}
+}
+
+// TestParseContainerTypeNameCaseNormalized verifies that a type name on a
+// container line is normalized to upper case.
+func TestParseContainerTypeNameCaseNormalized(t *testing.T) {
+	cfg := `
+@type ST_DISP_DATA a1b2c3d4-e5f6-7890-abcd-ef1234567890
+
+stData st_disp_data
+  in bReady BOOL
+`
+	_, roots, err := ParseTreeWithAliases(strings.NewReader(cfg))
+	if err != nil {
+		t.Fatalf("ParseTreeWithAliases: %v", err)
+	}
+	if len(roots) != 1 {
+		t.Fatalf("expected 1 root, got %d", len(roots))
+	}
+	if roots[0].TypeName != "ST_DISP_DATA" {
+		t.Errorf("container TypeName = %q, want ST_DISP_DATA", roots[0].TypeName)
+	}
+}
+
+// TestParseContainerTypeNameNoTypeNameRetainsEmpty verifies that a container
+// line without a type name leaves Node.TypeName empty (backward compatible).
+func TestParseContainerTypeNameNoTypeNameRetainsEmpty(t *testing.T) {
+	cfg := `
+stData
+  in bReady BOOL
+`
+	_, roots, err := ParseTreeWithAliases(strings.NewReader(cfg))
+	if err != nil {
+		t.Fatalf("ParseTreeWithAliases: %v", err)
+	}
+	if len(roots) != 1 {
+		t.Fatalf("expected 1 root, got %d", len(roots))
+	}
+	if roots[0].TypeName != "" {
+		t.Errorf("container TypeName = %q, want empty", roots[0].TypeName)
+	}
+}
+
+// TestParseArrayContainerTypeName verifies that an array container line also
+// supports the optional type name token.
+func TestParseArrayContainerTypeName(t *testing.T) {
+	cfg := `
+@type ST_POOL a1b2c3d4-e5f6-7890-abcd-ef1234567890
+
+stData
+  aPools[1..2] ST_POOL
+    in bReady BOOL
+`
+	_, roots, err := ParseTreeWithAliases(strings.NewReader(cfg))
+	if err != nil {
+		t.Fatalf("ParseTreeWithAliases: %v", err)
+	}
+	if len(roots) != 1 || len(roots[0].Children) != 1 {
+		t.Fatalf("unexpected tree structure")
+	}
+	arrayNode := roots[0].Children[0]
+	if arrayNode.Name != "aPools" {
+		t.Fatalf("unexpected child name: %q", arrayNode.Name)
+	}
+	if arrayNode.TypeName != "ST_POOL" {
+		t.Errorf("array container TypeName = %q, want ST_POOL", arrayNode.TypeName)
+	}
+}
+
+// TestParseTypeAliasTooFewArgs verifies that @type with only 1 argument (just
+// the name, no GUID) returns a parse error.
+func TestParseTypeAliasTooFewArgs(t *testing.T) {
+	cfg := "@type NOARGS\nstBlock\n  in x BOOL\n"
+	_, _, err := ParseTreeWithAliases(strings.NewReader(cfg))
+	if err == nil {
+		t.Error("expected error for @type with too few args, got nil")
+	}
+}
+
 func TestParseTypeInfo(t *testing.T) {
 	tests := []struct {
 		typeName string
