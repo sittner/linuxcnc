@@ -33,19 +33,21 @@ stRoot
 		t.Fatalf("GenerateXML: %v", err)
 	}
 
+	// Capture the output string before the decoder consumes the buffer.
+	out := buf.String()
+
 	// Verify it parses as valid XML.
-	dec := xml.NewDecoder(&buf)
+	dec := xml.NewDecoder(strings.NewReader(out))
 	for {
 		_, err := dec.Token()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			t.Fatalf("generated XML is not valid: %v\n%s", err, buf.String())
+			t.Fatalf("generated XML is not valid: %v\n%s", err, out)
 		}
 	}
 
-	out := buf.String()
 	// Verify key structural elements are present (using substrings that are
 	// insensitive to exact whitespace/formatting decisions by the encoder).
 	for _, want := range []string{
@@ -93,7 +95,8 @@ func TestGenerateXMLGalvHmi(t *testing.T) {
 		t.Fatalf("GenerateXML: %v", err)
 	}
 
-	dec := xml.NewDecoder(&buf)
+	out := buf.String()
+	dec := xml.NewDecoder(strings.NewReader(out))
 	for {
 		_, err := dec.Token()
 		if err == io.EOF {
@@ -492,9 +495,7 @@ stBlock
 	out := buf.String()
 
 	// Verify the output is valid XML.
-	dec := xml.NewDecoder(&buf)
-	buf2 := bytes.NewBufferString(out)
-	dec = xml.NewDecoder(buf2)
+	dec := xml.NewDecoder(strings.NewReader(out))
 	for {
 		_, err := dec.Token()
 		if err == io.EOF {
@@ -578,7 +579,7 @@ stBlock
 
 	// Verify valid XML.
 	out := buf.String()
-	dec := xml.NewDecoder(bytes.NewBufferString(out))
+	dec := xml.NewDecoder(strings.NewReader(out))
 	for {
 		_, err := dec.Token()
 		if err == io.EOF {
