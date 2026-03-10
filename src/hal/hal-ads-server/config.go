@@ -207,7 +207,7 @@ func readConfigLinesWithAliases(r io.Reader) (TypeAliasMap, []configLine, error)
 			pendingEnumAlias.EnumValues = pendingEnumValues
 			aliases[pendingEnumName] = pendingEnumAlias
 			inEnumDef = false
-			pendingEnumValues = nil
+			pendingEnumValues = []EnumValue{}
 			// Fall through to process the current (non-indented) line normally.
 		}
 
@@ -224,7 +224,7 @@ func readConfigLinesWithAliases(r io.Reader) (TypeAliasMap, []configLine, error)
 				return nil, nil, fmt.Errorf("line %d: @enum %q invalid GUID: %w", lineNo, pendingEnumName, err)
 			}
 			pendingEnumAlias = TypeAlias{BaseType: baseType, GUID: guid}
-			pendingEnumValues = nil
+			pendingEnumValues = []EnumValue{}
 			nextAutoValue = 0
 			inEnumDef = true
 			continue
