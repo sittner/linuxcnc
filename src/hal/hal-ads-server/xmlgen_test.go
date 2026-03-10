@@ -964,6 +964,116 @@ stBlock
 	}
 }
 
+// TestGenerateXMLPromotedArray verifies that an array node with a promoted
+// @struct TypeName (e.g. "aPools[1..4] struct _ ST_DISP_POOL") emits a proper
+// <array><dimension .../><baseType><derived name="ST_DISP_POOL" /></baseType></array>
+// instead of a bare <derived name="ST_DISP_POOL" />.
+func TestGenerateXMLPromotedArray(t *testing.T) {
+	cfg := `
+@struct ST_POOL 354914ab-5602-4319-a5dd-d33707893044
+  in bActive BOOL
+  out nLevel DWORD
+
+stRoot
+  aPools[1..4]
+    struct _ ST_POOL
+`
+	aliases, roots, err := ParseTreeWithAliases(strings.NewReader(cfg))
+	if err != nil {
+		t.Fatalf("ParseTreeWithAliases: %v", err)
+	}
+
+	var buf bytes.Buffer
+	if err := GenerateXML(&buf, roots, aliases); err != nil {
+		t.Fatalf("GenerateXML: %v", err)
+	}
+	out := buf.String()
+
+	// The variable for aPools must reference an <array> type, not a bare <derived>.
+	if !strings.Contains(out, `<array>`) {
+		t.Errorf("expected <array> element for promoted array, got:\n%s", out)
+	}
+	// The array must have a <dimension lower="1" upper="4" />.
+	if !strings.Contains(out, `lower="1"`) || !strings.Contains(out, `upper="4"`) {
+		t.Errorf("expected dimension lower=1 upper=4 for promoted array, got:\n%s", out)
+	}
+	// The baseType must reference the promoted struct name.
+	if !strings.Contains(out, `<derived name="ST_POOL"`) {
+		t.Errorf("expected <derived name=\"ST_POOL\"> in array baseType, got:\n%s", out)
+	}
+	// There must NOT be a spurious T_aPools_ITEM type definition.
+	if strings.Contains(out, `T_aPools_ITEM`) {
+		t.Errorf("unexpected T_aPools_ITEM type definition for promoted array, got:\n%s", out)
+	}
+	// The XML must be well-formed.
+	dec := xml.NewDecoder(strings.NewReader(out))
+	for {
+		_, err := dec.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("generated XML is not valid: %v\n%s", err, out)
+		}
+	}
+}
+
+// TestGenerateXMLPromotedArrayMulti verifies multiple promoted arrays in the
+// same config all emit proper <array> elements.
+func TestGenerateXMLPromotedArrayMulti(t *testing.T) {
+	cfg := `
+@struct ST_POOL 354914ab-5602-4319-a5dd-d33707893044
+  in bActive BOOL
+
+@struct ST_ERRORS 96656ea5-0db7-49b0-86ec-56cef26b56d0
+  out nCode DWORD
+
+stRoot
+  aPools[1..4]
+    struct _ ST_POOL
+  aErrors[1..2]
+    struct _ ST_ERRORS
+`
+	aliases, roots, err := ParseTreeWithAliases(strings.NewReader(cfg))
+	if err != nil {
+		t.Fatalf("ParseTreeWithAliases: %v", err)
+	}
+
+	var buf bytes.Buffer
+	if err := GenerateXML(&buf, roots, aliases); err != nil {
+		t.Fatalf("GenerateXML: %v", err)
+	}
+	out := buf.String()
+
+	for _, tc := range []struct {
+		lower, upper, name string
+	}{
+		{"1", "4", "ST_POOL"},
+		{"1", "2", "ST_ERRORS"},
+	} {
+		if !strings.Contains(out, `lower="`+tc.lower+`"`) {
+			t.Errorf("expected lower=%q for %s array, got:\n%s", tc.lower, tc.name, out)
+		}
+		if !strings.Contains(out, `upper="`+tc.upper+`"`) {
+			t.Errorf("expected upper=%q for %s array, got:\n%s", tc.upper, tc.name, out)
+		}
+		if !strings.Contains(out, `<derived name="`+tc.name+`"`) {
+			t.Errorf("expected <derived name=%q> in array baseType, got:\n%s", tc.name, out)
+		}
+	}
+	// XML must be well-formed.
+	dec := xml.NewDecoder(strings.NewReader(out))
+	for {
+		_, err := dec.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("generated XML is not valid: %v\n%s", err, out)
+		}
+	}
+}
+
 // TestEmitObjectIdAddDataZeroGUID verifies that GenerateXML does NOT emit an
 // <addData> block for an alias whose GUID is all zeros.
 func TestEmitObjectIdAddDataZeroGUID(t *testing.T) {

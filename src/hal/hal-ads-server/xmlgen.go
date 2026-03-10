@@ -196,13 +196,20 @@ func collectTypeDefs(node *Node, nameSet map[string]int, tm nodeTypeMap, typeDef
 		return // leaf; no type definition needed
 	}
 
-	// If this container references a named @struct, register its type name
-	// from the alias map and skip generating a T_xxx entry.
-	if node.TypeName != "" && aliases != nil {
+	// If this non-array container references a named @struct, register its
+	// type name from the alias map and skip generating a T_xxx entry.
+	if node.TypeName != "" && node.ArrayStart == 0 && aliases != nil {
 		if alias, ok := aliases[node.TypeName]; ok && alias.StructDef != nil {
 			tm[node] = node.TypeName
 			return
 		}
+	}
+
+	// For array nodes with a promoted TypeName (e.g. "aPools[1..4] struct _
+	// ST_DISP_POOL"), the element type is the named @struct and no T_xxx_ITEM
+	// entry is needed — emitTypeRef uses node.TypeName directly.
+	if node.TypeName != "" && node.ArrayStart > 0 {
+		return
 	}
 
 	// Post-order: collect children first so inner types are emitted first.
@@ -364,17 +371,23 @@ func emitTypeRef(e *errEncoder, node *Node, tm nodeTypeMap, aliases TypeAliasMap
 		return emitPrimitiveTypeElem(e, node.TypeName)
 	}
 
-	// Container node with TypeName set (from a "struct varName TypeName" or
-	// a promoted array element): emit a <derived name="TypeName" /> reference.
-	if node.TypeName != "" {
+	// Container node with TypeName set (from a "struct varName TypeName") and
+	// it is not an array: emit a <derived name="TypeName" /> reference.
+	if node.TypeName != "" && node.ArrayStart == 0 {
 		e.start("derived", xml.Attr{Name: xml.Name{Local: "name"}, Value: node.TypeName})
 		e.end("derived")
 		return e.err
 	}
 
 	if node.ArrayStart > 0 {
-		// Array container.
-		elemTypeName := tm[node]
+		// Array container. For promoted arrays (TypeName != ""), the element
+		// type is the named @struct; otherwise look up the generated T_xxx name.
+		var elemTypeName string
+		if node.TypeName != "" {
+			elemTypeName = node.TypeName
+		} else {
+			elemTypeName = tm[node]
+		}
 		e.start("array")
 		e.start("dimension",
 			xml.Attr{Name: xml.Name{Local: "lower"}, Value: fmt.Sprintf("%d", node.ArrayStart)},
