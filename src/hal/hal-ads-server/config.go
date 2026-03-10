@@ -212,7 +212,10 @@ func readConfigLinesWithAliases(r io.Reader) (TypeAliasMap, []configLine, error)
 			return fmt.Errorf("@struct %q member: %w", pendingStructName, err)
 		}
 		if nodes == nil {
-			nodes = []*Node{} // ensure non-nil to distinguish from non-struct aliases
+			// Ensure StructDef is non-nil even for empty @struct bodies so that
+			// nil (non-struct alias) can be distinguished from a struct with no
+			// members. parseTreeBlock leaves the slice nil when there are no lines.
+			nodes = []*Node{}
 		}
 		pendingStructAlias.StructDef = nodes
 		aliases[pendingStructName] = pendingStructAlias
