@@ -319,7 +319,7 @@ func (e *Executor) executeTwopass(twopassValue string) error {
 			if opts.verbose {
 				e.logger.Info("TWOPASS: .tcl HALFILE detected, delegating to legacy haltcl twopass.tcl")
 			}
-			return e.executeTwopassLegacy(twopassValue)
+			return e.executeTwopassLegacy()
 		}
 	}
 
@@ -328,24 +328,41 @@ func (e *Executor) executeTwopass(twopassValue string) error {
 }
 
 // executeTwopassLegacy delegates to the legacy haltcl twopass.tcl when .tcl
-// HALFILEs are present.  It finds twopass.tcl via HALLIB_PATH and invokes it
-// with the same INI file.
-func (e *Executor) executeTwopassLegacy(twopassValue string) error {
+// HALFILEs are present.  It searches for twopass.tcl in several standard
+// locations, trying them in order:
+//  1. HALLIB_DIR/twopass.tcl
+//  2. $LINUXCNC_TCL_DIR/twopass.tcl (environment variable)
+//  3. $LINUXCNC_HOME/tcl/twopass.tcl (environment variable)
+//  4. filepath.Dir(HALLIB_DIR)/tcl/twopass.tcl (RIP build fallback)
+func (e *Executor) executeTwopassLegacy() error {
 	halibDir := e.halibDir()
-	if halibDir == "" {
-		return fmt.Errorf("TWOPASS: cannot find HALLIB_DIR for twopass.tcl delegation")
+
+	// Build the ordered list of candidate paths for twopass.tcl.
+	var candidates []string
+	if halibDir != "" {
+		candidates = append(candidates, filepath.Join(halibDir, "twopass.tcl"))
 	}
-	twopassTcl := filepath.Join(halibDir, "twopass.tcl")
-	// Also check the parent directory (where tcl/ files may live in a RIP build).
-	if _, err := os.Stat(twopassTcl); err != nil {
-		twopassTcl = filepath.Join(filepath.Dir(halibDir), "tcl", "twopass.tcl")
-		if _, err2 := os.Stat(twopassTcl); err2 != nil {
-			return fmt.Errorf("TWOPASS: cannot find twopass.tcl (tried %s and %s)",
-				filepath.Join(halibDir, "twopass.tcl"), twopassTcl)
+	if dir := os.Getenv("LINUXCNC_TCL_DIR"); dir != "" {
+		candidates = append(candidates, filepath.Join(dir, "twopass.tcl"))
+	}
+	if home := os.Getenv("LINUXCNC_HOME"); home != "" {
+		candidates = append(candidates, filepath.Join(home, "tcl", "twopass.tcl"))
+	}
+	if halibDir != "" {
+		candidates = append(candidates, filepath.Join(filepath.Dir(halibDir), "tcl", "twopass.tcl"))
+	}
+
+	if len(candidates) == 0 {
+		return fmt.Errorf("TWOPASS: cannot find twopass.tcl: HALLIB_PATH, LINUXCNC_TCL_DIR and LINUXCNC_HOME are all unset")
+	}
+
+	for _, candidate := range candidates {
+		if _, err := os.Stat(candidate); err == nil {
+			e.logger.Info("TWOPASS: delegating to legacy twopass.tcl", "path", candidate)
+			return e.runHaltcl(candidate, nil)
 		}
 	}
-	e.logger.Info("TWOPASS: delegating to legacy twopass.tcl", "path", twopassTcl)
-	return e.runHaltcl(twopassTcl, nil)
+	return fmt.Errorf("TWOPASS: cannot find twopass.tcl (searched: %s)", strings.Join(candidates, ", "))
 }
 
 // halSectionEntry represents a single entry from the [HAL] INI section:
@@ -410,7 +427,7 @@ func (e *Executor) executeTwopassNative(
 			continue
 		}
 		if se.noTwopass {
-			// Execute the file immediately via "halcmd -vkf <file>".
+			// Execute the file immediately via "halcmd -v -k -f <file>".
 			if opts.verbose {
 				e.logger.Info("TWOPASS: pass0: executing #NOTWOPASS file", "path", se.resolved)
 			}
@@ -418,7 +435,7 @@ func (e *Executor) executeTwopassNative(
 			if e.ini != nil && e.ini.SourceFile() != "" {
 				args = append(args, "-i", e.ini.SourceFile())
 			}
-			args = append(args, "-vkf", se.resolved)
+			args = append(args, "-v", "-k", "-f", se.resolved)
 			if err := e.runHalcmdArgs(args); err != nil {
 				return fmt.Errorf("TWOPASS: pass0: executing #NOTWOPASS file %q: %w", se.resolved, err)
 			}
@@ -486,14 +503,14 @@ func (e *Executor) executeTwopassNative(
 		e.logger.Info("TWOPASS: pass0 end")
 	}
 
-	// --- Pass 1: execute all commands except loadrt ---
+	// --- Pass 1: execute all commands except loadrt/loadusr, batched per file ---
 	if opts.verbose {
 		e.logger.Info("TWOPASS: pass1 begin")
 	}
 
 	for _, se := range sectionEntries {
 		if !se.isHALFILE {
-			// Execute HALCMD entries during pass 1.
+			// Inline HALCMD entries are executed directly (not from a file).
 			if se.halcmd == "" {
 				continue
 			}
@@ -514,22 +531,52 @@ func (e *Executor) executeTwopassNative(
 		if err != nil {
 			return fmt.Errorf("TWOPASS: pass1: reading %q: %w", se.resolved, err)
 		}
+
+		// Collect commands to execute in pass 1: everything except loadrt,
+		// loadusr, blank lines and comments.
+		var pass1Lines []string
 		for _, line := range lines {
 			cmd := cmdName(line)
-			if cmd == "" {
+			if cmd == "" || cmd == "loadrt" || cmd == "loadusr" {
 				continue
 			}
-			if cmd == "loadrt" || cmd == "loadusr" {
-				// loadrt already done; loadusr already done in pass 0.
-				continue
-			}
-			trimmed := strings.TrimSpace(line)
-			if opts.verbose {
-				e.logger.Debug("TWOPASS: pass1: executing", "cmd", trimmed)
-			}
-			if err := e.runHalcmd(trimmed); err != nil {
-				return fmt.Errorf("TWOPASS: pass1: %q: executing %q: %w", se.resolved, trimmed, err)
-			}
+			pass1Lines = append(pass1Lines, strings.TrimSpace(line))
+		}
+		if len(pass1Lines) == 0 {
+			continue
+		}
+
+		// Write pass-1 commands to a temporary file and execute the whole
+		// batch with a single halcmd invocation, matching the approach used
+		// by the single-pass ExecuteFile().
+		tmp, err := os.CreateTemp("", "twopass1-*.hal")
+		if err != nil {
+			return fmt.Errorf("TWOPASS: pass1: creating temp file for %q: %w", se.resolved, err)
+		}
+		tmpName := tmp.Name()
+		defer os.Remove(tmpName) //nolint:revive // intentional: cleanup on any exit path
+
+		w := bufio.NewWriter(tmp)
+		for _, l := range pass1Lines {
+			fmt.Fprintln(w, l)
+		}
+		if err := w.Flush(); err != nil {
+			tmp.Close()
+			os.Remove(tmpName)
+			return fmt.Errorf("TWOPASS: pass1: writing temp file for %q: %w", se.resolved, err)
+		}
+		if err := tmp.Close(); err != nil {
+			os.Remove(tmpName)
+			return fmt.Errorf("TWOPASS: pass1: closing temp file for %q: %w", se.resolved, err)
+		}
+
+		if opts.verbose {
+			e.logger.Debug("TWOPASS: pass1: executing batch", "file", se.resolved, "tmpfile", tmpName)
+		}
+		execErr := e.runHalcmdFile(tmpName)
+		os.Remove(tmpName)
+		if execErr != nil {
+			return fmt.Errorf("TWOPASS: pass1: %q: %w", se.resolved, execErr)
 		}
 	}
 

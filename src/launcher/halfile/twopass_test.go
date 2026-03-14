@@ -462,6 +462,21 @@ func TestExecuteTwopass_TclFallback_NoTcl(t *testing.T) {
 
 // captureExecutor wraps Executor and records halcmd calls without running them.
 // We override runHalcmdArgs by using a script that writes its args to a file.
+// For invocations that pass a .hal file via -f, the script also appends the
+// file contents to the log so tests can inspect batched pass-1 commands.
+//
+// prefix is prepended to each logged invocation line (e.g. "INVOCATION " to
+// count subprocess launches); use "" for plain argument logging.
+func mockHalcmdScript(logFile, prefix string) string {
+	return "#!/bin/sh\n" +
+		"echo \"" + prefix + "$@\" >> " + logFile + "\n" +
+		"for f in \"$@\"; do\n" +
+		"  case \"$f\" in\n" +
+		"    *.hal) cat \"$f\" >> " + logFile + ";;\n" +
+		"  esac\n" +
+		"done\n"
+}
+
 func TestExecuteTwopassNative_Pass0CollectsLoadrt(t *testing.T) {
 	// Create a pair of HAL files each with a loadrt and2 call.
 	dir := t.TempDir()
@@ -472,10 +487,10 @@ func TestExecuteTwopassNative_Pass0CollectsLoadrt(t *testing.T) {
 	iniPath := writeTemp(t, dir, "machine.ini", iniContent)
 	ini, _ := parseIniFile(t, iniPath)
 
-	// Use a fake halcmd that records commands to a log file.
+	// Use a fake halcmd that records commands and file contents to a log file.
 	logFile := filepath.Join(dir, "halcmd.log")
 	fakeHalcmd := filepath.Join(dir, "halcmd")
-	writeTemp(t, dir, "halcmd", "#!/bin/sh\necho \"$@\" >> "+logFile+"\n")
+	writeTemp(t, dir, "halcmd", mockHalcmdScript(logFile, ""))
 	if err := os.Chmod(fakeHalcmd, 0o755); err != nil {
 		t.Fatalf("chmod: %v", err)
 	}
@@ -497,10 +512,15 @@ func TestExecuteTwopassNative_Pass0CollectsLoadrt(t *testing.T) {
 		t.Errorf("expected merged 'loadrt and2 count=5' in log, got:\n%s", logStr)
 	}
 
-	// Pass 1 should execute the net commands.
+	// Pass 1 should batch commands via -f flag (one invocation per source file).
+	if !strings.Contains(logStr, "-f") {
+		t.Errorf("expected pass 1 to use -f flag for batching, got:\n%s", logStr)
+	}
+
+	// The net commands are batched into temp files; the mock script cats them.
 	netCount := strings.Count(logStr, "net sig")
 	if netCount != 2 {
-		t.Errorf("expected 2 'net sig*' lines in pass 1, got %d\nlog:\n%s", netCount, logStr)
+		t.Errorf("expected 2 'net sig*' lines from batched pass 1, got %d\nlog:\n%s", netCount, logStr)
 	}
 }
 
@@ -514,7 +534,7 @@ func TestExecuteTwopassNative_LoadusrInPass0(t *testing.T) {
 
 	logFile := filepath.Join(dir, "halcmd.log")
 	fakeHalcmd := filepath.Join(dir, "halcmd")
-	writeTemp(t, dir, "halcmd", "#!/bin/sh\necho \"$@\" >> "+logFile+"\n")
+	writeTemp(t, dir, "halcmd", mockHalcmdScript(logFile, ""))
 	os.Chmod(fakeHalcmd, 0o755)
 
 	e := New(ini, fakeHalcmd, "", nil)
@@ -525,7 +545,7 @@ func TestExecuteTwopassNative_LoadusrInPass0(t *testing.T) {
 	log, _ := os.ReadFile(logFile)
 	logStr := string(log)
 
-	// loadusr should appear in the log (executed in pass 0).
+	// loadusr should appear in the log (executed directly in pass 0).
 	if !strings.Contains(logStr, "loadusr") {
 		t.Errorf("expected loadusr in log:\n%s", logStr)
 	}
@@ -546,7 +566,7 @@ func TestExecuteTwopassNative_NoTwopassFile_ExecutedImmediately(t *testing.T) {
 
 	logFile := filepath.Join(dir, "halcmd.log")
 	fakeHalcmd := filepath.Join(dir, "halcmd")
-	writeTemp(t, dir, "halcmd", "#!/bin/sh\necho \"$@\" >> "+logFile+"\n")
+	writeTemp(t, dir, "halcmd", mockHalcmdScript(logFile, ""))
 	os.Chmod(fakeHalcmd, 0o755)
 
 	e := New(ini, fakeHalcmd, "", nil)
@@ -557,9 +577,9 @@ func TestExecuteTwopassNative_NoTwopassFile_ExecutedImmediately(t *testing.T) {
 	log, _ := os.ReadFile(logFile)
 	logStr := string(log)
 
-	// The #NOTWOPASS file should have been executed with -vkf.
-	if !strings.Contains(logStr, "-vkf") {
-		t.Errorf("expected -vkf flag for #NOTWOPASS file in log:\n%s", logStr)
+	// The #NOTWOPASS file should have been executed with separate -v -k -f flags.
+	if !strings.Contains(logStr, "-v") || !strings.Contains(logStr, "-k") || !strings.Contains(logStr, "-f") {
+		t.Errorf("expected -v -k -f flags for #NOTWOPASS file in log:\n%s", logStr)
 	}
 	// normal.hal loadrt and2 count=1 should be in the merged pass.
 	if !strings.Contains(logStr, "loadrt and2 count=1") {
@@ -578,7 +598,7 @@ func TestExecuteTwopassNative_NamesFormMerge(t *testing.T) {
 
 	logFile := filepath.Join(dir, "halcmd.log")
 	fakeHalcmd := filepath.Join(dir, "halcmd")
-	writeTemp(t, dir, "halcmd", "#!/bin/sh\necho \"$@\" >> "+logFile+"\n")
+	writeTemp(t, dir, "halcmd", mockHalcmdScript(logFile, ""))
 	os.Chmod(fakeHalcmd, 0o755)
 
 	e := New(ini, fakeHalcmd, "", nil)
@@ -634,7 +654,7 @@ func TestExecuteTwopassNative_HALCMDInPass1(t *testing.T) {
 
 	logFile := filepath.Join(dir, "halcmd.log")
 	fakeHalcmd := filepath.Join(dir, "halcmd")
-	writeTemp(t, dir, "halcmd", "#!/bin/sh\necho \"$@\" >> "+logFile+"\n")
+	writeTemp(t, dir, "halcmd", mockHalcmdScript(logFile, ""))
 	os.Chmod(fakeHalcmd, 0o755)
 
 	e := New(ini, fakeHalcmd, "", nil)
@@ -650,9 +670,58 @@ func TestExecuteTwopassNative_HALCMDInPass1(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Helper: parseIniFile parses an INI file from a path.
-// ---------------------------------------------------------------------------
+// TestExecuteTwopassNative_Pass1BatchesCommandsPerFile verifies that pass 1
+// collects all non-loadrt/non-loadusr commands per .hal file into a single
+// temp file and executes them with one halcmd -f invocation, rather than
+// calling halcmd once per command.
+func TestExecuteTwopassNative_Pass1BatchesCommandsPerFile(t *testing.T) {
+	dir := t.TempDir()
+	// a.hal has three pass-1 commands (net/setp/addf) plus a loadrt.
+	writeTemp(t, dir, "a.hal",
+		"loadrt and2 count=1\nnet my-sig and2.0.in0\nsetp and2.0.in1 1\naddf and2 servo-thread\n")
+
+	iniContent := "[HAL]\nTWOPASS = on\nHALFILE = a.hal\n"
+	iniPath := writeTemp(t, dir, "machine.ini", iniContent)
+	ini, _ := parseIniFile(t, iniPath)
+
+	// Count the number of times the fake halcmd is invoked.
+	logFile := filepath.Join(dir, "halcmd.log")
+	fakeHalcmd := filepath.Join(dir, "halcmd")
+	// Use the "INVOCATION " prefix so we can count subprocess launches.
+	writeTemp(t, dir, "halcmd", mockHalcmdScript(logFile, "INVOCATION "))
+	os.Chmod(fakeHalcmd, 0o755)
+
+	e := New(ini, fakeHalcmd, "", nil)
+	if err := e.ExecuteAll(); err != nil {
+		t.Fatalf("ExecuteAll error: %v", err)
+	}
+
+	log, _ := os.ReadFile(logFile)
+	logStr := string(log)
+	t.Logf("halcmd log:\n%s", logStr)
+
+	// Count halcmd invocations: expect exactly 2
+	//   1. pass 0: loadrt and2 count=1
+	//   2. pass 1: -f <tmpfile> containing the 3 pass-1 commands
+	invocations := strings.Count(logStr, "INVOCATION")
+	if invocations != 2 {
+		t.Errorf("expected 2 halcmd invocations (1 loadrt + 1 batched pass1), got %d\nlog:\n%s", invocations, logStr)
+	}
+
+	// The pass-1 invocation must use -f (not individual commands).
+	if !strings.Contains(logStr, "-f") {
+		t.Errorf("expected pass 1 to use -f flag for batching\nlog:\n%s", logStr)
+	}
+
+	// All three pass-1 commands should appear in the batched temp file contents.
+	for _, want := range []string{"net my-sig", "setp and2.0.in1", "addf and2"} {
+		if !strings.Contains(logStr, want) {
+			t.Errorf("expected %q in batched pass-1 output\nlog:\n%s", want, logStr)
+		}
+	}
+}
+
+
 
 func parseIniFile(t *testing.T, path string) (*inifile.IniFile, error) {
 	t.Helper()
