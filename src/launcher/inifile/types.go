@@ -34,3 +34,8 @@ type IniFile struct {
 	// sourceFile is the path of the root file being parsed (used in error messages).
 	sourceFile string
 }
+
+// SourceFile returns the absolute path of the root INI file that was parsed.
+func (ini *IniFile) SourceFile() string {
+	return ini.sourceFile
+}
