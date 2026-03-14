@@ -39,3 +39,17 @@ type IniFile struct {
 func (ini *IniFile) SourceFile() string {
 	return ini.sourceFile
 }
+
+// GetSection returns all entries in the named section, in the order they
+// appear in the file.  If the section appears more than once (e.g. via
+// #INCLUDE), the entries are concatenated in file order.  Returns nil if the
+// section does not exist.
+func (ini *IniFile) GetSection(section string) []Entry {
+	var result []Entry
+	for i := range ini.Sections {
+		if ini.Sections[i].Name == section {
+			result = append(result, ini.Sections[i].Entries...)
+		}
+	}
+	return result
+}

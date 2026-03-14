@@ -58,27 +58,30 @@ func (e *Executor) ExecuteAll() error {
 		return nil
 	}
 
-	// Execute each HALFILE entry in order.
-	for _, f := range e.ini.GetAll("HAL", "HALFILE") {
-		resolved, err := e.resolvePath(f)
-		if err != nil {
-			return fmt.Errorf("resolving HAL file %q: %w", f, err)
-		}
-		e.logger.Info("loading HAL file", "path", resolved)
-		if err := e.ExecuteFile(resolved); err != nil {
-			return fmt.Errorf("executing HAL file %q: %w", resolved, err)
-		}
-	}
-
-	// Execute direct HALCMD entries in order.
-	for _, cmd := range e.ini.GetAll("HAL", "HALCMD") {
-		cmd = strings.TrimSpace(cmd)
-		if cmd == "" {
-			continue
-		}
-		e.logger.Debug("executing HAL command", "cmd", cmd)
-		if err := e.runHalcmd(cmd); err != nil {
-			return fmt.Errorf("executing HALCMD %q: %w", cmd, err)
+	// Iterate [HAL] section entries in INI-file order, dispatching on key.
+	// This preserves the legacy linuxcnc.in behaviour where HALFILE and HALCMD
+	// entries are interleaved in the order they appear.
+	for _, entry := range e.ini.GetSection("HAL") {
+		switch entry.Key {
+		case "HALFILE":
+			f := entry.Value
+			resolved, err := e.resolvePath(f)
+			if err != nil {
+				return fmt.Errorf("resolving HAL file %q: %w", f, err)
+			}
+			e.logger.Info("loading HAL file", "path", resolved)
+			if err := e.ExecuteFile(resolved); err != nil {
+				return fmt.Errorf("executing HAL file %q: %w", resolved, err)
+			}
+		case "HALCMD":
+			cmd := strings.TrimSpace(entry.Value)
+			if cmd == "" {
+				continue
+			}
+			e.logger.Debug("executing HAL command", "cmd", cmd)
+			if err := e.runHalcmd(cmd); err != nil {
+				return fmt.Errorf("executing HALCMD %q: %w", cmd, err)
+			}
 		}
 	}
 

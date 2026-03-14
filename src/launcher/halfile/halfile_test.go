@@ -233,3 +233,33 @@ func TestExecuteAll_EmptyIni(t *testing.T) {
 		t.Errorf("ExecuteAll on empty HAL section error: %v", err)
 	}
 }
+
+// TestExecuteAll_InterleavedOrder verifies that HALFILE and HALCMD entries are
+// processed in INI-file order, not grouped by key type.
+func TestExecuteAll_InterleavedOrder(t *testing.T) {
+	dir := t.TempDir()
+
+	iniContent := "[HAL]\nHALFILE = a.hal\nHALCMD = setp foo 1\nHALFILE = b.hal\n"
+	iniPath := writeTemp(t, dir, "machine.ini", iniContent)
+	ini, err := inifile.Parse(iniPath)
+	if err != nil {
+		t.Fatalf("parsing INI: %v", err)
+	}
+
+	// Verify that GetSection returns entries in the correct interleaved order.
+	entries := ini.GetSection("HAL")
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 HAL entries, got %d", len(entries))
+	}
+
+	wantKeys := []string{"HALFILE", "HALCMD", "HALFILE"}
+	wantVals := []string{"a.hal", "setp foo 1", "b.hal"}
+	for i, e := range entries {
+		if e.Key != wantKeys[i] {
+			t.Errorf("entry[%d].Key = %q; want %q", i, e.Key, wantKeys[i])
+		}
+		if e.Value != wantVals[i] {
+			t.Errorf("entry[%d].Value = %q; want %q", i, e.Value, wantVals[i])
+		}
+	}
+}
