@@ -45,9 +45,10 @@ type Options struct {
 
 // Launcher orchestrates the LinuxCNC startup and shutdown sequence.
 type Launcher struct {
-	opts   Options
-	ini    *inifile.IniFile
-	logger *slog.Logger
+	opts          Options
+	ini           *inifile.IniFile
+	logger        *slog.Logger
+	serverProcess *exec.Cmd // background linuxcncsvr process
 }
 
 // New creates a new Launcher with the given options and logger.
@@ -61,12 +62,17 @@ func New(opts Options, logger *slog.Logger) *Launcher {
 
 // Run executes the full LinuxCNC startup sequence.
 //
-// Current implementation (M1/M2/M4):
+// Current implementation (M1/M2/M4/M5):
 //  1. Sets up environment variables.
 //  2. Acquires the lock file.
 //  3. Parses the INI file.
 //  4. Starts the realtime environment (M4).
-//  5–7. Stubs for later milestones (M3/M5–M7).
+//  5. Starts linuxcncsvr (M5).
+//  6. Starts iocontrol via halcmd (M5).
+//  7. Starts halui via halcmd if configured (M5).
+//  8. Preloads tpmod/homemod.
+//  9. Executes HAL files (M3).
+// 10. Stubs for later milestones (M6–M7).
 func (l *Launcher) Run() error {
 	l.setupEnvironment()
 
@@ -108,8 +114,26 @@ func (l *Launcher) Run() error {
 		}
 	}()
 
-	// --- Stubs for M3/M5–M7 ---
-	l.logger.Info("would start linuxcncsvr (M5)")
+	// --- M5: Process Manager ---
+
+	// Start NML server (linuxcncsvr) as a background subprocess.
+	if err := l.startServer(); err != nil {
+		return fmt.Errorf("starting linuxcncsvr: %w", err)
+	}
+	defer l.stopServer()
+
+	// Start iocontrol via halcmd loadusr -Wn iocontrol.
+	// iocontrol is a HAL userspace component; HAL manages its lifecycle and
+	// will terminate it when halcmd exits or HAL is shut down.
+	if err := l.startIOControl(); err != nil {
+		return fmt.Errorf("starting iocontrol: %w", err)
+	}
+
+	// Start halui if configured.
+	// halui is also a HAL userspace component managed by HAL's lifecycle.
+	if err := l.startHalUI(); err != nil {
+		return fmt.Errorf("starting halui: %w", err)
+	}
 
 	// Pre-load trajectory planner and homing modules before HAL file execution.
 	// This mirrors scripts/linuxcnc.in lines 865-868.
@@ -126,8 +150,103 @@ func (l *Launcher) Run() error {
 		l.logger.Warn("HAL file execution error (continuing)", "error", err)
 	}
 
-	l.logger.Info("would start task / display (M5)")
+	l.logger.Info("would start task / display (M6)")
 	l.logger.Info("would wait for display to exit (M7)")
+
+	return nil
+}
+
+// startServer starts linuxcncsvr as a background subprocess.
+//
+// This mirrors scripts/linuxcnc.in lines 817–825:
+//
+//	export INI_FILE_NAME="$INIFILE"
+//	$EMCSERVER -ini "$INIFILE"
+func (l *Launcher) startServer() error {
+	serverBin := filepath.Join(config.EMC2BinDir, "linuxcncsvr")
+	l.logger.Info("starting NML server", "binary", serverBin)
+
+	cmd := exec.Command(serverBin, "-ini", l.opts.IniFile)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("exec %s: %w", serverBin, err)
+	}
+
+	l.serverProcess = cmd
+	l.logger.Info("linuxcncsvr started", "pid", cmd.Process.Pid)
+	return nil
+}
+
+// stopServer terminates the linuxcncsvr background process if it is running.
+func (l *Launcher) stopServer() {
+	if l.serverProcess == nil || l.serverProcess.Process == nil {
+		return
+	}
+	l.logger.Info("stopping linuxcncsvr", "pid", l.serverProcess.Process.Pid)
+	if err := l.serverProcess.Process.Kill(); err != nil {
+		l.logger.Error("killing linuxcncsvr", "error", err)
+	}
+	// Reap the process to avoid a zombie.
+	_ = l.serverProcess.Wait()
+	l.serverProcess = nil
+}
+
+// startIOControl starts the IO controller process via halcmd loadusr.
+//
+// This mirrors scripts/linuxcnc.in lines 839–850:
+//
+//	$HALCMD loadusr -Wn iocontrol $EMCIO -ini "$INIFILE"
+//
+// EMCIO resolution: [IO]IO → [EMCIO]EMCIO → default "io".
+func (l *Launcher) startIOControl() error {
+	emcio := l.ini.Get("IO", "IO")
+	if emcio == "" {
+		emcio = l.ini.Get("EMCIO", "EMCIO")
+	}
+	if emcio == "" {
+		emcio = "io"
+	}
+
+	l.logger.Info("starting IO controller", "program", emcio)
+
+	halcmdPath := filepath.Join(config.EMC2BinDir, "halcmd")
+	cmd := exec.Command(halcmdPath, "loadusr", "-Wn", "iocontrol", emcio, "-ini", l.opts.IniFile)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("halcmd loadusr -Wn iocontrol %s: %w", emcio, err)
+	}
+
+	return nil
+}
+
+// startHalUI starts the halui process via halcmd loadusr, if configured.
+//
+// This mirrors scripts/linuxcnc.in lines 852–861:
+//
+//	$HALCMD loadusr -Wn halui $HALUI -ini "$INIFILE"
+//
+// If [HAL]HALUI is not set, this is a no-op.
+func (l *Launcher) startHalUI() error {
+	halui := l.ini.Get("HAL", "HALUI")
+	if halui == "" {
+		l.logger.Debug("HALUI not configured, skipping")
+		return nil
+	}
+
+	l.logger.Info("starting HAL user interface", "program", halui)
+
+	halcmdPath := filepath.Join(config.EMC2BinDir, "halcmd")
+	cmd := exec.Command(halcmdPath, "loadusr", "-Wn", "halui", halui, "-ini", l.opts.IniFile)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("halcmd loadusr -Wn halui %s: %w", halui, err)
+	}
 
 	return nil
 }
