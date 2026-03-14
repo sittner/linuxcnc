@@ -174,14 +174,16 @@ func (l *Launcher) showIntroGraphic() {
 	}
 
 	// Resolve the image path: try as-is, then INI_DIR/img, then LINUXCNC_IMAGEDIR/img.
+	iniDirPath := filepath.Join(filepath.Dir(l.opts.IniFile), img)
+	imgDirPath := filepath.Join(config.EMC2ImageDir, img)
 	resolvedImg := ""
 	switch {
 	case fileExists(img):
 		resolvedImg = img
-	case fileExists(filepath.Join(filepath.Dir(l.opts.IniFile), img)):
-		resolvedImg = filepath.Join(filepath.Dir(l.opts.IniFile), img)
-	case fileExists(filepath.Join(config.EMC2ImageDir, img)):
-		resolvedImg = filepath.Join(config.EMC2ImageDir, img)
+	case fileExists(iniDirPath):
+		resolvedImg = iniDirPath
+	case fileExists(imgDirPath):
+		resolvedImg = imgDirPath
 	}
 
 	if resolvedImg == "" {

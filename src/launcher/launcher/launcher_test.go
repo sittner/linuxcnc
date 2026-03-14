@@ -4,11 +4,13 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/sittner/linuxcnc/src/launcher/config"
 	"github.com/sittner/linuxcnc/src/launcher/inifile"
 )
 
@@ -775,4 +777,77 @@ DISPLAY = axis
 	l := newLauncherWithIniPath(t, f)
 	// Should not panic or error.
 	l.showIntroGraphic()
+}
+
+// --------------------------------------------------------------------------
+// Tests for checkConfig
+// --------------------------------------------------------------------------
+
+// checkConfigLauncher is a helper that creates a Launcher and overrides
+// config.HalibDir/config.Tclsh with the given values for the duration of a
+// test.  It returns the Launcher and a cleanup function.
+func checkConfigLauncher(t *testing.T, tclsh, halibDir, iniFile string) (*Launcher, func()) {
+	t.Helper()
+	ini, err := inifile.Parse(iniFile)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	l := &Launcher{
+		opts:   Options{IniFile: iniFile},
+		ini:    ini,
+		logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
+	}
+	origHalibDir := config.HalibDir
+	origTclsh := config.Tclsh
+	config.HalibDir = halibDir
+	config.Tclsh = tclsh
+	return l, func() {
+		config.HalibDir = origHalibDir
+		config.Tclsh = origTclsh
+	}
+}
+
+// TestCheckConfig_ScriptSucceeds verifies that checkConfig() returns nil when
+// the check_config.tcl script exits with code 0.  A temporary Tcl script that
+// does nothing (exits 0) is used in place of the real check_config.tcl.
+func TestCheckConfig_ScriptSucceeds(t *testing.T) {
+	tclsh, err := exec.LookPath("tclsh")
+	if err != nil {
+		t.Skip("tclsh not found on PATH")
+	}
+
+	dir := t.TempDir()
+	iniFile := writeIni(t, dir, "test.ini", "[EMC]\nMACHINE = Test\n")
+	if err := os.WriteFile(filepath.Join(dir, "check_config.tcl"), []byte("exit 0\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	l, cleanup := checkConfigLauncher(t, tclsh, dir, iniFile)
+	defer cleanup()
+
+	if err := l.checkConfig(); err != nil {
+		t.Errorf("checkConfig() with exit-0 script returned error: %v", err)
+	}
+}
+
+// TestCheckConfig_ScriptFails verifies that checkConfig() returns an error when
+// the check_config.tcl script exits with a non-zero status.
+func TestCheckConfig_ScriptFails(t *testing.T) {
+	tclsh, err := exec.LookPath("tclsh")
+	if err != nil {
+		t.Skip("tclsh not found on PATH")
+	}
+
+	dir := t.TempDir()
+	iniFile := writeIni(t, dir, "test.ini", "[EMC]\nMACHINE = Test\n")
+	if err := os.WriteFile(filepath.Join(dir, "check_config.tcl"), []byte("exit 1\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	l, cleanup := checkConfigLauncher(t, tclsh, dir, iniFile)
+	defer cleanup()
+
+	if err := l.checkConfig(); err == nil {
+		t.Error("checkConfig() with exit-1 script should return error, got nil")
+	}
 }

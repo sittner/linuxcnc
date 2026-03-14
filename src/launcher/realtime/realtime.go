@@ -30,7 +30,7 @@ const (
 
 // Manager manages the LinuxCNC uspace realtime environment.
 type Manager struct {
-	logger       *slog.Logger
+	logger      *slog.Logger
 	rtapiAppPath string
 	stopTimeout  time.Duration
 }
@@ -43,7 +43,7 @@ func New(logger *slog.Logger) *Manager {
 		logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
 	}
 	return &Manager{
-		logger:       logger,
+		logger:      logger,
 		rtapiAppPath: filepath.Join(config.EMC2BinDir, rtapiAppName),
 		stopTimeout:  defaultStopTimeout,
 	}
