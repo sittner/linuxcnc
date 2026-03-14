@@ -688,6 +688,9 @@ func (l *Launcher) runApplications() error {
 			continue
 		}
 
+		// Reap the child process to prevent zombies if it exits before stopApplications().
+		go func() { _ = cmd.Wait() }()
+
 		l.logger.Info("started application", "app", execPath, "pid", cmd.Process.Pid)
 		l.appProcesses = append(l.appProcesses, cmd)
 	}
@@ -697,6 +700,8 @@ func (l *Launcher) runApplications() error {
 
 // stopApplications kills all background application processes launched by
 // runApplications().  Best-effort — errors are logged but not returned.
+// Note: cmd.Wait() was already called by the reaper goroutine in runApplications(),
+// so we only send signals here without waiting.
 func (l *Launcher) stopApplications() {
 	for _, cmd := range l.appProcesses {
 		if cmd.Process == nil {
@@ -704,18 +709,13 @@ func (l *Launcher) stopApplications() {
 		}
 		l.logger.Debug("stopping application", "pid", cmd.Process.Pid)
 		if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
-			l.logger.Debug("SIGTERM failed for application", "pid", cmd.Process.Pid, "error", err)
+			l.logger.Debug("SIGTERM failed for application (may have already exited)", "pid", cmd.Process.Pid, "error", err)
 			continue
 		}
-		done := make(chan error, 1)
-		go func(c *exec.Cmd) { done <- c.Wait() }(cmd)
-		select {
-		case <-done:
-		case <-time.After(500 * time.Millisecond):
-			l.logger.Debug("application did not exit in time, sending SIGKILL", "pid", cmd.Process.Pid)
-			_ = cmd.Process.Kill()
-			<-done
-		}
+		// Give the process a moment to exit after SIGTERM.
+		time.Sleep(500 * time.Millisecond)
+		// Best-effort SIGKILL if still running.
+		_ = cmd.Process.Kill()
 	}
 }
 
@@ -762,7 +762,9 @@ func (l *Launcher) startDisplay() error {
 
 	case "linuxcncrsh":
 		// Note the -- separator before -ini.
-		args := append(displayArgs, "--", "-ini", l.opts.IniFile)
+		args := make([]string, 0, len(displayArgs)+3)
+		args = append(args, displayArgs...)
+		args = append(args, "--", "-ini", l.opts.IniFile)
 		cmd = exec.Command(emcDisplay, args...)
 
 	default:
@@ -778,8 +780,7 @@ func (l *Launcher) startDisplay() error {
 	}
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%s: %w", emcDisplay, err)
+		l.logger.Warn("display exited with error", "display", emcDisplay, "error", err)
 	}
-
 	return nil
 }
