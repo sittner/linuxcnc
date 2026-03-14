@@ -7,6 +7,7 @@ package launcher
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -53,14 +54,14 @@ type Launcher struct {
 	opts          Options
 	ini           *inifile.IniFile
 	logger        *slog.Logger
-	lock          *lockfile.LockFile   // flock-based instance lock
-	rtMgr         *realtime.Manager    // realtime environment manager
-	cleanupOnce   sync.Once            // ensures cleanup runs exactly once
-	serverProcess *exec.Cmd            // background linuxcncsvr process
-	serverDone    chan error            // receives the result of cmd.Wait() for linuxcncsvr
-	taskProcess   *exec.Cmd            // background milltask/linuxcnctask process
-	taskDone      chan error            // receives the result of cmd.Wait() for task
-	appProcesses  []*exec.Cmd          // [APPLICATIONS]APP background processes
+	lock          *lockfile.LockFile // flock-based instance lock
+	rtMgr         *realtime.Manager  // realtime environment manager
+	cleanupOnce   sync.Once          // ensures cleanup runs exactly once
+	serverProcess *exec.Cmd          // background linuxcncsvr process
+	serverDone    chan error         // receives the result of cmd.Wait() for linuxcncsvr
+	taskProcess   *exec.Cmd          // background milltask/linuxcnctask process
+	taskDone      chan error         // receives the result of cmd.Wait() for task
+	appProcesses  []*exec.Cmd        // [APPLICATIONS]APP background processes
 }
 
 // New creates a new Launcher with the given options and logger.
@@ -85,13 +86,13 @@ func New(opts Options, logger *slog.Logger) *Launcher {
 //  7. Starts halui via halcmd loadusr -Wn if configured (M5).
 //  8. Preloads tpmod/homemod (M4).
 //  9. Executes [HAL]HALFILE entries (M3, step 4.3.6).
-// 10. Starts the task controller in background (M6, step 4.3.7).
-// 11. Executes [HAL]HALCMD entries (M6, step 4.3.8).
-// 12. Loads retained signals if any are present (M6, step 4.3.9).
-// 13. Starts HAL threads (M6, step 4.3.10).
-// 14. Launches [APPLICATIONS]APP entries in background (M6, step 4.3.11).
-// 15. Launches the display in the foreground — blocks until the user closes the GUI (M6, step 4.3.12).
-// 16. Shuts down in ordered sequence (M7): display helpers → AXIS quit → [HAL]SHUTDOWN →
+//  10. Starts the task controller in background (M6, step 4.3.7).
+//  11. Executes [HAL]HALCMD entries (M6, step 4.3.8).
+//  12. Loads retained signals if any are present (M6, step 4.3.9).
+//  13. Starts HAL threads (M6, step 4.3.10).
+//  14. Launches [APPLICATIONS]APP entries in background (M6, step 4.3.11).
+//  15. Launches the display in the foreground — blocks until the user closes the GUI (M6, step 4.3.12).
+//  16. Shuts down in ordered sequence (M7): display helpers → AXIS quit → [HAL]SHUTDOWN →
 //     user-space → halcmd stop → halcmd unload all → wait → realtime stop → NML shm → lock.
 //
 // Note: POSTGUI_HALFILE loading is intentionally omitted here; it is the
@@ -161,6 +162,34 @@ func (l *Launcher) Run() error {
 	l.logger.Info("changed working directory", "dir", iniDir)
 
 	l.logConfiguration()
+
+	// Pre-launch validation checks (mirrors scripts/linuxcnc.in lines 495–530
+	// and 791–812): run after INI parsing + include expansion + chdir, but
+	// before startServer().
+
+	// 1. [EMC]VERSION check + update_ini (lines 495–508).
+	if err := l.checkVersion(); err != nil {
+		if errors.Is(err, ErrUpdateCancelled) {
+			return nil // user cancelled — clean exit
+		}
+		return err
+	}
+
+	// 2. PlasmaC migration check (lines 511–522).
+	if err := l.checkPlasmaC(); err != nil {
+		if errors.Is(err, ErrPlasmaC) {
+			return nil // PlasmaC handled — clean exit
+		}
+		return err
+	}
+
+	// 3. check_config.tcl validation (lines 524–529).
+	if err := l.checkConfig(); err != nil {
+		return err
+	}
+
+	// 4. Intro graphic popup (lines 791–812).
+	l.showIntroGraphic()
 
 	// --- M5: Process Manager ---
 

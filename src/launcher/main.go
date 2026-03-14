@@ -73,14 +73,14 @@ Options:
 	}
 
 	var (
-		debug          = fs.Bool("d", false, `Turn on "debug" mode`)
-		verbose        = fs.Bool("v", false, `Turn on "verbose" mode`)
-		noRedirect     = fs.Bool("r", false, "Disable redirection of stdout/stderr to log files (use for tests)")
-		useLast        = fs.Bool("l", false, "Use the last-used INI file")
-		continueOnErr  = fs.Bool("k", false, "Continue in the presence of errors in HAL files")
-		tpMod          = fs.String("t", "", `Custom trajectory planning module name (overrides [TRAJ]TPMOD)`)
-		homeMod        = fs.String("m", "", `Custom homing module name (overrides [EMCMOT]HOMEMOD)`)
-		halLibDirs     multiFlag
+		debug         = fs.Bool("d", false, `Turn on "debug" mode`)
+		verbose       = fs.Bool("v", false, `Turn on "verbose" mode`)
+		noRedirect    = fs.Bool("r", false, "Disable redirection of stdout/stderr to log files (use for tests)")
+		useLast       = fs.Bool("l", false, "Use the last-used INI file")
+		continueOnErr = fs.Bool("k", false, "Continue in the presence of errors in HAL files")
+		tpMod         = fs.String("t", "", `Custom trajectory planning module name (overrides [TRAJ]TPMOD)`)
+		homeMod       = fs.String("m", "", `Custom homing module name (overrides [EMCMOT]HOMEMOD)`)
+		halLibDirs    multiFlag
 	)
 	fs.Var(&halLibDirs, "H", "Prepend `dir` to HALLIB_PATH (may be specified multiple times)")
 
