@@ -65,8 +65,12 @@ func (e *Executor) effectiveIniPath() string {
 }
 
 // ExecuteAll reads all [HAL]HALFILE entries from the INI file and executes
-// them in order.  After the HALFILE entries, any [HAL]HALCMD direct command
-// entries are also executed.
+// them in order.  Only HALFILE entries are processed; HALCMD entries are
+// skipped here and must be executed separately via ExecuteHalCommands().
+//
+// This matches the bash launcher (scripts/linuxcnc.in step 4.3.6) which
+// iterates only HALFILE keys via "$INIVAR -var HALFILE" in a separate loop
+// from HALCMD keys.
 //
 // When [HAL]TWOPASS is set to a non-empty value, execution is delegated
 // entirely to the legacy twopass.tcl script via haltcl.
@@ -80,42 +84,64 @@ func (e *Executor) ExecuteAll() error {
 		return e.executeTwopass()
 	}
 
-	// Iterate [HAL] section entries in INI-file order, dispatching on key.
-	// This preserves the legacy linuxcnc.in behaviour where HALFILE and HALCMD
-	// entries are interleaved in the order they appear.
+	// Iterate [HAL] section entries, processing only HALFILE keys.
+	// This mirrors the bash launcher's separate "$INIVAR -var HALFILE" loop.
 	for _, entry := range e.ini.GetSection("HAL") {
-		switch entry.Key {
-		case "HALFILE":
-			// Split into filename and optional arguments (e.g. "LIB:basic_sim.tcl -no_sim_spindle").
-			fields := strings.Fields(entry.Value)
-			if len(fields) == 0 {
-				continue
+		if entry.Key != "HALFILE" {
+			continue
+		}
+		// Split into filename and optional arguments (e.g. "LIB:basic_sim.tcl -no_sim_spindle").
+		fields := strings.Fields(entry.Value)
+		if len(fields) == 0 {
+			continue
+		}
+		f := fields[0]
+		args := fields[1:]
+		resolved, err := e.resolvePath(f)
+		if err != nil {
+			return fmt.Errorf("resolving HAL file %q: %w", f, err)
+		}
+		e.logger.Info("loading HAL file", "path", resolved)
+		if strings.HasSuffix(resolved, ".tcl") {
+			if err := e.runHaltcl(resolved, args); err != nil {
+				return fmt.Errorf("executing HAL file %q: %w", resolved, err)
 			}
-			f := fields[0]
-			args := fields[1:]
-			resolved, err := e.resolvePath(f)
-			if err != nil {
-				return fmt.Errorf("resolving HAL file %q: %w", f, err)
+		} else {
+			if err := e.ExecuteFile(resolved); err != nil {
+				return fmt.Errorf("executing HAL file %q: %w", resolved, err)
 			}
-			e.logger.Info("loading HAL file", "path", resolved)
-			if strings.HasSuffix(resolved, ".tcl") {
-				if err := e.runHaltcl(resolved, args); err != nil {
-					return fmt.Errorf("executing HAL file %q: %w", resolved, err)
-				}
-			} else {
-				if err := e.ExecuteFile(resolved); err != nil {
-					return fmt.Errorf("executing HAL file %q: %w", resolved, err)
-				}
-			}
-		case "HALCMD":
-			cmd := strings.TrimSpace(entry.Value)
-			if cmd == "" {
-				continue
-			}
-			e.logger.Debug("executing HAL command", "cmd", cmd)
-			if err := e.runHalcmd(cmd); err != nil {
-				return fmt.Errorf("executing HALCMD %q: %w", cmd, err)
-			}
+		}
+	}
+
+	return nil
+}
+
+// ExecuteHalCommands reads all [HAL]HALCMD entries from the INI file and
+// executes them in order as discrete halcmd commands.
+//
+// This mirrors the bash launcher (scripts/linuxcnc.in step 4.3.8) which
+// iterates HALCMD keys via "$INIVAR -var HALCMD" after the task controller
+// has been started.  It must be called after startTask() and before
+// startHalThreads().
+func (e *Executor) ExecuteHalCommands() error {
+	if e.ini == nil {
+		return nil
+	}
+
+	cmds := e.ini.GetAll("HAL", "HALCMD")
+	if len(cmds) == 0 {
+		e.logger.Debug("no HALCMD entries found")
+		return nil
+	}
+
+	for _, raw := range cmds {
+		cmd := strings.TrimSpace(raw)
+		if cmd == "" {
+			continue
+		}
+		e.logger.Debug("executing HAL command", "cmd", cmd)
+		if err := e.runHalcmd(cmd); err != nil {
+			return fmt.Errorf("executing HALCMD %q: %w", cmd, err)
 		}
 	}
 
