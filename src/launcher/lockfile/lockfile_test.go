@@ -20,7 +20,7 @@ func setTempLockPath(t *testing.T) {
 func TestAcquireRelease(t *testing.T) {
 	setTempLockPath(t)
 
-	if err := lockfile.Acquire(); err != nil {
+	if err := lockfile.Acquire(nil); err != nil {
 		t.Fatalf("Acquire: %v", err)
 	}
 
@@ -50,14 +50,54 @@ func TestReleaseIdempotent(t *testing.T) {
 func TestAcquireTwice(t *testing.T) {
 	setTempLockPath(t)
 
-	if err := lockfile.Acquire(); err != nil {
+	if err := lockfile.Acquire(nil); err != nil {
 		t.Fatalf("first Acquire: %v", err)
 	}
 	t.Cleanup(func() { _ = lockfile.Release() })
 
 	// Second Acquire when stdin is not a TTY (CI environment) should
 	// auto-cleanup and succeed.
-	if err := lockfile.Acquire(); err != nil {
+	if err := lockfile.Acquire(nil); err != nil {
 		t.Fatalf("second Acquire (auto-cleanup): %v", err)
+	}
+}
+
+// TestAcquireCallsCleanupOnStaleLock verifies that the cleanup callback is
+// called exactly once when a stale lock file is found.
+func TestAcquireCallsCleanupOnStaleLock(t *testing.T) {
+	setTempLockPath(t)
+
+	// Create a stale lock file.  The lockfile package only checks for file
+	// existence, not content, so an empty file is a valid stale lock.
+	if err := os.WriteFile(lockfile.LockFilePath, nil, 0o644); err != nil {
+		t.Fatalf("creating stale lock: %v", err)
+	}
+	t.Cleanup(func() { _ = lockfile.Release() })
+
+	called := 0
+	cleanup := func() { called++ }
+
+	if err := lockfile.Acquire(cleanup); err != nil {
+		t.Fatalf("Acquire with stale lock: %v", err)
+	}
+	if called != 1 {
+		t.Errorf("cleanup called %d times, want 1", called)
+	}
+}
+
+// TestAcquireNoCleanupWhenNoStaleLock verifies that the cleanup callback is
+// NOT called when there is no stale lock file.
+func TestAcquireNoCleanupWhenNoStaleLock(t *testing.T) {
+	setTempLockPath(t)
+	t.Cleanup(func() { _ = lockfile.Release() })
+
+	called := false
+	cleanup := func() { called = true }
+
+	if err := lockfile.Acquire(cleanup); err != nil {
+		t.Fatalf("Acquire: %v", err)
+	}
+	if called {
+		t.Error("cleanup was called when there was no stale lock file")
 	}
 }

@@ -22,11 +22,15 @@ var LockFilePath = "/tmp/linuxcnc.lock"
 //   - When stdin is not a TTY (e.g. automated tests) cleanup proceeds
 //     automatically.
 //
+// If cleanup is non-nil it is called after the user confirms (or in
+// automatic mode) and before the stale lock file is removed.  The caller
+// should use cleanup to kill orphaned processes from the previous session.
+//
 // Returns an error if the lock file cannot be created.
-func Acquire() error {
+func Acquire(cleanup func()) error {
 	if _, err := os.Stat(LockFilePath); err == nil {
 		// Lock file exists – ask user or auto-cleanup.
-		if err := handleExistingLock(); err != nil {
+		if err := handleExistingLock(cleanup); err != nil {
 			return err
 		}
 	}
@@ -47,12 +51,9 @@ func Release() error {
 }
 
 // handleExistingLock is called when the lock file already exists.
-// It either prompts the user or proceeds automatically.
-//
-// TODO(M5): When an existing lock is found, perform orderly shutdown
-// of the previous LinuxCNC instance (kill processes, stop HAL, etc.)
-// matching the bash script's "Cleanup other" behavior.
-func handleExistingLock() error {
+// It either prompts the user or proceeds automatically, then calls the
+// optional cleanup function before removing the stale lock file.
+func handleExistingLock(cleanup func()) error {
 	if isTTY() {
 		fmt.Print("LinuxCNC is still running.  Restart it? [Y/n] ")
 		reader := bufio.NewReader(os.Stdin)
@@ -64,6 +65,9 @@ func handleExistingLock() error {
 		fmt.Println("Cleaning up old LinuxCNC...")
 	} else {
 		fmt.Fprintln(os.Stderr, "lockfile: no TTY, cleaning up previous instance automatically")
+	}
+	if cleanup != nil {
+		cleanup()
 	}
 	return Release()
 }

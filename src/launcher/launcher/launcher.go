@@ -88,7 +88,7 @@ func (l *Launcher) Run() error {
 	}
 
 	l.logger.Info("acquiring lock file")
-	if err := lockfile.Acquire(); err != nil {
+	if err := lockfile.Acquire(l.killStaleProcesses); err != nil {
 		return err
 	}
 	defer func() {
@@ -203,16 +203,27 @@ func (l *Launcher) startServer() error {
 
 // stopServer terminates the linuxcncsvr background process gracefully.
 //
-// It sends SIGTERM first and waits up to 2 seconds for a clean exit.
-// If the process has not exited by then, SIGKILL is sent.
+// linuxcncsvr daemonizes: it forks a daemon child and the parent exits
+// quickly.  cmd.Start() tracks the parent PID, which exits before SIGTERM
+// can reach it.  The daemon child (which holds port 5005) gets a different
+// PID that Go never learns about.  We therefore use killByName() to find and
+// signal the daemon child by process name after handling the tracked parent.
 func (l *Launcher) stopServer() {
 	if l.serverProcess == nil || l.serverProcess.Process == nil {
 		return
 	}
 	l.logger.Info("stopping linuxcncsvr")
+
+	// Signal the tracked (parent) process.  This may fail if the parent
+	// has already exited after forking the daemon child.
 	if err := l.serverProcess.Process.Signal(syscall.SIGTERM); err != nil {
 		l.logger.Debug("SIGTERM failed (process may have already exited)", "error", err)
 	}
+
+	// Kill the daemon child by name (SIGTERM → wait → SIGKILL).
+	killByName(l.logger, "linuxcncsvr", 2*time.Second)
+
+	// Collect the exit status of the tracked parent process.
 	select {
 	case <-l.serverDone:
 		l.logger.Debug("linuxcncsvr exited cleanly")
@@ -220,6 +231,77 @@ func (l *Launcher) stopServer() {
 		l.logger.Warn("linuxcncsvr did not exit in time, sending SIGKILL")
 		_ = l.serverProcess.Process.Kill()
 		<-l.serverDone
+	}
+}
+
+// killByName sends SIGTERM to all processes with the given name using pkill,
+// waits up to timeout for them to exit, then sends SIGKILL if any remain.
+// It is best-effort: errors are logged but do not propagate to the caller.
+func killByName(logger *slog.Logger, name string, timeout time.Duration) {
+	if !isProcessRunning(name) {
+		return // Not running – nothing to do.
+	}
+	logger.Debug("sending SIGTERM to process by name", "name", name)
+	if err := exec.Command("pkill", "-TERM", name).Run(); err != nil {
+		logger.Debug("pkill SIGTERM failed", "name", name, "error", err)
+	}
+
+	// Wait for the process(es) to exit.
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if !isProcessRunning(name) {
+			return // Gone.
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Still running – escalate to SIGKILL.
+	logger.Warn("process did not exit after SIGTERM, sending SIGKILL", "name", name)
+	if err := exec.Command("pkill", "-KILL", name).Run(); err != nil {
+		logger.Debug("pkill SIGKILL failed", "name", name, "error", err)
+	}
+}
+
+// isProcessRunning reports whether at least one non-zombie process with the
+// given name is currently running.
+func isProcessRunning(name string) bool {
+	return exec.Command("pgrep", name).Run() == nil
+}
+
+// killStaleProcesses kills orphaned LinuxCNC processes left over from a
+// previous session.  It is passed to lockfile.Acquire() as the cleanup
+// callback and is invoked when a stale lockfile is found.
+//
+// The sequence mirrors the "Cleanup other" path in scripts/linuxcnc.in:
+//  1. Kill main server/task processes (linuxcncsvr, motion-logger, milltask).
+//  2. Stop HAL threads and unload all HAL components.
+//  3. Stop the realtime environment (rtapi_app).
+func (l *Launcher) killStaleProcesses() {
+	l.logger.Info("killing stale LinuxCNC processes")
+
+	const killTimeout = 2 * time.Second
+
+	// Kill main processes in the order used by the bash Cleanup function.
+	for _, name := range []string{"linuxcncsvr", "motion-logger", "milltask"} {
+		killByName(l.logger, name, killTimeout)
+	}
+
+	// Stop HAL threads then unload all components.
+	halcmdPath := filepath.Join(config.EMC2BinDir, "halcmd")
+	for _, args := range [][]string{{"stop"}, {"unload", "all"}} {
+		cmd := exec.Command(halcmdPath, args...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			l.logger.Debug("halcmd failed during stale cleanup (may not be loaded)",
+				"args", strings.Join(args, " "), "error", err)
+		}
+	}
+
+	// Stop the realtime environment.
+	rtMgr := realtime.New(l.logger)
+	if err := rtMgr.Stop(); err != nil {
+		l.logger.Warn("stale realtime stop failed", "error", err)
 	}
 }
 
