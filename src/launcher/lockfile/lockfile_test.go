@@ -2,19 +2,23 @@ package lockfile_test
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/sittner/linuxcnc/src/launcher/lockfile"
 )
 
-// overrideLockPath is a helper that sets the lock file path for tests
-// by temporarily redirecting filesystem operations to a temp file.
-// Since LockFilePath is a constant, tests work with the real path but
-// clean up carefully.
+// setTempLockPath overrides LockFilePath for the duration of a test and
+// restores it automatically via t.Cleanup.
+func setTempLockPath(t *testing.T) {
+	t.Helper()
+	old := lockfile.LockFilePath
+	lockfile.LockFilePath = filepath.Join(t.TempDir(), "linuxcnc.lock")
+	t.Cleanup(func() { lockfile.LockFilePath = old })
+}
 
 func TestAcquireRelease(t *testing.T) {
-	// Ensure the lock file doesn't exist before we start.
-	_ = os.Remove(lockfile.LockFilePath)
+	setTempLockPath(t)
 
 	if err := lockfile.Acquire(); err != nil {
 		t.Fatalf("Acquire: %v", err)
@@ -36,17 +40,15 @@ func TestAcquireRelease(t *testing.T) {
 }
 
 func TestReleaseIdempotent(t *testing.T) {
+	setTempLockPath(t)
 	// Release on a non-existent lock file should not error.
-	_ = os.Remove(lockfile.LockFilePath)
 	if err := lockfile.Release(); err != nil {
 		t.Fatalf("Release (no file): %v", err)
 	}
 }
 
 func TestAcquireTwice(t *testing.T) {
-	// Ensure lock file doesn't exist.
-	_ = os.Remove(lockfile.LockFilePath)
-	defer os.Remove(lockfile.LockFilePath)
+	setTempLockPath(t)
 
 	if err := lockfile.Acquire(); err != nil {
 		t.Fatalf("first Acquire: %v", err)

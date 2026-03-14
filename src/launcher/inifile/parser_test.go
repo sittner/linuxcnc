@@ -429,3 +429,33 @@ func TestCircularInclude(t *testing.T) {
 		t.Errorf("expected 'circular' in error, got: %v", err)
 	}
 }
+
+// --------------------------------------------------------------------------
+// Extra: inline comment marker ordering
+// --------------------------------------------------------------------------
+
+func TestInlineCommentOrdering(t *testing.T) {
+	dir := t.TempDir()
+	f := writeFile(t, dir, "order.ini", `
+[S]
+KEY1 = value #comment ; more
+KEY2 = value with;semicolon
+KEY3 = no comment here
+`)
+	ini, err := inifile.Parse(f)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	// '#' preceded by space comes before ';', so truncate at '#'.
+	if got := ini.Get("S", "KEY1"); got != "value" {
+		t.Errorf("KEY1 = %q, want %q", got, "value")
+	}
+	// ';' with no whitespace-preceded '#' — truncate at ';'.
+	if got := ini.Get("S", "KEY2"); got != "value with" {
+		t.Errorf("KEY2 = %q, want %q", got, "value with")
+	}
+	// No comment markers — value preserved as-is.
+	if got := ini.Get("S", "KEY3"); got != "no comment here" {
+		t.Errorf("KEY3 = %q, want %q", got, "no comment here")
+	}
+}

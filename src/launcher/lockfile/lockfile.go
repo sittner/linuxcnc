@@ -12,10 +12,9 @@ import (
 	"strings"
 )
 
-const (
-	// LockFilePath is the canonical path of the LinuxCNC lock file.
-	LockFilePath = "/tmp/linuxcnc.lock"
-)
+// LockFilePath is the canonical path of the LinuxCNC lock file.
+// It is a var (not const) so tests can override it with a temp path.
+var LockFilePath = "/tmp/linuxcnc.lock"
 
 // Acquire creates the lock file.  If the lock file already exists it checks
 // whether to clean up the previous instance:
@@ -49,6 +48,10 @@ func Release() error {
 
 // handleExistingLock is called when the lock file already exists.
 // It either prompts the user or proceeds automatically.
+//
+// TODO(M5): When an existing lock is found, perform orderly shutdown
+// of the previous LinuxCNC instance (kill processes, stop HAL, etc.)
+// matching the bash script's "Cleanup other" behavior.
 func handleExistingLock() error {
 	if isTTY() {
 		fmt.Print("LinuxCNC is still running.  Restart it? [Y/n] ")

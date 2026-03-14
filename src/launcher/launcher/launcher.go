@@ -66,6 +66,13 @@ func New(opts Options, logger *slog.Logger) *Launcher {
 func (l *Launcher) Run() error {
 	l.setupEnvironment()
 
+	// Export INI file path and config directory so that child processes
+	// (linuxcncsvr, iocontrol, task, etc.) can find the configuration.
+	if l.opts.IniFile != "" {
+		os.Setenv("INI_FILE_NAME", l.opts.IniFile)
+		os.Setenv("CONFIG_DIR", filepath.Dir(l.opts.IniFile))
+	}
+
 	l.logger.Info("acquiring lock file")
 	if err := lockfile.Acquire(); err != nil {
 		return err

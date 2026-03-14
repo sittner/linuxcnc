@@ -10,6 +10,8 @@ import (
 )
 
 // substitutePattern matches [SECTION]KEY references used in HAL files.
+// TODO: Consider adding '-' to the key character class if LinuxCNC
+// INI keys with hyphens are encountered in practice.
 var substitutePattern = regexp.MustCompile(`\[([^\]]+)\]([A-Za-z0-9_]+)`)
 
 // Parse reads and parses an INI file, recursively handling #INCLUDE directives.
@@ -140,18 +142,25 @@ func (ini *IniFile) parseFile(filename string, visited map[string]bool) error {
 //   - A ';' anywhere after the value starts an inline comment.
 //   - A '#' starts an inline comment only when preceded by whitespace
 //     (to avoid misinterpreting values that legitimately start with '#').
+//
+// The function finds whichever valid comment marker appears first and
+// truncates there, so mixed cases like "value #comment ; more" are handled
+// correctly (truncated at the '#', not the later ';').
 func stripInlineComment(s string) string {
-	// Handle ';' inline comment.
-	if idx := strings.Index(s, ";"); idx >= 0 {
-		s = strings.TrimRight(s[:idx], " \t")
+	minIdx := len(s)
+
+	// Check for ';' inline comment.
+	if idx := strings.Index(s, ";"); idx >= 0 && idx < minIdx {
+		minIdx = idx
 	}
-	// Handle '#' inline comment, but only when preceded by whitespace.
-	// Search for " #" or "\t#" substrings.
+	// Check for '#' inline comment preceded by whitespace (" #" or "\t#").
 	for _, prefix := range []string{" #", "\t#"} {
-		if idx := strings.Index(s, prefix); idx >= 0 {
-			s = strings.TrimRight(s[:idx], " \t")
-			break
+		if idx := strings.Index(s, prefix); idx >= 0 && idx < minIdx {
+			minIdx = idx
 		}
+	}
+	if minIdx < len(s) {
+		s = strings.TrimRight(s[:minIdx], " \t")
 	}
 	return s
 }
