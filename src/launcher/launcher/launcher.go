@@ -212,7 +212,7 @@ func (l *Launcher) Run() error {
 	}
 
 	// 6c. Load retained signals if any are present (step 4.3.9).
-	if err := l.loadRetain(); err != nil {
+	if err := l.loadRetain(halExec); err != nil {
 		if !l.opts.ContinueOnError {
 			return fmt.Errorf("loading retain: %w", err)
 		}
@@ -644,7 +644,7 @@ func isExecutable(path string) bool {
 //
 // Note: the bash script has a bug where it checks the wrong variable before
 // setting RETAIN_SYNC_THREAD; the Go implementation checks the correct one.
-func (l *Launcher) loadRetain() error {
+func (l *Launcher) loadRetain(halExec *halfile.Executor) error {
 	halcmdPath := filepath.Join(config.EMC2BinDir, "halcmd")
 
 	// Check whether any retained signals exist.
@@ -663,7 +663,7 @@ func (l *Launcher) loadRetain() error {
 	l.logger.Info("Loading retain")
 
 	// Load the realtime retain component.
-	if err := l.runHalcmdArgs([]string{"loadrt", "retain"}); err != nil {
+	if err := halExec.RunHalcmdArgs([]string{"loadrt", "retain"}); err != nil {
 		return fmt.Errorf("halcmd loadrt retain: %w", err)
 	}
 
@@ -672,7 +672,7 @@ func (l *Launcher) loadRetain() error {
 	if syncThread == "" {
 		syncThread = "servo-thread"
 	}
-	if err := l.runHalcmdArgs([]string{"addf", "retain.sync", syncThread}); err != nil {
+	if err := halExec.RunHalcmdArgs([]string{"addf", "retain.sync", syncThread}); err != nil {
 		return fmt.Errorf("halcmd addf retain.sync %s: %w", syncThread, err)
 	}
 
@@ -695,28 +695,10 @@ func (l *Launcher) loadRetain() error {
 	if pollPeriod != "" {
 		loadusrArgs = append(loadusrArgs, pollPeriod)
 	}
-	if err := l.runHalcmdArgs(loadusrArgs); err != nil {
+	if err := halExec.RunHalcmdArgs(loadusrArgs); err != nil {
 		return fmt.Errorf("halcmd loadusr retain_usr: %w", err)
 	}
 
-	return nil
-}
-
-// runHalcmdArgs runs halcmd with the given argument slice.
-// Arguments are passed directly to exec.Command, so no shell splitting or
-// metacharacter interpretation occurs.
-func (l *Launcher) runHalcmdArgs(args []string) error {
-	if len(args) == 0 {
-		return nil
-	}
-	halcmdPath := filepath.Join(config.EMC2BinDir, "halcmd")
-	c := exec.Command(halcmdPath, args...)
-	c.Stdout = os.Stdout
-	c.Stderr = os.Stderr
-	c.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGTERM}
-	if err := c.Run(); err != nil {
-		return fmt.Errorf("halcmd %s: %w", strings.Join(args, " "), err)
-	}
 	return nil
 }
 

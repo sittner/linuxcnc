@@ -206,45 +206,6 @@ func (e *Executor) ExecuteFile(path string) error {
 	return e.runHalcmdFile(tmpName)
 }
 
-// ExecutePostHalCommands reads and executes all [HAL]POSTGUI_HALFILE entries
-// from the INI file.  This should be called after the display process has
-// started (M5 milestone).
-func (e *Executor) ExecutePostHalCommands() error {
-	if e.ini == nil {
-		return nil
-	}
-	files := e.ini.GetAll("HAL", "POSTGUI_HALFILE")
-	if len(files) == 0 {
-		e.logger.Debug("no POSTGUI_HALFILE entries found")
-		return nil
-	}
-	e.logger.Info("loading post-GUI HAL files")
-	for _, f := range files {
-		// Split into filename and optional arguments.
-		fields := strings.Fields(f)
-		if len(fields) == 0 {
-			continue
-		}
-		fname := fields[0]
-		args := fields[1:]
-		resolved, err := e.resolvePath(fname)
-		if err != nil {
-			return fmt.Errorf("resolving POSTGUI_HALFILE %q: %w", fname, err)
-		}
-		e.logger.Info("loading post-GUI HAL file", "path", resolved)
-		if strings.HasSuffix(resolved, ".tcl") {
-			if err := e.runHaltcl(resolved, args); err != nil {
-				return fmt.Errorf("executing POSTGUI_HALFILE %q: %w", resolved, err)
-			}
-		} else {
-			if err := e.ExecuteFile(resolved); err != nil {
-				return fmt.Errorf("executing POSTGUI_HALFILE %q: %w", resolved, err)
-			}
-		}
-	}
-	return nil
-}
-
 // runHalcmdFile executes a HAL file via "halcmd [-i <inifile>] -f <file>".
 func (e *Executor) runHalcmdFile(path string) error {
 	var args []string
@@ -252,7 +213,7 @@ func (e *Executor) runHalcmdFile(path string) error {
 		args = append(args, "-i", p)
 	}
 	args = append(args, "-f", path)
-	return e.runHalcmdArgs(args)
+	return e.RunHalcmdArgs(args)
 }
 
 // runHalcmd executes a single halcmd command string.
@@ -269,12 +230,12 @@ func (e *Executor) runHalcmd(cmd string) error {
 		args = append(args, "-i", p)
 	}
 	args = append(args, parts...)
-	return e.runHalcmdArgs(args)
+	return e.RunHalcmdArgs(args)
 }
 
-// runHalcmdArgs runs halcmd with the given arguments, wiring stdout/stderr to
+// RunHalcmdArgs runs halcmd with the given arguments, wiring stdout/stderr to
 // the process's own stdout/stderr so that halcmd output is visible.
-func (e *Executor) runHalcmdArgs(args []string) error {
+func (e *Executor) RunHalcmdArgs(args []string) error {
 	e.logger.Debug("running halcmd", "args", strings.Join(args, " "))
 	cmd := exec.Command(e.halcmdPath, args...)
 	cmd.Stdout = os.Stdout
