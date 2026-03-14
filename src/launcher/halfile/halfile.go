@@ -139,8 +139,7 @@ func (e *Executor) ExecuteHalCommands() error {
 		if cmd == "" {
 			continue
 		}
-		e.logger.Debug("executing HAL command", "cmd", cmd)
-		if err := e.runHalcmd(cmd); err != nil {
+		if err := e.executeCommand(cmd); err != nil {
 			return fmt.Errorf("executing HALCMD %q: %w", cmd, err)
 		}
 	}
@@ -149,11 +148,12 @@ func (e *Executor) ExecuteHalCommands() error {
 }
 
 // ExecuteFile reads a single HAL file, performs INI variable substitution on
-// every line, and then executes the result via halcmd.
+// every line, and executes each resulting command via executeCommand.
 //
-// When no substitution is needed the original file is executed directly with
-// "halcmd -i <inifile> -f <file>".  When substitution is needed the
-// substituted content is written to a temporary file first.
+// Backslash-continued lines (ending with '\') are joined before execution.
+// Empty lines and comment lines ('#', ';') are skipped by executeCommand.
+// Every command is executed individually, so executeCommand is the single
+// swap point for the future hal-go transition.
 func (e *Executor) ExecuteFile(path string) error {
 	f, err := os.Open(path)
 	if err != nil {
@@ -161,70 +161,57 @@ func (e *Executor) ExecuteFile(path string) error {
 	}
 	defer f.Close()
 
-	var lines []string
-	needsSubstitution := false
+	e.logger.Debug("executing HAL file", "path", path)
+
+	var pending strings.Builder
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
-		orig := scanner.Text()
-		subst := e.substituteLine(orig)
-		if subst != orig {
-			needsSubstitution = true
+		line := e.substituteLine(scanner.Text())
+		// Backslash continuation: strip the trailing '\' and join with the
+		// next line using a single space.  Any leading whitespace on the
+		// continuation line is preserved; strings.Fields in executeCommand
+		// will normalise multi-space gaps when splitting into arguments.
+		if trimmed := strings.TrimRight(line, " \t"); strings.HasSuffix(trimmed, "\\") {
+			pending.WriteString(strings.TrimSuffix(trimmed, "\\"))
+			pending.WriteByte(' ')
+			continue
 		}
-		lines = append(lines, subst)
+		full := pending.String() + line
+		pending.Reset()
+		if err := e.executeCommand(full); err != nil {
+			return fmt.Errorf("%s: %w", filepath.Base(path), err)
+		}
 	}
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("reading HAL file %q: %w", path, err)
 	}
-
-	if !needsSubstitution {
-		// Fast path: execute the file directly without creating a temp copy.
-		e.logger.Debug("executing HAL file", "path", path)
-		return e.runHalcmdFile(path)
+	// Flush any pending backslash-continued line at EOF.
+	if pending.Len() > 0 {
+		if err := e.executeCommand(pending.String()); err != nil {
+			return fmt.Errorf("%s: %w", filepath.Base(path), err)
+		}
 	}
-
-	// Slow path: write substituted content to a temp file, then execute it.
-	tmp, err := os.CreateTemp("", "halfile-*.hal")
-	if err != nil {
-		return fmt.Errorf("creating temp HAL file: %w", err)
-	}
-	tmpName := tmp.Name()
-	defer os.Remove(tmpName)
-
-	w := bufio.NewWriter(tmp)
-	for _, l := range lines {
-		fmt.Fprintln(w, l)
-	}
-	if err := w.Flush(); err != nil {
-		tmp.Close()
-		return fmt.Errorf("writing temp HAL file: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("closing temp HAL file: %w", err)
-	}
-
-	e.logger.Debug("executing substituted HAL file", "original", path, "temp", tmpName)
-	return e.runHalcmdFile(tmpName)
+	return nil
 }
 
-// runHalcmdFile executes a HAL file via "halcmd [-i <inifile>] -f <file>".
-func (e *Executor) runHalcmdFile(path string) error {
-	var args []string
-	if p := e.effectiveIniPath(); p != "" {
-		args = append(args, "-i", p)
-	}
-	args = append(args, "-f", path)
-	return e.RunHalcmdArgs(args)
-}
-
-// runHalcmd executes a single halcmd command string.
-// Note: command splitting uses strings.Fields which does not handle quoted
-// arguments containing spaces; this matches the behaviour of the legacy bash
-// launcher which also does not quote-process HALCMD values.
-func (e *Executor) runHalcmd(cmd string) error {
-	parts := strings.Fields(cmd)
-	if len(parts) == 0 {
+// executeCommand executes a single pre-substituted HAL command line.
+//
+// Lines that are empty or begin with '#' or ';' (after trimming leading and
+// trailing whitespace) are silently skipped, matching halcmd's own behaviour
+// of stripping whitespace before checking for comment characters.
+//
+// Command arguments are split on whitespace; quoted arguments containing
+// spaces are not supported (matching the legacy bash launcher behaviour).
+//
+// This is the single halcmd swap point: when hal-go is integrated, only
+// this method needs to change to call hal-go instead of spawning a halcmd
+// subprocess.
+func (e *Executor) executeCommand(line string) error {
+	line = strings.TrimSpace(line)
+	if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
 		return nil
 	}
+	parts := strings.Fields(line)
 	var args []string
 	if p := e.effectiveIniPath(); p != "" {
 		args = append(args, "-i", p)
