@@ -63,7 +63,6 @@ type Launcher struct {
 	taskProcess   *exec.Cmd            // background milltask/linuxcnctask process
 	taskDone      chan error            // receives the result of cmd.Wait() for task
 	appProcesses  []*exec.Cmd          // [APPLICATIONS]APP background processes
-	halComp       *hal.Component       // launcher's own HAL component (ID used for UnloadAll exclusion)
 }
 
 // New creates a new Launcher with the given options and logger.
@@ -208,17 +207,6 @@ func (l *Launcher) Run() error {
 	if err := l.rtMgr.Start(); err != nil {
 		return fmt.Errorf("realtime start failed: %w", err)
 	}
-
-	// Initialize the launcher's own HAL component.  The component ID is used
-	// later by UnloadAll() to exclude the launcher itself from the unload sweep.
-	halComp, err := hal.NewComponent("launcher")
-	if err != nil {
-		return fmt.Errorf("hal component init: %w", err)
-	}
-	if err := halComp.Ready(); err != nil {
-		return fmt.Errorf("hal component ready: %w", err)
-	}
-	l.halComp = halComp
 
 	// Start iocontrol via halcmd loadusr -Wn iocontrol.
 	// iocontrol is a HAL userspace component; HAL manages its lifecycle and

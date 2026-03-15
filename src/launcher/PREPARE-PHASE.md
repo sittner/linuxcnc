@@ -77,13 +77,15 @@ of priority:
 | Method | Current mechanism | hal-go replacement |
 |---|---|---|
 | `halfile.Executor.executeCommand()` | `halcmd <cmd>` per line | `hal.LoadRT()`, `hal.Net()`, etc. |
-| `startHalThreads()` | `halcmd start` | `hal.StartThreads()` |
+| `startHalThreads()` | `halcmd start` | `hal.StartThreads()` ✅ |
 | `loadRetain()` — loadrt/addf calls | `halcmd loadrt retain` | `hal.LoadRT("retain")`, `hal.AddF(...)` |
 | `preloadMotionModules()` | `halcmd loadrt <mod>` | `hal.LoadRT(mod)` |
 | `startIOControl()` | `halcmd loadusr -Wn iocontrol` | `hal.LoadUSR(...)` |
 | `startHalUI()` | `halcmd loadusr -Wn halui` | `hal.LoadUSR(...)` |
 | `startTask()` | `halcmd loadusr -Wn inihal` | `hal.LoadUSR(...)` |
-| `doCleanup()` — stop/unload | `halcmd stop`, `halcmd unload all` | `hal.StopThreads()`, `hal.UnloadAll()` |
+| `doCleanup()` — stop threads | `halcmd stop` | `hal.StopThreads()` ✅ |
+| `doCleanup()` — unload all | `halcmd unload all` | `hal.UnloadAll()` ⚠️ reverted (cross-process) |
+| `doCleanup()` — list comp | `halcmd list comp` | `hal.ListComponents()` ⚠️ reverted (cross-process) |
 
 TCL HAL files (`.tcl`) are handled by `haltcl` and are **not** in scope for
 hal-go replacement; they remain as subprocess calls.
@@ -96,12 +98,18 @@ hal-go replacement; they remain as subprocess calls.
    Requires implementing a HAL command dispatcher in Go that maps textual
    HAL commands (`loadrt`, `addf`, `net`, etc.) to hal-go API calls.
 
-2. ✅ **`startHalThreads()` / cleanup stop+unload** — replaced with direct
-   hal-go cgo calls: `hal.StartThreads()`, `hal.StopThreads()`,
-   `hal.UnloadAll()`, and `hal.ListComponents()`.  The launcher now holds
-   its own `*hal.Component` (initialized after realtime start) whose ID is
-   passed to `UnloadAll()` to exclude the launcher component from the unload
-   sweep.
+2. ⚠️ **`startHalThreads()` / cleanup stop** — partially replaced with direct
+   hal-go cgo calls: `hal.StartThreads()` and `hal.StopThreads()` are
+   integrated and work correctly (they operate on global HAL thread state).
+   However, `hal.UnloadAll()` and `hal.ListComponents()` had to be reverted
+   back to `halcmd` subprocesses because `hal_exit()` only works for
+   components initialized in the **same process** via `hal_init()`.  The HAL
+   components (trivkins, motmod, etc.) are loaded by halcmd subprocesses in
+   separate processes, so the cross-process `hal_exit()` call fails with
+   `"exit called before init"`.  The `halcmd unload all` subprocess works
+   because halcmd has its own cross-process unload mechanism via HAL shared
+   memory signals.  The launcher's own `*hal.Component` (previously needed to
+   provide an exclusion ID for `UnloadAll`) has been removed.
 
 3. **`preloadMotionModules()`** — two `loadrt` calls.
 

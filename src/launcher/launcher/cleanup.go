@@ -60,24 +60,16 @@ func (l *Launcher) doCleanup() {
 		l.logger.Debug("hal stop threads returned error", "error", err)
 	}
 
-	// Step 5 — unload all HAL components except the launcher itself.
+	halcmdPath := filepath.Join(config.EMC2BinDir, "halcmd")
+
+	// Step 5 — halcmd unload all (unload all HAL components).
 	// mirrors scripts/linuxcnc.in line 713.
 	l.logger.Debug("unloading HAL components")
-	// Use -1 as sentinel when halComp is nil (no valid component ID to exclude).
-	// HAL component IDs are always positive, so -1 will never match a real component.
-	halCompID := -1
-	if l.halComp != nil {
-		halCompID = l.halComp.ID()
-	}
-	if err := hal.UnloadAll(halCompID); err != nil {
-		l.logger.Debug("hal unload all returned error", "error", err)
-	}
-
-	// Exit the launcher's own HAL component now that all others are unloaded.
-	if l.halComp != nil {
-		if err := l.halComp.Exit(); err != nil {
-			l.logger.Debug("hal component exit returned error", "error", err)
-		}
+	unloadCmd := exec.Command(halcmdPath, "unload", "all")
+	unloadCmd.Stdout = os.Stdout
+	unloadCmd.Stderr = os.Stderr
+	if err := unloadCmd.Run(); err != nil {
+		l.logger.Debug("halcmd unload all returned error", "error", err)
 	}
 
 	// Step 6 — wait for HAL components to unload.
@@ -85,11 +77,11 @@ func (l *Launcher) doCleanup() {
 	// mirrors scripts/linuxcnc.in lines 715–719.
 	l.logger.Debug("waiting for HAL components to unload")
 	for i := 0; i < 10; i++ {
-		comps, err := hal.ListComponents()
+		out, err := exec.Command(halcmdPath, "list", "comp").Output()
 		if err != nil {
 			break
 		}
-		if len(comps) <= 1 {
+		if len(strings.Fields(string(out))) <= 1 {
 			break
 		}
 		time.Sleep(200 * time.Millisecond)
