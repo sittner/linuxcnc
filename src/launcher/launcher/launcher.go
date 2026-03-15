@@ -215,6 +215,9 @@ func (l *Launcher) Run() error {
 	if err != nil {
 		return fmt.Errorf("hal component init: %w", err)
 	}
+	if err := halComp.Ready(); err != nil {
+		return fmt.Errorf("hal component ready: %w", err)
+	}
 	l.halComp = halComp
 
 	// Start iocontrol via halcmd loadusr -Wn iocontrol.
