@@ -211,6 +211,7 @@ func (e *Executor) executeCommand(line string) error {
 	if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
 		return nil
 	}
+	e.logger.Debug("executing HAL command", "cmd", line)
 	parts := strings.Fields(line)
 	var args []string
 	if p := e.effectiveIniPath(); p != "" {
