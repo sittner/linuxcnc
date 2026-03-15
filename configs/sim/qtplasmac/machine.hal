@@ -61,11 +61,11 @@ net sim:enable sim:{{$jnum}}_mux.sel
 {{- $yDone := false -}}
 {{- $zDone := false -}}
 {{- range $jnum, $axis := .Axes}}
-{{- if and (eq $axis "X") (not $xDone) -}}{{- $xDone = true}}
+{{- if and (eq (upper $axis) "X") (not $xDone) -}}{{- $xDone = true}}
 net sim:j{{$jnum}}-vel => sim:hyp_xy.in0 sim:hyp_xyz.in0
-{{- else if and (eq $axis "Y") (not $yDone) -}}{{- $yDone = true}}
+{{- else if and (eq (upper $axis) "Y") (not $yDone) -}}{{- $yDone = true}}
 net sim:j{{$jnum}}-vel => sim:hyp_xy.in1 sim:hyp_xyz.in1
-{{- else if and (eq $axis "Z") (not $zDone) -}}{{- $zDone = true}}
+{{- else if and (eq (upper $axis) "Z") (not $zDone) -}}{{- $zDone = true}}
 net sim:j{{$jnum}}-vel => sim:hyp_xyz.in2
 {{- end}}
 {{- end}}
