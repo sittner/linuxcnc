@@ -194,11 +194,49 @@ func (e *Executor) ExecuteFile(path string) error {
 	return nil
 }
 
+// stripComments removes inline '#' comments from a HAL command line, matching
+// the halcmd strip_comments() behaviour from src/hal/utils/halcmd.c.
+//
+// '#' in NORMAL state terminates the line (everything from '#' onward is
+// stripped).  Single-quoted ('...') and double-quoted ("...") strings are
+// respected: a '#' inside a quoted string is NOT treated as a comment.
+// The returned string has any resulting trailing whitespace trimmed.
+func stripComments(line string) string {
+	const (
+		stateNormal      = iota
+		stateSingleQuote
+		stateDoubleQuote
+	)
+	state := stateNormal
+	for i, ch := range line {
+		switch state {
+		case stateNormal:
+			if ch == '#' {
+				return strings.TrimRight(line[:i], " \t")
+			} else if ch == '\'' {
+				state = stateSingleQuote
+			} else if ch == '"' {
+				state = stateDoubleQuote
+			}
+		case stateSingleQuote:
+			if ch == '\'' {
+				state = stateNormal
+			}
+		case stateDoubleQuote:
+			if ch == '"' {
+				state = stateNormal
+			}
+		}
+	}
+	return line
+}
+
 // executeCommand executes a single pre-substituted HAL command line.
 //
+// Inline '#' comments (outside of quoted strings) are stripped first via
+// stripComments(), matching halcmd's own strip_comments() behaviour.
 // Lines that are empty or begin with '#' or ';' (after trimming leading and
-// trailing whitespace) are silently skipped, matching halcmd's own behaviour
-// of stripping whitespace before checking for comment characters.
+// trailing whitespace) are silently skipped.
 //
 // Command arguments are split on whitespace; quoted arguments containing
 // spaces are not supported (matching the legacy bash launcher behaviour).
@@ -208,7 +246,8 @@ func (e *Executor) ExecuteFile(path string) error {
 // subprocess.
 func (e *Executor) executeCommand(line string) error {
 	line = strings.TrimSpace(line)
-	if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+	line = stripComments(line)
+	if line == "" || strings.HasPrefix(line, ";") {
 		return nil
 	}
 	e.logger.Debug("executing HAL command", "cmd", line)

@@ -33,6 +33,62 @@ func parseIni(t *testing.T, content string) *inifile.IniFile {
 }
 
 // ---------------------------------------------------------------------------
+// stripComments tests
+// ---------------------------------------------------------------------------
+
+func TestStripComments(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "inline comment stripped",
+			input: "setp foo 5000.0 # rpm/second",
+			want:  "setp foo 5000.0",
+		},
+		{
+			name:  "hash inside single quotes preserved",
+			input: "setp foo 'has # inside'",
+			want:  "setp foo 'has # inside'",
+		},
+		{
+			name:  "hash inside double quotes preserved",
+			input: `setp foo "has # inside"`,
+			want:  `setp foo "has # inside"`,
+		},
+		{
+			name:  "full line comment becomes empty",
+			input: "# full line comment",
+			want:  "",
+		},
+		{
+			name:  "no comment unchanged",
+			input: "loadrt trivkins",
+			want:  "loadrt trivkins",
+		},
+		{
+			name:  "empty string unchanged",
+			input: "",
+			want:  "",
+		},
+		{
+			name:  "trailing whitespace after stripping comment",
+			input: "setp foo bar # trailing spaces   ",
+			want:  "setp foo bar",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := stripComments(tc.input)
+			if got != tc.want {
+				t.Errorf("stripComments(%q) = %q; want %q", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Substitution tests
 // ---------------------------------------------------------------------------
 
