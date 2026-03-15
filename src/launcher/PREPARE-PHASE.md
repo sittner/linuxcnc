@@ -77,13 +77,13 @@ of priority:
 | Method | Current mechanism | hal-go replacement |
 |---|---|---|
 | `halfile.Executor.executeCommand()` | `halcmd <cmd>` per line | `hal.LoadRT()`, `hal.Net()`, etc. |
-| `startHalThreads()` | `halcmd start` | `hal.Start()` |
+| `startHalThreads()` | `halcmd start` | `hal.StartThreads()` |
 | `loadRetain()` — loadrt/addf calls | `halcmd loadrt retain` | `hal.LoadRT("retain")`, `hal.AddF(...)` |
 | `preloadMotionModules()` | `halcmd loadrt <mod>` | `hal.LoadRT(mod)` |
 | `startIOControl()` | `halcmd loadusr -Wn iocontrol` | `hal.LoadUSR(...)` |
 | `startHalUI()` | `halcmd loadusr -Wn halui` | `hal.LoadUSR(...)` |
 | `startTask()` | `halcmd loadusr -Wn inihal` | `hal.LoadUSR(...)` |
-| `doCleanup()` — stop/unload | `halcmd stop`, `halcmd unload all` | `hal.Stop()`, `hal.UnloadAll()` |
+| `doCleanup()` — stop/unload | `halcmd stop`, `halcmd unload all` | `hal.StopThreads()`, `hal.UnloadAll()` |
 
 TCL HAL files (`.tcl`) are handled by `haltcl` and are **not** in scope for
 hal-go replacement; they remain as subprocess calls.
@@ -96,8 +96,12 @@ hal-go replacement; they remain as subprocess calls.
    Requires implementing a HAL command dispatcher in Go that maps textual
    HAL commands (`loadrt`, `addf`, `net`, etc.) to hal-go API calls.
 
-2. **`startHalThreads()` / cleanup stop+unload** — simple single-command
-   replacements once the hal-go component ID is tracked.
+2. ✅ **`startHalThreads()` / cleanup stop+unload** — replaced with direct
+   hal-go cgo calls: `hal.StartThreads()`, `hal.StopThreads()`,
+   `hal.UnloadAll()`, and `hal.ListComponents()`.  The launcher now holds
+   its own `*hal.Component` (initialized after realtime start) whose ID is
+   passed to `UnloadAll()` to exclude the launcher component from the unload
+   sweep.
 
 3. **`preloadMotionModules()`** — two `loadrt` calls.
 
