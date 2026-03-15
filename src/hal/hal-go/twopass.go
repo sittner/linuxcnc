@@ -3,6 +3,7 @@ package hal
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -120,10 +121,7 @@ func IsLoadRT(tokens []string) bool {
 	return len(tokens) > 0 && tokens[0] == "loadrt"
 }
 
-// parseInt is a helper that wraps fmt.Sscanf for integer parsing.
+// parseInt is a helper that parses a trimmed decimal integer string.
 func parseInt(s string) (int, error) {
-	s = strings.TrimSpace(s)
-	n := 0
-	_, err := fmt.Sscanf(s, "%d", &n)
-	return n, err
+	return strconv.Atoi(strings.TrimSpace(s))
 }

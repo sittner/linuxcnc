@@ -26,10 +26,11 @@ func NewHalTemplateData(ini map[string]map[string]string) *HalTemplateData {
 	}
 
 	// Extract axes from [TRAJ]COORDINATES
+	// Coordinates may be space-separated ("X Y Z") or concatenated ("XYZ").
 	if traj, ok := ini["TRAJ"]; ok {
 		if coords, ok := traj["COORDINATES"]; ok {
 			for _, c := range strings.TrimSpace(coords) {
-				if c != ' ' {
+				if c != ' ' && c != '\t' {
 					data.Axes = append(data.Axes, string(c))
 				}
 			}
@@ -55,8 +56,40 @@ func NewHalTemplateData(ini map[string]map[string]string) *HalTemplateData {
 	return data
 }
 
+// toFloat64 coerces a numeric value to float64. Accepts int, int64, float64,
+// and string (parsed via strconv.ParseFloat).
+func toFloat64(v any) (float64, error) {
+	switch n := v.(type) {
+	case int:
+		return float64(n), nil
+	case int64:
+		return float64(n), nil
+	case float64:
+		return n, nil
+	case string:
+		return strconv.ParseFloat(n, 64)
+	default:
+		return 0, fmt.Errorf("cannot convert %T to float64", v)
+	}
+}
+
+// convertTwoArgs coerces two values to float64 for use in math template functions.
+func convertTwoArgs(a, b any) (float64, float64, error) {
+	fa, err := toFloat64(a)
+	if err != nil {
+		return 0, 0, err
+	}
+	fb, err := toFloat64(b)
+	if err != nil {
+		return 0, 0, err
+	}
+	return fa, fb, nil
+}
+
 // halTemplateFuncs returns the function map for HAL file templates.
-func halTemplateFuncs() template.FuncMap {
+// The ini function is a closure over the provided INI data so that templates
+// can call {{ini "SECTION" "KEY"}} without explicitly passing .INI.
+func halTemplateFuncs(iniData map[string]map[string]string) template.FuncMap {
 	return template.FuncMap{
 		// String operations
 		"lower":    strings.ToLower,
@@ -68,17 +101,33 @@ func halTemplateFuncs() template.FuncMap {
 		"printf":   fmt.Sprintf,
 		"trim":     strings.TrimSpace,
 
-		// Math operations
-		"add": func(a, b float64) float64 { return a + b },
-		"sub": func(a, b float64) float64 { return a - b },
-		"mul": func(a, b float64) float64 { return a * b },
-		"div": func(a, b float64) float64 {
-			if b == 0 {
-				return math.NaN()
-			}
-			return a / b
+		// Math operations — accept any numeric type via toFloat64
+		"add": func(a, b any) (float64, error) {
+			fa, fb, err := convertTwoArgs(a, b)
+			return fa + fb, err
 		},
-		"neg": func(a float64) float64 { return -a },
+		"sub": func(a, b any) (float64, error) {
+			fa, fb, err := convertTwoArgs(a, b)
+			return fa - fb, err
+		},
+		"mul": func(a, b any) (float64, error) {
+			fa, fb, err := convertTwoArgs(a, b)
+			return fa * fb, err
+		},
+		"div": func(a, b any) (float64, error) {
+			fa, fb, err := convertTwoArgs(a, b)
+			if err != nil {
+				return 0, err
+			}
+			if fb == 0 {
+				return math.NaN(), nil
+			}
+			return fa / fb, nil
+		},
+		"neg": func(a any) (float64, error) {
+			fa, err := toFloat64(a)
+			return -fa, err
+		},
 
 		// Iteration helpers
 		"seq": func(start, end int) []int {
@@ -96,8 +145,8 @@ func halTemplateFuncs() template.FuncMap {
 			return result
 		},
 
-		// INI access (for use in pipelines)
-		"ini": func(section, key string, iniData map[string]map[string]string) string {
+		// INI access — closure over the template's own INI data
+		"ini": func(section, key string) string {
 			if s, ok := iniData[section]; ok {
 				if v, ok := s[key]; ok {
 					return v
@@ -127,7 +176,7 @@ func RenderHalTemplate(name, content string, data *HalTemplateData) (string, err
 		return content, nil
 	}
 
-	tmpl, err := template.New(name).Funcs(halTemplateFuncs()).Parse(content)
+	tmpl, err := template.New(name).Funcs(halTemplateFuncs(data.INI)).Parse(content)
 	if err != nil {
 		return "", fmt.Errorf("template parse error in %s: %w", name, err)
 	}
