@@ -3,7 +3,6 @@ package hal
 import (
 	"bytes"
 	"fmt"
-	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -120,7 +119,7 @@ func halTemplateFuncs(iniData map[string]map[string]string) template.FuncMap {
 				return 0, err
 			}
 			if fb == 0 {
-				return math.NaN(), nil
+				return 0, fmt.Errorf("division by zero")
 			}
 			return fa / fb, nil
 		},

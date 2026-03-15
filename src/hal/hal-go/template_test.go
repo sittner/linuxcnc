@@ -132,6 +132,19 @@ func TestRenderHalTemplate_CountFunction(t *testing.T) {
 	}
 }
 
+// TestRenderHalTemplate_DivByZero verifies that dividing by zero returns an
+// error rather than silently rendering NaN into the HAL output.
+func TestRenderHalTemplate_DivByZero(t *testing.T) {
+	data := &HalTemplateData{INI: map[string]map[string]string{}}
+	_, err := RenderHalTemplate("test.hal", "{{div 1.0 0.0}}", data)
+	if err == nil {
+		t.Fatal("expected error for division by zero, got nil")
+	}
+	if !strings.Contains(err.Error(), "division by zero") {
+		t.Errorf("expected 'division by zero' in error, got: %v", err)
+	}
+}
+
 // TestRenderHalTemplate_ParseError verifies that a malformed template returns
 // an error rather than panicking or returning empty output.
 func TestRenderHalTemplate_ParseError(t *testing.T) {
