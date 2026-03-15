@@ -8,7 +8,7 @@ package hal
 #include <string.h>
 #include <errno.h>
 #include "hal.h"
-#include "hal_priv.h"
+#include "../hal_priv.h"
 
 // Helper to convert hal_type_t to int for Go
 static inline int get_hal_type(hal_type_t t) { return (int)t; }
@@ -93,10 +93,13 @@ static int hal_shim_unload_all(int except_id) {
     }
     rtapi_mutex_give(&(hal_data->mutex));
 
-    for (i = 0; i < count; i++) {
+    int overflow = (next != 0);
+
+    for (i = count - 1; i >= 0; i--) {
         hal_exit(ids[i]);
     }
-    return 0;
+
+    return overflow ? -ENOSPC : 0;
 }
 */
 import "C"
@@ -364,7 +367,7 @@ func halError(code int, op string) error {
 	var message string
 	switch code {
 	case -1:
-		message = "general HAL error"
+		message = "general HAL error or operation not permitted (HAL may be locked)"
 	case -12: // -ENOMEM
 		message = "insufficient HAL shared memory"
 	case -16: // -EBUSY
