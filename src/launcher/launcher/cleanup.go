@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/sittner/linuxcnc/src/launcher/config"
+	hal "linuxcnc.org/hal"
 )
 
 // cleanup is the single entry point for ordered shutdown.  It is idempotent —
@@ -52,38 +53,43 @@ func (l *Launcher) doCleanup() {
 		}
 	}
 
-	halcmdPath := filepath.Join(config.EMC2BinDir, "halcmd")
-
-	// Step 4 — halcmd stop (stop all realtime threads).
+	// Step 4 — stop all realtime threads via hal-go cgo call.
 	// mirrors scripts/linuxcnc.in line 711.
 	l.logger.Debug("stopping realtime threads")
-	stopCmd := exec.Command(halcmdPath, "stop")
-	stopCmd.Stdout = os.Stdout
-	stopCmd.Stderr = os.Stderr
-	if err := stopCmd.Run(); err != nil {
-		l.logger.Debug("halcmd stop returned error", "error", err)
+	if err := hal.StopThreads(); err != nil {
+		l.logger.Debug("hal stop threads returned error", "error", err)
 	}
 
-	// Step 5 — halcmd unload all (unload all HAL components).
+	// Step 5 — unload all HAL components except the launcher itself.
 	// mirrors scripts/linuxcnc.in line 713.
 	l.logger.Debug("unloading HAL components")
-	unloadCmd := exec.Command(halcmdPath, "unload", "all")
-	unloadCmd.Stdout = os.Stdout
-	unloadCmd.Stderr = os.Stderr
-	if err := unloadCmd.Run(); err != nil {
-		l.logger.Debug("halcmd unload all returned error", "error", err)
+	// Use -1 as sentinel when halComp is nil (no valid component ID to exclude).
+	// HAL component IDs are always positive, so -1 will never match a real component.
+	halCompID := -1
+	if l.halComp != nil {
+		halCompID = l.halComp.ID()
+	}
+	if err := hal.UnloadAll(halCompID); err != nil {
+		l.logger.Debug("hal unload all returned error", "error", err)
 	}
 
-	// Step 6 — Wait for HAL component unload.
-	// Polls up to 10 times (200 ms apart) until only 1 component remains
-	// (halcmd itself).  mirrors scripts/linuxcnc.in lines 715–719.
+	// Exit the launcher's own HAL component now that all others are unloaded.
+	if l.halComp != nil {
+		if err := l.halComp.Exit(); err != nil {
+			l.logger.Debug("hal component exit returned error", "error", err)
+		}
+	}
+
+	// Step 6 — wait for HAL components to unload.
+	// Polls up to 10 times (200 ms apart) until ≤1 component remains.
+	// mirrors scripts/linuxcnc.in lines 715–719.
 	l.logger.Debug("waiting for HAL components to unload")
 	for i := 0; i < 10; i++ {
-		out, err := exec.Command(halcmdPath, "list", "comp").Output()
+		comps, err := hal.ListComponents()
 		if err != nil {
 			break
 		}
-		if len(strings.Fields(string(out))) <= 1 {
+		if len(comps) <= 1 {
 			break
 		}
 		time.Sleep(200 * time.Millisecond)

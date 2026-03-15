@@ -25,6 +25,7 @@ import (
 	"github.com/sittner/linuxcnc/src/launcher/inifile"
 	"github.com/sittner/linuxcnc/src/launcher/lockfile"
 	"github.com/sittner/linuxcnc/src/launcher/realtime"
+	hal "linuxcnc.org/hal"
 )
 
 // Options holds the parsed command-line options.
@@ -62,6 +63,7 @@ type Launcher struct {
 	taskProcess   *exec.Cmd            // background milltask/linuxcnctask process
 	taskDone      chan error            // receives the result of cmd.Wait() for task
 	appProcesses  []*exec.Cmd          // [APPLICATIONS]APP background processes
+	halComp       *hal.Component       // launcher's own HAL component (ID used for UnloadAll exclusion)
 }
 
 // New creates a new Launcher with the given options and logger.
@@ -206,6 +208,17 @@ func (l *Launcher) Run() error {
 	if err := l.rtMgr.Start(); err != nil {
 		return fmt.Errorf("realtime start failed: %w", err)
 	}
+
+	// Initialize the launcher's own HAL component.  The component ID is used
+	// later by UnloadAll() to exclude the launcher itself from the unload sweep.
+	halComp, err := hal.NewComponent("launcher")
+	if err != nil {
+		return fmt.Errorf("hal component init: %w", err)
+	}
+	if err := halComp.Ready(); err != nil {
+		return fmt.Errorf("hal component ready: %w", err)
+	}
+	l.halComp = halComp
 
 	// Start iocontrol via halcmd loadusr -Wn iocontrol.
 	// iocontrol is a HAL userspace component; HAL manages its lifecycle and
@@ -642,26 +655,16 @@ func (l *Launcher) stopTask() {
 	}
 }
 
-// startHalThreads executes "halcmd start" to start all HAL threads.
+// startHalThreads starts all HAL realtime threads via the hal-go cgo API.
 //
 // This mirrors scripts/linuxcnc.in line 999:
 //
 //	$HALCMD start
 func (l *Launcher) startHalThreads() error {
 	l.logger.Info("starting HAL threads")
-
-	halcmdPath := filepath.Join(config.EMC2BinDir, "halcmd")
-	cmd := exec.Command(halcmdPath, "start")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Pdeathsig: syscall.SIGTERM,
+	if err := hal.StartThreads(); err != nil {
+		return fmt.Errorf("hal start threads: %w", err)
 	}
-
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("halcmd start: %w", err)
-	}
-
 	return nil
 }
 
