@@ -213,12 +213,7 @@ func (e *Executor) executeCommand(line string) error {
 	}
 	e.logger.Debug("executing HAL command", "cmd", line)
 	parts := strings.Fields(line)
-	var args []string
-	if p := e.effectiveIniPath(); p != "" {
-		args = append(args, "-i", p)
-	}
-	args = append(args, parts...)
-	return e.RunHalcmdArgs(args)
+	return e.RunHalcmdArgs(parts)
 }
 
 // RunHalcmdArgs runs halcmd with the given arguments, wiring stdout/stderr to
