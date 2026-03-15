@@ -1,0 +1,15 @@
+# extrajoints.hal (requires [HAL]TWOPASS)
+# create limit3 and signals for all extra joints
+# [KINS]JOINTS must include all joints that require a limit3/posthome-cmd setup
+{{range $j := count .Joints}}
+loadrt limit3 names=j{{$j}}.limit3
+addf j{{$j}}.limit3 servo-thread
+setp j{{$j}}.limit3.min  {{ini (printf "JOINT_%d" $j) "MIN_LIMIT"}}
+setp j{{$j}}.limit3.max  {{ini (printf "JOINT_%d" $j) "MAX_LIMIT"}}
+setp j{{$j}}.limit3.maxv {{ini (printf "JOINT_%d" $j) "MAX_VELOCITY"}}
+setp j{{$j}}.limit3.maxa {{ini (printf "JOINT_%d" $j) "MAX_ACCELERATION"}}
+net  J{{$j}}:out    <= j{{$j}}.limit3.out
+net  J{{$j}}:out    => joint.{{$j}}.posthome-cmd
+net  J{{$j}}.enable <= joint.{{$j}}.homed
+net  J{{$j}}.enable => j{{$j}}.limit3.enable
+{{end}}
