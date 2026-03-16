@@ -4,10 +4,11 @@
 // chosen in RTAPI-INPROCESS-DESIGN.md: Option A + D (Linux file capabilities
 // + PR_SET_NO_NEW_PRIVS).
 //
-// The linuxcnc-launcher binary is installed with file capabilities:
+// The linuxcnc-launcher binary is installed with file capabilities via
+// "sudo make setuid", which runs:
 //
-//	sudo setcap cap_sys_nice,cap_ipc_lock,cap_sys_rawio,cap_sys_resource=eip \
-//	    $(EMC2_BIN_DIR)/linuxcnc-launcher
+//	setcap cap_sys_nice,cap_ipc_lock,cap_sys_rawio,cap_sys_resource=eip \
+//	    /path/to/bin/linuxcnc-launcher
 //
 // # Required capabilities
 //
