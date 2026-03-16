@@ -1182,7 +1182,7 @@ static int buf_write_line(char *buf, int *pos, int buf_size, const char *line) {
     return 0;
 }
 
-// hal_shim_save serialises the current HAL state as halcmd command strings.
+// hal_shim_save serializes the current HAL state as halcmd command strings.
 // type selects what to save: "all", "allu", "comp", "alias", "sig", "signal",
 // "sigu", "link", "linka", "net", "neta", "netl", "netla", "netal", "param",
 // "parameter", "thread".  Lines are written null-separated into buf.
@@ -2014,7 +2014,7 @@ func halListThreads(pattern string) ([]string, error) {
 
 // ===== Go wrappers for 1f show/status/save/debug shims =====
 
-// cPinType converts a C hal_pin_dir_t integer to a Go PinType string.
+// cHalTypeName converts a C hal_type_t integer to a Go type name string.
 func cHalTypeName(t C.int) string {
 	switch PinType(t) {
 	case TypeBit:
@@ -2091,6 +2091,8 @@ func lockLevelName(lock C.int) string {
 }
 
 // halShowComps returns structured information about all components matching pattern.
+// Note: C struct fields named with Go keywords (e.g. "type") are accessed as "type_"
+// in Go CGO code — this is the standard CGO renaming convention for keyword conflicts.
 func halShowComps(pattern string) ([]CompInfo, error) {
 	maxItems := C.int(C.HAL_SHIM_MAX_ITEMS)
 	arr := make([]C.hal_shim_comp_info_t, int(maxItems))
@@ -2275,7 +2277,7 @@ func halStatus() (*StatusInfo, error) {
 	}, nil
 }
 
-// halSave serialises current HAL state as halcmd command strings.
+// halSave serializes current HAL state as halcmd command strings.
 // type selects what to save (see hal_shim_save for valid types).
 func halSave(saveType string) ([]string, error) {
 	bufSize := C.int(65536)

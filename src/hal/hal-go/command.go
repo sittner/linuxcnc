@@ -513,7 +513,7 @@ func Show(halType string, patterns ...string) (*ShowResult, error) {
 	return result, nil
 }
 
-// Save serialises the current HAL state as halcmd commands.
+// Save serializes the current HAL state as halcmd commands.
 // halType selects what to save: "all", "allu", "comp", "alias", "sig",
 // "signal", "sigu", "link", "linka", "net", "neta", "netl", "netla",
 // "netal", "param", "parameter", or "thread".
