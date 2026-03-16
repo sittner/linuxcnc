@@ -28,6 +28,7 @@ import (
 	"github.com/sittner/linuxcnc/src/launcher/inifile"
 	"github.com/sittner/linuxcnc/src/launcher/lockfile"
 	"github.com/sittner/linuxcnc/src/launcher/realtime"
+	"github.com/sittner/linuxcnc/src/launcher/rtapi"
 )
 
 // Options holds the parsed command-line options.
@@ -246,7 +247,10 @@ func (l *Launcher) Run() error {
 	}
 
 	// --- M4: Realtime Manager ---
-	l.rtMgr = realtime.New(l.logger)
+	l.rtMgr = realtime.New(rtapi.Config{
+		InstanceName: "linuxcnc",
+		DebugLevel:   0,
+	}, l.logger)
 	l.logger.Info("starting realtime environment")
 	if err := l.rtMgr.Start(); err != nil {
 		return fmt.Errorf("realtime start failed: %w", err)
@@ -595,16 +599,14 @@ func (l *Launcher) logConfiguration() {
 // Thread creation has been decoupled from motmod — motmod now only exports
 // functions, so the threads must exist before motmod or HAL files run.
 //
-// The threads component is loaded via "halcmd loadrt threads" which sends
-// the command to rtapi_app (the privileged RT process). rtapi_app dlopen()s
-// threads.so and calls hal_create_thread() inside its own process space,
-// ensuring the RT pthreads get proper RT scheduling and root privileges.
+// The threads module is loaded directly in-process via the rtapi engine,
+// replacing the previous "halcmd loadrt threads" exec call.
 //
 // Logic (reads [EMCMOT]SERVO_PERIOD and [EMCMOT]BASE_PERIOD from INI):
 //   - If [EMCMOT]BASE_PERIOD is set and > 0:
-//     halcmd loadrt threads name1=base-thread period1=<BASE_PERIOD> name2=servo-thread period2=<SERVO_PERIOD>
+//     loadrt threads name1=base-thread period1=<BASE_PERIOD> name2=servo-thread period2=<SERVO_PERIOD>
 //   - Otherwise (no BASE_PERIOD or BASE_PERIOD=0):
-//     halcmd loadrt threads name1=servo-thread period1=<SERVO_PERIOD>
+//     loadrt threads name1=servo-thread period1=<SERVO_PERIOD>
 //
 // Threads are created fastest-first (base-thread before servo-thread) for
 // proper rate monotonic priority scheduling.
@@ -616,37 +618,33 @@ func (l *Launcher) loadThreads() error {
 
 	basePeriodStr := l.ini.Get("EMCMOT", "BASE_PERIOD")
 
-	halcmdPath := filepath.Join(config.EMC2BinDir, "halcmd")
-
 	var args []string
 	if basePeriodStr != "" && basePeriodStr != "0" {
 		// Two threads: base-thread (fast, no FP) + servo-thread (slow, FP)
 		l.logger.Info("loading threads component",
 			"base_period", basePeriodStr, "servo_period", servoPeriodStr)
-		args = []string{"loadrt", "threads",
+		args = []string{
 			"name1=base-thread", "period1=" + basePeriodStr,
-			"name2=servo-thread", "period2=" + servoPeriodStr}
+			"name2=servo-thread", "period2=" + servoPeriodStr,
+		}
 	} else {
 		// One thread: servo-thread only
 		l.logger.Info("loading threads component",
 			"servo_period", servoPeriodStr)
-		args = []string{"loadrt", "threads",
-			"name1=servo-thread", "period1=" + servoPeriodStr}
+		args = []string{
+			"name1=servo-thread", "period1=" + servoPeriodStr,
+		}
 	}
 
-	cmd := exec.Command(halcmdPath, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGTERM}
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("halcmd loadrt threads: %w", err)
+	if err := l.rtMgr.LoadModule("threads", args); err != nil {
+		return fmt.Errorf("loadrt threads: %w", err)
 	}
 
 	return nil
 }
 
 // preloadMotionModules loads the trajectory planner and homing modules via
-// separate "halcmd loadrt" commands before any HAL files execute.
+// direct in-process engine calls before any HAL files execute.
 //
 // This mirrors scripts/linuxcnc.in lines 865-868:
 //
@@ -674,26 +672,12 @@ func (l *Launcher) preloadMotionModules() error {
 
 	l.logger.Debug("preloading motion modules", "tpmod", tpMod, "homemod", homeMod)
 
-	halcmdPath := filepath.Join(config.EMC2BinDir, "halcmd")
-
-	tpCmd := exec.Command(halcmdPath, "loadrt", tpMod)
-	tpCmd.Stdout = os.Stdout
-	tpCmd.Stderr = os.Stderr
-	tpCmd.SysProcAttr = &syscall.SysProcAttr{
-		Pdeathsig: syscall.SIGTERM,
-	}
-	if err := tpCmd.Run(); err != nil {
-		return fmt.Errorf("halcmd loadrt %s: %w", tpMod, err)
+	if err := l.rtMgr.LoadModule(tpMod, nil); err != nil {
+		return fmt.Errorf("loadrt %s: %w", tpMod, err)
 	}
 
-	homeCmd := exec.Command(halcmdPath, "loadrt", homeMod)
-	homeCmd.Stdout = os.Stdout
-	homeCmd.Stderr = os.Stderr
-	homeCmd.SysProcAttr = &syscall.SysProcAttr{
-		Pdeathsig: syscall.SIGTERM,
-	}
-	if err := homeCmd.Run(); err != nil {
-		return fmt.Errorf("halcmd loadrt %s: %w", homeMod, err)
+	if err := l.rtMgr.LoadModule(homeMod, nil); err != nil {
+		return fmt.Errorf("loadrt %s: %w", homeMod, err)
 	}
 
 	return nil

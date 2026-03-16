@@ -140,7 +140,7 @@ ifeq ($(RUN_IN_PLACE),yes)
 ifneq ($(BUILD_SYS),uspace)
 	@if [ -f ../bin/linuxcnc_module_helper ]; then if ! [ `id -u` = 0 -a -O ../bin/linuxcnc_module_helper -a -u ../bin/linuxcnc_module_helper ]; then $(VECHO) "You now need to run 'sudo make setuid' in order to run in place."; fi; fi
 else
-	@if [ -f ../bin/rtapi_app ]; then if ! [ `id -u` = 0 -a -O  ../bin/rtapi_app -a -u ../bin/rtapi_app ]; then $(VECHO) "You now need to run 'sudo make setuid' in order to run in place with access to hardware."; fi; fi
+	@if [ -f ../bin/linuxcnc-launcher ]; then if ! getcap ../bin/linuxcnc-launcher 2>/dev/null | grep -q cap_sys_nice; then $(VECHO) "You now need to run 'sudo make setuid' in order to run in place with access to hardware."; fi; fi
 endif
 endif
 
@@ -601,8 +601,7 @@ pycheck: pycheck-python-files pycheck-python-script
 # can be done about it)
 setuid:
 ifeq ($(BUILD_SYS),uspace)
-	chown root ../bin/rtapi_app
-	chmod 4750 ../bin/rtapi_app
+	setcap cap_sys_nice,cap_ipc_lock,cap_sys_rawio,cap_sys_resource=eip ../bin/linuxcnc-launcher
 else
 	chown root ../bin/pci_write
 	chmod 4750 ../bin/pci_write
