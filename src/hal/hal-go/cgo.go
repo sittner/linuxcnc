@@ -869,10 +869,15 @@ static int hal_shim_list_threads(const char *pattern, char *buf, int buf_size) {
 
 // ===== 1f. Show/status/save/debug shim structs and helpers =====
 
-// Maximum number of HAL objects returned by a single show call.
+// HAL_SHIM_MAX_ITEMS is the initial result-array capacity for hal_shim_show_*
+// functions.  If the real count exceeds this the shim returns -ENOSPC and the
+// Go caller retries with a doubled capacity (up to showMaxCap).
 #define HAL_SHIM_MAX_ITEMS 1024
 
-// Maximum number of functions that can be listed per thread.
+// HAL_SHIM_MAX_TH_FNCTS is the maximum number of functions per thread stored
+// in hal_shim_thread_info_t.funct_names.  In practice LinuxCNC threads rarely
+// have more than a handful of functions; 32 is well above any real-world value.
+// Functions beyond this limit are silently truncated in the output.
 #define HAL_SHIM_MAX_TH_FNCTS 32
 
 typedef struct {
@@ -886,6 +891,8 @@ typedef struct {
     char name[HAL_NAME_LEN + 1];
     char owner[HAL_NAME_LEN + 1];
     char signal[HAL_NAME_LEN + 1]; // empty if not linked
+    // value[64]: sufficient for all HAL types — "%.7g" float ≤15 chars,
+    // boolean is "TRUE"/"FALSE", s32/u32 ≤12 decimal digits.
     char value[64];
     int  type;   // hal_type_t
     int  dir;    // hal_pin_dir_t
@@ -894,6 +901,7 @@ typedef struct {
 typedef struct {
     char name[HAL_NAME_LEN + 1];
     char owner[HAL_NAME_LEN + 1];
+    // value[64]: sufficient for all HAL types (see hal_shim_pin_info_t).
     char value[64];
     int  type;   // hal_type_t
     int  dir;    // hal_param_dir_t
@@ -901,6 +909,7 @@ typedef struct {
 
 typedef struct {
     char name[HAL_NAME_LEN + 1];
+    // value[64]: sufficient for all HAL types (see hal_shim_pin_info_t).
     char value[64];
     int  type;     // hal_type_t
     int  readers;
@@ -2090,178 +2099,205 @@ func lockLevelName(lock C.int) string {
 	}
 }
 
+// showMaxCap is the upper bound for the number of items any halShow* call
+// will allocate before giving up.  The initial attempt uses HAL_SHIM_MAX_ITEMS;
+// on -ENOSPC the capacity is doubled each time up to this limit.
+const showMaxCap = 65536
+
+// saveBufMax is the upper bound in bytes for the hal_shim_save output buffer.
+// The initial attempt uses 64 KiB; on -ENOSPC the buffer is doubled up to this limit.
+const saveBufMax = 4 * 1024 * 1024 // 4 MiB
+
 // halShowComps returns structured information about all components matching pattern.
 // Note: C struct fields named with Go keywords (e.g. "type") are accessed as "type_"
 // in Go CGO code — this is the standard CGO renaming convention for keyword conflicts.
 func halShowComps(pattern string) ([]CompInfo, error) {
-	maxItems := C.int(C.HAL_SHIM_MAX_ITEMS)
-	arr := make([]C.hal_shim_comp_info_t, int(maxItems))
-
 	var cPat *C.char
 	if pattern != "" {
 		cPat = C.CString(pattern)
 		defer C.free(unsafe.Pointer(cPat))
 	}
 
-	n := C.hal_shim_show_comps(cPat, &arr[0], maxItems)
-	if n < 0 {
-		return nil, halError(int(n), "hal_shim_show_comps")
-	}
-
-	result := make([]CompInfo, int(n))
-	for i := range result {
-		result[i] = CompInfo{
-			Name: C.GoString(&arr[i].name[0]),
-			ID:   int(arr[i].comp_id),
-			Type: cCompTypeName(arr[i].type_),
+	for cap := int(C.HAL_SHIM_MAX_ITEMS); cap <= showMaxCap; cap *= 2 {
+		arr := make([]C.hal_shim_comp_info_t, cap)
+		n := C.hal_shim_show_comps(cPat, &arr[0], C.int(cap))
+		if n < 0 {
+			if int(n) == -int(C.ENOSPC) {
+				continue // result truncated: retry with doubled capacity
+			}
+			return nil, halError(int(n), "hal_shim_show_comps")
 		}
+		result := make([]CompInfo, int(n))
+		for i := range result {
+			result[i] = CompInfo{
+				Name: C.GoString(&arr[i].name[0]),
+				ID:   int(arr[i].comp_id),
+				Type: cCompTypeName(arr[i].type_),
+			}
+		}
+		return result, nil
 	}
-	return result, nil
+	return nil, fmt.Errorf("hal_shim_show_comps: result set exceeds maximum capacity (%d items)", showMaxCap)
 }
 
 // halShowPins returns structured information about all pins matching pattern.
 func halShowPins(pattern string) ([]PinInfo, error) {
-	maxItems := C.int(C.HAL_SHIM_MAX_ITEMS)
-	arr := make([]C.hal_shim_pin_info_t, int(maxItems))
-
 	var cPat *C.char
 	if pattern != "" {
 		cPat = C.CString(pattern)
 		defer C.free(unsafe.Pointer(cPat))
 	}
 
-	n := C.hal_shim_show_pins(cPat, &arr[0], maxItems)
-	if n < 0 {
-		return nil, halError(int(n), "hal_shim_show_pins")
-	}
-
-	result := make([]PinInfo, int(n))
-	for i := range result {
-		result[i] = PinInfo{
-			Name:      C.GoString(&arr[i].name[0]),
-			Type:      cHalTypeName(arr[i].type_),
-			Direction: cPinDirName(arr[i].dir),
-			Value:     C.GoString(&arr[i].value[0]),
-			Signal:    C.GoString(&arr[i].signal[0]),
-			Owner:     C.GoString(&arr[i].owner[0]),
+	for cap := int(C.HAL_SHIM_MAX_ITEMS); cap <= showMaxCap; cap *= 2 {
+		arr := make([]C.hal_shim_pin_info_t, cap)
+		n := C.hal_shim_show_pins(cPat, &arr[0], C.int(cap))
+		if n < 0 {
+			if int(n) == -int(C.ENOSPC) {
+				continue // result truncated: retry with doubled capacity
+			}
+			return nil, halError(int(n), "hal_shim_show_pins")
 		}
+		result := make([]PinInfo, int(n))
+		for i := range result {
+			result[i] = PinInfo{
+				Name:      C.GoString(&arr[i].name[0]),
+				Type:      cHalTypeName(arr[i].type_),
+				Direction: cPinDirName(arr[i].dir),
+				Value:     C.GoString(&arr[i].value[0]),
+				Signal:    C.GoString(&arr[i].signal[0]),
+				Owner:     C.GoString(&arr[i].owner[0]),
+			}
+		}
+		return result, nil
 	}
-	return result, nil
+	return nil, fmt.Errorf("hal_shim_show_pins: result set exceeds maximum capacity (%d items)", showMaxCap)
 }
 
 // halShowParams returns structured information about all parameters matching pattern.
 func halShowParams(pattern string) ([]ParamInfo, error) {
-	maxItems := C.int(C.HAL_SHIM_MAX_ITEMS)
-	arr := make([]C.hal_shim_param_info_t, int(maxItems))
-
 	var cPat *C.char
 	if pattern != "" {
 		cPat = C.CString(pattern)
 		defer C.free(unsafe.Pointer(cPat))
 	}
 
-	n := C.hal_shim_show_params(cPat, &arr[0], maxItems)
-	if n < 0 {
-		return nil, halError(int(n), "hal_shim_show_params")
-	}
-
-	result := make([]ParamInfo, int(n))
-	for i := range result {
-		result[i] = ParamInfo{
-			Name:      C.GoString(&arr[i].name[0]),
-			Type:      cHalTypeName(arr[i].type_),
-			Direction: cParamDirName(arr[i].dir),
-			Value:     C.GoString(&arr[i].value[0]),
-			Owner:     C.GoString(&arr[i].owner[0]),
+	for cap := int(C.HAL_SHIM_MAX_ITEMS); cap <= showMaxCap; cap *= 2 {
+		arr := make([]C.hal_shim_param_info_t, cap)
+		n := C.hal_shim_show_params(cPat, &arr[0], C.int(cap))
+		if n < 0 {
+			if int(n) == -int(C.ENOSPC) {
+				continue // result truncated: retry with doubled capacity
+			}
+			return nil, halError(int(n), "hal_shim_show_params")
 		}
+		result := make([]ParamInfo, int(n))
+		for i := range result {
+			result[i] = ParamInfo{
+				Name:      C.GoString(&arr[i].name[0]),
+				Type:      cHalTypeName(arr[i].type_),
+				Direction: cParamDirName(arr[i].dir),
+				Value:     C.GoString(&arr[i].value[0]),
+				Owner:     C.GoString(&arr[i].owner[0]),
+			}
+		}
+		return result, nil
 	}
-	return result, nil
+	return nil, fmt.Errorf("hal_shim_show_params: result set exceeds maximum capacity (%d items)", showMaxCap)
 }
 
 // halShowSigs returns structured information about all signals matching pattern.
 func halShowSigs(pattern string) ([]SigInfo, error) {
-	maxItems := C.int(C.HAL_SHIM_MAX_ITEMS)
-	arr := make([]C.hal_shim_sig_info_t, int(maxItems))
-
 	var cPat *C.char
 	if pattern != "" {
 		cPat = C.CString(pattern)
 		defer C.free(unsafe.Pointer(cPat))
 	}
 
-	n := C.hal_shim_show_sigs(cPat, &arr[0], maxItems)
-	if n < 0 {
-		return nil, halError(int(n), "hal_shim_show_sigs")
-	}
-
-	result := make([]SigInfo, int(n))
-	for i := range result {
-		result[i] = SigInfo{
-			Name:  C.GoString(&arr[i].name[0]),
-			Type:  cHalTypeName(arr[i].type_),
-			Value: C.GoString(&arr[i].value[0]),
+	for cap := int(C.HAL_SHIM_MAX_ITEMS); cap <= showMaxCap; cap *= 2 {
+		arr := make([]C.hal_shim_sig_info_t, cap)
+		n := C.hal_shim_show_sigs(cPat, &arr[0], C.int(cap))
+		if n < 0 {
+			if int(n) == -int(C.ENOSPC) {
+				continue // result truncated: retry with doubled capacity
+			}
+			return nil, halError(int(n), "hal_shim_show_sigs")
 		}
+		result := make([]SigInfo, int(n))
+		for i := range result {
+			result[i] = SigInfo{
+				Name:  C.GoString(&arr[i].name[0]),
+				Type:  cHalTypeName(arr[i].type_),
+				Value: C.GoString(&arr[i].value[0]),
+			}
+		}
+		return result, nil
 	}
-	return result, nil
+	return nil, fmt.Errorf("hal_shim_show_sigs: result set exceeds maximum capacity (%d items)", showMaxCap)
 }
 
 // halShowFuncts returns structured information about all functions matching pattern.
 func halShowFuncts(pattern string) ([]FunctInfo, error) {
-	maxItems := C.int(C.HAL_SHIM_MAX_ITEMS)
-	arr := make([]C.hal_shim_funct_info_t, int(maxItems))
-
 	var cPat *C.char
 	if pattern != "" {
 		cPat = C.CString(pattern)
 		defer C.free(unsafe.Pointer(cPat))
 	}
 
-	n := C.hal_shim_show_functs(cPat, &arr[0], maxItems)
-	if n < 0 {
-		return nil, halError(int(n), "hal_shim_show_functs")
-	}
-
-	result := make([]FunctInfo, int(n))
-	for i := range result {
-		result[i] = FunctInfo{
-			Name:  C.GoString(&arr[i].name[0]),
-			Owner: C.GoString(&arr[i].owner[0]),
+	for cap := int(C.HAL_SHIM_MAX_ITEMS); cap <= showMaxCap; cap *= 2 {
+		arr := make([]C.hal_shim_funct_info_t, cap)
+		n := C.hal_shim_show_functs(cPat, &arr[0], C.int(cap))
+		if n < 0 {
+			if int(n) == -int(C.ENOSPC) {
+				continue // result truncated: retry with doubled capacity
+			}
+			return nil, halError(int(n), "hal_shim_show_functs")
 		}
+		result := make([]FunctInfo, int(n))
+		for i := range result {
+			result[i] = FunctInfo{
+				Name:  C.GoString(&arr[i].name[0]),
+				Owner: C.GoString(&arr[i].owner[0]),
+			}
+		}
+		return result, nil
 	}
-	return result, nil
+	return nil, fmt.Errorf("hal_shim_show_functs: result set exceeds maximum capacity (%d items)", showMaxCap)
 }
 
 // halShowThreads returns structured information about all threads matching pattern.
 func halShowThreads(pattern string) ([]ThreadInfo, error) {
-	maxItems := C.int(C.HAL_SHIM_MAX_ITEMS)
-	arr := make([]C.hal_shim_thread_info_t, int(maxItems))
-
 	var cPat *C.char
 	if pattern != "" {
 		cPat = C.CString(pattern)
 		defer C.free(unsafe.Pointer(cPat))
 	}
 
-	n := C.hal_shim_show_threads(cPat, &arr[0], maxItems)
-	if n < 0 {
-		return nil, halError(int(n), "hal_shim_show_threads")
-	}
-
-	result := make([]ThreadInfo, int(n))
-	for i := range result {
-		nf := int(arr[i].nfuncts)
-		functs := make([]string, nf)
-		for j := 0; j < nf; j++ {
-			functs[j] = C.GoString(&arr[i].funct_names[j][0])
+	for cap := int(C.HAL_SHIM_MAX_ITEMS); cap <= showMaxCap; cap *= 2 {
+		arr := make([]C.hal_shim_thread_info_t, cap)
+		n := C.hal_shim_show_threads(cPat, &arr[0], C.int(cap))
+		if n < 0 {
+			if int(n) == -int(C.ENOSPC) {
+				continue // result truncated: retry with doubled capacity
+			}
+			return nil, halError(int(n), "hal_shim_show_threads")
 		}
-		result[i] = ThreadInfo{
-			Name:    C.GoString(&arr[i].name[0]),
-			Period:  int64(arr[i].period),
-			Running: arr[i].running != 0,
-			Functs:  functs,
+		result := make([]ThreadInfo, int(n))
+		for i := range result {
+			nf := int(arr[i].nfuncts)
+			functs := make([]string, nf)
+			for j := 0; j < nf; j++ {
+				functs[j] = C.GoString(&arr[i].funct_names[j][0])
+			}
+			result[i] = ThreadInfo{
+				Name:    C.GoString(&arr[i].name[0]),
+				Period:  int64(arr[i].period),
+				Running: arr[i].running != 0,
+				Functs:  functs,
+			}
 		}
+		return result, nil
 	}
-	return result, nil
+	return nil, fmt.Errorf("hal_shim_show_threads: result set exceeds maximum capacity (%d items)", showMaxCap)
 }
 
 // halStatus returns HAL shared-memory status information.
@@ -2279,39 +2315,44 @@ func halStatus() (*StatusInfo, error) {
 
 // halSave serializes current HAL state as halcmd command strings.
 // type selects what to save (see hal_shim_save for valid types).
+// The output buffer starts at 64 KiB and doubles on -ENOSPC up to saveBufMax.
 func halSave(saveType string) ([]string, error) {
-	bufSize := C.int(65536)
-	buf := make([]byte, int(bufSize))
-
 	cType := C.CString(saveType)
 	defer C.free(unsafe.Pointer(cType))
 
-	n := C.hal_shim_save(cType, (*C.char)(unsafe.Pointer(unsafe.SliceData(buf))), bufSize)
-	if n < 0 {
-		return nil, halError(int(n), "hal_shim_save")
-	}
-	if n == 0 {
-		return []string{}, nil
-	}
-
-	// Parse null-separated lines.
-	end := 0
-	remaining := int(n)
-	for end < len(buf) && remaining > 0 {
-		if buf[end] == 0 {
-			remaining--
+	for bufSize := 65536; bufSize <= saveBufMax; bufSize *= 2 {
+		buf := make([]byte, bufSize)
+		n := C.hal_shim_save(cType, (*C.char)(unsafe.Pointer(unsafe.SliceData(buf))), C.int(bufSize))
+		if n < 0 {
+			if int(n) == -int(C.ENOSPC) {
+				continue // output truncated: retry with doubled buffer
+			}
+			return nil, halError(int(n), "hal_shim_save")
 		}
-		end++
-	}
-
-	parts := bytes.Split(buf[:end], []byte{0})
-	lines := make([]string, 0, int(n))
-	for _, p := range parts {
-		if len(p) > 0 {
-			lines = append(lines, string(p))
+		if n == 0 {
+			return []string{}, nil
 		}
+
+		// Parse null-separated lines.
+		end := 0
+		remaining := int(n)
+		for end < len(buf) && remaining > 0 {
+			if buf[end] == 0 {
+				remaining--
+			}
+			end++
+		}
+
+		parts := bytes.Split(buf[:end], []byte{0})
+		lines := make([]string, 0, int(n))
+		for _, p := range parts {
+			if len(p) > 0 {
+				lines = append(lines, string(p))
+			}
+		}
+		return lines, nil
 	}
-	return lines, nil
+	return nil, fmt.Errorf("hal_shim_save: output exceeds maximum buffer size (%d bytes)", saveBufMax)
 }
 
 // halSetDebug sets the RTAPI message verbosity level.
