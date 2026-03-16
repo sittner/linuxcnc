@@ -433,6 +433,28 @@ func TestParseNet(t *testing.T) {
 
 // --- TestParseSetP/SetS ---
 
+func TestParseLinkPP(t *testing.T) {
+	loc := SourceLoc{File: "test.hal", Line: 1}
+
+	t.Run("two pins", func(t *testing.T) {
+		tok, err := parseLinkPP([]string{"comp.pin1", "comp.pin2"}, loc)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		lt := tok.Data.(*LinkPPToken)
+		if lt.Pin1 != "comp.pin1" || lt.Pin2 != "comp.pin2" {
+			t.Errorf("Pin1=%q Pin2=%q, want comp.pin1 comp.pin2", lt.Pin1, lt.Pin2)
+		}
+	})
+
+	t.Run("wrong arg count error", func(t *testing.T) {
+		_, err := parseLinkPP([]string{"comp.pin1"}, loc)
+		if err == nil {
+			t.Error("expected error for single argument, got nil")
+		}
+	})
+}
+
 func TestParseSetP(t *testing.T) {
 	loc := SourceLoc{File: "test.hal", Line: 1}
 
@@ -800,6 +822,17 @@ func TestParseList(t *testing.T) {
 		_, err := parseList([]string{"bad"}, loc)
 		if err == nil {
 			t.Error("expected error, got nil")
+		}
+	})
+
+	t.Run("all type", func(t *testing.T) {
+		tok, err := parseList([]string{"all"}, loc)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		lt := tok.Data.(*ListToken)
+		if lt.ObjType != ObjAll {
+			t.Errorf("ObjType = %v, want ObjAll", lt.ObjType)
 		}
 	})
 }
@@ -1488,6 +1521,37 @@ func TestSingleFileParser(t *testing.T) {
 		_, err := sp.Parse("test.hal")
 		if err == nil {
 			t.Error("expected tokenize error, got nil")
+		}
+	})
+
+	t.Run("tcl file rejected", func(t *testing.T) {
+		sp := &SingleFileParser{
+			readFile: func(path string) (string, error) {
+				return "", nil
+			},
+		}
+		_, err := sp.Parse("machine.tcl")
+		if err == nil {
+			t.Error("expected error for .tcl file, got nil")
+		}
+		if pe, ok := err.(*ParseError); ok {
+			if !strings.Contains(pe.Msg, "haltcl") {
+				t.Errorf("error message should mention haltcl, got: %q", pe.Msg)
+			}
+		} else {
+			t.Errorf("expected *ParseError, got %T", err)
+		}
+	})
+
+	t.Run("TCL uppercase extension rejected", func(t *testing.T) {
+		sp := &SingleFileParser{
+			readFile: func(path string) (string, error) {
+				return "", nil
+			},
+		}
+		_, err := sp.Parse("machine.TCL")
+		if err == nil {
+			t.Error("expected error for .TCL file, got nil")
 		}
 	})
 }

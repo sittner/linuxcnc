@@ -225,6 +225,8 @@ func parseHalObjType(s string, loc SourceLoc) (HalObjType, *ParseError) {
 		return ObjThread, nil
 	case "comp":
 		return ObjComp, nil
+	case "all":
+		return ObjAll, nil
 	default:
 		return 0, &ParseError{Loc: loc, Msg: fmt.Sprintf("unknown HAL object type: %q", s)}
 	}
@@ -745,6 +747,9 @@ func (sp *SingleFileParser) readFileContent(path string) (string, error) {
 
 // Parse reads and parses a HAL file, returning a classified ParseResult.
 func (sp *SingleFileParser) Parse(path string) (*ParseResult, error) {
+	if strings.HasSuffix(strings.ToLower(path), ".tcl") {
+		return nil, &ParseError{Loc: SourceLoc{File: path, Line: 0}, Msg: fmt.Sprintf("source: %q is a Tcl file; use haltcl to execute Tcl HAL files", path)}
+	}
 	content, err := sp.readFileContent(path)
 	if err != nil {
 		return nil, err
