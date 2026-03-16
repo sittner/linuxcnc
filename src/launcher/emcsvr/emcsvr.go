@@ -5,6 +5,7 @@ package emcsvr
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../emc/task
 #cgo LDFLAGS: -L${SRCDIR}/../../../lib -lemcsvr -lnml -llinuxcncini -llinuxcnc
+#include <stdlib.h>
 #include "emcsvr_lib.h"
 */
 import "C"
