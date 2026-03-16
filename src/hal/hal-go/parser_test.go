@@ -1116,6 +1116,9 @@ func TestSubstituteVars(t *testing.T) {
 		"TRAJ": {
 			"COORDINATES": "XYZ",
 		},
+		"JOINT_0": {
+			"MIN-LIMIT": "-180.0",
+		},
 	}}
 
 	t.Run("INI substitution", func(t *testing.T) {
@@ -1179,6 +1182,13 @@ func TestSubstituteVars(t *testing.T) {
 		result := substituteVars("setp [EMC]MACHINE [TRAJ]COORDINATES", ini)
 		if result != "setp My Machine XYZ" {
 			t.Errorf("got %q, want %q", result, "setp My Machine XYZ")
+		}
+	})
+
+	t.Run("INI key with hyphen", func(t *testing.T) {
+		result := substituteVars("setp joint.0.min-limit [JOINT_0]MIN-LIMIT", ini)
+		if result != "setp joint.0.min-limit -180.0" {
+			t.Errorf("got %q, want %q", result, "setp joint.0.min-limit -180.0")
 		}
 	})
 }
@@ -1414,6 +1424,33 @@ func TestSingleFileParser(t *testing.T) {
 		lt := result.LoadRT[0].Data.(*LoadRTToken)
 		if len(lt.Names) != 2 {
 			t.Errorf("Names = %v, want [pid.0, pid.1]", lt.Names)
+		}
+	})
+
+	t.Run("line continuation no leading whitespace", func(t *testing.T) {
+		// When the continuation line has no leading whitespace the inserted space
+		// must keep the two token parts separate.
+		files := map[string]string{
+			"test.hal": "setp very.long.pin.name\\\n3.14159",
+		}
+		sp := &SingleFileParser{
+			readFile: func(path string) (string, error) {
+				return files[path], nil
+			},
+		}
+		result, err := sp.Parse("test.hal")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(result.HALCmd) != 1 {
+			t.Fatalf("HALCmd count = %d, want 1", len(result.HALCmd))
+		}
+		st := result.HALCmd[0].Data.(*SetPToken)
+		if st.Name != "very.long.pin.name" {
+			t.Errorf("Name = %q, want %q", st.Name, "very.long.pin.name")
+		}
+		if st.Value != "3.14159" {
+			t.Errorf("Value = %q, want %q", st.Value, "3.14159")
 		}
 	})
 
@@ -1662,9 +1699,14 @@ func TestJoinContinuationLines(t *testing.T) {
 			want:  "line1\nline2\n",
 		},
 		{
-			name:  "one continuation",
-			input: "line1 \\\nline2\n",
-			want:  "line1 line2\n",
+			name:  "one continuation with leading space on continuation line",
+			input: "line1 \\\n    line2\n",
+			want:  "line1      line2\n",
+		},
+		{
+			name:  "continuation no leading whitespace",
+			input: "foo\\\nbar\n",
+			want:  "foo bar\n",
 		},
 		{
 			name:  "crlf normalized",
@@ -1674,7 +1716,7 @@ func TestJoinContinuationLines(t *testing.T) {
 		{
 			name:  "continuation with crlf",
 			input: "line1 \\\r\nline2\n",
-			want:  "line1 line2\n",
+			want:  "line1  line2\n",
 		},
 	}
 	for _, tc := range tests {

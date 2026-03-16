@@ -126,14 +126,18 @@ func tokenizeLine(line string) ([]string, error) {
 }
 
 // joinContinuationLines normalizes line endings and joins lines ending with \.
+// A space is inserted at the join point to preserve token boundaries when the
+// continuation line has no leading whitespace.
 func joinContinuationLines(content string) string {
 	content = strings.ReplaceAll(content, "\r\n", "\n")
-	content = strings.ReplaceAll(content, "\\\n", "")
+	content = strings.ReplaceAll(content, "\\\n", " ")
 	return content
 }
 
 // iniVarPattern matches [SECTION]KEY in a HAL line.
-var iniVarPattern = regexp.MustCompile(`\[([A-Za-z0-9_]+)\]([A-Za-z0-9_]+)`)
+// Section names and keys may contain letters, digits, underscores, or hyphens
+// (e.g. [JOINT_0]MIN-LIMIT, [DISPLAY]PYVCP-PANEL).
+var iniVarPattern = regexp.MustCompile(`\[([A-Za-z0-9_-]+)\]([A-Za-z0-9_-]+)`)
 
 // envVarPattern matches ${VARNAME} and $VARNAME in a HAL line.
 var envVarPattern = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)`)
@@ -711,7 +715,7 @@ func parseLine(tokens []string, loc SourceLoc) (Token, *ParseError) {
 	case "print":
 		return parsePrint(args, loc)
 	case "source":
-		return Token{}, &ParseError{Loc: loc, Msg: "source: handled by SingleFileParser, not parseLine"}
+		return Token{}, &ParseError{Loc: loc, Msg: "source: not a halcmd command (resolved at parse time)"}
 	default:
 		return Token{}, &ParseError{Loc: loc, Msg: fmt.Sprintf("unknown command: %q", tokens[0])}
 	}
