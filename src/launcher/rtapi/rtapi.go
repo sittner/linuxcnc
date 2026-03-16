@@ -33,6 +33,8 @@ type Config struct {
 	InstanceName string
 
 	// DebugLevel sets the RTAPI debug message verbosity (0 = default, 5 = max).
+	// Values above 5 are passed through to the underlying RTAPI subsystem which
+	// clamps them to its own maximum.
 	DebugLevel int
 }
 

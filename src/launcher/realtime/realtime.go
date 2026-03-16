@@ -34,7 +34,7 @@ func New(cfg rtapi.Config, logger *slog.Logger) *Manager {
 	}
 }
 
-// Start initialises the in-process realtime environment.
+// Start initializes the in-process realtime environment.
 //
 // It calls engine.Init() which performs RT hardening (iopl, mlockall,
 // RLIMIT_RTPRIO, etc.) and then drops all elevated privileges so that the
