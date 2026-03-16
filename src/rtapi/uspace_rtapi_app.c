@@ -114,10 +114,15 @@ static void with_root_exit(void) {
     }
 }
 
+/* In standalone binary mode the constructor captures uid/euid early.
+ * In library mode (RTAPI_APP_LIB) this is done explicitly inside
+ * rtapi_app_master_start() so that Go can control the startup sequence. */
+#ifndef RTAPI_APP_LIB
 void __attribute__((constructor)) init_root_func(void) {
     euid = geteuid();
     ruid = getuid();
 }
+#endif /* !RTAPI_APP_LIB */
 
 #include "rtapi/uspace_common.h"
 
@@ -222,6 +227,9 @@ static void *dlsym_helper(void *handle, const char *name) {
 
 static int instance_count = 0;
 static int force_exit = 0;
+/* master_fd is saved so that rtapi_app_master_stop() can shut down the
+ * socket and unblock a pending accept() call.  -1 means not running. */
+static _Atomic int master_fd = -1;
 
 static void *find_module(const char *name) {
     pthread_mutex_lock(&modules_lock);
@@ -580,6 +588,10 @@ static int callback(int fd)
     socklen_t len = sizeof(client_addr);
     int fd1 = accept(fd, (struct sockaddr*)&client_addr, &len);
     if(fd1 < 0) {
+        /* In library mode a shutdown() on the socket unblocks accept() with
+         * EINVAL or EBADF.  Treat any accept error as a reason to check
+         * force_exit rather than printing a spurious error. */
+        if(force_exit) return 0;
         rtapi_print_msg(RTAPI_MSG_ERR,
             "rtapi_app: failed to accept connection from slave: %s\n", strerror(errno));
         return -1;
@@ -593,7 +605,7 @@ static int callback(int fd)
         rtapi_print_msg(RTAPI_MSG_ERR,
             "rtapi_app: failed to read from slave: %s\n", strerror(errno));
         close(fd1);
-        return -1;
+        return force_exit ? 0 : 1;
     }
     
     result = handle_command(args, nargs);
@@ -611,7 +623,15 @@ static int callback(int fd)
     }
     close(fd1);
     
+#ifdef RTAPI_APP_LIB
+    /* In library mode keep the loop running until rtapi_app_master_stop()
+     * sets force_exit.  instance_count going to zero just means no modules
+     * are currently loaded via the socket, but direct LoadModule() calls may
+     * follow. */
+    return !force_exit;
+#else
     return !force_exit && instance_count > 0;
+#endif
 }
 
 static pthread_t main_thread;
@@ -680,6 +700,10 @@ static int get_fifo_path_buf(char *buf, size_t bufsize) {
     return 0;
 }
 
+/* Standalone rtapi_app binary entry point — not used when building as a
+ * shared library (librtapi_app.so).  In library mode the Go launcher calls
+ * rtapi_app_master_start() instead. */
+#ifndef RTAPI_APP_LIB
 int main(int argc, char **argv) {
     if(getuid() == 0) {
         char *fallback_uid_str = getenv("RTAPI_UID");
@@ -754,6 +778,7 @@ become_master:
     }
     }
 }
+#endif /* !RTAPI_APP_LIB */
 
 
 /* Task and RTAPI structures */
@@ -904,8 +929,12 @@ static int harden_rt(void)
     sigaction(SIGSEGV, &sig_act, (struct sigaction *) NULL);
     sigaction(SIGILL,  &sig_act, (struct sigaction *) NULL);
     sigaction(SIGFPE,  &sig_act, (struct sigaction *) NULL);
+    /* In library mode Go manages process lifecycle; don't override Go's
+     * signal handlers for SIGTERM/SIGINT. */
+#ifndef RTAPI_APP_LIB
     sigaction(SIGTERM, &sig_act, (struct sigaction *) NULL);
     sigaction(SIGINT, &sig_act, (struct sigaction *) NULL);
+#endif
 
 #ifdef __linux__
     int fd = open("/dev/cpu_dma_latency", O_WRONLY | O_CLOEXEC);
@@ -1462,3 +1491,126 @@ int rtapi_spawnp_as_root(pid_t *pid, const char *path,
 {
     return posix_spawnp(pid, path, file_actions, attrp, argv, envp);
 }
+
+/* ============================================================
+ * Public library API (only compiled when building librtapi_app.so)
+ * See rtapi_app_lib.h for documentation.
+ * ============================================================ */
+#ifdef RTAPI_APP_LIB
+
+#include "rtapi_app_lib.h"
+
+/* rtapi_app_master_start — bind the Unix socket and run the master loop.
+ *
+ * This function is blocking; it returns only after rtapi_app_master_stop()
+ * is called (which sets force_exit = 1).  The Go launcher runs it on a
+ * goroutine that has been locked to an OS thread via runtime.LockOSThread().
+ *
+ * If fifo_path is NULL the path is derived from the RTAPI_FIFO_PATH env var
+ * or $HOME/.rtapi_fifo.
+ */
+int rtapi_app_master_start(const char *fifo_path) {
+    /* Capture uid/euid — replaces the __attribute__((constructor)) that is
+     * disabled in library mode. */
+    ruid = getuid();
+    euid = geteuid();
+
+    /* In standalone mode main() calls setresuid(euid,euid,ruid) so that
+     * geteuid()==0 for the WITH_ROOT regions.  We replicate that here so the
+     * privilege model is consistent. */
+    if(setresuid(euid, euid, ruid) != 0) {
+        perror("rtapi_app_master_start: setresuid");
+        return -errno;
+    }
+#ifdef __linux__
+    setfsuid(ruid);
+#endif
+
+    /* Override fifo path if the caller supplied one. */
+    if(fifo_path && fifo_path[0] != '\0') {
+        if(setenv("RTAPI_FIFO_PATH", fifo_path, 1) != 0) {
+            perror("rtapi_app_master_start: setenv");
+            return -errno;
+        }
+    }
+
+    const char *path = get_fifo_path();
+    if(!path) return -EINVAL;
+
+    int fd = socket(PF_UNIX, SOCK_STREAM, 0);
+    if(fd == -1) {
+        perror("rtapi_app_master_start: socket");
+        return -errno;
+    }
+
+    int enable = 1;
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable));
+
+    struct sockaddr_un addr;
+    addr.sun_family = AF_UNIX;
+    if(get_fifo_path_buf(addr.sun_path, sizeof(addr.sun_path)) < 0) {
+        close(fd);
+        return -EINVAL;
+    }
+
+    /* Remove stale socket file if it exists. */
+    unlink(addr.sun_path);
+
+    int result = bind(fd, (struct sockaddr*)&addr, sizeof(addr));
+    if(result != 0) {
+        perror("rtapi_app_master_start: bind");
+        close(fd);
+        return -errno;
+    }
+
+    result = listen(fd, 10);
+    if(result != 0) {
+        perror("rtapi_app_master_start: listen");
+        close(fd);
+        return -errno;
+    }
+
+    /* Save the fd so rtapi_app_master_stop() can shut it down and unblock
+     * a pending accept(). */
+    master_fd = fd;
+
+    /* Note: no setsid() — the Go launcher is not a daemon and must stay in
+     * its own session so that signals from the terminal reach it normally. */
+
+    result = master(fd, NULL, 0);
+    master_fd = -1;
+    unlink(get_fifo_path());
+    close(fd);
+    return result;
+}
+
+/* rtapi_app_master_stop — signal the master loop to exit.
+ *
+ * Sets force_exit and shuts down the listening socket so that any pending
+ * accept() call returns immediately.
+ */
+void rtapi_app_master_stop(void) {
+    force_exit = 1;
+    int fd = master_fd;
+    if(fd >= 0) {
+        /* Shut down the socket so accept() returns EINVAL/EBADF. */
+        shutdown(fd, SHUT_RDWR);
+    }
+}
+
+/* rtapi_app_load — load a module directly (bypasses socket IPC). */
+int rtapi_app_load(const char *name, char **args, int nargs) {
+    return do_load_cmd(name, args, nargs);
+}
+
+/* rtapi_app_unload — unload a previously loaded module. */
+int rtapi_app_unload(const char *name) {
+    return do_unload_cmd(name);
+}
+
+/* rtapi_app_is_realtime — returns non-zero if running SCHED_FIFO. */
+int rtapi_app_is_realtime(void) {
+    return app_policy == SCHED_FIFO;
+}
+
+#endif /* RTAPI_APP_LIB */

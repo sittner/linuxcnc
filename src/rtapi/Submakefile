@@ -19,4 +19,25 @@ $(call TOOBJSDEPS, $(RTAPI_APP_SRCS)): EXTRAFLAGS += -DSIM \
 	$(ECHO) Linking $(notdir $@)
 	$(Q)$(CC) -rdynamic -o $@ $^ $(LIBDL) -pthread -lrt $(LIBUDEV_LIBS) -ldl $(LDFLAGS)
 TARGETS += ../bin/rtapi_app
+
+# librtapi_app.so — same sources compiled with -DRTAPI_APP_LIB so that
+# main() is excluded and the rtapi_app_master_start/stop/load/unload API
+# is exposed instead.  The Go launcher links against this shared library.
+RTAPI_APP_LIB_SRCS := $(RTAPI_APP_SRCS)
+RTAPI_APP_LIB_OBJS := $(patsubst %.c,objects/rtapi_app_lib/%.o,$(RTAPI_APP_LIB_SRCS))
+
+$(RTAPI_APP_LIB_OBJS): objects/rtapi_app_lib/%.o: %.c
+	$(ECHO) Compiling $< '(lib)'
+	$(Q)mkdir -p $(dir $@)
+	$(Q)$(CC) -fPIC -c -o $@ $< \
+	    $(CFLAGS) \
+	    -DSIM -UULAPI -DRTAPI -DRTAPI_APP_LIB \
+	    -pthread $(LIBUDEV_CFLAGS)
+
+../lib/librtapi_app.so: $(RTAPI_APP_LIB_OBJS)
+	$(ECHO) Linking $(notdir $@)
+	$(Q)$(CC) -shared -o $@ $^ $(LIBDL) -pthread -lrt $(LIBUDEV_LIBS) -ldl $(LDFLAGS)
+
+TARGETS += ../lib/librtapi_app.so
+
 endif
