@@ -396,6 +396,7 @@ func (l *Launcher) stopServer() {
 		l.logger.Debug("NML server stopped")
 	case <-time.After(2 * time.Second):
 		l.logger.Warn("NML server did not stop in time")
+		<-l.serverDone // MUST wait — cannot call Cleanup() concurrently
 	}
 
 	// Now safe to delete channels — server threads are fully stopped
