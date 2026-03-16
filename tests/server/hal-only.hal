@@ -1,0 +1,10 @@
+# tests/server/hal-only.hal
+# Minimal HAL configuration for HAL-only mode
+
+# Load a simple passthrough component for testing
+loadrt not names=estop-invert
+
+# Add to a thread
+newthread hal-thread 1000000
+addf estop-invert hal-thread
+start

@@ -165,170 +165,54 @@ linuxcnc/
 
 ### 3.1 Go Server Main Entry Point
 
-```go
-// src/server/main.go
-package main
+The `run()` function determines the operational mode from the INI file and
+conditionally starts only the components that are needed.
 
-import (
-	"context"
-	"flag"
-	"fmt"
-	"os"
-	"os/signal"
-	"syscall"
+#### Startup logic summary
 
-	"linuxcnc/server/config"
-	"linuxcnc/server/hal"
-	"linuxcnc/server/iocontrol"
-	"linuxcnc/server/rtapi"
-	"linuxcnc/server/task"
+```
+determine mode from INI:
+  hasTask    = cfg.Task.Task != ""       // [TASK]TASK
+  hasDisplay = cfg.Display.Display != "" // [DISPLAY]DISPLAY
+  hasHALUI   = cfg.HAL.HALUI != ""      // [HAL]HALUI
+  hasIO      = cfg.EMCIO.EMCIO != ""    // [EMCIO]EMCIO
 
-	"golang.org/x/sync/errgroup"
-)
+validate dependencies (reject contradictory configs at startup)
 
-var (
-	Version   = "dev"
-	BuildTime = "unknown"
-)
+ALWAYS: init RTAPI, init HAL, load HAL files, start retain (if configured)
+CONDITIONAL (hasTask && hasIO): init + run IO controller goroutine
+CONDITIONAL (hasTask):          init + run Task controller goroutine
+ALWAYS: hal ready + halcmd start (start RT threads)
+CONDITIONAL (hasHALUI && hasTask): start halui process
+CONDITIONAL (hasDisplay):       run display process (blocks until exit)
+ELSE (no display):              wait for SIGINT/SIGTERM (HAL-only mode)
 
-func main() {
-	// Command line flags
-	iniFile := flag.String("ini", "", "Path to INI configuration file")
-	version := flag.Bool("version", false, "Print version and exit")
-	debug := flag.Bool("debug", false, "Enable debug output")
-	flag.Parse()
+shutdown
+```
 
-	if *version {
-		fmt.Printf("linuxcnc-server %s (built %s)\n", Version, BuildTime)
-		os.Exit(0)
-	}
+#### Component startup rules
 
-	if *iniFile == "" {
-		fmt.Fprintln(os.Stderr, "Error: -ini flag is required")
-		fmt.Fprintln(os.Stderr, "Usage: linuxcnc-server -ini <config.ini>")
-		os.Exit(1)
-	}
+| Component | Condition | Error if condition not met |
+|-----------|-----------|---------------------------|
+| RTAPI, HAL, HALFILEs, retain | Always | yes — required |
+| IO controller | `[EMCIO]EMCIO` **and** `[TASK]TASK` | `[EMCIO]EMCIO` without `[TASK]TASK` → error |
+| Task controller | `[TASK]TASK` | — |
+| halui | `[HAL]HALUI` **and** `[TASK]TASK` | `[HAL]HALUI` without `[TASK]TASK` → error |
+| Display | `[DISPLAY]DISPLAY` | — |
+| linuxcncsvr | `[TASK]TASK` | auto-skip in HAL-only mode |
+| HAL-only wait | no `[DISPLAY]DISPLAY` | — |
 
-	// Run server
-	if err := run(*iniFile, *debug); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-}
+#### HAL-only mode example
 
-func run(iniFile string, debug bool) error {
-	// ===== Step 1: Load and validate configuration =====
-	cfg, err := config.Load(iniFile)
-	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
-	}
+A minimal INI that runs only HAL (no Task, no Display, no IO):
 
-	if err := cfg.Validate(); err != nil {
-		return fmt.Errorf("invalid config: %w", err)
-	}
+```ini
+[EMC]
+MACHINE = MyHALMachine
 
-	if debug {
-		cfg.Dump(os.Stdout)
-	}
-
-	// ===== Step 2: Setup signal handling =====
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		sig := <-sigCh
-		fmt.Printf("\nReceived signal %v, shutting down...\n", sig)
-		cancel()
-	}()
-
-	// ===== Step 3: Initialize RTAPI =====
-	rt, err := rtapi.Init(rtapi.Config{
-		InstanceName: cfg.EMC.MachineName,
-		Debug:        debug,
-	})
-	if err != nil {
-		return fmt.Errorf("rtapi init failed: %w", err)
-	}
-	defer rt.Shutdown()
-
-	fmt.Println("RTAPI initialized")
-
-	// ===== Step 4: Initialize HAL =====
-	h, err := hal.Init(hal.Config{
-		ComponentName: "linuxcnc",
-	})
-	if err != nil {
-		return fmt.Errorf("hal init failed: %w", err)
-	}
-	defer h.Shutdown()
-
-	fmt.Println("HAL initialized")
-
-	// ===== Step 5: Load HAL configuration =====
-	halLoader := hal.NewLoader(h, cfg)
-	if err := halLoader.LoadFiles(cfg.HAL.Files); err != nil {
-		return fmt.Errorf("hal config failed: %w", err)
-	}
-
-	fmt.Printf("Loaded %d HAL files\n", len(cfg.HAL.Files))
-
-	// ===== Step 6: Initialize IO Controller =====
-	ioc, err := iocontrol.Init(iocontrol.Config{
-		IniFile:   iniFile,
-		CycleTime: cfg.EMCIO.CycleTime,
-	})
-	if err != nil {
-		return fmt.Errorf("iocontrol init failed: %w", err)
-	}
-	defer ioc.Shutdown()
-
-	fmt.Println("IO Controller initialized")
-
-	// ===== Step 7: Initialize Task Controller =====
-	tsk, err := task.Init(task.Config{
-		IniFile:   iniFile,
-		CycleTime: cfg.Task.CycleTime,
-	})
-	if err != nil {
-		return fmt.Errorf("task init failed: %w", err)
-	}
-	defer tsk.Shutdown()
-
-	fmt.Println("Task Controller initialized")
-
-	// ===== Step 8: Signal HAL ready =====
-	if err := h.Ready(); err != nil {
-		return fmt.Errorf("hal ready failed: %w", err)
-	}
-
-	fmt.Println("HAL ready")
-
-	// ===== Step 9: Run main loops =====
-	fmt.Println("LinuxCNC server running. Press Ctrl+C to stop.")
-
-	g, gctx := errgroup.WithContext(ctx)
-
-	// Task controller loop
-	g.Go(func() error {
-		return tsk.Run(gctx)
-	})
-
-	// IO controller loop
-	g.Go(func() error {
-		return ioc.Run(gctx)
-	})
-
-	// Wait for shutdown
-	if err := g.Wait(); err != nil && err != context.Canceled {
-		return fmt.Errorf("runtime error: %w", err)
-	}
-
-	fmt.Println("Shutdown complete")
-	return nil
-}
+[HAL]
+HALFILE = my-hardware.hal
+HALFILE = my-logic.hal
 ```
 
 ### 3.2 Go Module Definition
@@ -346,6 +230,20 @@ require (
 ```
 
 ### 3.3 Configuration Package
+
+The configuration package is pure Go (no cgo) and handles INI parsing,
+struct mapping, default application, mode detection, and dependency
+validation.
+
+#### Key additions over the original design
+
+| Field | INI key | Purpose |
+|-------|---------|---------|
+| `Task.Task` | `[TASK]TASK` | e.g. `"milltask"` — presence enables full CNC mode |
+| `EMCIO.EMCIO` | `[EMCIO]EMCIO` | e.g. `"io"` — IO controller binary name |
+| `HAL.HALUI` | `[HAL]HALUI` | e.g. `"halui"` — halui binary name |
+| `Retain.VarFile` | `[RETAIN]VAR_FILE` | Persist variable file path |
+| `Retain.PollPeriod` | `[RETAIN]POLL_PERIOD` | Retain poll interval |
 
 ```go
 // src/server/config/config.go
@@ -368,45 +266,48 @@ type Config struct {
 		MachineName string  `ini:"MACHINE"`
 		Debug       int     `ini:"DEBUG"`
 		Version     string  `ini:"VERSION"`
-	}
+	} `ini:"EMC"`
 
 	// [DISPLAY] section - for reference, UI handles this
 	Display struct {
 		Display         string  `ini:"DISPLAY"`
 		CycleTime       float64 `ini:"CYCLE_TIME"`
 		MaxFeedOverride float64 `ini:"MAX_FEED_OVERRIDE"`
-	}
+	} `ini:"DISPLAY"`
 
 	// [TASK] section
 	Task struct {
+		Task      string  `ini:"TASK"`      // e.g., "milltask" — present means CNC mode
 		CycleTime float64 `ini:"CYCLE_TIME"`
-	}
+	} `ini:"TASK"`
 
 	// [RS274NGC] section
 	RS274NGC struct {
 		ParameterFile  string `ini:"PARAMETER_FILE"`
 		SubroutinePath string `ini:"SUBROUTINE_PATH"`
-	}
+	} `ini:"RS274NGC"`
 
 	// [EMCMOT] section
 	EMCMOT struct {
 		ServoPeriod float64 `ini:"SERVO_PERIOD"`
 		BasePeriod  float64 `ini:"BASE_PERIOD"`
 		CommTimeout float64 `ini:"COMM_TIMEOUT"`
-	}
+	} `ini:"EMCMOT"`
 
 	// [EMCIO] section
 	EMCIO struct {
+		EMCIO     string  `ini:"EMCIO"`     // e.g., "io" — only used when Task is set
 		CycleTime float64 `ini:"CYCLE_TIME"`
 		ToolTable string  `ini:"TOOL_TABLE"`
-	}
+	} `ini:"EMCIO"`
 
 	// [HAL] section
 	HAL struct {
 		Files        []string `ini:"HALFILE,omitempty,allowshadow"`
 		PostGUIFile  []string `ini:"POSTGUI_HALFILE,omitempty,allowshadow"`
 		ShutdownFile string   `ini:"SHUTDOWN"`
-	}
+		HALUI        string   `ini:"HALUI"` // e.g., "halui" — requires Task
+	} `ini:"HAL"`
 
 	// [TRAJ] section
 	Traj struct {
@@ -415,35 +316,71 @@ type Config struct {
 		AngularUnits    string  `ini:"ANGULAR_UNITS"`
 		MaxVelocity     float64 `ini:"MAX_VELOCITY"`
 		MaxAcceleration float64 `ini:"MAX_ACCELERATION"`
-	}
+	} `ini:"TRAJ"`
 
 	// [KINS] section
 	Kins struct {
 		Kinematics string `ini:"KINEMATICS"`
 		Joints     int    `ini:"JOINTS"`
-	}
+	} `ini:"KINS"`
+
+	// [RETAIN] section — for retain/persist HAL variable storage
+	Retain struct {
+		VarFile    string `ini:"VAR_FILE"`
+		PollPeriod string `ini:"POLL_PERIOD"`
+	} `ini:"RETAIN"`
 
 	// Raw INI data for sections we pass through unchanged
 	raw *iniFile
 }
 
-// Validate checks the configuration for required fields and valid values
+// HasTask returns true if the Task controller should be started ([TASK]TASK is set).
+func (c *Config) HasTask() bool {
+	return c.Task.Task != ""
+}
+
+// HasDisplay returns true if a display program should be started ([DISPLAY]DISPLAY is set).
+func (c *Config) HasDisplay() bool {
+	return c.Display.Display != ""
+}
+
+// HasHALUI returns true if halui should be started ([HAL]HALUI is set).
+func (c *Config) HasHALUI() bool {
+	return c.HAL.HALUI != ""
+}
+
+// HasIO returns true if the IO controller should be started ([EMCIO]EMCIO is set).
+func (c *Config) HasIO() bool {
+	return c.EMCIO.EMCIO != ""
+}
+
+// HasRetain returns true if retain/persist is configured.
+func (c *Config) HasRetain() bool {
+	return c.Retain.VarFile != ""
+}
+
+// Validate checks the configuration for required fields and applies defaults.
+// It enforces conditional requirements based on operational mode:
+//   - HAL-only mode (no [TASK]TASK): only [HAL]HALFILE is required.
+//   - Full CNC mode ([TASK]TASK set): also requires [KINS], [TRAJ], [EMCMOT], [RS274NGC].
 func (c *Config) Validate() error {
-	// Check required fields
+	// Apply defaults
 	if c.EMC.MachineName == "" {
 		c.EMC.MachineName = "LinuxCNC"
 	}
-
-	// Validate cycle times
 	if c.Task.CycleTime <= 0 {
 		c.Task.CycleTime = 0.010 // 10ms default
 	}
-
 	if c.EMCIO.CycleTime <= 0 {
 		c.EMCIO.CycleTime = 0.100 // 100ms default
 	}
 
-	// Validate HAL files exist
+	// HAL files are always required
+	if len(c.HAL.Files) == 0 {
+		return fmt.Errorf("at least one [HAL]HALFILE is required")
+	}
+
+	// Validate that HAL files exist on disk
 	iniDir := filepath.Dir(c.IniPath)
 	for _, f := range c.HAL.Files {
 		path := f
@@ -455,28 +392,70 @@ func (c *Config) Validate() error {
 		}
 	}
 
-	// Validate kinematics specified
-	if c.Kins.Kinematics == "" {
-		return fmt.Errorf("[KINS]KINEMATICS is required")
+	// Full CNC mode: validate sections required by Task controller
+	if c.HasTask() {
+		if c.Kins.Kinematics == "" {
+			return fmt.Errorf("[TASK]TASK is set but [KINS]KINEMATICS is missing")
+		}
+		if c.Kins.Joints <= 0 {
+			return fmt.Errorf("[TASK]TASK is set but [KINS]JOINTS must be > 0")
+		}
+		if c.Traj.Coordinates == "" {
+			return fmt.Errorf("[TASK]TASK is set but [TRAJ]COORDINATES is missing")
+		}
+		if c.EMCMOT.ServoPeriod <= 0 {
+			return fmt.Errorf("[TASK]TASK is set but [EMCMOT]SERVO_PERIOD is missing or zero")
+		}
 	}
 
-	if c.Kins.Joints <= 0 {
-		return fmt.Errorf("[KINS]JOINTS must be > 0")
+	// Cross-section dependency validation
+	return c.validateDependencies()
+}
+
+// validateDependencies checks cross-section dependency rules and rejects
+// contradictory configurations with a clear error message.
+func (c *Config) validateDependencies() error {
+	// [HAL]HALUI requires [TASK]TASK
+	if c.HasHALUI() && !c.HasTask() {
+		return fmt.Errorf("[HAL]HALUI is set but [TASK]TASK is missing — halui requires the task controller")
+	}
+
+	// [EMCIO]EMCIO requires [TASK]TASK (IO communicates with Task via NML)
+	if c.HasIO() && !c.HasTask() {
+		return fmt.Errorf("[EMCIO]EMCIO is set but [TASK]TASK is missing — IO controller requires the task controller")
 	}
 
 	return nil
 }
 
+// Mode returns a human-readable string describing the operational mode.
+func (c *Config) Mode() string {
+	if c.HasTask() {
+		return "Full CNC (Task + HAL)"
+	}
+	return "HAL-only"
+}
+
 // Dump writes the configuration to the given writer for debugging
 func (c *Config) Dump(w io.Writer) {
 	fmt.Fprintf(w, "=== Configuration ===\n")
-	fmt.Fprintf(w, "INI File: %s\n", c.IniPath)
-	fmt.Fprintf(w, "Machine: %s\n", c.EMC.MachineName)
-	fmt.Fprintf(w, "Task Cycle: %.3fs\n", c.Task.CycleTime)
-	fmt.Fprintf(w, "IO Cycle: %.3fs\n", c.EMCIO.CycleTime)
-	fmt.Fprintf(w, "Kinematics: %s\n", c.Kins.Kinematics)
-	fmt.Fprintf(w, "Joints: %d\n", c.Kins.Joints)
-	fmt.Fprintf(w, "HAL Files: %v\n", c.HAL.Files)
+	fmt.Fprintf(w, "INI File:    %s\n", c.IniPath)
+	fmt.Fprintf(w, "Machine:     %s\n", c.EMC.MachineName)
+	fmt.Fprintf(w, "Mode:        %s\n", c.Mode())
+	fmt.Fprintf(w, "Task:        %q\n", c.Task.Task)
+	fmt.Fprintf(w, "EMCIO:       %q\n", c.EMCIO.EMCIO)
+	fmt.Fprintf(w, "HALUI:       %q\n", c.HAL.HALUI)
+	fmt.Fprintf(w, "Display:     %q\n", c.Display.Display)
+	fmt.Fprintf(w, "Task Cycle:  %.3fs\n", c.Task.CycleTime)
+	fmt.Fprintf(w, "IO Cycle:    %.3fs\n", c.EMCIO.CycleTime)
+	if c.HasTask() {
+		fmt.Fprintf(w, "Kinematics:  %s\n", c.Kins.Kinematics)
+		fmt.Fprintf(w, "Joints:      %d\n", c.Kins.Joints)
+	}
+	fmt.Fprintf(w, "HAL Files:   %v\n", c.HAL.Files)
+	if c.HasRetain() {
+		fmt.Fprintf(w, "Retain File: %s\n", c.Retain.VarFile)
+	}
 	fmt.Fprintf(w, "=====================\n")
 }
 
@@ -487,6 +466,7 @@ func (c *Config) GetSection(name string) map[string]string {
 	}
 	return c.raw.GetSection(name)
 }
+
 ```
 
 ```go
@@ -506,7 +486,8 @@ type iniFile struct {
 	*ini.File
 }
 
-// Load parses an INI file and returns a Config structure
+// Load parses an INI file and returns a Config structure.
+// It returns an error for missing files, parse errors, or failed section mapping.
 func Load(path string) (*Config, error) {
 	// Resolve absolute path
 	absPath, err := filepath.Abs(path)
@@ -537,12 +518,12 @@ func Load(path string) (*Config, error) {
 		raw:     &iniFile{f},
 	}
 
-	// Map sections to struct
+	// Map sections to struct fields using ini tags
 	if err := f.MapTo(cfg); err != nil {
 		return nil, fmt.Errorf("mapping error: %w", err)
 	}
 
-	// Handle HALFILE specially (can have multiple entries)
+	// Handle HALFILE and POSTGUI_HALFILE specially — they may appear multiple times
 	halSection := f.Section("HAL")
 	if halSection != nil {
 		cfg.HAL.Files = halSection.Key("HALFILE").ValueWithShadows()
@@ -552,7 +533,7 @@ func Load(path string) (*Config, error) {
 	return cfg, nil
 }
 
-// GetSection returns all key-value pairs from a section
+// GetSection returns all key-value pairs from a named INI section.
 func (f *iniFile) GetSection(name string) map[string]string {
 	section := f.Section(name)
 	if section == nil {
@@ -573,6 +554,7 @@ func (c *Config) ExpandPath(path string) string {
 	}
 	return filepath.Join(filepath.Dir(c.IniPath), path)
 }
+
 ```
 
 ### 3.4 RTAPI Integration
@@ -2117,23 +2099,28 @@ net zpos-fb joint.2.motor-pos-fb <= joint.2.motor-pos-cmd
 
 | Step | Task | Status |
 |------|------|--------|
-| 1.1 | Create `src/server/` directory structure | ☐ |
-| 1.2 | Create Go module (`go.mod`, `go.sum`) | ☐ |
-| 1.3 | Implement configuration package | ☐ |
+| 1.1 | Create `src/server/` directory structure | ✅ |
+| 1.2 | Create Go module (`go.mod`, `go.sum`) | ✅ |
+| 1.3 | Implement configuration package with new fields (`Task.Task`, `EMCIO.EMCIO`, `HAL.HALUI`, `Retain`) | ✅ |
 | 1.4 | Implement C shim layer | ☐ |
-| 1.5 | Implement RTAPI Go wrapper | ☐ |
-| 1.6 | Implement HAL Go wrapper | ☐ |
-| 1.7 | Implement HAL file loader | ☐ |
+| 1.5 | Implement RTAPI Go wrapper (stub) | ✅ |
+| 1.6 | Implement HAL Go wrapper (stub) | ✅ |
+| 1.7 | Implement HAL file loader (stub) | ✅ |
 | 1.8 | Modify `emctaskmain.cc` | ☐ |
-| 1.9 | Implement Task Go wrapper | ☐ |
+| 1.9 | Implement Task Go wrapper (stub) | ✅ |
 | 1.10 | Modify `ioControl.cc` | ☐ |
-| 1.11 | Implement IOControl Go wrapper | ☐ |
-| 1.12 | Update build system | ☐ |
-| 1.13 | Create test configuration | ☐ |
-| 1.14 | Integration testing | ☐ |
-| 1.15 | Documentation | ☐ |
+| 1.11 | Implement IOControl Go wrapper (stub) | ✅ |
+| 1.12 | Implement conditional startup in `main.go` | ✅ |
+| 1.13 | Implement dependency validation (`validateDependencies`) | ✅ |
+| 1.14 | Update build system | ☐ |
+| 1.15 | Create test configurations (full CNC + HAL-only) | ✅ |
+| 1.16 | Unit tests for config package | ✅ |
+| 1.17 | Integration testing | ☐ |
+| 1.18 | Documentation | ✅ |
 
 ### 7.2 Validation Criteria
+
+#### Full CNC mode
 
 | Criterion | Test Method |
 |-----------|-------------|
@@ -2145,6 +2132,16 @@ net zpos-fb joint.2.motor-pos-fb <= joint.2.motor-pos-cmd
 | UI connectivity | AXIS or other UI connects and displays status |
 | Graceful shutdown | SIGTERM causes clean exit |
 | Error handling | Invalid INI produces clear error message |
+
+#### HAL-only mode
+
+| Criterion | Test Method |
+|-----------|-------------|
+| HAL-only server starts | `linuxcnc-server -ini hal-only.ini` starts without error |
+| No Task/IO started | No task or iocontrol goroutines launched |
+| Signal shutdown | SIGTERM causes clean exit |
+| HALUI without Task rejected | INI with `[HAL]HALUI` but no `[TASK]TASK` → error at startup |
+| EMCIO without Task rejected | INI with `[EMCIO]EMCIO` but no `[TASK]TASK` → error at startup |
 
 ### 7.3 Rollback Plan
 

@@ -1,0 +1,19 @@
+# tests/server/test.hal
+# Test HAL configuration for full CNC mode
+
+# Load realtime components
+loadrt trivkins
+loadrt motmod servo_period_nsec=1000000 num_joints=3
+
+# Set up motion controller
+addf motion-command-handler servo-thread
+addf motion-controller servo-thread
+
+# Minimal connections for testing
+net xpos-cmd joint.0.motor-pos-cmd
+net ypos-cmd joint.1.motor-pos-cmd
+net zpos-cmd joint.2.motor-pos-cmd
+
+net xpos-fb joint.0.motor-pos-fb <= joint.0.motor-pos-cmd
+net ypos-fb joint.1.motor-pos-fb <= joint.1.motor-pos-cmd
+net zpos-fb joint.2.motor-pos-fb <= joint.2.motor-pos-cmd
