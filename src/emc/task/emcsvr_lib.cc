@@ -198,8 +198,11 @@ int emcsvr_run(void)
         esleep(EMCSVR_POLL_INTERVAL);
     }
 
-    NML_Default_Super_Server->kill_all_servers();
-    nml_cleanup();
+    // Only kill spawned server threads — do NOT call nml_cleanup() here.
+    // Channel deletion happens in emcsvr_cleanup() which is called separately.
+    if (NML_Default_Super_Server != NULL) {
+        NML_Default_Super_Server->kill_all_servers();
+    }
 
     return 0;
 }

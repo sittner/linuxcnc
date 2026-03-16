@@ -390,12 +390,15 @@ func (l *Launcher) stopServer() {
 	l.logger.Info("stopping NML server")
 	emcsvr.Stop()
 
+	// Wait for emcsvr_run() goroutine to finish (kill_all_servers completes)
 	select {
 	case <-l.serverDone:
 		l.logger.Debug("NML server stopped")
 	case <-time.After(2 * time.Second):
 		l.logger.Warn("NML server did not stop in time")
 	}
+
+	// Now safe to delete channels — server threads are fully stopped
 	emcsvr.Cleanup()
 }
 
