@@ -1588,6 +1588,24 @@ func halPortClear(portPtr *C.hal_port_t) {
 	C.go_hal_port_clear(portPtr)
 }
 
+// halCreateThread wraps hal_create_thread() to create a new realtime thread.
+// name is the thread name, periodNs is the period in nanoseconds, usesFP
+// should be non-zero if floating-point functions will be attached to the thread.
+// Threads must be created fastest-first for proper rate monotonic scheduling.
+func halCreateThread(name string, periodNs int64, usesFP bool) error {
+	cName := C.CString(name)
+	defer C.free(unsafe.Pointer(cName))
+	fp := C.int(0)
+	if usesFP {
+		fp = 1
+	}
+	ret := C.hal_create_thread(cName, C.ulong(periodNs), fp)
+	if ret < 0 {
+		return halError(int(ret), "hal_create_thread")
+	}
+	return nil
+}
+
 // halStartThreads wraps hal_start_threads() to start all HAL realtime threads.
 func halStartThreads() error {
 	ret := C.hal_start_threads()

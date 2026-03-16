@@ -371,23 +371,21 @@ func run(iniFile string, debug bool) error {
 
 	fmt.Println("HAL initialized")
 
-	// ===== Step 4b: Create RT threads via threads component =====
-	// Load the threads component to create servo-thread (and optionally
-	// base-thread). This is done before loading motmod so that thread
-	// creation is decoupled from the motion controller.
+	// ===== Step 4b: Create RT threads via cgo hal_create_thread() =====
+	// Create servo-thread (and optionally base-thread) directly via the
+	// hal-go cgo bindings. This is done before loading motmod so that
+	// thread creation is decoupled from the motion controller.
 	if cfg.EMCMOT.ServoPeriod > 0 {
-		threadsArgs := fmt.Sprintf("name1=servo-thread period1=%d fp1=1",
-			int64(cfg.EMCMOT.ServoPeriod))
-		if cfg.EMCMOT.BasePeriod > 0 && cfg.EMCMOT.BasePeriod != cfg.EMCMOT.ServoPeriod {
-			threadsArgs = fmt.Sprintf(
-				"name1=base-thread period1=%d fp1=0 name2=servo-thread period2=%d fp2=1",
-				int64(cfg.EMCMOT.BasePeriod), int64(cfg.EMCMOT.ServoPeriod))
+		if cfg.EMCMOT.BasePeriod > 0 {
+			if err := hal.CreateThread("base-thread", int64(cfg.EMCMOT.BasePeriod), false); err != nil {
+				return fmt.Errorf("failed to create base-thread: %w", err)
+			}
+			fmt.Printf("RT base-thread created (period=%dns)\n", int64(cfg.EMCMOT.BasePeriod))
 		}
-		if err := rt.LoadModule("threads", threadsArgs); err != nil {
-			return fmt.Errorf("failed to create RT threads: %w", err)
+		if err := hal.CreateThread("servo-thread", int64(cfg.EMCMOT.ServoPeriod), true); err != nil {
+			return fmt.Errorf("failed to create servo-thread: %w", err)
 		}
-		fmt.Printf("RT threads created (servo_period=%dns)\n",
-			int64(cfg.EMCMOT.ServoPeriod))
+		fmt.Printf("RT servo-thread created (period=%dns)\n", int64(cfg.EMCMOT.ServoPeriod))
 	}
 
 	// ===== Step 4c: Load motmod and wire functions (full CNC mode only) =====

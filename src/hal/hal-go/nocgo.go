@@ -61,8 +61,9 @@ func (p *Pin[T]) String() string { return p.name }
 func halInit(_ string) (int, error)           { return 0, errNoCGO }
 func halReady(_ int) error                    { return errNoCGO }
 func halExit(_ int) error                     { return errNoCGO }
-func halStartThreads() error                  { return errNoCGO }
-func halStopThreads() error                   { return errNoCGO }
+func halCreateThread(_ string, _ int64, _ bool) error { return errNoCGO }
+func halStartThreads() error                          { return errNoCGO }
+func halStopThreads() error                           { return errNoCGO }
 func halListComponents() ([]string, error)    { return nil, errNoCGO }
 func halUnloadAll(_ int) error                { return errNoCGO }
 func halNewSig(_ string, _ PinType) error     { return errNoCGO }

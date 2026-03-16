@@ -86,6 +86,7 @@ func New(opts Options, logger *slog.Logger) *Launcher {
 //  4. Validates cross-section INI dependencies (validateDependencies).
 //  5. Starts in-process NML server (emcsvr goroutine) — only if [TASK]TASK is configured (M5).
 //  6. Starts the realtime environment (M4).
+//  6.5. Creates RT threads (servo-thread, optionally base-thread) via hal_create_thread().
 //  7. Starts iocontrol via halcmd loadusr -Wn — only if [TASK]TASK is configured (M5).
 //  8. Starts halui via halcmd loadusr -Wn — only if [HAL]HALUI is configured (M5).
 //  9. Preloads tpmod/homemod — only if [TASK]TASK is configured (M4).
@@ -258,6 +259,15 @@ func (l *Launcher) Run() error {
 		return fmt.Errorf("hal init: %w", err)
 	}
 	l.halComp = halComp
+
+	// Create RT threads (servo-thread, optionally base-thread).
+	// Thread creation has been decoupled from motmod — the launcher now
+	// creates threads directly via hal_create_thread() cgo calls.
+	// This must happen before motmod, HAL files, or any component that
+	// uses addf to attach functions to threads.
+	if err := l.loadThreads(); err != nil {
+		return fmt.Errorf("loading threads: %w", err)
+	}
 
 	// Start iocontrol via halcmd loadusr -Wn iocontrol — only when the task
 	// controller is running.  iocontrol is a HAL userspace component that
@@ -577,6 +587,55 @@ func (l *Launcher) logConfiguration() {
 		"twopass", l.ini.Get("HAL", "TWOPASS"),
 	}
 	l.logger.Debug("INI configuration loaded", fields...)
+}
+
+// loadThreads creates RT threads by calling hal_create_thread() directly
+// via the hal-go cgo bindings.
+//
+// Thread creation has been decoupled from motmod — motmod now only exports
+// functions, so the threads must exist before motmod or HAL files run.
+//
+// Logic:
+//   - Read [EMCMOT]SERVO_PERIOD (required) and [EMCMOT]BASE_PERIOD (optional)
+//   - If BASE_PERIOD > 0: create base-thread first (fastest, no FP), then servo-thread (with FP)
+//   - Otherwise: create only servo-thread (with FP)
+//   - Threads are created fastest-first for proper rate monotonic priority scheduling
+func (l *Launcher) loadThreads() error {
+	servoPeriodStr := l.ini.Get("EMCMOT", "SERVO_PERIOD")
+	if servoPeriodStr == "" {
+		return fmt.Errorf("[EMCMOT]SERVO_PERIOD is required but not set")
+	}
+	servoPeriodNs, err := strconv.ParseInt(servoPeriodStr, 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid [EMCMOT]SERVO_PERIOD %q: %w", servoPeriodStr, err)
+	}
+
+	basePeriodStr := l.ini.Get("EMCMOT", "BASE_PERIOD")
+	var basePeriodNs int64
+	if basePeriodStr != "" {
+		var parseErr error
+		basePeriodNs, parseErr = strconv.ParseInt(basePeriodStr, 10, 64)
+		if parseErr != nil {
+			l.logger.Warn("invalid [EMCMOT]BASE_PERIOD, ignoring", "value", basePeriodStr, "error", parseErr)
+			basePeriodNs = 0
+		}
+	}
+
+	if basePeriodNs > 0 {
+		// Create base-thread first (fastest thread, no FP)
+		l.logger.Info("creating base-thread", "period_ns", basePeriodNs)
+		if err := hal.CreateThread("base-thread", basePeriodNs, false); err != nil {
+			return fmt.Errorf("creating base-thread: %w", err)
+		}
+	}
+
+	// Create servo-thread (with FP)
+	l.logger.Info("creating servo-thread", "period_ns", servoPeriodNs)
+	if err := hal.CreateThread("servo-thread", servoPeriodNs, true); err != nil {
+		return fmt.Errorf("creating servo-thread: %w", err)
+	}
+
+	return nil
 }
 
 // preloadMotionModules loads the trajectory planner and homing modules via

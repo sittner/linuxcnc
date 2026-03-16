@@ -7,6 +7,15 @@ import (
 	"strings"
 )
 
+// CreateThread wraps hal_create_thread() to create a new realtime thread.
+// name is the thread name (must be unique, max HAL_NAME_LEN).
+// periodNs is the thread period in nanoseconds.
+// usesFP should be true if functions attached to this thread use floating point.
+// Threads must be created fastest-first for proper rate monotonic scheduling.
+func CreateThread(name string, periodNs int64, usesFP bool) error {
+	return halCreateThread(name, periodNs, usesFP)
+}
+
 // StartThreads starts all HAL realtime threads.
 // This is the point at which realtime functions start being called.
 // Equivalent to "halcmd start".
