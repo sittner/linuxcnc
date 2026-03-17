@@ -156,6 +156,10 @@ func (r *ParseResult) Execute() error {
 }
 
 // buildLoadRTArgs reconstructs the string args from a LoadRTToken for LoadRT().
+// This is used only by executeToken() for direct single-token dispatch (e.g.
+// interactive halcmd calls). ParseResult.Execute() does NOT use this function;
+// it feeds LoadRTTokens through TwopassCollector.CollectLoadRTToken() →
+// MergedLoadRTCommands() instead.
 func buildLoadRTArgs(d *LoadRTToken) []string {
 	var args []string
 	if d.Count > 0 {
