@@ -257,6 +257,12 @@ func (l *Launcher) Run() error {
 		return fmt.Errorf("hal init: %w", err)
 	}
 	l.halComp = halComp
+	// Mark the launcher's HAL component ready — halcmd always calls hal_ready()
+	// immediately after hal_init(). Without this, other components that poll for
+	// the launcher component being ready will time out.
+	if err := halComp.Ready(); err != nil {
+		return fmt.Errorf("hal ready: %w", err)
+	}
 
 	// Load the threads HAL component to create RT threads (servo-thread,
 	// optionally base-thread). Thread creation has been decoupled from
