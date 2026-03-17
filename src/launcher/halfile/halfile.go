@@ -7,52 +7,52 @@
 package halfile
 
 import (
-"fmt"
-"log/slog"
-"os"
-"path/filepath"
-"strings"
+	"fmt"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
 
-hal "linuxcnc.org/hal"
+	hal "linuxcnc.org/hal"
 
-"github.com/sittner/linuxcnc/src/launcher/inifile"
+	"github.com/sittner/linuxcnc/src/launcher/inifile"
 )
 
 // iniLookupAdapter wraps *inifile.IniFile so that it satisfies the
 // hal.INILookup interface required by the hal-go parser.
 type iniLookupAdapter struct {
-ini *inifile.IniFile
+	ini *inifile.IniFile
 }
 
 // Get implements hal.INILookup. It returns ("", nil) when the key is absent
 // (the hal parser treats an empty string the same as "not found" for
 // substitution purposes).
 func (a *iniLookupAdapter) Get(section, key string) (string, error) {
-return a.ini.Get(section, key), nil
+	return a.ini.Get(section, key), nil
 }
 
 // GetAll implements hal.INILookup. It returns the full INI content as a
 // nested section→key→value map, needed for Go-template rendering.
 func (a *iniLookupAdapter) GetAll() map[string]map[string]string {
-m := make(map[string]map[string]string)
-for _, sec := range a.ini.Sections {
-if _, ok := m[sec.Name]; !ok {
-m[sec.Name] = make(map[string]string)
-}
-for _, entry := range sec.Entries {
-m[sec.Name][entry.Key] = entry.Value
-}
-}
-return m
+	m := make(map[string]map[string]string)
+	for _, sec := range a.ini.Sections {
+		if _, ok := m[sec.Name]; !ok {
+			m[sec.Name] = make(map[string]string)
+		}
+		for _, entry := range sec.Entries {
+			m[sec.Name][entry.Key] = entry.Value
+		}
+	}
+	return m
 }
 
 // Executor loads and executes HAL files for a LinuxCNC configuration.
 type Executor struct {
-ini         *inifile.IniFile
-iniFilePath string // effective INI path for error messages (may be .expanded)
-halibPath   string
-logger      *slog.Logger
-configDir   string
+	ini         *inifile.IniFile
+	iniFilePath string // effective INI path for error messages (may be .expanded)
+	halibPath   string
+	logger      *slog.Logger
+	configDir   string
 }
 
 // New creates a new Executor for HAL file loading.
@@ -64,37 +64,37 @@ configDir   string
 //     Pass the expanded INI path here when #INCLUDE directives have been
 //     resolved; pass "" to fall back to ini.SourceFile().
 func New(ini *inifile.IniFile, halibPath string, logger *slog.Logger, iniFilePath string) *Executor {
-if logger == nil {
-logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
-}
-configDir := ""
-if ini != nil && ini.SourceFile() != "" {
-configDir = filepath.Dir(ini.SourceFile())
-}
-if iniFilePath == "" && ini != nil {
-iniFilePath = ini.SourceFile()
-}
-return &Executor{
-ini:         ini,
-iniFilePath: iniFilePath,
-halibPath:   halibPath,
-logger:      logger,
-configDir:   configDir,
-}
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
+	}
+	configDir := ""
+	if ini != nil && ini.SourceFile() != "" {
+		configDir = filepath.Dir(ini.SourceFile())
+	}
+	if iniFilePath == "" && ini != nil {
+		iniFilePath = ini.SourceFile()
+	}
+	return &Executor{
+		ini:         ini,
+		iniFilePath: iniFilePath,
+		halibPath:   halibPath,
+		logger:      logger,
+		configDir:   configDir,
+	}
 }
 
 // Resolve implements hal.PathResolver so that Executor can be passed directly
 // to hal.NewMultiFileParser and hal.NewSingleFileParser.
 func (e *Executor) Resolve(path string) (string, error) {
-return e.resolvePath(path)
+	return e.resolvePath(path)
 }
 
 // iniLookup returns a hal.INILookup adapter, or nil when no INI file is set.
 func (e *Executor) iniLookup() hal.INILookup {
-if e.ini == nil {
-return nil
-}
-return &iniLookupAdapter{ini: e.ini}
+	if e.ini == nil {
+		return nil
+	}
+	return &iniLookupAdapter{ini: e.ini}
 }
 
 // ExecuteAll reads all [HAL]HALFILE entries from the INI file and executes
@@ -110,44 +110,44 @@ return &iniLookupAdapter{ini: e.ini}
 // iterates only HALFILE keys via "$INIVAR -var HALFILE" in a separate loop
 // from HALCMD keys.
 func (e *Executor) ExecuteAll() error {
-if e.ini == nil {
-return nil
-}
+	if e.ini == nil {
+		return nil
+	}
 
-var paths []string
-for _, entry := range e.ini.GetSection("HAL") {
-if entry.Key != "HALFILE" {
-continue
-}
-// Split into filename and optional arguments (e.g. "LIB:basic_sim.hal -no_sim_spindle").
-// Arguments after the filename are not used by the Go parser (they were
-// a haltcl convention); we read only the filename here.
-fields := strings.Fields(entry.Value)
-if len(fields) == 0 {
-continue
-}
-f := fields[0]
-resolved, err := e.resolvePath(f)
-if err != nil {
-return fmt.Errorf("resolving HAL file %q: %w", f, err)
-}
-if strings.HasSuffix(strings.ToLower(resolved), ".tcl") {
-return fmt.Errorf("HAL file %q: TCL HAL files (.tcl) are no longer supported; use .hal files only", resolved)
-}
-e.logger.Info("loading HAL file", "path", resolved)
-paths = append(paths, resolved)
-}
+	var paths []string
+	for _, entry := range e.ini.GetSection("HAL") {
+		if entry.Key != "HALFILE" {
+			continue
+		}
+		// Split into filename and optional arguments (e.g. "LIB:basic_sim.hal -no_sim_spindle").
+		// Arguments after the filename are not used by the Go parser (they were
+		// a haltcl convention); we read only the filename here.
+		fields := strings.Fields(entry.Value)
+		if len(fields) == 0 {
+			continue
+		}
+		f := fields[0]
+		resolved, err := e.resolvePath(f)
+		if err != nil {
+			return fmt.Errorf("resolving HAL file %q: %w", f, err)
+		}
+		if strings.HasSuffix(strings.ToLower(resolved), ".tcl") {
+			return fmt.Errorf("HAL file %q: TCL HAL files (.tcl) are no longer supported; use .hal files only", resolved)
+		}
+		e.logger.Info("loading HAL file", "path", resolved)
+		paths = append(paths, resolved)
+	}
 
-if len(paths) == 0 {
-return nil
-}
+	if len(paths) == 0 {
+		return nil
+	}
 
-mp := hal.NewMultiFileParser(e.iniLookup(), e)
-result, err := mp.Parse(paths)
-if err != nil {
-return fmt.Errorf("parsing HAL files: %w", err)
-}
-return result.Execute()
+	mp := hal.NewMultiFileParser(e.iniLookup(), e)
+	result, err := mp.Parse(paths)
+	if err != nil {
+		return fmt.Errorf("parsing HAL files: %w", err)
+	}
+	return result.Execute()
 }
 
 // ExecuteHalCommands reads all [HAL]HALCMD entries from the INI file and
@@ -161,33 +161,33 @@ return result.Execute()
 // has been started.  It must be called after startTask() and before
 // startHalThreads().
 func (e *Executor) ExecuteHalCommands() error {
-if e.ini == nil {
-return nil
-}
+	if e.ini == nil {
+		return nil
+	}
 
-cmds := e.ini.GetAll("HAL", "HALCMD")
-if len(cmds) == 0 {
-e.logger.Debug("no HALCMD entries found")
-return nil
-}
+	cmds := e.ini.GetAll("HAL", "HALCMD")
+	if len(cmds) == 0 {
+		e.logger.Debug("no HALCMD entries found")
+		return nil
+	}
 
-sp := hal.NewSingleFileParser(e.iniLookup(), e)
+	sp := hal.NewSingleFileParser(e.iniLookup(), e)
 
-for i, raw := range cmds {
-cmd := strings.TrimSpace(raw)
-if cmd == "" {
-continue
-}
-e.logger.Debug("executing HAL command", "cmd", cmd)
-// ParseContent treats the string as a virtual one-line HAL file.
-result, err := sp.ParseContent(fmt.Sprintf("<HALCMD:%d>", i+1), cmd)
-if err != nil {
-return fmt.Errorf("parsing HALCMD %q: %w", cmd, err)
-}
-if err := result.Execute(); err != nil {
-return fmt.Errorf("executing HALCMD %q: %w", cmd, err)
-}
-}
+	for i, raw := range cmds {
+		cmd := strings.TrimSpace(raw)
+		if cmd == "" {
+			continue
+		}
+		e.logger.Debug("executing HAL command", "cmd", cmd)
+		// ParseContent treats the string as a virtual one-line HAL file.
+		result, err := sp.ParseContent(fmt.Sprintf("<HALCMD:%d>", i+1), cmd)
+		if err != nil {
+			return fmt.Errorf("parsing HALCMD %q: %w", cmd, err)
+		}
+		if err := result.Execute(); err != nil {
+			return fmt.Errorf("executing HALCMD %q: %w", cmd, err)
+		}
+	}
 
-return nil
+	return nil
 }
