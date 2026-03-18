@@ -5,11 +5,13 @@ import (
 	"bufio"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
 	hal "linuxcnc.org/hal"
 
+	"github.com/sittner/linuxcnc/src/launcher/config"
 	"github.com/sittner/linuxcnc/src/launcher/halfile"
 )
 
