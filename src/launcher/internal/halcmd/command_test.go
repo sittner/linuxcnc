@@ -1,10 +1,10 @@
-package hal_test
+package halcmd_test
 
 import (
 	"strings"
 	"testing"
 
-	"linuxcnc.org/hal"
+	halcmd "github.com/sittner/linuxcnc/src/launcher/internal/halcmd"
 )
 
 // TestStartThreadsSignature verifies that StartThreads has the correct signature.
@@ -12,7 +12,7 @@ import (
 func TestStartThreadsSignature(t *testing.T) {
 	// Verify the function exists and has the right signature.
 	// We do not call it because it requires a running HAL/RTAPI environment.
-	var fn func() error = hal.StartThreads
+	var fn func() error = halcmd.StartThreads
 	if fn == nil {
 		t.Fatal("StartThreads must not be nil")
 	}
@@ -20,7 +20,7 @@ func TestStartThreadsSignature(t *testing.T) {
 
 // TestStopThreadsSignature verifies that StopThreads has the correct signature.
 func TestStopThreadsSignature(t *testing.T) {
-	var fn func() error = hal.StopThreads
+	var fn func() error = halcmd.StopThreads
 	if fn == nil {
 		t.Fatal("StopThreads must not be nil")
 	}
@@ -28,7 +28,7 @@ func TestStopThreadsSignature(t *testing.T) {
 
 // TestListComponentsSignature verifies that ListComponents has the correct signature.
 func TestListComponentsSignature(t *testing.T) {
-	var fn func() ([]string, error) = hal.ListComponents
+	var fn func() ([]string, error) = halcmd.ListComponents
 	if fn == nil {
 		t.Fatal("ListComponents must not be nil")
 	}
@@ -36,7 +36,7 @@ func TestListComponentsSignature(t *testing.T) {
 
 // TestUnloadAllSignature verifies that UnloadAll has the correct signature.
 func TestUnloadAllSignature(t *testing.T) {
-	var fn func(int) error = hal.UnloadAll
+	var fn func(int) error = halcmd.UnloadAll
 	if fn == nil {
 		t.Fatal("UnloadAll must not be nil")
 	}
@@ -45,7 +45,7 @@ func TestUnloadAllSignature(t *testing.T) {
 // TestListComponentsReturnType verifies that ListComponents returns the expected types.
 // When HAL is not available this will return an error, which is acceptable.
 func TestListComponentsReturnType(t *testing.T) {
-	names, err := hal.ListComponents()
+	names, err := halcmd.ListComponents()
 	if err != nil {
 		// HAL not available in this test environment — skip runtime check.
 		t.Skipf("HAL not available: %v", err)
@@ -60,31 +60,31 @@ func TestListComponentsReturnType(t *testing.T) {
 
 // TestNewSigSignature verifies that NewSig has the correct signature.
 func TestNewSigSignature(t *testing.T) {
-	var fn func(string, hal.PinType) error = hal.NewSig
+	var fn func(string, halcmd.PinType) error = halcmd.NewSig
 	_ = fn
 }
 
 // TestDelSigSignature verifies that DelSig has the correct signature.
 func TestDelSigSignature(t *testing.T) {
-	var fn func(string) error = hal.DelSig
+	var fn func(string) error = halcmd.DelSig
 	_ = fn
 }
 
 // TestSetSSignature verifies that SetS has the correct signature.
 func TestSetSSignature(t *testing.T) {
-	var fn func(string, string) error = hal.SetS
+	var fn func(string, string) error = halcmd.SetS
 	_ = fn
 }
 
 // TestGetSSignature verifies that GetS has the correct signature.
 func TestGetSSignature(t *testing.T) {
-	var fn func(string) (string, error) = hal.GetS
+	var fn func(string) (string, error) = halcmd.GetS
 	_ = fn
 }
 
 // TestSTypeSignature verifies that SType has the correct signature.
 func TestSTypeSignature(t *testing.T) {
-	var fn func(string) (hal.PinType, error) = hal.SType
+	var fn func(string) (halcmd.PinType, error) = halcmd.SType
 	_ = fn
 }
 
@@ -92,19 +92,19 @@ func TestSTypeSignature(t *testing.T) {
 
 // TestSetPSignature verifies that SetP has the correct signature.
 func TestSetPSignature(t *testing.T) {
-	var fn func(string, string) error = hal.SetP
+	var fn func(string, string) error = halcmd.SetP
 	_ = fn
 }
 
 // TestGetPSignature verifies that GetP has the correct signature.
 func TestGetPSignature(t *testing.T) {
-	var fn func(string) (string, error) = hal.GetP
+	var fn func(string) (string, error) = halcmd.GetP
 	_ = fn
 }
 
 // TestPTypeSignature verifies that PType has the correct signature.
 func TestPTypeSignature(t *testing.T) {
-	var fn func(string) (hal.PinType, error) = hal.PType
+	var fn func(string) (halcmd.PinType, error) = halcmd.PType
 	_ = fn
 }
 
@@ -112,25 +112,25 @@ func TestPTypeSignature(t *testing.T) {
 
 // TestNetSignature verifies that Net accepts a signal name plus variadic pin names.
 func TestNetSignature(t *testing.T) {
-	var fn func(string, ...string) error = hal.Net
+	var fn func(string, ...string) error = halcmd.Net
 	_ = fn
 }
 
 // TestLinkPSSignature verifies that LinkPS has the correct signature.
 func TestLinkPSSignature(t *testing.T) {
-	var fn func(string, string) error = hal.LinkPS
+	var fn func(string, string) error = halcmd.LinkPS
 	_ = fn
 }
 
 // TestLinkSPSignature verifies that LinkSP has the correct signature.
 func TestLinkSPSignature(t *testing.T) {
-	var fn func(string, string) error = hal.LinkSP
+	var fn func(string, string) error = halcmd.LinkSP
 	_ = fn
 }
 
 // TestUnlinkPSignature verifies that UnlinkP has the correct signature.
 func TestUnlinkPSignature(t *testing.T) {
-	var fn func(string) error = hal.UnlinkP
+	var fn func(string) error = halcmd.UnlinkP
 	_ = fn
 }
 
@@ -138,13 +138,13 @@ func TestUnlinkPSignature(t *testing.T) {
 
 // TestAddFSignature verifies that AddF has the correct signature.
 func TestAddFSignature(t *testing.T) {
-	var fn func(string, string, int) error = hal.AddF
+	var fn func(string, string, int) error = halcmd.AddF
 	_ = fn
 }
 
 // TestDelFSignature verifies that DelF has the correct signature.
 func TestDelFSignature(t *testing.T) {
-	var fn func(string, string) error = hal.DelF
+	var fn func(string, string) error = halcmd.DelF
 	_ = fn
 }
 
@@ -152,13 +152,13 @@ func TestDelFSignature(t *testing.T) {
 
 // TestLoadRTSignature verifies that LoadRT has the correct signature.
 func TestLoadRTSignature(t *testing.T) {
-	var fn func(string, ...string) error = hal.LoadRT
+	var fn func(string, ...string) error = halcmd.LoadRT
 	_ = fn
 }
 
 // TestUnloadRTSignature verifies that UnloadRT has the correct signature.
 func TestUnloadRTSignature(t *testing.T) {
-	var fn func(string) error = hal.UnloadRT
+	var fn func(string) error = halcmd.UnloadRT
 	_ = fn
 }
 
@@ -166,7 +166,7 @@ func TestUnloadRTSignature(t *testing.T) {
 
 // TestLoadUSROptionsType verifies that LoadUSROptions has the expected fields.
 func TestLoadUSROptionsType(t *testing.T) {
-	opts := &hal.LoadUSROptions{
+	opts := &halcmd.LoadUSROptions{
 		WaitReady:   true,
 		WaitName:    "mycomp",
 		WaitExit:    false,
@@ -178,25 +178,25 @@ func TestLoadUSROptionsType(t *testing.T) {
 
 // TestLoadUSRSignature verifies that LoadUSR has the correct signature.
 func TestLoadUSRSignature(t *testing.T) {
-	var fn func(*hal.LoadUSROptions, string, ...string) error = hal.LoadUSR
+	var fn func(*halcmd.LoadUSROptions, string, ...string) error = halcmd.LoadUSR
 	_ = fn
 }
 
 // TestUnloadUSRSignature verifies that UnloadUSR has the correct signature.
 func TestUnloadUSRSignature(t *testing.T) {
-	var fn func(string) error = hal.UnloadUSR
+	var fn func(string) error = halcmd.UnloadUSR
 	_ = fn
 }
 
 // TestUnloadSignature verifies that Unload has the correct signature.
 func TestUnloadSignature(t *testing.T) {
-	var fn func(string) error = hal.Unload
+	var fn func(string) error = halcmd.Unload
 	_ = fn
 }
 
 // TestWaitUSRSignature verifies that WaitUSR has the correct signature.
 func TestWaitUSRSignature(t *testing.T) {
-	var fn func(string) error = hal.WaitUSR
+	var fn func(string) error = halcmd.WaitUSR
 	_ = fn
 }
 
@@ -204,13 +204,13 @@ func TestWaitUSRSignature(t *testing.T) {
 
 // TestLockSignature verifies that Lock has the correct signature.
 func TestLockSignature(t *testing.T) {
-	var fn func(string) error = hal.Lock
+	var fn func(string) error = halcmd.Lock
 	_ = fn
 }
 
 // TestUnlockSignature verifies that Unlock has the correct signature.
 func TestUnlockSignature(t *testing.T) {
-	var fn func(string) error = hal.Unlock
+	var fn func(string) error = halcmd.Unlock
 	_ = fn
 }
 
@@ -218,7 +218,7 @@ func TestUnlockSignature(t *testing.T) {
 
 // TestListSignature verifies that List has the correct signature.
 func TestListSignature(t *testing.T) {
-	var fn func(string, ...string) ([]string, error) = hal.List
+	var fn func(string, ...string) ([]string, error) = halcmd.List
 	_ = fn
 }
 
@@ -228,7 +228,7 @@ func TestListSignature(t *testing.T) {
 // After stripping arrow tokens, if no pins remain, Net returns nil (matching
 // halcmd behaviour which allows "net signame" with no pins).
 func TestNetArrowFiltering(t *testing.T) {
-	err := hal.Net("mysig", "=>", "<=", "<=>")
+	err := halcmd.Net("mysig", "=>", "<=", "<=>")
 	// No pins after filtering — must return nil, not an error.
 	if err != nil {
 		t.Fatalf("Net with only arrow tokens must return nil, got: %v", err)
@@ -237,7 +237,7 @@ func TestNetArrowFiltering(t *testing.T) {
 
 // TestLockInvalidLevel verifies that Lock rejects unknown level strings.
 func TestLockInvalidLevel(t *testing.T) {
-	err := hal.Lock("invalid_level")
+	err := halcmd.Lock("invalid_level")
 	if err == nil {
 		t.Fatal("Lock must return an error for unknown level")
 	}
@@ -245,7 +245,7 @@ func TestLockInvalidLevel(t *testing.T) {
 
 // TestListUnknownType verifies that List rejects unknown type strings.
 func TestListUnknownType(t *testing.T) {
-	_, err := hal.List("notatype")
+	_, err := halcmd.List("notatype")
 	if err == nil {
 		t.Fatal("List must return an error for unknown type")
 	}
@@ -256,7 +256,7 @@ func TestListUnknownType(t *testing.T) {
 // underlying C shim returns -EINVAL (hal_data == NULL), which surfaces as an
 // error, but it must NOT be an "unknown type" error.
 func TestListRetainAccepted(t *testing.T) {
-	_, err := hal.List("retain")
+	_, err := halcmd.List("retain")
 	if err != nil {
 		if strings.Contains(err.Error(), "unknown type") {
 			t.Fatalf(`List("retain") must not return an "unknown type" error, got: %v`, err)
@@ -269,7 +269,7 @@ func TestListRetainAccepted(t *testing.T) {
 // TestNetNoPins verifies that Net with no pins (after arrow filtering) returns nil.
 // This matches halcmd behaviour which allows "net signame" with no pins.
 func TestNetNoPins(t *testing.T) {
-	err := hal.Net("mysig")
+	err := halcmd.Net("mysig")
 	if err != nil {
 		t.Fatalf("Net with no pins must return nil, got: %v", err)
 	}
@@ -283,7 +283,7 @@ func TestNetNoPins(t *testing.T) {
 func TestUnlockSemantics(t *testing.T) {
 	// Calling Unlock("all") should not return an "unknown level" error.
 	// The only expected error is the HAL-not-running error.
-	err := hal.Unlock("all")
+	err := halcmd.Unlock("all")
 	if err != nil {
 		const unknownLvl = "unknown lock level"
 		if len(err.Error()) > len(unknownLvl) && err.Error()[:len(unknownLvl)] == unknownLvl {
@@ -297,25 +297,25 @@ func TestUnlockSemantics(t *testing.T) {
 
 // TestShowSignature verifies that Show has the correct signature.
 func TestShowSignature(t *testing.T) {
-	var fn func(string, ...string) (*hal.ShowResult, error) = hal.Show
+	var fn func(string, ...string) (*halcmd.ShowResult, error) = halcmd.Show
 	_ = fn
 }
 
 // TestSaveSignature verifies that Save has the correct signature.
 func TestSaveSignature(t *testing.T) {
-	var fn func(string, string) ([]string, error) = hal.Save
+	var fn func(string, string) ([]string, error) = halcmd.Save
 	_ = fn
 }
 
 // TestStatusSignature verifies that Status has the correct signature.
 func TestStatusSignature(t *testing.T) {
-	var fn func() (*hal.StatusInfo, error) = hal.Status
+	var fn func() (*halcmd.StatusInfo, error) = halcmd.Status
 	_ = fn
 }
 
 // TestSetDebugSignature verifies that SetDebug has the correct signature.
 func TestSetDebugSignature(t *testing.T) {
-	var fn func(int) error = hal.SetDebug
+	var fn func(int) error = halcmd.SetDebug
 	_ = fn
 }
 
@@ -323,7 +323,7 @@ func TestSetDebugSignature(t *testing.T) {
 
 // TestPinInfoFields verifies that PinInfo has the expected fields.
 func TestPinInfoFields(t *testing.T) {
-	pi := hal.PinInfo{
+	pi := halcmd.PinInfo{
 		Name:      "mycomp.in",
 		Type:      "bit",
 		Direction: "IN",
@@ -336,7 +336,7 @@ func TestPinInfoFields(t *testing.T) {
 
 // TestSigInfoFields verifies that SigInfo has the expected fields.
 func TestSigInfoFields(t *testing.T) {
-	si := hal.SigInfo{
+	si := halcmd.SigInfo{
 		Name:  "mysig",
 		Type:  "float",
 		Value: "0",
@@ -346,7 +346,7 @@ func TestSigInfoFields(t *testing.T) {
 
 // TestParamInfoFields verifies that ParamInfo has the expected fields.
 func TestParamInfoFields(t *testing.T) {
-	pi := hal.ParamInfo{
+	pi := halcmd.ParamInfo{
 		Name:      "mycomp.gain",
 		Type:      "float",
 		Direction: "RW",
@@ -358,7 +358,7 @@ func TestParamInfoFields(t *testing.T) {
 
 // TestFunctInfoFields verifies that FunctInfo has the expected fields.
 func TestFunctInfoFields(t *testing.T) {
-	fi := hal.FunctInfo{
+	fi := halcmd.FunctInfo{
 		Name:  "mycomp.update",
 		Owner: "mycomp",
 	}
@@ -367,7 +367,7 @@ func TestFunctInfoFields(t *testing.T) {
 
 // TestThreadInfoFields verifies that ThreadInfo has the expected fields.
 func TestThreadInfoFields(t *testing.T) {
-	ti := hal.ThreadInfo{
+	ti := halcmd.ThreadInfo{
 		Name:    "servo-thread",
 		Period:  1000000,
 		Functs:  []string{"mycomp.update"},
@@ -378,7 +378,7 @@ func TestThreadInfoFields(t *testing.T) {
 
 // TestCompInfoFields verifies that CompInfo has the expected fields.
 func TestCompInfoFields(t *testing.T) {
-	ci := hal.CompInfo{
+	ci := halcmd.CompInfo{
 		Name: "mycomp",
 		ID:   42,
 		Type: "realtime",
@@ -388,20 +388,20 @@ func TestCompInfoFields(t *testing.T) {
 
 // TestShowResultFields verifies that ShowResult has the expected fields.
 func TestShowResultFields(t *testing.T) {
-	sr := hal.ShowResult{
-		Comps:   []hal.CompInfo{},
-		Pins:    []hal.PinInfo{},
-		Params:  []hal.ParamInfo{},
-		Signals: []hal.SigInfo{},
-		Functs:  []hal.FunctInfo{},
-		Threads: []hal.ThreadInfo{},
+	sr := halcmd.ShowResult{
+		Comps:   []halcmd.CompInfo{},
+		Pins:    []halcmd.PinInfo{},
+		Params:  []halcmd.ParamInfo{},
+		Signals: []halcmd.SigInfo{},
+		Functs:  []halcmd.FunctInfo{},
+		Threads: []halcmd.ThreadInfo{},
 	}
 	_ = sr
 }
 
 // TestStatusInfoFields verifies that StatusInfo has the expected fields.
 func TestStatusInfoFields(t *testing.T) {
-	si := hal.StatusInfo{
+	si := halcmd.StatusInfo{
 		ShmemFree: 65536,
 		LockLevel: "none",
 	}
@@ -412,7 +412,7 @@ func TestStatusInfoFields(t *testing.T) {
 
 // TestShowUnknownType verifies that Show rejects unknown type strings.
 func TestShowUnknownType(t *testing.T) {
-	_, err := hal.Show("notatype")
+	_, err := halcmd.Show("notatype")
 	if err == nil {
 		t.Fatal("Show must return an error for unknown type")
 	}
@@ -423,7 +423,7 @@ func TestShowUnknownType(t *testing.T) {
 // before the type check can even run).
 func TestSaveEmptyType(t *testing.T) {
 	// Empty type defaults to "all" — must not panic.
-	_, err := hal.Save("", "")
+	_, err := halcmd.Save("", "")
 	// Either succeeds (HAL available) or returns an error (no HAL) — never panics.
 	_ = err
 }

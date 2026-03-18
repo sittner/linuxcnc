@@ -1,6 +1,6 @@
 //go:build !cgo
 
-package hal
+package halcmd
 
 import (
 	"errors"

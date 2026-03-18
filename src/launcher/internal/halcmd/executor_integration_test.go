@@ -1,6 +1,6 @@
 //go:build cgo && haltest
 
-package hal
+package halcmd
 
 import "testing"
 
