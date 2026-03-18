@@ -316,6 +316,15 @@ type PrintToken struct {
 
 func (*PrintToken) tokenData() {}
 
+// NewInstToken represents a "newinst" command.
+type NewInstToken struct {
+	CompType string // component type name
+	InstName string // new instance name
+	Arg      string // optional argument string (may be empty)
+}
+
+func (*NewInstToken) tokenData() {}
+
 // PathResolver resolves source file paths. The caller provides an implementation
 // backed by whatever path resolution logic they have (e.g. the launcher's
 // resolve.go with LIB: prefix and HALLIB_PATH support).

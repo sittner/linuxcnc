@@ -261,31 +261,6 @@ static void remove_module(const char *name) {
     pthread_mutex_unlock(&modules_lock);
 }
 
-int rtapi_newinst(const char *type, const char *name, const char *arg) {
-    void *module = find_module("hal_lib");
-    if(!module) {
-        rtapi_print_msg(RTAPI_MSG_ERR,
-                "newinst: hal_lib is required, but not loaded\n");
-        return -1;
-    }
-
-    hal_comp_t *(*find_comp_by_name)(char*) =
-        (hal_comp_t*(*)(char *))dlsym_helper(module, "halpr_find_comp_by_name");
-    if(!find_comp_by_name) {
-        rtapi_print_msg(RTAPI_MSG_ERR,
-                "newinst: halpr_find_comp_by_name not found\n");
-        return -1;
-    }
-
-    hal_comp_t *comp = find_comp_by_name((char*)type);
-    if(!comp) {
-        rtapi_print_msg(RTAPI_MSG_ERR,
-                "newinst: component %s not found\n", type);
-        return -1;
-    }
-
-    return comp->make((char*)name, (char*)arg);
-}
 
 static int do_one_item(char item_type_char, const char *param_name, const char *param_value, void *vitem, int idx) {
     char *endp;
