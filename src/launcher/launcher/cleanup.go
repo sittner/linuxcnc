@@ -5,13 +5,12 @@ import (
 	"bufio"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
 	hal "linuxcnc.org/hal"
 
-	"github.com/sittner/linuxcnc/src/launcher/config"
+	"github.com/sittner/linuxcnc/src/launcher/halfile"
 )
 
 // cleanup is the single entry point for ordered shutdown.  It is idempotent —
@@ -41,14 +40,11 @@ func (l *Launcher) doCleanup() {
 
 	// Step 3 — Run [HAL]SHUTDOWN script if configured.
 	// mirrors scripts/linuxcnc.in lines 697–701.
+	// Uses the native Go HAL file parser instead of shelling out to halcmd.
 	if l.ini != nil {
 		if shutdown := l.ini.Get("HAL", "SHUTDOWN"); shutdown != "" {
-			l.logger.Info("running HAL shutdown script", "script", shutdown)
-			halcmdPath := filepath.Join(config.EMC2BinDir, "halcmd")
-			cmd := exec.Command(halcmdPath, "-f", shutdown)
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			if err := cmd.Run(); err != nil {
+			halExec := halfile.New(l.ini, os.Getenv("HALLIB_PATH"), l.logger, l.opts.IniFile)
+			if err := halExec.ExecuteShutdown(); err != nil {
 				l.logger.Debug("HAL shutdown script returned error", "error", err)
 			}
 		}
@@ -95,6 +91,19 @@ func (l *Launcher) doCleanup() {
 	// Step 8 — Stop in-process NML server.
 	l.logger.Debug("stopping NML server")
 	l.stopServer()
+
+	// Wait for the NML server goroutine to fully exit before removing shared
+	// memory segments. stopServer() already waits on serverDone, so this
+	// select returns immediately — it is an explicit synchronisation point to
+	// ensure no goroutine still holds shm references when ipcrm runs.
+	if l.serverDone != nil {
+		select {
+		case <-l.serverDone:
+			l.logger.Debug("NML server goroutine exited")
+		case <-time.After(3 * time.Second):
+			l.logger.Warn("timeout waiting for NML server goroutine to exit")
+		}
+	}
 
 	// Step 9 — Remove NML shared memory segments.
 	// mirrors scripts/linuxcnc.in lines 724–729.
