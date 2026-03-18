@@ -311,8 +311,10 @@ func (l *Launcher) Run() error {
 
 	// --- M6: Task + Display Launch ---
 
-	// 6a. Start task controller in background — only if [TASK]TASK is configured
-	// (step 4.3.7).
+	// 6a. Fire-and-forget task controller — only if [TASK]TASK is configured
+	// (step 4.3.7). The task controller is started without waiting for the
+	// "inihal" component to register; HAL threads (step 6d) must be running
+	// before milltask can complete its motion initialization.
 	if hasTask {
 		if err := l.startTask(); err != nil {
 			return fmt.Errorf("starting task: %w", err)
@@ -609,16 +611,25 @@ func (l *Launcher) preloadMotionModules() error {
 	return nil
 }
 
-// startTask starts the task controller (milltask/linuxcnctask) as a background
-// process via halcmd loadusr.
+// startTask launches the task controller (milltask/linuxcnctask) as a
+// fire-and-forget background process without waiting for the "inihal" HAL
+// component to register as ready.
 //
-// This mirrors scripts/linuxcnc.in line 954:
+// This mirrors the bash launcher (scripts/linuxcnc.in line 957):
 //
 //	halcmd loadusr -Wn inihal $EMCTASK -ini "$INIFILE" &
 //
-// hal.LoadUSR with WaitName "inihal" forks the task process in the background
-// and returns once the "inihal" HAL component registers as ready. If the
-// process exits before registering, LoadUSR returns an error.
+// Note the trailing "&" — the bash launcher does NOT block on this call.
+// milltask calls emcMotionInit() during startup, which requires the motion
+// controller (motmod) to process commands via servo-thread. Those functions
+// are not running until startHalThreads() (step 6d) completes. Waiting here
+// would create a deadlock:
+//  1. startTask() blocks waiting for inihal to be ready
+//  2. milltask waits for motion controller to process commands
+//  3. motion controller waits for servo-thread to run
+//  4. servo-thread won't run until startHalThreads() is called
+//  5. startHalThreads() can't run because startTask() hasn't returned
+//
 // INI resolution: [TASK]TASK is required; legacy rename "emctask" → "linuxcnctask".
 // If [TASK]TASK is not set, startTask is a no-op (Run() skips calling it anyway).
 func (l *Launcher) startTask() error {
@@ -634,11 +645,13 @@ func (l *Launcher) startTask() error {
 
 	l.logger.Info("starting task controller", "program", emctask)
 
-	if err := hal.LoadUSR(&hal.LoadUSROptions{WaitReady: true, WaitName: "inihal"}, emctask, "-ini", l.opts.IniFile); err != nil {
-		return fmt.Errorf("loadusr inihal %s: %w", emctask, err)
+	// Fire-and-forget: do NOT wait for inihal to register as ready.
+	// HAL threads (servo-thread) must be running before milltask can finish
+	// motion initialization. Threads are started in step 6d, after this call.
+	if err := hal.LoadUSR(&hal.LoadUSROptions{}, emctask, "-ini", l.opts.IniFile); err != nil {
+		return fmt.Errorf("loadusr %s: %w", emctask, err)
 	}
 
-	l.logger.Info("task controller started")
 	return nil
 }
 
