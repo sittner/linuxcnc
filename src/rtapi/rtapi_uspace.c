@@ -28,8 +28,6 @@
 #include <sys/fsuid.h>
 #endif
 #include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/un.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -60,6 +58,7 @@
 #endif
 
 #include "rtapi.h"
+#include "rtapi_uspace.h"
 #include "hal.h"
 #include "hal/hal_priv.h"
 
@@ -214,14 +213,11 @@ static void *queue_function(void *arg) {
     return NULL;
 }
 
-static int sim_rtapi_run_threads(int fd, int (*callback)(int fd));
-
 static void *dlsym_helper(void *handle, const char *name) {
     return dlsym(handle, name);
 }
 
 static int instance_count = 0;
-static int force_exit = 0;
 
 static void *find_module(const char *name) {
     pthread_mutex_lock(&modules_lock);
@@ -265,7 +261,7 @@ static void remove_module(const char *name) {
     pthread_mutex_unlock(&modules_lock);
 }
 
-static int do_newinst_cmd(const char *type, const char *name, const char *arg) {
+int rtapi_newinst(const char *type, const char *name, const char *arg) {
     void *module = find_module("hal_lib");
     if(!module) {
         rtapi_print_msg(RTAPI_MSG_ERR,
@@ -341,7 +337,6 @@ static void remove_quotes(char *s) {
     *dst = '\0';
 }
 
-#define MAX_ARGS 64
 static int do_comp_args(void *module, char **args, int nargs) {
     for(int i = 1; i < nargs; i++) {
         char *s = args[i];
@@ -413,7 +408,7 @@ static int do_comp_args(void *module, char **args, int nargs) {
     return 0;
 }
 
-static int do_load_cmd(const char *name, char **args, int nargs) {
+int rtapi_load_module(const char *name, int argc, char **argv) {
     void *w = find_module(name);
     if(w == NULL) {
         char what[LINELEN+1];
@@ -431,7 +426,7 @@ static int do_load_cmd(const char *name, char **args, int nargs) {
             return -1;
         }
         
-        int result = do_comp_args(module, args, nargs);
+        int result = do_comp_args(module, argv, argc);
         if(result < 0) {
             dlclose(module);
             return -1;
@@ -458,7 +453,7 @@ static int do_load_cmd(const char *name, char **args, int nargs) {
     }
 }
 
-static int do_unload_cmd(const char *name) {
+int rtapi_unload_module(const char *name) {
     void *w = find_module(name);
     if(w == NULL) {
         rtapi_print_msg(RTAPI_MSG_ERR, "%s: not loaded\n", name);
@@ -473,291 +468,7 @@ static int do_unload_cmd(const char *name) {
     return 0;
 }
 
-static int read_number(int fd) {
-    int r = 0, neg = 1;
-    char ch;
-
-    while(1) {
-        int res = read(fd, &ch, 1);
-        if(res != 1) return -1;
-        if(ch == '-') neg = -1;
-        else if(ch == ' ') return r * neg;
-        else r = 10 * r + ch - '0';
-    }
-}
-
-static int read_string(int fd, char *buf, int maxlen) {
-    int len = read_number(fd);
-    if(len < 0 || len >= maxlen) return -1;
-    if(read(fd, buf, len) != len) return -1;
-    buf[len] = '\0';
-    return len;
-}
-
-static int read_strings(int fd, char **args, int maxargs) {
-    int count = read_number(fd);
-    if(count < 0 || count > maxargs) return -1;
-    
-    for(int i = 0; i < count; i++) {
-        args[i] = malloc(1024);
-        if(!args[i]) {
-            for(int j = 0; j < i; j++) free(args[j]);
-            return -1;
-        }
-        if(read_string(fd, args[i], 1024) < 0) {
-            for(int j = 0; j <= i; j++) free(args[j]);
-            return -1;
-        }
-    }
-    return count;
-}
-
-static void write_number(char *buf, int *pos, int bufsize, int num) {
-    char numbuf[32];
-    snprintf(numbuf, sizeof(numbuf), "%d ", num);
-    int len = strlen(numbuf);
-    if(*pos + len < bufsize) {
-        strcpy(buf + *pos, numbuf);
-        *pos += len;
-    }
-}
-
-static void write_string(char *buf, int *pos, int bufsize, const char *s) {
-    write_number(buf, pos, bufsize, strlen(s));
-    int len = strlen(s);
-    if(*pos + len < bufsize) {
-        memcpy(buf + *pos, s, len);
-        *pos += len;
-    }
-}
-
-static int write_strings(int fd, char **strings, int count) {
-    char buf[8192];
-    int pos = 0;
-    write_number(buf, &pos, sizeof(buf), count);
-    for(int i = 0; i < count; i++) {
-        write_string(buf, &pos, sizeof(buf), strings[i]);
-    }
-    return write(fd, buf, pos) == pos ? 0 : -1;
-}
-
-static int handle_command(char **args, int nargs) {
-    if(nargs == 0) { return 0; }
-    if(nargs == 1 && strcmp(args[0], "exit") == 0) {
-        force_exit = 1;
-        return 0;
-    } else if(nargs >= 2 && strcmp(args[0], "load") == 0) {
-        return do_load_cmd(args[1], args + 1, nargs - 1);
-    } else if(nargs == 2 && strcmp(args[0], "unload") == 0) {
-        return do_unload_cmd(args[1]);
-    } else if(nargs == 3 && strcmp(args[0], "newinst") == 0) {
-        return do_newinst_cmd(args[1], args[2], "");
-    } else if(nargs == 4 && strcmp(args[0], "newinst") == 0) {
-        return do_newinst_cmd(args[1], args[2], args[3]);
-    } else {
-        rtapi_print_msg(RTAPI_MSG_ERR,
-                "Unrecognized command starting with %s\n",
-                args[0]);
-        return -1;
-    }
-}
-
-static int slave(int fd, char **args, int nargs) {
-    if(write_strings(fd, args, nargs) < 0) {
-        rtapi_print_msg(RTAPI_MSG_ERR,
-            "rtapi_app: failed to write to master: %s\n", strerror(errno));
-        return -1;
-    }
-
-    int result = read_number(fd);
-    return result;
-}
-
-static int callback(int fd)
-{
-    struct sockaddr_un client_addr;
-    memset(&client_addr, 0, sizeof(client_addr));
-    socklen_t len = sizeof(client_addr);
-    int fd1 = accept(fd, (struct sockaddr*)&client_addr, &len);
-    if(fd1 < 0) {
-        rtapi_print_msg(RTAPI_MSG_ERR,
-            "rtapi_app: failed to accept connection from slave: %s\n", strerror(errno));
-        return -1;
-    }
-    
-    char *args[MAX_ARGS];
-    int nargs = read_strings(fd1, args, MAX_ARGS);
-    int result;
-    
-    if(nargs < 0) {
-        rtapi_print_msg(RTAPI_MSG_ERR,
-            "rtapi_app: failed to read from slave: %s\n", strerror(errno));
-        close(fd1);
-        return -1;
-    }
-    
-    result = handle_command(args, nargs);
-    
-    for(int i = 0; i < nargs; i++) {
-        free(args[i]);
-    }
-    
-    char buf[32];
-    int pos = 0;
-    write_number(buf, &pos, sizeof(buf), result);
-    if(write(fd1, buf, pos) != pos) {
-        rtapi_print_msg(RTAPI_MSG_ERR,
-            "rtapi_app: failed to write to slave: %s\n", strerror(errno));
-    }
-    close(fd1);
-    
-    return !force_exit && instance_count > 0;
-}
-
 static pthread_t main_thread;
-
-static int master(int fd, char **args, int nargs) {
-    main_thread = pthread_self();
-    int result;
-    if((result = pthread_create(&queue_thread, NULL, &queue_function, NULL)) != 0) {
-        errno = result;
-        perror("pthread_create (queue function)");
-        return -1;
-    }
-    
-    char *hal_lib_args[] = {"hal_lib"};
-    do_load_cmd("hal_lib", hal_lib_args, 1);
-    instance_count = 0;
-    
-    if(nargs) {
-        result = handle_command(args, nargs);
-        if(result != 0) goto out;
-        if(force_exit || instance_count == 0) goto out;
-    }
-    sim_rtapi_run_threads(fd, callback);
-out:
-    pthread_cancel(queue_thread);
-    pthread_join(queue_thread, NULL);
-    msg_queue_consume_all();
-    return result;
-}
-
-static const char *get_fifo_path_internal(void) {
-    static char path[512] = {0};
-    if(path[0] != '\0') return path;
-    
-    const char *env_path = getenv("RTAPI_FIFO_PATH");
-    if(env_path) {
-        strncpy(path, env_path, sizeof(path) - 1);
-    } else {
-        const char *home = getenv("HOME");
-        if(home) {
-            snprintf(path, sizeof(path), "%s/.rtapi_fifo", home);
-        } else {
-            rtapi_print_msg(RTAPI_MSG_ERR,
-                "rtapi_app: RTAPI_FIFO_PATH and HOME are unset. rtapi fifo creation is unsafe.");
-            return NULL;
-        }
-    }
-    
-    if(strlen(path) + 1 > sizeof(((struct sockaddr_un*)0)->sun_path)) {
-        rtapi_print_msg(RTAPI_MSG_ERR,
-            "rtapi_app: rtapi fifo path is too long (arch limit %zd): %s",
-                sizeof(((struct sockaddr_un*)0)->sun_path), path);
-        return NULL;
-    }
-    return path;
-}
-
-static const char *get_fifo_path(void) {
-    return get_fifo_path_internal();
-}
-
-static int get_fifo_path_buf(char *buf, size_t bufsize) {
-    const char *s = get_fifo_path();
-    if(!s) return -1;
-    snprintf(buf, bufsize, "%s", s);
-    return 0;
-}
-
-int rtapi_become_master(char **args, int nargs) {
-  while (1) {
-    int fd = socket(PF_UNIX, SOCK_STREAM, 0);
-    if(fd == -1) { perror("socket"); exit(1); }
-
-    int enable = 1;
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable));
-    struct sockaddr_un addr;
-    addr.sun_family = AF_UNIX;
-    if(get_fifo_path_buf(addr.sun_path, sizeof(addr.sun_path)) < 0)
-       exit(1);
-    int result = bind(fd, (struct sockaddr*)&addr, sizeof(addr));
-
-    if(result == 0) {
-        int result = listen(fd, 10);
-        if(result != 0) { perror("listen"); exit(1); }
-        setsid();
-        result = master(fd, args, nargs);
-        unlink(get_fifo_path());
-        return result;
-    } else if(errno == EADDRINUSE) {
-        struct timeval t0, t1;
-        gettimeofday(&t0, NULL);
-        gettimeofday(&t1, NULL);
-        for(int i = 0; i < 3 || (t1.tv_sec < 3 + t0.tv_sec); i++) {
-            result = connect(fd, (struct sockaddr*)&addr, sizeof(addr));
-            if(result == 0) break;
-            if(i == 0) srand48(t0.tv_sec ^ t0.tv_usec);
-            usleep(lrand48() % 100000);
-            gettimeofday(&t1, NULL);
-        }
-        if(result < 0 && errno == ECONNREFUSED) {
-            unlink(get_fifo_path());
-            fprintf(stderr, "Waited 3 seconds for master. Giving up.\n");
-            close(fd);
-            continue;
-        }
-        if(result < 0) { fprintf(stderr, "connect %s: %s\n", addr.sun_path, strerror(errno)); exit(1); }
-        return slave(fd, args, nargs);
-    } else {
-        perror("bind"); exit(1);
-    }
-  }
-}
-
-int main(int argc, char **argv) {
-    if(getuid() == 0) {
-        char *fallback_uid_str = getenv("RTAPI_UID");
-        int fallback_uid = fallback_uid_str ? atoi(fallback_uid_str) : 0;
-        if(fallback_uid == 0)
-        {
-            fprintf(stderr,
-                "Refusing to run as root without fallback UID specified\n"
-                "To run under a debugger with I/O, use e.g.,\n"
-                "    sudo env RTAPI_UID=`id -u` RTAPI_FIFO_PATH=$HOME/.rtapi_fifo gdb " EMC2_BIN_DIR "/rtapi_app\n");
-            exit(1);
-        }
-        if (setreuid(fallback_uid, 0) != 0) { perror("setreuid"); abort(); }
-        fprintf(stderr,
-            "Running with fallback_uid.  getuid()=%d geteuid()=%d\n",
-            getuid(), geteuid());
-    }
-    ruid = getuid();
-    euid = geteuid();
-    if (setresuid(euid, euid, ruid) != 0) { perror("setresuid"); abort(); }
-#ifdef __linux__
-    setfsuid(ruid);
-#endif
-
-    char *args[MAX_ARGS];
-    int nargs = 0;
-    for(int i = 1; i < argc && nargs < MAX_ARGS; i++) {
-        args[nargs++] = argv[i];
-    }
-
-    return rtapi_become_master(args, nargs);
-}
-
 
 /* Task and RTAPI structures */
 
@@ -926,10 +637,10 @@ static int harden_rt(void)
     return 0;
 }
 
-static void initialize_app(void)
+int rtapi_uspace_init(void)
 {
     static int initialized = 0;
-    if(initialized) return;
+    if(initialized) return 0;
     initialized = 1;
     
     if(euid != 0 || harden_rt() < 0) {
@@ -946,6 +657,7 @@ static void initialize_app(void)
     if(do_thread_lock) {
         pthread_once(&lock_once, init_thread_lock);
     }
+    return 0;
 }
 
 struct rtapi_task *task_array[MAX_TASKS];
@@ -1297,50 +1009,41 @@ static long clock_set_period(long nsecs)
     return app_period;
 }
 
-static int run_threads(int fd, int(*callback)(int fd)) {
-    while(callback(fd)) { /* nothing */ }
-    return 0;
-}
-
-int sim_rtapi_run_threads(int fd, int (*callback)(int fd)) {
-    return run_threads(fd, callback);
-}
-
 /* Public API functions */
 
 int rtapi_prio_highest(void)
 {
-    initialize_app();
+    rtapi_uspace_init();
     return prio_highest();
 }
 
 int rtapi_prio_lowest(void)
 {
-    initialize_app();
+    rtapi_uspace_init();
     return prio_lowest();
 }
 
 int rtapi_prio_next_higher(int prio)
 {
-    initialize_app();
+    rtapi_uspace_init();
     return prio_next_higher(prio);
 }
 
 int rtapi_prio_next_lower(int prio)
 {
-    initialize_app();
+    rtapi_uspace_init();
     return prio_next_lower(prio);
 }
 
 long rtapi_clock_set_period(long nsecs)
 {
-    initialize_app();
+    rtapi_uspace_init();
     return clock_set_period(nsecs);
 }
 
 int rtapi_task_new(void (*taskcode)(void*), void *arg,
         int prio, int owner, unsigned long int stacksize, int uses_fp) {
-    initialize_app();
+    rtapi_uspace_init();
     return task_new(taskcode, arg, prio, owner, stacksize, uses_fp);
 }
 
