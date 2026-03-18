@@ -429,17 +429,6 @@ func parseDelSig(tokens []string, loc SourceLoc) (Token, *ParseError) {
 	return Token{Location: loc, Data: &DelSigToken{Name: tokens[0]}}, nil
 }
 
-func parseNewInst(tokens []string, loc SourceLoc) (Token, *ParseError) {
-	if len(tokens) < 2 || len(tokens) > 3 {
-		return Token{}, &ParseError{Loc: loc, Msg: fmt.Sprintf("newinst: expected 2 or 3 arguments, got %d", len(tokens))}
-	}
-	arg := ""
-	if len(tokens) == 3 {
-		arg = tokens[2]
-	}
-	return Token{Location: loc, Data: &NewInstToken{CompType: tokens[0], InstName: tokens[1], Arg: arg}}, nil
-}
-
 func parseLinkPS(tokens []string, loc SourceLoc) (Token, *ParseError) {
 	if len(tokens) != 2 {
 		return Token{}, &ParseError{Loc: loc, Msg: fmt.Sprintf("linkps: expected 2 arguments, got %d", len(tokens))}
@@ -679,8 +668,6 @@ func parseLine(tokens []string, loc SourceLoc) (Token, *ParseError) {
 		return parseNewSig(args, loc)
 	case "delsig":
 		return parseDelSig(args, loc)
-	case "newinst":
-		return parseNewInst(args, loc)
 	case "linkps":
 		return parseLinkPS(args, loc)
 	case "linksp":

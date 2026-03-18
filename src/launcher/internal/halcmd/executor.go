@@ -44,8 +44,6 @@ func executeToken(tok Token) error {
 		err = DelF(d.Funct, d.Thread)
 	case *NewSigToken:
 		err = NewSig(d.Name, d.SigType)
-	case *NewInstToken:
-		err = NewInst(d.CompType, d.InstName, d.Arg)
 	case *DelSigToken:
 		err = DelSig(d.Name)
 	case *LinkPSToken:
