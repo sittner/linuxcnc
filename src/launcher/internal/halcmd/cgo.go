@@ -55,28 +55,9 @@ static int hal_shim_list_comps(char *buf, int buf_size) {
 // helpers. 256 exceeds any realistic LinuxCNC machine configuration.
 #define HAL_SHIM_MAX_COMPS 256
 
-// shim_systemv forks and execs argv[0] with the given argument vector,
-// waits for it to exit, and returns its exit status.
-// This replicates what hal_systemv() does in halcmd_commands.cc, but
-// hal_systemv() is not part of liblinuxcnchal so we implement it inline.
-static int shim_systemv(const char *const argv[]) {
-    pid_t pid = fork();
-    if (pid < 0) return -1;
-    if (pid == 0) {
-        execvp(argv[0], (char *const *)argv);
-        _exit(127);
-    }
-    int status;
-    if (waitpid(pid, &status, 0) < 0) return -1;
-    if (WIFEXITED(status)) return WEXITSTATUS(status);
-    return -1;
-}
-
-// hal_shim_unload_all unloads all HAL components, exactly as halcmd's
-// "unload all" command does:
-//   - Userspace components: send SIGTERM to their owning process
-//   - Realtime components: call "rtapi_app unload <name>" via shim_systemv
-// The component identified by except_id is skipped (pass 0 to not skip any).
+// hal_shim_unload_all sends SIGTERM to all userspace HAL components except
+// the component identified by except_id (pass 0 to not skip any).
+// Realtime components are unloaded separately via rtapi_unload_module() from Go.
 // Returns 0 on success, or a negative errno value on error.
 static int hal_shim_unload_all(int except_id) {
     int next;
@@ -87,7 +68,7 @@ static int hal_shim_unload_all(int except_id) {
         return -EINVAL;
     }
 
-    // Phase 1: send SIGTERM to userspace components (same as do_unloadusr_cmd)
+    // Send SIGTERM to userspace components (same as do_unloadusr_cmd)
     rtapi_mutex_get(&(hal_data->mutex));
     next = hal_data->comp_list_ptr;
     while (next != 0) {
@@ -101,42 +82,44 @@ static int hal_shim_unload_all(int except_id) {
     }
     rtapi_mutex_give(&(hal_data->mutex));
 
-    // Phase 2: collect realtime component names then unload via rtapi_app
-    // (same as do_unloadrt_cmd)
-    {
-        char comps[HAL_SHIM_MAX_COMPS][HAL_NAME_LEN+1];
-        int n = 0;
-        int i;
+    return 0;
+}
 
-        rtapi_mutex_get(&(hal_data->mutex));
-        next = hal_data->comp_list_ptr;
-        while (next != 0) {
-            comp = (hal_comp_t *)SHMPTR(next);
-            if (comp->type == COMPONENT_TYPE_REALTIME) {
-                if (comp->comp_id != except_id && n < HAL_SHIM_MAX_COMPS) {
-                    // skip pseudo-components (names starting with "__")
-                    if (strstr(comp->name, HAL_PSEUDO_COMP_PREFIX) != comp->name) {
-                        snprintf(comps[n], sizeof(comps[n]), "%s", comp->name);
-                        n++;
-                    }
-                }
-            }
-            next = comp->next_ptr;
-        }
-        rtapi_mutex_give(&(hal_data->mutex));
+// hal_shim_collect_rt_comps collects the names of all realtime HAL components
+// (excluding except_id and pseudo-components) into a flat null-separated buffer.
+// Returns the number of names written, or a negative errno value on error.
+// Returns -ENOSPC if the buffer is too small.
+static int hal_shim_collect_rt_comps(char *buf, int buf_size, int except_id) {
+    int next;
+    hal_comp_t *comp;
+    int count = 0;
+    int pos = 0;
+    int name_len;
 
-        // unload each realtime component via rtapi_app
-        for (i = 0; i < n; i++) {
-            const char *argv[4];
-            argv[0] = EMC2_BIN_DIR "/rtapi_app";
-            argv[1] = "unload";
-            argv[2] = comps[i];
-            argv[3] = NULL;
-            shim_systemv(argv);
-        }
+    if (hal_data == NULL) {
+        return -EINVAL;
     }
 
-    return 0;
+    rtapi_mutex_get(&(hal_data->mutex));
+    next = hal_data->comp_list_ptr;
+    while (next != 0) {
+        comp = (hal_comp_t *)SHMPTR(next);
+        if (comp->type == COMPONENT_TYPE_REALTIME &&
+            comp->comp_id != except_id &&
+            strstr(comp->name, HAL_PSEUDO_COMP_PREFIX) != comp->name) {
+            name_len = (int)strlen(comp->name) + 1;
+            if (pos + name_len > buf_size) {
+                rtapi_mutex_give(&(hal_data->mutex));
+                return -ENOSPC;
+            }
+            memcpy(buf + pos, comp->name, name_len);
+            pos += name_len;
+            count++;
+        }
+        next = comp->next_ptr;
+    }
+    rtapi_mutex_give(&(hal_data->mutex));
+    return count;
 }
 
 // ===== 1a. Simple wrapper shims =====
@@ -603,42 +586,6 @@ static int hal_shim_loadusr(int flags, const char *wait_name, int timeout_s,
     }
 
     return 0;
-}
-
-// hal_shim_loadrt loads a realtime module via rtapi_app.
-// On USPACE: fork "rtapi_app load <mod> [args]" and poll HAL shared memory
-// until the component <mod> becomes ready, matching what halcmd's
-// do_loadrt_cmd() does (routes through do_loadusr_cmd with -Wn <mod>).
-// Using shim_systemv() here would block forever because rtapi_app is a
-// persistent daemon that never exits after loading a module.
-// Returns 0 on success, non-zero on error.
-static int hal_shim_loadrt(const char *mod, const char *const args[], int nargs) {
-    // Build the args for hal_shim_loadusr: ["load", mod, args...]
-    const char *uargs[256];
-    int m = 0;
-    int i;
-
-    if (2 + nargs >= 256) return -E2BIG;
-
-    uargs[m++] = "load";
-    uargs[m++] = mod;
-    for (i = 0; i < nargs; i++) {
-        uargs[m++] = args[i];
-    }
-
-    // flags=1: wait_ready — poll until component <mod> appears in HAL.
-    // timeout_s=0: use default (10 seconds).
-    return hal_shim_loadusr(1, mod, 0, EMC2_BIN_DIR "/rtapi_app", uargs, m);
-}
-
-// hal_shim_unloadrt unloads a realtime module via rtapi_app.
-static int hal_shim_unloadrt(const char *mod) {
-    const char *argv[4];
-    argv[0] = EMC2_BIN_DIR "/rtapi_app";
-    argv[1] = "unload";
-    argv[2] = mod;
-    argv[3] = NULL;
-    return shim_systemv(argv);
 }
 
 // hal_shim_unloadusr sends SIGTERM to the process owning a user-space component.
@@ -1419,6 +1366,7 @@ import (
 "unsafe"
 
 hal "linuxcnc.org/hal"
+"github.com/sittner/linuxcnc/src/launcher/internal/rtapi"
 )
 
 // halError translates a HAL C error code to a Go error.
@@ -1507,11 +1455,65 @@ names = append(names, string(p))
 return names, nil
 }
 
-// halUnloadAll wraps hal_shim_unload_all() to exit all HAL components except
-// the one identified by exceptID.
+// halCollectRTComps returns the names of all realtime HAL components except
+// the one identified by exceptID (pass 0 to skip none).
+// Pseudo-components (names starting with "__") are excluded.
+func halCollectRTComps(exceptID int) ([]string, error) {
+bufSize := int(C.HAL_SHIM_MAX_COMPS) * (int(C.HAL_NAME_LEN) + 1)
+buf := make([]byte, bufSize)
+
+ret := C.hal_shim_collect_rt_comps((*C.char)(unsafe.Pointer(unsafe.SliceData(buf))), C.int(bufSize), C.int(exceptID))
+if ret < 0 {
+return nil, halError(int(ret), "hal_shim_collect_rt_comps")
+}
+if ret == 0 {
+return []string{}, nil
+}
+
+end := 0
+remaining := int(ret)
+for end < len(buf) && remaining > 0 {
+if buf[end] == 0 {
+remaining--
+}
+end++
+}
+
+parts := bytes.Split(buf[:end], []byte{0})
+names := make([]string, 0, int(ret))
+for _, p := range parts {
+if len(p) > 0 {
+names = append(names, string(p))
+}
+}
+return names, nil
+}
+
+// halUnloadAll unloads all HAL components except the one identified by exceptID.
+// Realtime components are unloaded via rtapi.UnloadModule; userspace components
+// receive SIGTERM via hal_shim_unload_all.
 func halUnloadAll(exceptID int) error {
+// Collect realtime component names before sending SIGTERM to userspace comps,
+// since userspace exit may also remove RT components.
+rtComps, err := halCollectRTComps(exceptID)
+if err != nil {
+return err
+}
+
+// Send SIGTERM to all userspace components.
 ret := C.hal_shim_unload_all(C.int(exceptID))
+if ret < 0 {
 return halError(int(ret), "hal_shim_unload_all")
+}
+
+// Unload realtime components via rtapi.
+for _, name := range rtComps {
+if err := rtapi.UnloadModule(name); err != nil {
+// Log but continue — match the original behaviour of best-effort unloading.
+_ = err
+}
+}
+return nil
 }
 
 // ===== Go wrappers for 1a simple shims =====
@@ -1727,23 +1729,9 @@ return halError(int(ret), "hal_shim_net")
 
 // ===== Go wrappers for 1d process management shims =====
 
-// halLoadRT wraps hal_shim_loadrt() to load a realtime HAL module.
+// halLoadRT loads a realtime HAL module via the rtapi package.
 func halLoadRT(mod string, args []string) error {
-cMod := C.CString(mod)
-defer C.free(unsafe.Pointer(cMod))
-
-if len(args) == 0 {
-ret := C.hal_shim_loadrt(cMod, nil, 0)
-return halError(int(ret), "hal_shim_loadrt")
-}
-
-cArgs := make([]*C.char, len(args))
-for i, arg := range args {
-cArgs[i] = C.CString(arg)
-defer C.free(unsafe.Pointer(cArgs[i]))
-}
-ret := C.hal_shim_loadrt(cMod, (**C.char)(unsafe.Pointer(&cArgs[0])), C.int(len(cArgs)))
-return halError(int(ret), "hal_shim_loadrt")
+return rtapi.LoadModule(mod, args...)
 }
 
 // halLoadUSR wraps hal_shim_loadusr() to start a user-space HAL component.
@@ -1773,12 +1761,9 @@ ret := C.hal_shim_loadusr(C.int(flags), cWaitName, C.int(timeoutSecs), cProg,
 return halError(int(ret), "hal_shim_loadusr")
 }
 
-// halUnloadRT wraps hal_shim_unloadrt() to unload a realtime HAL module.
+// halUnloadRT unloads a realtime HAL module via the rtapi package.
 func halUnloadRT(mod string) error {
-cMod := C.CString(mod)
-defer C.free(unsafe.Pointer(cMod))
-ret := C.hal_shim_unloadrt(cMod)
-return halError(int(ret), "hal_shim_unloadrt")
+return rtapi.UnloadModule(mod)
 }
 
 // halUnloadUSR wraps hal_shim_unloadusr() to send SIGTERM to a user-space component.

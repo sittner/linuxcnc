@@ -30,6 +30,7 @@ func halAlias(_, _, _ string) error            { return errNoCGO }
 func halUnAlias(_, _ string) error             { return errNoCGO }
 func halLoadRT(_ string, _ []string) error     { return errNoCGO }
 func halUnloadRT(_ string) error               { return errNoCGO }
+func halCollectRTComps(_ int) ([]string, error) { return nil, errNoCGO }
 func halUnloadUSR(_ string) error              { return errNoCGO }
 func halWaitUSR(_ string, _ int) error         { return errNoCGO }
 

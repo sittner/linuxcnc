@@ -26,6 +26,7 @@ import (
 	"github.com/sittner/linuxcnc/src/launcher/emcsvr"
 	"github.com/sittner/linuxcnc/src/launcher/halfile"
 	"github.com/sittner/linuxcnc/src/launcher/internal/halcmd"
+	"github.com/sittner/linuxcnc/src/launcher/internal/rtapi"
 	"github.com/sittner/linuxcnc/src/launcher/inifile"
 	"github.com/sittner/linuxcnc/src/launcher/lockfile"
 	"github.com/sittner/linuxcnc/src/launcher/realtime"
@@ -251,6 +252,13 @@ func (l *Launcher) Run() error {
 		return fmt.Errorf("realtime start failed: %w", err)
 	}
 
+	// Initialize RTAPI uspace environment — sets up RT hardening, memory
+	// locking, and scheduling.  This must happen before any rtapi_load_module
+	// calls (halcmd.LoadRT).
+	if err := rtapi.Init(); err != nil {
+		return fmt.Errorf("rtapi init: %w", err)
+	}
+
 	// Initialize HAL connection — same as halcmd calling hal_init("halcmd").
 	// This is required before any hal-go API calls (StartThreads, StopThreads, etc.).
 	halComp, err := hal.NewComponent("launcher")
@@ -267,8 +275,8 @@ func (l *Launcher) Run() error {
 
 	// Load the threads HAL component to create RT threads (servo-thread,
 	// optionally base-thread). Thread creation has been decoupled from
-	// motmod — the launcher now loads the threads component which runs
-	// inside rtapi_app with proper RT scheduling.
+	// motmod — the launcher now loads the threads component in-process
+	// via librtapi_uspace.so with proper RT scheduling.
 	// This must happen before motmod, HAL files, or any component that
 	// uses addf to attach functions to threads.
 	if err := l.loadThreads(); err != nil {
@@ -526,10 +534,10 @@ func (l *Launcher) logConfiguration() {
 // Thread creation has been decoupled from motmod — motmod now only exports
 // functions, so the threads must exist before motmod or HAL files run.
 //
-// The threads component is loaded via halcmd.LoadRT() which sends the command to
-// rtapi_app (the privileged RT process). rtapi_app dlopen()s threads.so and
-// calls hal_create_thread() inside its own process space, ensuring the RT
-// pthreads get proper RT scheduling.
+// The threads component is loaded via halcmd.LoadRT() which calls
+// rtapi_load_module() in-process via librtapi_uspace.so. This dlopen()s
+// threads.so and calls hal_create_thread(), ensuring the RT pthreads get
+// proper RT scheduling.
 //
 // Logic (reads [EMCMOT]SERVO_PERIOD and [EMCMOT]BASE_PERIOD from INI):
 //   - If [EMCMOT]BASE_PERIOD is set and > 0:
