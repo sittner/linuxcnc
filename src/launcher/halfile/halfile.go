@@ -13,25 +13,25 @@ import (
 	"path/filepath"
 	"strings"
 
-	hal "linuxcnc.org/hal"
+	halcmd "github.com/sittner/linuxcnc/src/launcher/internal/halcmd"
 
 	"github.com/sittner/linuxcnc/src/launcher/inifile"
 )
 
 // iniLookupAdapter wraps *inifile.IniFile so that it satisfies the
-// hal.INILookup interface required by the hal-go parser.
+// halcmd.INILookup interface required by the hal-go parser.
 type iniLookupAdapter struct {
 	ini *inifile.IniFile
 }
 
-// Get implements hal.INILookup. It returns ("", nil) when the key is absent
+// Get implements halcmd.INILookup. It returns ("", nil) when the key is absent
 // (the hal parser treats an empty string the same as "not found" for
 // substitution purposes).
 func (a *iniLookupAdapter) Get(section, key string) (string, error) {
 	return a.ini.Get(section, key), nil
 }
 
-// GetAll implements hal.INILookup. It returns the full INI content as a
+// GetAll implements halcmd.INILookup. It returns the full INI content as a
 // nested section→key→value map, needed for Go-template rendering.
 func (a *iniLookupAdapter) GetAll() map[string]map[string]string {
 	m := make(map[string]map[string]string)
@@ -83,25 +83,25 @@ func New(ini *inifile.IniFile, halibPath string, logger *slog.Logger, iniFilePat
 	}
 }
 
-// Resolve implements hal.PathResolver so that Executor can be passed directly
-// to hal.NewMultiFileParser and hal.NewSingleFileParser.
+// Resolve implements halcmd.PathResolver so that Executor can be passed directly
+// to halcmd.NewMultiFileParser and halcmd.NewSingleFileParser.
 func (e *Executor) Resolve(path string) (string, error) {
 	return e.resolvePath(path)
 }
 
-// iniLookup returns a hal.INILookup adapter, or nil when no INI file is set.
-func (e *Executor) iniLookup() hal.INILookup {
+// iniLookup returns a halcmd.INILookup adapter, or nil when no INI file is set.
+func (e *Executor) iniLookup() halcmd.INILookup {
 	if e.ini == nil {
 		return nil
 	}
 	return &iniLookupAdapter{ini: e.ini}
 }
 
-// IniLookup returns a hal.INILookup adapter for the INI file associated with
+// IniLookup returns a halcmd.INILookup adapter for the INI file associated with
 // this Executor. Returns nil when no INI file is set.
 // This is the public accessor used by callers (e.g. cleanup.go) that need to
-// pass an INILookup to hal.NewSingleFileParser directly.
-func (e *Executor) IniLookup() hal.INILookup {
+// pass an INILookup to halcmd.NewSingleFileParser directly.
+func (e *Executor) IniLookup() halcmd.INILookup {
 	return e.iniLookup()
 }
 
@@ -150,7 +150,7 @@ func (e *Executor) ExecuteAll() error {
 		return nil
 	}
 
-	mp := hal.NewMultiFileParser(e.iniLookup(), e)
+	mp := halcmd.NewMultiFileParser(e.iniLookup(), e)
 	result, err := mp.Parse(paths)
 	if err != nil {
 		return fmt.Errorf("parsing HAL files: %w", err)
@@ -179,7 +179,7 @@ func (e *Executor) ExecuteHalCommands() error {
 		return nil
 	}
 
-	sp := hal.NewSingleFileParser(e.iniLookup(), e)
+	sp := halcmd.NewSingleFileParser(e.iniLookup(), e)
 
 	for i, raw := range cmds {
 		cmd := strings.TrimSpace(raw)
@@ -223,7 +223,7 @@ func (e *Executor) ExecuteShutdown() error {
 		return fmt.Errorf("resolving HAL shutdown script %q: %w", shutdown, err)
 	}
 	e.logger.Info("running HAL shutdown script", "script", resolved)
-	sp := hal.NewSingleFileParser(e.iniLookup(), e)
+	sp := halcmd.NewSingleFileParser(e.iniLookup(), e)
 	result, err := sp.Parse(resolved)
 	if err != nil {
 		return fmt.Errorf("parsing HAL shutdown script %q: %w", resolved, err)
@@ -270,7 +270,7 @@ func (e *Executor) ExecutePostGUI() error {
 		return nil
 	}
 
-	mp := hal.NewMultiFileParser(e.iniLookup(), e)
+	mp := halcmd.NewMultiFileParser(e.iniLookup(), e)
 	result, err := mp.Parse(paths)
 	if err != nil {
 		return fmt.Errorf("parsing POSTGUI_HALFILE: %w", err)

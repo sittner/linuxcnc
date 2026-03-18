@@ -1,4 +1,4 @@
-package hal
+package halcmd
 
 import "testing"
 

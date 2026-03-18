@@ -1,4 +1,4 @@
-package hal
+package halcmd
 
 import "fmt"
 
@@ -159,7 +159,7 @@ func (*DelFToken) tokenData() {}
 // NewSigToken represents a "newsig" command.
 type NewSigToken struct {
 	Name    string
-	SigType PinType // PinType is already defined in types.go
+	SigType PinType // PinType is aliased from hal.PinType in types.go
 }
 
 func (*NewSigToken) tokenData() {}
