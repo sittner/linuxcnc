@@ -38,6 +38,31 @@ static inline void go_hal_port_clear(hal_port_t* p) {
     hal_port_clear(*p);
 }
 
+// hal_shim_find_comp_by_name finds a component by name.
+// Returns the comp_id or -1 if not found.
+static int hal_shim_find_comp_by_name(const char *name) {
+    hal_comp_t *comp = halpr_find_comp_by_name((char*)name);
+    if (!comp) {
+        return -1;
+    }
+    return comp->comp_id;
+}
+
+// hal_shim_comp_make calls the component's make function to create a new instance.
+// comp_name is the component type name, inst_name is the new instance name.
+// Returns 0 on success, -ENOENT if the component is not found,
+// -ENOSYS if the component does not support instantiation, or a negative
+// error code from the make function on failure.
+static int hal_shim_comp_make(const char *comp_name, const char *inst_name, const char *arg) {
+    hal_comp_t *comp = halpr_find_comp_by_name((char*)comp_name);
+    if (!comp) {
+        return -ENOENT;
+    }
+    if (!comp->make) {
+        return -ENOSYS;
+    }
+    return comp->make((char*)inst_name, (char*)arg);
+}
 
 */
 import "C"
@@ -283,5 +308,39 @@ func halError(code int, op string) error {
 	}
 
 	return newError(op, message, code)
+}
+
+// FindCompByName returns the component ID for a component name, or -1 if not found.
+func FindCompByName(name string) int {
+	cname := C.CString(name)
+	defer C.free(unsafe.Pointer(cname))
+	return int(C.hal_shim_find_comp_by_name(cname))
+}
+
+// CompMake creates a new instance of an instantiable component.
+// compName is the component type, instName is the new instance name.
+// Returns an error if the component is not found, does not support
+// instantiation, or the make function fails.
+func CompMake(compName, instName, arg string) error {
+	cCompName := C.CString(compName)
+	defer C.free(unsafe.Pointer(cCompName))
+	cInstName := C.CString(instName)
+	defer C.free(unsafe.Pointer(cInstName))
+	cArg := C.CString(arg)
+	defer C.free(unsafe.Pointer(cArg))
+
+	ret := int(C.hal_shim_comp_make(cCompName, cInstName, cArg))
+	if ret == 0 {
+		return nil
+	}
+	// -ENOENT = component not found, -ENOSYS = no make function
+	switch ret {
+	case -int(C.ENOENT):
+		return fmt.Errorf("newinst: component %s not found", compName)
+	case -int(C.ENOSYS):
+		return fmt.Errorf("newinst: component %s does not support instantiation", compName)
+	default:
+		return fmt.Errorf("newinst: failed to create instance %s of component %s (code %d)", instName, compName, ret)
+	}
 }
 

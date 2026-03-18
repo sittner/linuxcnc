@@ -61,3 +61,9 @@ func (p *Pin[T]) String() string { return p.name }
 func halInit(_ string) (int, error) { return 0, errNoCGO }
 func halReady(_ int) error          { return errNoCGO }
 func halExit(_ int) error           { return errNoCGO }
+
+// FindCompByName stub for non-CGO builds.
+func FindCompByName(_ string) int { return -1 }
+
+// CompMake stub for non-CGO builds.
+func CompMake(_, _, _ string) error { return errNoCGO }
