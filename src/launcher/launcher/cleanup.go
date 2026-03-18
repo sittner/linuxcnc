@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -144,7 +145,7 @@ func (l *Launcher) resolveNmlFile() string {
 			return l.resolveRelativePath(nml)
 		}
 	}
-	return config.DefaultNmlFile
+	return "/tmp/linuxcnc.nml"
 }
 
 // resolveRelativePath resolves a path that may be relative against the INI
