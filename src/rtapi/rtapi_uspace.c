@@ -1013,37 +1013,31 @@ static long clock_set_period(long nsecs)
 
 int rtapi_prio_highest(void)
 {
-    rtapi_uspace_init();
     return prio_highest();
 }
 
 int rtapi_prio_lowest(void)
 {
-    rtapi_uspace_init();
     return prio_lowest();
 }
 
 int rtapi_prio_next_higher(int prio)
 {
-    rtapi_uspace_init();
     return prio_next_higher(prio);
 }
 
 int rtapi_prio_next_lower(int prio)
 {
-    rtapi_uspace_init();
     return prio_next_lower(prio);
 }
 
 long rtapi_clock_set_period(long nsecs)
 {
-    rtapi_uspace_init();
     return clock_set_period(nsecs);
 }
 
 int rtapi_task_new(void (*taskcode)(void*), void *arg,
         int prio, int owner, unsigned long int stacksize, int uses_fp) {
-    rtapi_uspace_init();
     return task_new(taskcode, arg, prio, owner, stacksize, uses_fp);
 }
 
