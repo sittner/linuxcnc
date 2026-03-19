@@ -16,12 +16,18 @@ import (
 // Init initializes the RTAPI uspace environment.
 // Must be called before any other RTAPI functions.
 // This sets up RT hardening, memory locking, etc.
+// It is safe to call Init multiple times; initialization happens only once.
 func Init() error {
-	ret := C.rtapi_uspace_init()
-	if ret != 0 {
-		return fmt.Errorf("rtapi_uspace_init failed with code %d", ret)
-	}
-	return nil
+	var err error
+	initOnce.Do(func() {
+		ret := C.rtapi_uspace_init()
+		if ret != 0 {
+			err = fmt.Errorf("rtapi_uspace_init failed with code %d", ret)
+			return
+		}
+		initialized = true
+	})
+	return err
 }
 
 // LoadModule loads a realtime module by name with optional arguments.
