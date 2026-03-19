@@ -3,7 +3,7 @@ INCLUDES += hal
 ../include/%.h: ./hal/%.h
 	cp $^ $@
 
-HALLIBSRCS := hal/hal_lib.c $(ULAPISRCS)
+HALLIBSRCS := hal/hal_lib.c
 $(call TOOBJSDEPS, $(HALLIBSRCS)): EXTRAFLAGS += -fPIC $(ULAPI_CFLAGS)
 USERSRCS += $(HALLIBSRCS)
 ifeq ($(BUILD_SYS),uspace)
@@ -14,11 +14,11 @@ endif
 
 HALLIB := ../lib/liblinuxcnchal.so
 
-$(HALLIB).0: $(call TOOBJS, $(HALLIBSRCS))
+$(HALLIB).0: $(call TOOBJS, $(HALLIBSRCS)) ../lib/librtapi_uspace.so
 	$(ECHO) Creating shared library $(notdir $@)
 	@mkdir -p ../lib
 	@rm -f $@
-	$(Q)$(CC) $(LDFLAGS) -Wl,-soname,$(notdir $@) -shared -o $@ $^ $(HALLIB_LIBS) $(ULAPI_LDFLAGS)
+	$(Q)$(CC) $(LDFLAGS) -Wl,-soname,$(notdir $@) -shared -o $@ $^ $(HALLIB_LIBS) -L../lib -lrtapi_uspace
 
 HALMODULESRCS := hal/halmodule.cc
 PYSRCS += $(HALMODULESRCS)
