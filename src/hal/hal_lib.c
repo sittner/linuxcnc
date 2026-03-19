@@ -260,7 +260,7 @@ int hal_init(const char *name)
     }
     /* initialize the structure */
     comp->comp_id = comp_id;
-    if ((int)getpid() == hal_data->launcher_pid) {
+    if (getpid() == hal_data->launcher_pid) {
         comp->type = COMPONENT_TYPE_REALTIME;
         comp->pid = 0;
     } else {
@@ -2993,7 +2993,7 @@ static int init_hal_data(void)
     hal_data->shmem_bot = sizeof(hal_data_t);
     hal_data->shmem_top = HAL_SIZE;
     hal_data->lock = HAL_LOCK_NONE;
-    hal_data->launcher_pid = (int)getpid();
+    hal_data->launcher_pid = getpid();
     /* done, release mutex */
     rtapi_mutex_give(&(hal_data->mutex));
     return 0;
