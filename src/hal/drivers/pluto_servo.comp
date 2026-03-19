@@ -159,8 +159,8 @@ option extra_cleanup;
 
 option data internal;
 
-function read "Read all the inputs from the pluto-servo board";
-function write "Write all the outputs on the pluto-servo board";
+function pluto_servo_read "Read all the inputs from the pluto-servo board";
+function pluto_servo_write "Write all the outputs on the pluto-servo board";
 
 see_also """The \\fIpluto_servo\\fR section in the HAL User Manual, which shows the location of each physical pin on the pluto board.""";
 
@@ -228,7 +228,7 @@ int PWM(int enable, double value, double offset, double scale, double min_dc, do
     return result;
 }
 
-FUNCTION(write) {
+FUNCTION(pluto_servo_write) {
     int r = 0;
     int i;
     if(communication_error) return;
@@ -257,7 +257,7 @@ FUNCTION(write) {
     write16(r);
 }
 
-FUNCTION(read) {
+FUNCTION(pluto_servo_read) {
     int i;
     __u32 ppdata;
 

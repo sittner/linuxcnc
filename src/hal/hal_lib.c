@@ -60,13 +60,13 @@
 #include "rtapi_string.h"
 #include "rtapi_atomic.h"
 
-#ifdef RTAPI
+#ifdef __KERNEL__
 #include "rtapi_app.h"
 /* module information */
 MODULE_AUTHOR("John Kasunich");
 MODULE_DESCRIPTION("Hardware Abstraction Layer for EMC");
 MODULE_LICENSE("GPL");
-#endif /* RTAPI */
+#endif /* __KERNEL__ */
 
 #if !defined(__KERNEL__)
 #include <sys/types.h>		/* pid_t */
@@ -158,7 +158,7 @@ static int ref_cnt = 0;
 int hal_init(const char *name)
 {
     int comp_id;
-#ifdef ULAPI
+#if !defined(__KERNEL__)
     int retval;
     void *mem;
 #endif
@@ -176,7 +176,7 @@ int hal_init(const char *name)
 	return -EINVAL;
     }
 
-#ifdef ULAPI
+#if !defined(__KERNEL__)
     if(!lib_mem_id) {
 	rtapi_print_msg(RTAPI_MSG_DBG, "HAL: initializing hal_lib\n");
 	rtapi_snprintf(rtapi_name, RTAPI_NAME_LEN, "HAL_LIB_%d", (int)getpid());
@@ -337,7 +337,7 @@ int hal_exit(int comp_id)
     /* release mutex */
     rtapi_mutex_give(&(hal_data->mutex));
     --ref_cnt;
-#ifdef ULAPI
+#if !defined(__KERNEL__)
     if(ref_cnt == 0) {
         rtapi_print_msg(RTAPI_MSG_DBG, "HAL: releasing RTAPI resources\n");
 	/* release RTAPI resources */
@@ -381,7 +381,6 @@ void *hal_malloc(long int size)
     return retval;
 }
 
-#ifdef RTAPI
 int hal_set_constructor(int comp_id, constructor make) {
     int next;
     hal_comp_t *comp;
@@ -417,7 +416,6 @@ int hal_set_constructor(int comp_id, constructor make) {
     rtapi_mutex_give(&(hal_data->mutex));
     return 0;
 }
-#endif
 
 int hal_set_unready(int comp_id) {
     hal_comp_t *comp;
@@ -1782,8 +1780,6 @@ int hal_get_param_value_by_name(
 *                   EXECUTION RELATED FUNCTIONS                        *
 ************************************************************************/
 
-#ifdef RTAPI
-
 int hal_export_funct(const char *name, void (*funct) (void *, long),
     void *arg, int uses_fp, int reentrant, int comp_id)
 {
@@ -2130,8 +2126,6 @@ extern int hal_thread_delete(const char *name)
 	name);
     return -EINVAL;
 }
-
-#endif /* RTAPI */
 
 int hal_add_funct_to_thread(const char *funct_name, const char *thread_name, int position)
 {
@@ -2746,7 +2740,7 @@ hal_pin_t *halpr_find_pin_by_sig(hal_sig_t * sig, hal_pin_t * start)
 *                     LOCAL FUNCTION CODE                              *
 ************************************************************************/
 
-#ifdef RTAPI
+#ifdef __KERNEL__
 /* these functions are called when the hal_lib module is insmod'ed
    or rmmod'ed.
 */
@@ -2873,7 +2867,7 @@ void rtapi_app_exit(void)
     rtapi_print_msg(RTAPI_MSG_DBG,
 	"HAL_LIB: kernel lib removed successfully\n");
 }
-#endif /* RTAPI */
+#endif /* __KERNEL__ */
 
 /* this is the task function that implements threads in realtime */
 
@@ -3910,7 +3904,6 @@ void hal_port_clear(hal_port_t port) {
 }
 
 
-#ifdef ULAPI
 void hal_port_wait_readable(hal_port_t** port, unsigned count, sig_atomic_t* stop) {
     while((hal_port_readable(**port) < count) && (!stop || !*stop)) {
         rtapi_delay(10000000);
@@ -3923,7 +3916,6 @@ void hal_port_wait_writable(hal_port_t** port, unsigned count, sig_atomic_t* sto
         rtapi_delay(10000000);
     }
 }
-#endif
 
 
 
@@ -4038,7 +4030,6 @@ int hal_stream_maxdepth(hal_stream_t *stream) {
     return stream->fifo->depth;
 }
 
-#ifdef ULAPI
 void hal_stream_wait_writable(hal_stream_t *stream, sig_atomic_t *stop) {
     while(!hal_stream_writable(stream) && (!stop || !*stop)) {
         /* fifo full, sleep for 10ms */
@@ -4052,7 +4043,6 @@ void hal_stream_wait_readable(hal_stream_t *stream, sig_atomic_t *stop) {
         rtapi_delay(10000000);
     }
 }
-#endif
 
 static int hal_stream_atomic_load_in(hal_stream_t *stream)
 {
@@ -4194,7 +4184,7 @@ int hal_stream_num_underruns(hal_stream_t *stream) {
     return stream->fifo->num_underruns;
 }
 
-#ifdef RTAPI
+//#ifdef __KERNEL__
 /* only export symbols when we're building a kernel module */
 
 EXPORT_SYMBOL(hal_init);
@@ -4294,4 +4284,4 @@ EXPORT_SYMBOL_GPL(hal_stream_element_count);
 EXPORT_SYMBOL_GPL(hal_stream_element_type);
 EXPORT_SYMBOL_GPL(hal_stream_num_overruns);
 EXPORT_SYMBOL_GPL(hal_stream_num_underruns);
-#endif /* rtapi */
+//#endif /* __KERNEL__ */

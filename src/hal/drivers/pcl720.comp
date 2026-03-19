@@ -15,8 +15,8 @@ param rw bit pin-##-out-invert[32] "Set to true to invert the sense of the outpu
 
 pin out  unsigned wait_clocks;
 
-function read nofp "Reads each of the digital inputs and updates the HAL pins";
-function write nofp "Writes the values of the output HAL pins to the digital IO";
+function pcl720_read nofp "Reads each of the digital inputs and updates the HAL pins";
+function pcl720_write nofp "Writes the values of the output HAL pins to the digital IO";
 function reset nofp """Waits for the length of time specified by the
 \\fBreset-time\\fP parameter and resets any pins for which the \\fBreset\\fP
 parameter has been set. This can be used to allow step generators to make a step
@@ -51,7 +51,7 @@ author "Andy Pugh";
 static int ioaddr[MAX_CHAN] = {-1, -1, -1, -1, -1, -1, -1, -1};
 RTAPI_MP_ARRAY_INT(ioaddr, MAX_CHAN, "Base addresses")
 
-FUNCTION(read){
+FUNCTION(pcl720_read){
     unsigned R;
     int i;
     R =   inb(base_addr)
@@ -65,7 +65,7 @@ FUNCTION(read){
     }
 }
 
-FUNCTION(write){
+FUNCTION(pcl720_write){
     int i;
     unsigned char b;
     out = 0;
