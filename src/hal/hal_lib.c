@@ -2740,7 +2740,6 @@ hal_pin_t *halpr_find_pin_by_sig(hal_sig_t * sig, hal_pin_t * start)
 *                     LOCAL FUNCTION CODE                              *
 ************************************************************************/
 
-#ifdef __KERNEL__
 /* these functions are called when the hal_lib module is insmod'ed
    or rmmod'ed.
 */
@@ -2867,7 +2866,6 @@ void rtapi_app_exit(void)
     rtapi_print_msg(RTAPI_MSG_DBG,
 	"HAL_LIB: kernel lib removed successfully\n");
 }
-#endif /* __KERNEL__ */
 
 /* this is the task function that implements threads in realtime */
 
@@ -4186,6 +4184,8 @@ int hal_stream_num_underruns(hal_stream_t *stream) {
 
 //#ifdef __KERNEL__
 /* only export symbols when we're building a kernel module */
+
+EXPORT_SYMBOL(rtapi_app_main);
 
 EXPORT_SYMBOL(hal_init);
 EXPORT_SYMBOL(hal_ready);
