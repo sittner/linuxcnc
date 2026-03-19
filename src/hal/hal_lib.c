@@ -72,6 +72,7 @@ MODULE_LICENSE("GPL");
 #include <sys/types.h>		/* pid_t */
 #include <unistd.h>		/* getpid() */
 #include <time.h>
+#include "rtapi_uspace.h"	/* rtapi_get_realtime_context() */
 #endif
 
 char *hal_shmem_base = 0;
@@ -264,8 +265,13 @@ int hal_init(const char *name)
     comp->type = COMPONENT_TYPE_REALTIME;
     comp->pid = 0;
 #else /* ULAPI */
-    comp->type = COMPONENT_TYPE_USER;
-    comp->pid = getpid();
+    if (rtapi_get_realtime_context()) {
+        comp->type = COMPONENT_TYPE_REALTIME;
+        comp->pid = 0;
+    } else {
+        comp->type = COMPONENT_TYPE_USER;
+        comp->pid = getpid();
+    }
 #endif
     comp->ready = 0;
     comp->shmem_base = hal_shmem_base;

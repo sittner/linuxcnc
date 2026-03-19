@@ -97,6 +97,19 @@ static int rtapi_timespec_less(const struct timespec ta, const struct timespec t
 void rtapi_timespec_advance(struct timespec *result, const struct timespec *src, unsigned long nsec);
 static _Atomic int with_root_level = 0;
 
+/* Thread-local flag to indicate that the current thread is loading a realtime
+   module via rtapi_load_module(). This allows hal_init() to determine the
+   component type at runtime rather than at compile time. */
+static __thread int _rtapi_is_realtime_context = 0;
+
+void rtapi_set_realtime_context(int is_rt) {
+    _rtapi_is_realtime_context = is_rt;
+}
+
+int rtapi_get_realtime_context(void) {
+    return _rtapi_is_realtime_context;
+}
+
 static void with_root_enter(void) {
     if(atomic_fetch_add(&with_root_level, 1) == 0) {
 #ifdef __linux__
@@ -407,7 +420,10 @@ int rtapi_load_module(const char *name, int argc, char **argv) {
             return -1;
         }
 
-        if ((result = start()) < 0) {
+        rtapi_set_realtime_context(1);
+        result = start();
+        rtapi_set_realtime_context(0);
+        if (result < 0) {
             rtapi_print_msg(RTAPI_MSG_ERR, "%s: rtapi_app_main: %s (%d)\n",
                 name, strerror(-result), result);
             dlclose(module);
