@@ -4184,7 +4184,7 @@ int hal_stream_num_underruns(hal_stream_t *stream) {
     return stream->fifo->num_underruns;
 }
 
-#ifdef __KERNEL__
+//#ifdef __KERNEL__
 /* only export symbols when we're building a kernel module */
 
 EXPORT_SYMBOL(hal_init);
@@ -4284,4 +4284,4 @@ EXPORT_SYMBOL_GPL(hal_stream_element_count);
 EXPORT_SYMBOL_GPL(hal_stream_element_type);
 EXPORT_SYMBOL_GPL(hal_stream_num_overruns);
 EXPORT_SYMBOL_GPL(hal_stream_num_underruns);
-#endif /* __KERNEL__ */
+//#endif /* __KERNEL__ */
