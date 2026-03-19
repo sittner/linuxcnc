@@ -126,7 +126,9 @@
 #include <rtapi.h>
 RTAPI_BEGIN_DECLS
 
+#if !defined(__KERNEL__)
 #include <signal.h>
+#endif
 
 #include <rtapi_errno.h>
 

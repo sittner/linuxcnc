@@ -59,10 +59,6 @@
     information, go to www.linuxcnc.org.
 */
 
-#if ( defined RTAPI ) && ( defined ULAPI )
-#error "Can't define both RTAPI and ULAPI!"
-#endif
-
 #include <stddef.h> // provides NULL
 
 
