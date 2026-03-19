@@ -129,13 +129,9 @@ static hal_pin_t *alloc_pin_struct(void);
 static hal_sig_t *alloc_sig_struct(void);
 static hal_param_t *alloc_param_struct(void);
 static hal_oldname_t *halpr_alloc_oldname_struct(void);
-#ifdef RTAPI
 static hal_funct_t *alloc_funct_struct(void);
-#endif /* RTAPI */
 static hal_funct_entry_t *alloc_funct_entry_struct(void);
-#ifdef RTAPI
 static hal_thread_t *alloc_thread_struct(void);
-#endif /* RTAPI */
 
 static void free_comp_struct(hal_comp_t * comp);
 static void unlink_pin(hal_pin_t * pin);
@@ -143,21 +139,15 @@ static void free_pin_struct(hal_pin_t * pin);
 static void free_sig_struct(hal_sig_t * sig);
 static void free_param_struct(hal_param_t * param);
 static void free_oldname_struct(hal_oldname_t * oldname);
-#ifdef RTAPI
 static void free_funct_struct(hal_funct_t * funct);
-#endif /* RTAPI */
 static void free_funct_entry_struct(hal_funct_entry_t * funct_entry);
-#ifdef RTAPI
 static void free_thread_struct(hal_thread_t * thread);
-#endif /* RTAPI */
 
-#ifdef RTAPI
 /** 'thread_task()' is a function that is invoked as a realtime task.
     It implements a thread, by running down the thread's function list
     and calling each function in turn.
 */
 static void thread_task(void *arg);
-#endif /* RTAPI */
 
 /***********************************************************************
 *                  PUBLIC (API) FUNCTION CODE                          *
@@ -391,7 +381,6 @@ void *hal_malloc(long int size)
     return retval;
 }
 
-#ifdef RTAPI
 int hal_set_constructor(int comp_id, constructor make) {
     int next;
     hal_comp_t *comp;
@@ -427,7 +416,6 @@ int hal_set_constructor(int comp_id, constructor make) {
     rtapi_mutex_give(&(hal_data->mutex));
     return 0;
 }
-#endif
 
 int hal_set_unready(int comp_id) {
     hal_comp_t *comp;
@@ -1792,8 +1780,6 @@ int hal_get_param_value_by_name(
 *                   EXECUTION RELATED FUNCTIONS                        *
 ************************************************************************/
 
-#ifdef RTAPI
-
 int hal_export_funct(const char *name, void (*funct) (void *, long),
     void *arg, int uses_fp, int reentrant, int comp_id)
 {
@@ -1830,13 +1816,6 @@ int hal_export_funct(const char *name, void (*funct) (void *, long),
 	rtapi_mutex_give(&(hal_data->mutex));
 	rtapi_print_msg(RTAPI_MSG_ERR,
 	    "HAL: ERROR: component %d not found\n", comp_id);
-	return -EINVAL;
-    }
-    if (comp->type == COMPONENT_TYPE_USER) {
-	/* not a realtime component */
-	rtapi_mutex_give(&(hal_data->mutex));
-	rtapi_print_msg(RTAPI_MSG_ERR,
-	    "HAL: ERROR: component %d is not realtime\n", comp_id);
 	return -EINVAL;
     }
     if(comp->ready) {
@@ -2140,8 +2119,6 @@ extern int hal_thread_delete(const char *name)
 	name);
     return -EINVAL;
 }
-
-#endif /* RTAPI */
 
 int hal_add_funct_to_thread(const char *funct_name, const char *thread_name, int position)
 {
@@ -2884,6 +2861,8 @@ void rtapi_app_exit(void)
 	"HAL_LIB: kernel lib removed successfully\n");
 }
 
+#endif /* RTAPI */
+
 /* this is the task function that implements threads in realtime */
 
 static void thread_task(void *arg)
@@ -2935,7 +2914,6 @@ static void thread_task(void *arg)
 	rtapi_wait();
     }
 }
-#endif /* RTAPI */
 
 /* see the declarations of these functions (near top of file) for
    a description of what they do.
@@ -3199,7 +3177,6 @@ static hal_oldname_t *halpr_alloc_oldname_struct(void)
     return p;
 }
 
-#ifdef RTAPI
 static hal_funct_t *alloc_funct_struct(void)
 {
     hal_funct_t *p;
@@ -3228,7 +3205,6 @@ static hal_funct_t *alloc_funct_struct(void)
     }
     return p;
 }
-#endif /* RTAPI */
 
 static hal_funct_entry_t *alloc_funct_entry_struct(void)
 {
@@ -3257,7 +3233,6 @@ static hal_funct_entry_t *alloc_funct_entry_struct(void)
     return p;
 }
 
-#ifdef RTAPI
 static hal_thread_t *alloc_thread_struct(void)
 {
     hal_thread_t *p;
@@ -3285,20 +3260,15 @@ static hal_thread_t *alloc_thread_struct(void)
     }
     return p;
 }
-#endif /* RTAPI */
 
 static void free_comp_struct(hal_comp_t * comp)
 {
     rtapi_intptr_t *prev, next;
-#ifdef RTAPI
     hal_funct_t *funct;
-#endif /* RTAPI */
     hal_pin_t *pin;
     hal_param_t *param;
 
     /* can't delete the component until we delete its "stuff" */
-    /* need to check for functs only if a realtime component */
-#ifdef RTAPI
     /* search the function list for this component's functs */
     prev = &(hal_data->funct_list_ptr);
     next = *prev;
@@ -3315,7 +3285,6 @@ static void free_comp_struct(hal_comp_t * comp)
 	}
 	next = *prev;
     }
-#endif /* RTAPI */
     /* search the pin list for this component's pins */
     prev = &(hal_data->pin_list_ptr);
     next = *prev;
@@ -3483,7 +3452,6 @@ static void free_oldname_struct(hal_oldname_t * oldname)
     hal_data->oldname_free_ptr = SHMOFF(oldname);
 }
 
-#ifdef RTAPI
 static void free_funct_struct(hal_funct_t * funct)
 {
     int next_thread;
@@ -3538,7 +3506,6 @@ static void free_funct_struct(hal_funct_t * funct)
     funct->next_ptr = hal_data->funct_free_ptr;
     hal_data->funct_free_ptr = SHMOFF(funct);
 }
-#endif /* RTAPI */
 
 static void free_funct_entry_struct(hal_funct_entry_t * funct_entry)
 {
@@ -3557,7 +3524,6 @@ static void free_funct_entry_struct(hal_funct_entry_t * funct_entry)
     list_add_after((hal_list_t *) funct_entry, &(hal_data->funct_entry_free));
 }
 
-#ifdef RTAPI
 static void free_thread_struct(hal_thread_t * thread)
 {
     hal_funct_entry_t *funct_entry;
@@ -3624,7 +3590,6 @@ static void free_thread_struct(hal_thread_t * thread)
     thread->next_ptr = hal_data->thread_free_ptr;
     hal_data->thread_free_ptr = SHMOFF(thread);
 }
-#endif /* RTAPI */
 
 static char *halpr_type_string(int type, char *buf, size_t nbuf) {
     switch(type) {
