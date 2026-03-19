@@ -3,20 +3,3 @@ INCLUDES += rtapi
 $(patsubst ./rtapi/%,../include/%,$(wildcard ./rtapi/*.h)): ../include/%.h: ./rtapi/%.h
 	cp $^ $@
 
-ifeq ($(BUILD_SYS),uspace)
-
-RTAPI_USPACE_SRCS := \
-	rtapi/rtapi_uspace.c \
-	rtapi/uspace_rtapi_parport.c \
-	rtapi/uspace_rtapi_string.c \
-	rtapi/rtapi_pci.c
-USERSRCS += $(RTAPI_USPACE_SRCS)
-
-$(call TOOBJSDEPS, rtapi/rtapi_pci.c): EXTRAFLAGS += $(LIBUDEV_CFLAGS)
-$(call TOOBJSDEPS, $(RTAPI_USPACE_SRCS)): EXTRAFLAGS += -DSIM \
-	-UULAPI -DRTAPI -pthread -fPIC
-../lib/librtapi_uspace.so: $(call TOOBJS, $(RTAPI_USPACE_SRCS))
-	$(ECHO) Linking $(notdir $@)
-	$(Q)$(CC) -shared -o $@ $^ $(LIBDL) -pthread -lrt $(LIBUDEV_LIBS) -ldl $(LDFLAGS)
-TARGETS += ../lib/librtapi_uspace.so
-endif
