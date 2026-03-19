@@ -40,8 +40,8 @@ option extra_setup;
 option extra_cleanup;
 option constructable no;
 
-function read nofp;
-function write nofp;
+function serport_read nofp;
+function serport_write nofp;
 
 license "GPL";
 ;;
@@ -98,7 +98,7 @@ EXTRA_CLEANUP() {
 #define LCR (ioaddr + 3)
 #define BREAK (1<<6)
 
-FUNCTION(read) { 
+FUNCTION(serport_read) { 
     int i = rtapi_inb(MSR);
 
     pin_9_in = (i & RI) == 0;
@@ -114,7 +114,7 @@ FUNCTION(read) {
     pin_8_in_not = (i & CTS) == CTS;
 }
 
-FUNCTION(write) {
+FUNCTION(serport_write) {
     int i = 0, j=0;
 
     if(!pin_4_out ^ !pin_4_out_invert) i |= DTR;

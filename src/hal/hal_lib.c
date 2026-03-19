@@ -60,15 +60,15 @@
 #include "rtapi_string.h"
 #include "rtapi_atomic.h"
 
-#ifdef RTAPI
+#ifdef __KERNEL__
 #include "rtapi_app.h"
 /* module information */
 MODULE_AUTHOR("John Kasunich");
 MODULE_DESCRIPTION("Hardware Abstraction Layer for EMC");
 MODULE_LICENSE("GPL");
-#endif /* RTAPI */
+#endif /* __KERNEL__ */
 
-#if defined(ULAPI)
+#if !defined(__KERNEL__)
 #include <sys/types.h>		/* pid_t */
 #include <unistd.h>		/* getpid() */
 #include <time.h>
@@ -129,13 +129,9 @@ static hal_pin_t *alloc_pin_struct(void);
 static hal_sig_t *alloc_sig_struct(void);
 static hal_param_t *alloc_param_struct(void);
 static hal_oldname_t *halpr_alloc_oldname_struct(void);
-#ifdef RTAPI
 static hal_funct_t *alloc_funct_struct(void);
-#endif /* RTAPI */
 static hal_funct_entry_t *alloc_funct_entry_struct(void);
-#ifdef RTAPI
 static hal_thread_t *alloc_thread_struct(void);
-#endif /* RTAPI */
 
 static void free_comp_struct(hal_comp_t * comp);
 static void unlink_pin(hal_pin_t * pin);
@@ -143,21 +139,15 @@ static void free_pin_struct(hal_pin_t * pin);
 static void free_sig_struct(hal_sig_t * sig);
 static void free_param_struct(hal_param_t * param);
 static void free_oldname_struct(hal_oldname_t * oldname);
-#ifdef RTAPI
 static void free_funct_struct(hal_funct_t * funct);
-#endif /* RTAPI */
 static void free_funct_entry_struct(hal_funct_entry_t * funct_entry);
-#ifdef RTAPI
 static void free_thread_struct(hal_thread_t * thread);
-#endif /* RTAPI */
 
-#ifdef RTAPI
 /** 'thread_task()' is a function that is invoked as a realtime task.
     It implements a thread, by running down the thread's function list
     and calling each function in turn.
 */
 static void thread_task(void *arg);
-#endif /* RTAPI */
 
 /***********************************************************************
 *                  PUBLIC (API) FUNCTION CODE                          *
@@ -168,7 +158,7 @@ static int ref_cnt = 0;
 int hal_init(const char *name)
 {
     int comp_id;
-#ifdef ULAPI
+#if !defined(__KERNEL__)
     int retval;
     void *mem;
 #endif
@@ -186,7 +176,7 @@ int hal_init(const char *name)
 	return -EINVAL;
     }
 
-#ifdef ULAPI
+#if !defined(__KERNEL__)
     if(!lib_mem_id) {
 	rtapi_print_msg(RTAPI_MSG_DBG, "HAL: initializing hal_lib\n");
 	rtapi_snprintf(rtapi_name, RTAPI_NAME_LEN, "HAL_LIB_%d", (int)getpid());
@@ -260,13 +250,13 @@ int hal_init(const char *name)
     }
     /* initialize the structure */
     comp->comp_id = comp_id;
-#ifdef RTAPI
-    comp->type = COMPONENT_TYPE_REALTIME;
-    comp->pid = 0;
-#else /* ULAPI */
-    comp->type = COMPONENT_TYPE_USER;
-    comp->pid = getpid();
-#endif
+    if (getpid() == hal_data->launcher_pid) {
+        comp->type = COMPONENT_TYPE_REALTIME;
+        comp->pid = 0;
+    } else {
+        comp->type = COMPONENT_TYPE_USER;
+        comp->pid = getpid();
+    }
     comp->ready = 0;
     comp->shmem_base = hal_shmem_base;
     comp->insmod_args = 0;
@@ -347,7 +337,7 @@ int hal_exit(int comp_id)
     /* release mutex */
     rtapi_mutex_give(&(hal_data->mutex));
     --ref_cnt;
-#ifdef ULAPI
+#if !defined(__KERNEL__)
     if(ref_cnt == 0) {
         rtapi_print_msg(RTAPI_MSG_DBG, "HAL: releasing RTAPI resources\n");
 	/* release RTAPI resources */
@@ -391,7 +381,6 @@ void *hal_malloc(long int size)
     return retval;
 }
 
-#ifdef RTAPI
 int hal_set_constructor(int comp_id, constructor make) {
     int next;
     hal_comp_t *comp;
@@ -427,7 +416,6 @@ int hal_set_constructor(int comp_id, constructor make) {
     rtapi_mutex_give(&(hal_data->mutex));
     return 0;
 }
-#endif
 
 int hal_set_unready(int comp_id) {
     hal_comp_t *comp;
@@ -1792,8 +1780,6 @@ int hal_get_param_value_by_name(
 *                   EXECUTION RELATED FUNCTIONS                        *
 ************************************************************************/
 
-#ifdef RTAPI
-
 int hal_export_funct(const char *name, void (*funct) (void *, long),
     void *arg, int uses_fp, int reentrant, int comp_id)
 {
@@ -2140,8 +2126,6 @@ extern int hal_thread_delete(const char *name)
 	name);
     return -EINVAL;
 }
-
-#endif /* RTAPI */
 
 int hal_add_funct_to_thread(const char *funct_name, const char *thread_name, int position)
 {
@@ -2756,7 +2740,7 @@ hal_pin_t *halpr_find_pin_by_sig(hal_sig_t * sig, hal_pin_t * start)
 *                     LOCAL FUNCTION CODE                              *
 ************************************************************************/
 
-#ifdef RTAPI
+#ifdef __KERNEL__
 /* these functions are called when the hal_lib module is insmod'ed
    or rmmod'ed.
 */
@@ -2883,6 +2867,7 @@ void rtapi_app_exit(void)
     rtapi_print_msg(RTAPI_MSG_DBG,
 	"HAL_LIB: kernel lib removed successfully\n");
 }
+#endif /* __KERNEL__ */
 
 /* this is the task function that implements threads in realtime */
 
@@ -2935,7 +2920,6 @@ static void thread_task(void *arg)
 	rtapi_wait();
     }
 }
-#endif /* RTAPI */
 
 /* see the declarations of these functions (near top of file) for
    a description of what they do.
@@ -2993,6 +2977,7 @@ static int init_hal_data(void)
     hal_data->shmem_bot = sizeof(hal_data_t);
     hal_data->shmem_top = HAL_SIZE;
     hal_data->lock = HAL_LOCK_NONE;
+    hal_data->launcher_pid = getpid();
     /* done, release mutex */
     rtapi_mutex_give(&(hal_data->mutex));
     return 0;
@@ -3198,7 +3183,6 @@ static hal_oldname_t *halpr_alloc_oldname_struct(void)
     return p;
 }
 
-#ifdef RTAPI
 static hal_funct_t *alloc_funct_struct(void)
 {
     hal_funct_t *p;
@@ -3227,7 +3211,6 @@ static hal_funct_t *alloc_funct_struct(void)
     }
     return p;
 }
-#endif /* RTAPI */
 
 static hal_funct_entry_t *alloc_funct_entry_struct(void)
 {
@@ -3256,7 +3239,6 @@ static hal_funct_entry_t *alloc_funct_entry_struct(void)
     return p;
 }
 
-#ifdef RTAPI
 static hal_thread_t *alloc_thread_struct(void)
 {
     hal_thread_t *p;
@@ -3284,20 +3266,20 @@ static hal_thread_t *alloc_thread_struct(void)
     }
     return p;
 }
-#endif /* RTAPI */
 
 static void free_comp_struct(hal_comp_t * comp)
 {
     rtapi_intptr_t *prev, next;
-#ifdef RTAPI
     hal_funct_t *funct;
-#endif /* RTAPI */
     hal_pin_t *pin;
     hal_param_t *param;
 
     /* can't delete the component until we delete its "stuff" */
-    /* need to check for functs only if a realtime component */
-#ifdef RTAPI
+    /* need to check for functs only if a realtime component - use
+       comp->type at runtime rather than a compile-time #ifdef RTAPI
+       guard, to support a unified library serving both rtapi_app and
+       userspace programs */
+    if (comp->type == COMPONENT_TYPE_REALTIME) {
     /* search the function list for this component's functs */
     prev = &(hal_data->funct_list_ptr);
     next = *prev;
@@ -3314,7 +3296,7 @@ static void free_comp_struct(hal_comp_t * comp)
 	}
 	next = *prev;
     }
-#endif /* RTAPI */
+    }
     /* search the pin list for this component's pins */
     prev = &(hal_data->pin_list_ptr);
     next = *prev;
@@ -3482,7 +3464,6 @@ static void free_oldname_struct(hal_oldname_t * oldname)
     hal_data->oldname_free_ptr = SHMOFF(oldname);
 }
 
-#ifdef RTAPI
 static void free_funct_struct(hal_funct_t * funct)
 {
     int next_thread;
@@ -3537,7 +3518,6 @@ static void free_funct_struct(hal_funct_t * funct)
     funct->next_ptr = hal_data->funct_free_ptr;
     hal_data->funct_free_ptr = SHMOFF(funct);
 }
-#endif /* RTAPI */
 
 static void free_funct_entry_struct(hal_funct_entry_t * funct_entry)
 {
@@ -3556,7 +3536,6 @@ static void free_funct_entry_struct(hal_funct_entry_t * funct_entry)
     list_add_after((hal_list_t *) funct_entry, &(hal_data->funct_entry_free));
 }
 
-#ifdef RTAPI
 static void free_thread_struct(hal_thread_t * thread)
 {
     hal_funct_entry_t *funct_entry;
@@ -3623,7 +3602,6 @@ static void free_thread_struct(hal_thread_t * thread)
     thread->next_ptr = hal_data->thread_free_ptr;
     hal_data->thread_free_ptr = SHMOFF(thread);
 }
-#endif /* RTAPI */
 
 static char *halpr_type_string(int type, char *buf, size_t nbuf) {
     switch(type) {
@@ -3926,7 +3904,6 @@ void hal_port_clear(hal_port_t port) {
 }
 
 
-#ifdef ULAPI
 void hal_port_wait_readable(hal_port_t** port, unsigned count, sig_atomic_t* stop) {
     while((hal_port_readable(**port) < count) && (!stop || !*stop)) {
         rtapi_delay(10000000);
@@ -3939,7 +3916,6 @@ void hal_port_wait_writable(hal_port_t** port, unsigned count, sig_atomic_t* sto
         rtapi_delay(10000000);
     }
 }
-#endif
 
 
 
@@ -4054,7 +4030,6 @@ int hal_stream_maxdepth(hal_stream_t *stream) {
     return stream->fifo->depth;
 }
 
-#ifdef ULAPI
 void hal_stream_wait_writable(hal_stream_t *stream, sig_atomic_t *stop) {
     while(!hal_stream_writable(stream) && (!stop || !*stop)) {
         /* fifo full, sleep for 10ms */
@@ -4068,7 +4043,6 @@ void hal_stream_wait_readable(hal_stream_t *stream, sig_atomic_t *stop) {
         rtapi_delay(10000000);
     }
 }
-#endif
 
 static int hal_stream_atomic_load_in(hal_stream_t *stream)
 {
@@ -4210,7 +4184,7 @@ int hal_stream_num_underruns(hal_stream_t *stream) {
     return stream->fifo->num_underruns;
 }
 
-#ifdef RTAPI
+//#ifdef __KERNEL__
 /* only export symbols when we're building a kernel module */
 
 EXPORT_SYMBOL(hal_init);
@@ -4310,4 +4284,4 @@ EXPORT_SYMBOL_GPL(hal_stream_element_count);
 EXPORT_SYMBOL_GPL(hal_stream_element_type);
 EXPORT_SYMBOL_GPL(hal_stream_num_overruns);
 EXPORT_SYMBOL_GPL(hal_stream_num_underruns);
-#endif /* rtapi */
+//#endif /* __KERNEL__ */
