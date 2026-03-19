@@ -59,9 +59,6 @@
     information, go to www.linuxcnc.org.
 */
 
-#if ( !defined RTAPI ) && ( !defined ULAPI )
-#error "Please define either RTAPI or ULAPI!"
-#endif
 #if ( defined RTAPI ) && ( defined ULAPI )
 #error "Can't define both RTAPI and ULAPI!"
 #endif
@@ -190,19 +187,12 @@ RTAPI_BEGIN_DECLS
     with rtapi_print_msg().
 */
     typedef void(*rtapi_msg_handler_t)(msg_level_t level, const char *fmt, va_list ap);
-#ifdef RTAPI
     extern void rtapi_set_msg_handler(rtapi_msg_handler_t handler);
     extern rtapi_msg_handler_t rtapi_get_msg_handler(void);
-#endif
 
 /***********************************************************************
 *                      TIME RELATED FUNCTIONS                          *
 ************************************************************************/
-
-/** NOTE: These timing related functions are only available in
-    realtime modules.  User processes may not call them!
-*/
-#ifdef RTAPI
 
 /** 'rtapi_clock_set_period() sets the basic time interval for realtime
     tasks.  All periodic tasks will run at an integer multiple of this
@@ -222,7 +212,6 @@ RTAPI_BEGIN_DECLS
     available from user (non-realtime) code.
 */
     extern long int rtapi_clock_set_period(long int nsecs);
-#endif /* RTAPI */
 
 /** rtapi_delay() is a simple delay.  It is intended only for short
     delays, since it simply loops, wasting CPU cycles.  'nsec' is the
@@ -296,11 +285,6 @@ RTAPI_BEGIN_DECLS
 /***********************************************************************
 *                     TASK RELATED FUNCTIONS                           *
 ************************************************************************/
-
-/** NOTE: These realtime task related functions are only available in
-    realtime modules.  User processes may not call them!
-*/
-#ifdef RTAPI
 
 /** NOTE: The RTAPI is designed to be a _simple_ API.  As such, it uses
     a very simple strategy to deal with SMP systems.  It ignores them!
@@ -439,8 +423,6 @@ RTAPI_BEGIN_DECLS
     extern int rtapi_task_pll_set_correction(long value);
 #endif /* USPACE */
 
-#endif /* RTAPI */
-
 /***********************************************************************
 *                  SHARED MEMORY RELATED FUNCTIONS                     *
 ************************************************************************/
@@ -479,12 +461,6 @@ RTAPI_BEGIN_DECLS
 /***********************************************************************
 *                    SEMAPHORE RELATED FUNCTIONS                       *
 ************************************************************************/
-
-/** NOTE: These semaphore related functions are only available in
-    realtime modules.  User processes may not call them!  Consider
-    the mutex functions listed above instead.
-*/
-#ifdef RTAPI
 
 /** 'rtapi_sem_new()' creates a realtime semaphore.  'key' identifies
     identifies the semaphore, and must be non-zero.  All modules wishing
@@ -528,8 +504,6 @@ RTAPI_BEGIN_DECLS
     a realtime task.
 */
     extern int rtapi_sem_try(int sem_id);
-
-#endif /* RTAPI */
 
 /***********************************************************************
 *                        FIFO RELATED FUNCTIONS                        *
@@ -579,45 +553,25 @@ RTAPI_BEGIN_DECLS
     functions, but for now, just read the following docs carefully!
 */
 
-#ifdef RTAPI
 /** 'rtapi_fifo_read()' reads data from 'fifo_id'.  'buf' is a buffer
     for the data, and 'size' is the maximum number of bytes to read.
-    Returns the number of bytes actually read, or -EINVAL.  Does not
-    block.  If 'size' bytes are not available, it will read whatever is
-    available, and return that count (which could be zero).  Call only
-    from within a realtime task.
+    Returns the number of bytes actually read, or -EINVAL.  In realtime
+    context, does not block; if 'size' bytes are not available, it will
+    read whatever is available, and return that count (which could be
+    zero).  In userspace context, if there is no data in the fifo, it
+    blocks until data appears (or a signal occurs).
 */
-#else /* ULAPI */
-/** 'rtapi_fifo_read()' reads data from 'fifo_id'.  'buf' is a buffer
-    for the data, and 'size' is the maximum number of bytes to read.
-    Returns the number of bytes actually read, or -EINVAL.  If
-    there is no data in the fifo, it blocks until data appears (or
-    a signal occurs).  If 'size' bytes are not available, it will
-    read whatever is available, and return that count (will be
-    greater than zero).  If interrupted by a signal or some other
-    error occurs, will return -EINVAL.
-*/
-#endif /* ULAPI */
 
     extern int rtapi_fifo_read(int fifo_id, char *buf,
 	unsigned long int size);
 
-#ifdef RTAPI
 /** 'rtapi_fifo_write()' writes data to 'fifo_id'. Up to 'size' bytes
     are taken from the buffer at 'buf'.  Returns the number of bytes
-    actually written, or -EINVAL.  Does not block.  If 'size' bytes
-    of space are not available in the fifo, it will write as many bytes
-    as it can and return that count (which may be zero).
+    actually written, or -EINVAL.  In realtime context, does not block;
+    if 'size' bytes of space are not available in the fifo, it will
+    write as many bytes as it can and return that count (which may be
+    zero).  In userspace context, may block if space is not available.
 */
-#else /* ULAPI */
-/** 'rtapi_fifo_write()' writes data to 'fifo_id'. Up to 'size' bytes
-    are taken from the buffer at 'buf'.  Returns the number of bytes
-    actually written, or -EINVAL.  If 'size' bytes of space are
-    not available in the fifo, rtapi_fifo_write() may block, or it
-    may write as many bytes as it can and return that count (which
-    may be zero).
-*/
-#endif /* ULAPI */
 
     extern int rtapi_fifo_write(int fifo_id, char *buf,
 	unsigned long int size);
@@ -627,9 +581,9 @@ RTAPI_BEGIN_DECLS
 ************************************************************************/
 
 /** NOTE: These interrupt related functions are only available in
-    realtime modules.  User processes may not call them!
+    kernel modules.  User processes may not call them!
 */
-#ifdef RTAPI
+#ifdef __KERNEL__
 
 /** 'rtapi_assign_interrupt_handler()' is used to set up a handler for
     a hardware interrupt.  'irq' is the interrupt number, and 'handler'
@@ -660,7 +614,7 @@ RTAPI_BEGIN_DECLS
     extern int rtapi_enable_interrupt(unsigned int irq);
     extern int rtapi_disable_interrupt(unsigned int irq);
 
-#endif /* RTAPI */
+#endif /* __KERNEL__ */
 
 /***********************************************************************
 *                        I/O RELATED FUNCTIONS                         *
@@ -714,8 +668,6 @@ RTAPI_BEGIN_DECLS
 /***********************************************************************
 *                      MODULE PARAMETER MACROS                         *
 ************************************************************************/
-
-#ifdef RTAPI
 
 /* The API for module parameters has changed as the kernel evolved,
    and will probably change again.  We define our own macro for
@@ -828,8 +780,6 @@ RTAPI_BEGIN_DECLS
   MODULE_PARM_DESC(var,descr);
 
 #endif
-
-#endif /* RTAPI */
 
 #if !defined(__KERNEL__)
 extern long int simple_strtol(const char *nptr, char **endptr, int base);
