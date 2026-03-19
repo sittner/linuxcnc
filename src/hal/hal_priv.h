@@ -274,6 +274,7 @@ typedef struct hal_data_t {
     int exact_base_period;      /* if set, pretend that rtapi satisfied our
 				   period request exactly */
     unsigned char lock;         /* hal locking, can be one of the HAL_LOCK_* types */
+    pid_t launcher_pid;    /* PID of the launcher process (rtapi_app) */
 } hal_data_t;
 
 /** HAL 'component' type.
