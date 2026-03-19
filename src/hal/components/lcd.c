@@ -67,7 +67,7 @@ typedef struct {
 
 static int comp_id;
 static lcd_t *lcd;
-static void write(void *arg, long period);
+static void lcd_write(void *arg, long period);
 static void write_one(lcd_inst_t *inst);
 
 static int parse_fmt(char *in, int *ptr, char *out, void *val, char dp);
@@ -200,7 +200,7 @@ int rtapi_app_main(void){
             }
         }
     }
-    retval = hal_export_funct("lcd", write, lcd, 1, 0, comp_id); //needs fp?
+    retval = hal_export_funct("lcd", lcd_write, lcd, 1, 0, comp_id); //needs fp?
     if (retval < 0) {
         rtapi_print_msg(RTAPI_MSG_ERR, "LCD: ERROR: function export failed\n");
         return -1;
@@ -254,7 +254,7 @@ int rtapi_app_main(void){
     return 0;
 }
 
-void write(void *arg, long period){
+void lcd_write(void *arg, long period){
     lcd_t *lcd;
     int i;
     
