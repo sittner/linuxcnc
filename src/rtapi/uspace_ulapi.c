@@ -72,3 +72,28 @@ void default_rtapi_msg_handler(msg_level_t level, const char *fmt, va_list ap) {
         fflush(stderr);
     }
 }
+
+/* Task/thread related functions - not available in ULAPI context.
+   These stubs allow liblinuxcnchal.so to link successfully. The real
+   implementations are in uspace_rtapi_app.c, used by rtapi_app.
+   Components that need realtime task functionality must be loaded via
+   rtapi_app (e.g. halcmd loadrt). */
+
+int rtapi_prio_highest(void) { return 0; }
+int rtapi_prio_lowest(void) { return 0; }
+int rtapi_prio_next_higher(int prio) { return prio; }
+int rtapi_prio_next_lower(int prio) { return prio; }
+
+long int rtapi_clock_set_period(long int nsecs) { return -ENOSYS; }
+
+int rtapi_task_new(void (*taskcode)(void *), void *arg,
+        int prio, int owner, unsigned long int stacksize, int uses_fp) {
+    return -ENOSYS;
+}
+
+int rtapi_task_delete(int task_id) { return -ENOSYS; }
+int rtapi_task_start(int task_id, unsigned long int period_nsec) { return -ENOSYS; }
+int rtapi_task_pause(int task_id) { return -ENOSYS; }
+int rtapi_task_resume(int task_id) { return -ENOSYS; }
+int rtapi_task_self(void) { return -EINVAL; }
+void rtapi_wait(void) { /* no-op in ULAPI context */ }
