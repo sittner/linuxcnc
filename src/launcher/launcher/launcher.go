@@ -259,6 +259,11 @@ func (l *Launcher) Run() error {
 		return fmt.Errorf("rtapi init: %w", err)
 	}
 
+	// Load hal_lib — creates HAL shared memory, exports hal_create_thread etc.
+	if err := rtapi.LoadModule("hal_lib"); err != nil {
+		return fmt.Errorf("load hal_lib: %w", err)
+	}
+
 	// Initialize HAL connection — same as halcmd calling hal_init("halcmd").
 	// This is required before any hal-go API calls (StartThreads, StopThreads, etc.).
 	halComp, err := hal.NewComponent("launcher")
