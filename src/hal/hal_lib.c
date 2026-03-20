@@ -155,7 +155,7 @@ int hal_init(const char *name)
     char rtapi_name[RTAPI_NAME_LEN + 1];
     char hal_name[HAL_NAME_LEN + 1];
     hal_comp_t *comp;
-printf("### hal_init %s %d %d\n", name, rtapi_pid, getpid());
+
     if (name == 0) {
 	rtapi_print_msg(RTAPI_MSG_ERR, "HAL: ERROR: no component name\n");
 	return -EINVAL;
@@ -2464,7 +2464,6 @@ hal_comp_t *halpr_find_comp_by_name(const char *name)
     next = hal_data->comp_list_ptr;
     while (next != 0) {
 	comp = SHMPTR(next);
-	printf(" ### %s\n", comp->name);
 	if (strcmp(comp->name, name) == 0) {
 	    /* found a match */
 	    return comp;
@@ -2734,7 +2733,7 @@ int halpr_rtapi_app_main(void)
 {
     int retval;
     void *mem;
-printf("### rtapi_app_main\n");
+
     rtapi_print_msg(RTAPI_MSG_DBG, "HAL_LIB: loading kernel lib\n");
     /* do RTAPI init */
     lib_module_id = rtapi_init("HAL_LIB");

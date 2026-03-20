@@ -730,7 +730,7 @@ int main(int argc, char **argv) {
     for(int i = 1; i < argc && nargs < MAX_ARGS; i++) {
         args[nargs++] = argv[i];
     }
-printf("### calling rtapi_become_master\n");
+
     return rtapi_become_master(args, nargs);
 }
 
