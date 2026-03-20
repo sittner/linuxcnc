@@ -126,10 +126,6 @@
 #include <rtapi.h>
 RTAPI_BEGIN_DECLS
 
-#if ( !defined RTAPI ) && ( !defined ULAPI )
-#error HAL needs RTAPI/ULAPI, check makefile and flags
-#endif
-
 #ifdef ULAPI
 #include <signal.h>
 #endif
@@ -674,8 +670,6 @@ extern int hal_get_param_value_by_name(
 *                   EXECUTION RELATED FUNCTIONS                        *
 ************************************************************************/
 
-#ifdef RTAPI
-
 /** hal_export_funct() makes a realtime function provided by a
     component available to the system.  A subsequent call to
     hal_add_funct_to_thread() can be used to schedule the
@@ -743,8 +737,6 @@ extern int hal_create_thread(const char *name, unsigned long period_nsec,
     space or realtime code.
 */
 extern int hal_thread_delete(const char *name);
-
-#endif /* RTAPI */
 
 /** hal_add_funct_to_thread() adds a function exported by a
     realtime HAL component to a realtime thread.  This determines
@@ -883,7 +875,6 @@ extern unsigned hal_port_buffer_size(hal_port_t port);
 */
 extern void hal_port_clear(hal_port_t port);
 
-
 #ifdef ULAPI
 /** hal_port_wait_readable spin waits on a port until it has at least 
     count bytes available for reading, or *stop > 0
@@ -895,7 +886,6 @@ extern void hal_port_wait_readable(hal_port_t** port, unsigned count, sig_atomic
  */
 extern void hal_port_wait_writable(hal_port_t** port, unsigned count, sig_atomic_t* stop);
 #endif
-
 
 
 

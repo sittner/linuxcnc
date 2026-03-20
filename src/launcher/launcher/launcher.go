@@ -250,6 +250,16 @@ func (l *Launcher) Run() error {
 		return fmt.Errorf("realtime start failed: %w", err)
 	}
 
+	// Load the threads HAL component to create RT threads (servo-thread,
+	// optionally base-thread). Thread creation has been decoupled from
+	// motmod — the launcher now loads the threads component which runs
+	// inside rtapi_app with proper RT scheduling.
+	// This must happen before motmod, HAL files, or any component that
+	// uses addf to attach functions to threads.
+	if err := l.loadThreads(); err != nil {
+		return fmt.Errorf("loading threads: %w", err)
+	}
+
 	// Initialize HAL connection — same as halcmd calling hal_init("halcmd").
 	// This is required before any hal-go API calls (StartThreads, StopThreads, etc.).
 	halComp, err := hal.NewComponent("launcher")
@@ -262,16 +272,6 @@ func (l *Launcher) Run() error {
 	// the launcher component being ready will time out.
 	if err := halComp.Ready(); err != nil {
 		return fmt.Errorf("hal ready: %w", err)
-	}
-
-	// Load the threads HAL component to create RT threads (servo-thread,
-	// optionally base-thread). Thread creation has been decoupled from
-	// motmod — the launcher now loads the threads component which runs
-	// inside rtapi_app with proper RT scheduling.
-	// This must happen before motmod, HAL files, or any component that
-	// uses addf to attach functions to threads.
-	if err := l.loadThreads(); err != nil {
-		return fmt.Errorf("loading threads: %w", err)
 	}
 
 	// Start iocontrol via halcmd loadusr -Wn iocontrol — only when the task
