@@ -1,6 +1,10 @@
-package hal
+package halparse
 
-import "testing"
+import (
+	"testing"
+
+	hal "linuxcnc.org/hal"
+)
 
 // Compile-time interface compliance checks for all 35 token structs.
 var (
@@ -104,9 +108,9 @@ func TestTokenHoldsData(t *testing.T) {
 
 func TestLockLevelValues(t *testing.T) {
 	tests := []struct {
-		name  string
-		got   LockLevel
-		want  LockLevel
+		name string
+		got  LockLevel
+		want LockLevel
 	}{
 		{"LockNone", LockNone, 0},
 		{"LockLoad", LockLoad, 1},
@@ -181,9 +185,9 @@ func TestSaveTypeIota(t *testing.T) {
 }
 
 func TestNewSigTokenUsesPinType(t *testing.T) {
-	tok := NewSigToken{Name: "mysig", SigType: TypeBit}
-	if tok.SigType != TypeBit {
-		t.Errorf("SigType = %d, want TypeBit (%d)", tok.SigType, TypeBit)
+	tok := NewSigToken{Name: "mysig", SigType: hal.TypeBit}
+	if tok.SigType != hal.TypeBit {
+		t.Errorf("SigType = %d, want TypeBit (%d)", tok.SigType, hal.TypeBit)
 	}
 	if int(tok.SigType) != 1 {
 		t.Errorf("TypeBit value = %d, want 1", int(tok.SigType))

@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	hal "linuxcnc.org/hal"
+	halcmd "github.com/sittner/linuxcnc/src/launcher/internal/halcmd"
 
 	"github.com/sittner/linuxcnc/src/launcher/halfile"
 )
@@ -50,7 +50,7 @@ func (l *Launcher) doCleanup() {
 	// Step 4 — stop all realtime threads.
 	// mirrors scripts/linuxcnc.in line 711.
 	l.logger.Debug("stopping realtime threads")
-	if err := hal.StopThreads(); err != nil {
+	if err := halcmd.StopThreads(); err != nil {
 		l.logger.Debug("hal stop threads returned error", "error", err)
 	}
 
@@ -58,7 +58,7 @@ func (l *Launcher) doCleanup() {
 	// mirrors scripts/linuxcnc.in line 713.
 	// Pass 0 as exceptCompID — halcmd doesn't exclude itself either.
 	l.logger.Debug("unloading HAL components")
-	if err := hal.UnloadAll(0); err != nil {
+	if err := halcmd.UnloadAll(0); err != nil {
 		l.logger.Debug("hal unload all returned error", "error", err)
 	}
 
@@ -67,7 +67,7 @@ func (l *Launcher) doCleanup() {
 	// mirrors scripts/linuxcnc.in lines 715–719.
 	l.logger.Debug("waiting for HAL components to unload")
 	for i := 0; i < 10; i++ {
-		comps, err := hal.ListComponents()
+		comps, err := halcmd.ListComponents()
 		if err != nil {
 			break
 		}

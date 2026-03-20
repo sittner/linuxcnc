@@ -1,16 +1,19 @@
 //go:build !cgo
 
-package hal
+package halparse
 
 import (
 	"errors"
 	"strings"
 	"testing"
+
+	halcmd "github.com/sittner/linuxcnc/src/launcher/internal/halcmd"
+	hal "linuxcnc.org/hal"
 )
 
 // TestExecuteToken_AllTypes verifies that executeToken dispatches each concrete
 // TokenData type to the correct command function.  For non-no-op tokens the
-// returned error must be errNoCGO (proving dispatch reached the C shim).
+// returned error must be halcmd.ErrNoCGO (proving dispatch reached the C shim).
 // For no-op tokens (EchoToken, UnEchoToken, PrintToken) the return must be nil.
 func TestExecuteToken_AllTypes(t *testing.T) {
 	loc := SourceLoc{File: "test.hal", Line: 1}
@@ -21,8 +24,8 @@ func TestExecuteToken_AllTypes(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		if !errors.Is(err, errNoCGO) {
-			t.Errorf("expected errNoCGO, got %v", err)
+		if !errors.Is(err, halcmd.ErrNoCGO) {
+			t.Errorf("expected ErrNoCGO, got %v", err)
 		}
 	}
 	noOp := func(t *testing.T, tok Token) {
@@ -46,7 +49,7 @@ func TestExecuteToken_AllTypes(t *testing.T) {
 		{"GetS", Token{loc, &GetSToken{Name: "s"}}, noCGO},
 		{"AddF", Token{loc, &AddFToken{Funct: "f", Thread: "t", Pos: -1}}, noCGO},
 		{"DelF", Token{loc, &DelFToken{Funct: "f", Thread: "t"}}, noCGO},
-		{"NewSig", Token{loc, &NewSigToken{Name: "s", SigType: TypeBit}}, noCGO},
+		{"NewSig", Token{loc, &NewSigToken{Name: "s", SigType: hal.TypeBit}}, noCGO},
 		{"DelSig", Token{loc, &DelSigToken{Name: "s"}}, noCGO},
 		{"LinkPS", Token{loc, &LinkPSToken{Pin: "p", Sig: "s"}}, noCGO},
 		{"LinkSP", Token{loc, &LinkSPToken{Sig: "s", Pin: "p"}}, noCGO},
@@ -98,9 +101,9 @@ func TestExecuteToken_UnknownType(t *testing.T) {
 func TestExecutionError_Format(t *testing.T) {
 	e := &ExecutionError{
 		Loc: SourceLoc{File: "file.hal", Line: 42},
-		Err: errNoCGO,
+		Err: halcmd.ErrNoCGO,
 	}
-	want := "file.hal:42: " + errNoCGO.Error()
+	want := "file.hal:42: " + halcmd.ErrNoCGO.Error()
 	if got := e.Error(); got != want {
 		t.Errorf("ExecutionError.Error() = %q, want %q", got, want)
 	}
@@ -110,10 +113,10 @@ func TestExecutionError_Format(t *testing.T) {
 func TestExecutionError_Unwrap(t *testing.T) {
 	e := &ExecutionError{
 		Loc: SourceLoc{File: "file.hal", Line: 42},
-		Err: errNoCGO,
+		Err: halcmd.ErrNoCGO,
 	}
-	if !errors.Is(e, errNoCGO) {
-		t.Error("errors.Is(execErr, errNoCGO) returned false, want true")
+	if !errors.Is(e, halcmd.ErrNoCGO) {
+		t.Error("errors.Is(execErr, ErrNoCGO) returned false, want true")
 	}
 }
 
@@ -236,7 +239,7 @@ func TestAliasKindStr(t *testing.T) {
 	}
 }
 
-// TestParseResultExecute verifies that Execute returns errNoCGO from the first
+// TestParseResultExecute verifies that Execute returns ErrNoCGO from the first
 // merged loadrt call when LoadRT tokens are present.
 func TestParseResultExecute(t *testing.T) {
 	r := &ParseResult{
@@ -263,8 +266,8 @@ func TestParseResultExecute(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !errors.Is(err, errNoCGO) {
-		t.Errorf("expected errNoCGO, got %v", err)
+	if !errors.Is(err, halcmd.ErrNoCGO) {
+		t.Errorf("expected ErrNoCGO, got %v", err)
 	}
 }
 
@@ -293,11 +296,11 @@ func TestParseResultExecute_LoadRTMerge(t *testing.T) {
 	}
 	err := r.Execute()
 	// Both tokens are for the same module; TwopassCollector merges them into a
-	// single LoadRT("and2", "count=3") call.  The call fails with errNoCGO.
+	// single LoadRT("and2", "count=3") call.  The call fails with ErrNoCGO.
 	if err == nil {
 		t.Fatal("expected error from merged loadrt, got nil")
 	}
-	if !errors.Is(err, errNoCGO) {
-		t.Errorf("expected errNoCGO, got %v", err)
+	if !errors.Is(err, halcmd.ErrNoCGO) {
+		t.Errorf("expected ErrNoCGO, got %v", err)
 	}
 }

@@ -1,4 +1,4 @@
-package hal
+package halparse
 
 import "testing"
 

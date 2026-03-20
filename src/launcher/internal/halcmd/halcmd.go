@@ -1,11 +1,23 @@
-package hal
+package halcmd
 
 import (
 	"fmt"
 	"os"
 	"path"
 	"strings"
+
+	hal "linuxcnc.org/hal"
 )
+
+// lockAll is the HAL_LOCK_ALL bitmask value.
+const lockAll = 255
+
+// SetLock sets the HAL lock level, restricting which commands are permitted.
+// This is the low-level counterpart of Lock()/Unlock() and exists so that the
+// halparse executor can set lock levels directly via an integer bitmask.
+func SetLock(level int) error {
+	return halSetLock(level)
+}
 
 // StartThreads starts all HAL realtime threads.
 // This is the point at which realtime functions start being called.
@@ -38,7 +50,7 @@ func UnloadAll(exceptCompID int) error {
 
 // NewSig creates a new HAL signal with the given name and type.
 // Equivalent to "halcmd newsig <name> <type>".
-func NewSig(name string, halType PinType) error {
+func NewSig(name string, halType hal.PinType) error {
 	return halNewSig(name, halType)
 }
 
@@ -63,7 +75,7 @@ func GetS(name string) (string, error) {
 
 // SType returns the data type of a HAL signal.
 // Equivalent to "halcmd stype <name>".
-func SType(name string) (PinType, error) {
+func SType(name string) (hal.PinType, error) {
 	return halSType(name)
 }
 
@@ -84,7 +96,7 @@ func GetP(name string) (string, error) {
 
 // PType returns the data type of a HAL pin or parameter.
 // Equivalent to "halcmd ptype <name>".
-func PType(name string) (PinType, error) {
+func PType(name string) (hal.PinType, error) {
 	return halPType(name)
 }
 
@@ -289,14 +301,14 @@ func Lock(level string) error {
 // The level argument names the bits to clear: "unlock all" removes all lock
 // bits (resulting in LockNone=0), "unlock tune" removes the tune bits, etc.
 // This mirrors the halcmd semantics: unlock sets the lock mask to the
-// complement of the named level (LockAll &^ lvl).
+// complement of the named level (lockAll &^ lvl).
 // Equivalent to "halcmd unlock <level>".
 func Unlock(level string) error {
 	lvl, err := parseLockLevel(level)
 	if err != nil {
 		return err
 	}
-	return halSetLock(int(LockAll) &^ lvl)
+	return halSetLock(lockAll &^ lvl)
 }
 
 // ===== Query commands =====
@@ -368,12 +380,10 @@ func List(halType string, patterns ...string) ([]string, error) {
 
 // matchPattern does a glob-style match in Go for the "comp" list case.
 // Returns true if name matches pat using path.Match syntax (*, ?, [...] wildcards).
-// Note: this uses Go's path.Match semantics, not C fnmatch; '**' is not supported.
 func matchPattern(pat, name string) (bool, error) {
 	if pat == "" {
 		return true, nil
 	}
-	// Use path.Match for glob patterns (*, ?, [...] syntax).
 	return path.Match(pat, name)
 }
 

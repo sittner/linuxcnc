@@ -22,6 +22,8 @@ import (
 
 	hal "linuxcnc.org/hal"
 
+	halcmd "github.com/sittner/linuxcnc/src/launcher/internal/halcmd"
+
 	"github.com/sittner/linuxcnc/src/launcher/config"
 	"github.com/sittner/linuxcnc/src/launcher/emcsvr"
 	"github.com/sittner/linuxcnc/src/launcher/halfile"
@@ -438,7 +440,7 @@ func (l *Launcher) startIOControl() error {
 
 	l.logger.Info("starting IO controller", "program", emcio)
 
-	if err := hal.LoadUSR(&hal.LoadUSROptions{WaitReady: true, WaitName: "iocontrol"}, emcio, "-ini", l.opts.IniFile); err != nil {
+	if err := halcmd.LoadUSR(&halcmd.LoadUSROptions{WaitReady: true, WaitName: "iocontrol"}, emcio, "-ini", l.opts.IniFile); err != nil {
 		return fmt.Errorf("loadusr iocontrol %s: %w", emcio, err)
 	}
 
@@ -461,7 +463,7 @@ func (l *Launcher) startHalUI() error {
 
 	l.logger.Info("starting HAL user interface", "program", halui)
 
-	if err := hal.LoadUSR(&hal.LoadUSROptions{WaitReady: true, WaitName: "halui"}, halui, "-ini", l.opts.IniFile); err != nil {
+	if err := halcmd.LoadUSR(&halcmd.LoadUSROptions{WaitReady: true, WaitName: "halui"}, halui, "-ini", l.opts.IniFile); err != nil {
 		return fmt.Errorf("loadusr halui %s: %w", halui, err)
 	}
 
@@ -564,7 +566,7 @@ func (l *Launcher) loadThreads() error {
 		}
 	}
 
-	if err := hal.LoadRT("threads", args...); err != nil {
+	if err := halcmd.LoadRT("threads", args...); err != nil {
 		return fmt.Errorf("loadrt threads: %w", err)
 	}
 
@@ -600,11 +602,11 @@ func (l *Launcher) preloadMotionModules() error {
 
 	l.logger.Debug("preloading motion modules", "tpmod", tpMod, "homemod", homeMod)
 
-	if err := hal.LoadRT(tpMod); err != nil {
+	if err := halcmd.LoadRT(tpMod); err != nil {
 		return fmt.Errorf("loadrt %s: %w", tpMod, err)
 	}
 
-	if err := hal.LoadRT(homeMod); err != nil {
+	if err := halcmd.LoadRT(homeMod); err != nil {
 		return fmt.Errorf("loadrt %s: %w", homeMod, err)
 	}
 
@@ -648,7 +650,7 @@ func (l *Launcher) startTask() error {
 	// Fire-and-forget: do NOT wait for inihal to register as ready.
 	// HAL threads (servo-thread) must be running before milltask can finish
 	// motion initialization. Threads are started in step 6d, after this call.
-	if err := hal.LoadUSR(&hal.LoadUSROptions{}, emctask, "-ini", l.opts.IniFile); err != nil {
+	if err := halcmd.LoadUSR(&halcmd.LoadUSROptions{}, emctask, "-ini", l.opts.IniFile); err != nil {
 		return fmt.Errorf("loadusr %s: %w", emctask, err)
 	}
 
@@ -659,12 +661,12 @@ func (l *Launcher) startTask() error {
 // HAL component) and waits for it to unregister from HAL.
 func (l *Launcher) stopTask() {
 	l.logger.Info("stopping task controller")
-	if err := hal.UnloadUSR("inihal"); err != nil {
+	if err := halcmd.UnloadUSR("inihal"); err != nil {
 		l.logger.Debug("unload inihal returned error (may already be gone)", "error", err)
 		return
 	}
 	// Wait up to 2 seconds for the component to unregister.
-	if err := hal.WaitUSR("inihal"); err != nil {
+	if err := halcmd.WaitUSR("inihal"); err != nil {
 		l.logger.Debug("wait for inihal to unregister returned error", "error", err)
 	}
 }
@@ -676,7 +678,7 @@ func (l *Launcher) stopTask() {
 //	$HALCMD start
 func (l *Launcher) startHalThreads() error {
 	l.logger.Info("starting HAL threads")
-	if err := hal.StartThreads(); err != nil {
+	if err := halcmd.StartThreads(); err != nil {
 		return fmt.Errorf("hal start threads: %w", err)
 	}
 	return nil
@@ -703,9 +705,9 @@ func isExecutable(path string) bool {
 // setting RETAIN_SYNC_THREAD; the Go implementation checks the correct one.
 func (l *Launcher) loadRetain() error {
 	// Check whether any retained signals exist.
-	signals, err := hal.List("retain")
+	signals, err := halcmd.List("retain")
 	if err != nil {
-		// hal.List errors when no retain component is loaded — treat as no signals.
+		// halcmd.List errors when no retain component is loaded — treat as no signals.
 		l.logger.Debug("hal list retain returned error (no retain signals)", "error", err)
 		return nil
 	}
@@ -717,7 +719,7 @@ func (l *Launcher) loadRetain() error {
 	l.logger.Info("Loading retain")
 
 	// Load the realtime retain component.
-	if err := hal.LoadRT("retain"); err != nil {
+	if err := halcmd.LoadRT("retain"); err != nil {
 		return fmt.Errorf("loadrt retain: %w", err)
 	}
 
@@ -726,7 +728,7 @@ func (l *Launcher) loadRetain() error {
 	if syncThread == "" {
 		syncThread = "servo-thread"
 	}
-	if err := hal.AddF("retain.sync", syncThread, 0); err != nil {
+	if err := halcmd.AddF("retain.sync", syncThread, 0); err != nil {
 		return fmt.Errorf("addf retain.sync %s: %w", syncThread, err)
 	}
 
@@ -749,7 +751,7 @@ func (l *Launcher) loadRetain() error {
 	if pollPeriod != "" {
 		usrArgs = append(usrArgs, pollPeriod)
 	}
-	if err := hal.LoadUSR(&hal.LoadUSROptions{WaitReady: true}, "retain_usr", usrArgs...); err != nil {
+	if err := halcmd.LoadUSR(&halcmd.LoadUSROptions{WaitReady: true}, "retain_usr", usrArgs...); err != nil {
 		return fmt.Errorf("loadusr retain_usr: %w", err)
 	}
 

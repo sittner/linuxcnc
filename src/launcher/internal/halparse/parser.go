@@ -1,4 +1,4 @@
-package hal
+package halparse
 
 import (
 	"fmt"
@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	hal "linuxcnc.org/hal"
 )
 
 // tokenizeLine splits a single HAL config line into raw string tokens.
@@ -175,16 +177,16 @@ func substituteVars(line string, ini INILookup) string {
 
 // --- helper converters ---
 
-func parsePinType(s string, loc SourceLoc) (PinType, *ParseError) {
+func parsePinType(s string, loc SourceLoc) (hal.PinType, *ParseError) {
 	switch strings.ToLower(s) {
 	case "bit":
-		return TypeBit, nil
+		return hal.TypeBit, nil
 	case "float":
-		return TypeFloat, nil
+		return hal.TypeFloat, nil
 	case "s32":
-		return TypeS32, nil
+		return hal.TypeS32, nil
 	case "u32":
-		return TypeU32, nil
+		return hal.TypeU32, nil
 	default:
 		return 0, &ParseError{Loc: loc, Msg: fmt.Sprintf("unknown pin type: %q", s)}
 	}

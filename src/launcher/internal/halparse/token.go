@@ -1,6 +1,10 @@
-package hal
+package halparse
 
-import "fmt"
+import (
+	"fmt"
+
+	hal "linuxcnc.org/hal"
+)
 
 // SourceLoc records the file and line number where a token originated.
 // Used for error messages that refer back to the original HAL file.
@@ -39,7 +43,7 @@ type Token struct {
 type AliasKind int
 
 const (
-	AliasPin   AliasKind = iota
+	AliasPin AliasKind = iota
 	AliasParam
 )
 
@@ -60,7 +64,7 @@ const (
 type HalObjType int
 
 const (
-	ObjPin    HalObjType = iota
+	ObjPin HalObjType = iota
 	ObjSig
 	ObjParam
 	ObjFunct
@@ -73,7 +77,7 @@ const (
 type SaveType int
 
 const (
-	SaveComp   SaveType = iota
+	SaveComp SaveType = iota
 	SaveSig
 	SaveLink
 	SaveNet
@@ -94,11 +98,11 @@ func (*LoadRTToken) tokenData() {}
 
 // LoadUSRToken represents a "loadusr" command.
 type LoadUSRToken struct {
-	WaitReady bool     // -W flag
-	WaitName  string   // -Wn <name> flag
-	WaitExit  bool     // -w flag
-	NoStdin   bool     // -i flag
-	Timeout   int      // -T <secs> flag; 0 = default
+	WaitReady bool   // -W flag
+	WaitName  string // -Wn <name> flag
+	WaitExit  bool   // -w flag
+	NoStdin   bool   // -i flag
+	Timeout   int    // -T <secs> flag; 0 = default
 	Prog      string
 	Args      []string
 }
@@ -159,7 +163,7 @@ func (*DelFToken) tokenData() {}
 // NewSigToken represents a "newsig" command.
 type NewSigToken struct {
 	Name    string
-	SigType PinType // PinType is already defined in types.go
+	SigType hal.PinType
 }
 
 func (*NewSigToken) tokenData() {}
