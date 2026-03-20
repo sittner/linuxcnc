@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/sittner/linuxcnc/src/launcher/config"
+	"github.com/sittner/linuxcnc/src/launcher/configcheck"
 	"github.com/sittner/linuxcnc/src/launcher/inifile"
 )
 
@@ -113,41 +114,28 @@ func (l *Launcher) checkPlasmaC() error {
 	return ErrPlasmaC
 }
 
-// resolveTclsh returns the tclsh binary to use.
-// Priority: config.Tclsh (set at build time via -ldflags) → "tclsh" on PATH.
-func resolveTclsh() (string, error) {
-	if config.Tclsh != "" {
-		return config.Tclsh, nil
-	}
-	p, err := exec.LookPath("tclsh")
-	if err != nil {
-		return "", fmt.Errorf("tclsh not found on PATH: %w", err)
-	}
-	return p, nil
-}
-
-// checkConfig runs check_config.tcl to validate the INI file before launching
-// any LinuxCNC processes.
+// checkConfig validates the INI configuration for consistency.
 //
-// This mirrors scripts/linuxcnc.in lines 524–529:
-//
-//	@TCLSH@ $HALLIB_DIR/check_config.tcl "$INIFILE"
-//
-// A non-zero exit code is returned as an error.
+// This is a native Go replacement for lib/hallib/check_config.tcl,
+// eliminating the runtime dependency on tclsh.  It checks mandatory
+// items, kinematics parameters, and joint/axis limit consistency.
 func (l *Launcher) checkConfig() error {
-	tclsh, err := resolveTclsh()
+	l.logger.Debug("running configuration checks")
+
+	result, err := configcheck.Check(l.ini)
 	if err != nil {
-		return fmt.Errorf("checkConfig: %w", err)
+		return fmt.Errorf("check_config: %w", err)
 	}
 
-	script := filepath.Join(config.HalibDir, "check_config.tcl")
-	l.logger.Debug("running check_config.tcl", "script", script)
+	// Print warnings to stdout (matching legacy Tcl script output).
+	if w := result.FormatWarnings(); w != "" {
+		fmt.Fprint(os.Stdout, w)
+	}
 
-	cmd := exec.Command(tclsh, script, l.opts.IniFile)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("check_config validation failed: %w", err)
+	// Print errors and fail.
+	if result.HasErrors() {
+		fmt.Fprint(os.Stdout, result.FormatErrors())
+		return fmt.Errorf("check_config validation failed")
 	}
 
 	return nil

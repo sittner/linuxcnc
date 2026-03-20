@@ -4,13 +4,11 @@ import (
 	"errors"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
-	"github.com/sittner/linuxcnc/src/launcher/config"
 	"github.com/sittner/linuxcnc/src/launcher/inifile"
 )
 
@@ -886,75 +884,87 @@ DISPLAY = axis
 }
 
 // --------------------------------------------------------------------------
-// Tests for checkConfig
+// Tests for checkConfig (native Go implementation)
 // --------------------------------------------------------------------------
 
-// checkConfigLauncher is a helper that creates a Launcher and overrides
-// config.HalibDir/config.Tclsh with the given values for the duration of a
-// test.  It returns the Launcher and a cleanup function.
-func checkConfigLauncher(t *testing.T, tclsh, halibDir, iniFile string) (*Launcher, func()) {
-	t.Helper()
-	ini, err := inifile.Parse(iniFile)
-	if err != nil {
-		t.Fatalf("Parse: %v", err)
-	}
-	l := &Launcher{
-		opts:   Options{IniFile: iniFile},
-		ini:    ini,
-		logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-	}
-	origHalibDir := config.HalibDir
-	origTclsh := config.Tclsh
-	config.HalibDir = halibDir
-	config.Tclsh = tclsh
-	return l, func() {
-		config.HalibDir = origHalibDir
-		config.Tclsh = origTclsh
-	}
-}
-
-// TestCheckConfig_ScriptSucceeds verifies that checkConfig() returns nil when
-// the check_config.tcl script exits with code 0.  A temporary Tcl script that
-// does nothing (exits 0) is used in place of the real check_config.tcl.
-func TestCheckConfig_ScriptSucceeds(t *testing.T) {
-	tclsh, err := exec.LookPath("tclsh")
-	if err != nil {
-		t.Skip("tclsh not found on PATH")
-	}
-
+// TestCheckConfig_ValidTrivkins verifies that checkConfig() returns nil for a
+// valid trivkins configuration with consistent limits.
+func TestCheckConfig_ValidTrivkins(t *testing.T) {
 	dir := t.TempDir()
-	iniFile := writeIni(t, dir, "test.ini", "[EMC]\nMACHINE = Test\n")
-	if err := os.WriteFile(filepath.Join(dir, "check_config.tcl"), []byte("exit 0\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
+	iniFile := writeIni(t, dir, "test.ini", `[KINS]
+KINEMATICS = trivkins coordinates=XZ
+JOINTS = 2
 
-	l, cleanup := checkConfigLauncher(t, tclsh, dir, iniFile)
-	defer cleanup()
+[TRAJ]
+COORDINATES = XZ
 
+[JOINT_0]
+MAX_VELOCITY = 10
+MAX_ACCELERATION = 100
+MIN_LIMIT = -10
+MAX_LIMIT = 10
+
+[JOINT_1]
+MAX_VELOCITY = 10
+MAX_ACCELERATION = 100
+MIN_LIMIT = -5
+MAX_LIMIT = 5
+
+[AXIS_X]
+MAX_VELOCITY = 10
+MAX_ACCELERATION = 100
+MIN_LIMIT = -10
+MAX_LIMIT = 10
+
+[AXIS_Z]
+MAX_VELOCITY = 10
+MAX_ACCELERATION = 100
+MIN_LIMIT = -5
+MAX_LIMIT = 5
+`)
+	l := newLauncherWithIniPath(t, iniFile)
 	if err := l.checkConfig(); err != nil {
-		t.Errorf("checkConfig() with exit-0 script returned error: %v", err)
+		t.Errorf("checkConfig() with valid trivkins returned error: %v", err)
 	}
 }
 
-// TestCheckConfig_ScriptFails verifies that checkConfig() returns an error when
-// the check_config.tcl script exits with a non-zero status.
-func TestCheckConfig_ScriptFails(t *testing.T) {
-	tclsh, err := exec.LookPath("tclsh")
-	if err != nil {
-		t.Skip("tclsh not found on PATH")
-	}
-
+// TestCheckConfig_MissingMandatory verifies that checkConfig() returns an
+// error when mandatory INI items are missing.
+func TestCheckConfig_MissingMandatory(t *testing.T) {
 	dir := t.TempDir()
 	iniFile := writeIni(t, dir, "test.ini", "[EMC]\nMACHINE = Test\n")
-	if err := os.WriteFile(filepath.Join(dir, "check_config.tcl"), []byte("exit 1\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-
-	l, cleanup := checkConfigLauncher(t, tclsh, dir, iniFile)
-	defer cleanup()
-
+	l := newLauncherWithIniPath(t, iniFile)
 	if err := l.checkConfig(); err == nil {
-		t.Error("checkConfig() with exit-1 script should return error, got nil")
+		t.Error("checkConfig() with missing [KINS] should return error, got nil")
+	}
+}
+
+// TestCheckConfig_LimitMismatch verifies that checkConfig() returns an error
+// when joint limits are more restrictive than axis limits.
+func TestCheckConfig_LimitMismatch(t *testing.T) {
+	dir := t.TempDir()
+	iniFile := writeIni(t, dir, "test.ini", `[KINS]
+KINEMATICS = trivkins coordinates=X
+JOINTS = 1
+
+[TRAJ]
+COORDINATES = X
+
+[JOINT_0]
+MAX_VELOCITY = 10
+MAX_ACCELERATION = 100
+MIN_LIMIT = -5
+MAX_LIMIT = 5
+
+[AXIS_X]
+MAX_VELOCITY = 10
+MAX_ACCELERATION = 100
+MIN_LIMIT = -10
+MAX_LIMIT = 10
+`)
+	l := newLauncherWithIniPath(t, iniFile)
+	if err := l.checkConfig(); err == nil {
+		t.Error("checkConfig() with limit mismatch should return error, got nil")
 	}
 }
 
