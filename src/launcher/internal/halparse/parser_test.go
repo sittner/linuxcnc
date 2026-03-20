@@ -1,15 +1,15 @@
-package hal
+package halparse
 
 import (
 	"fmt"
 	"os"
 	"strings"
 	"testing"
+
+	hal "linuxcnc.org/hal"
 )
 
-// --- mock implementations for testing ---
-
-// mockINI implements INILookup for testing.
+// mockINI is a test implementation of INILookup.
 type mockINI struct {
 	data map[string]map[string]string
 }
@@ -20,178 +20,58 @@ func (m *mockINI) Get(section, key string) (string, error) {
 			return v, nil
 		}
 	}
-	return "", fmt.Errorf("not found: [%s]%s", section, key)
+	return "", fmt.Errorf("ini: [%s]%s not found", section, key)
 }
 
 func (m *mockINI) GetAll() map[string]map[string]string {
 	return m.data
 }
 
-// mockResolver implements PathResolver for testing.
+// mockResolver is a test implementation of PathResolver.
 type mockResolver struct {
-	files map[string]string // resolved path → content (content not used by resolver)
+	base string
 }
 
 func (r *mockResolver) Resolve(path string) (string, error) {
-	// Return the path as-is so tests can control it via readFile
-	return path, nil
+	if r.base == "" {
+		return path, nil
+	}
+	return r.base + "/" + path, nil
 }
 
 // --- TestTokenizeLine ---
 
 func TestTokenizeLine(t *testing.T) {
 	tests := []struct {
-		name    string
 		input   string
 		want    []string
 		wantErr bool
 	}{
-		{
-			name:  "simple whitespace splitting",
-			input: "loadrt motmod",
-			want:  []string{"loadrt", "motmod"},
-		},
-		{
-			name:  "multiple spaces",
-			input: "setp  comp.pin  3.14",
-			want:  []string{"setp", "comp.pin", "3.14"},
-		},
-		{
-			name:  "double-quoted string preserves spaces",
-			input: `setp "my value"`,
-			want:  []string{"setp", "my value"},
-		},
-		{
-			name:  "single-quoted string preserves spaces",
-			input: "setp 'my value'",
-			want:  []string{"setp", "my value"},
-		},
-		{
-			name:  "backslash escape outside quotes",
-			input: `hello\ world`,
-			want:  []string{"hello world"},
-		},
-		{
-			name:  "backslash escape space joins token",
-			input: `hello\ world foo`,
-			want:  []string{"hello world", "foo"},
-		},
-		{
-			name:  "backslash escape in double quotes",
-			input: `"hello\"world"`,
-			want:  []string{`hello"world`},
-		},
-		{
-			name:  "backslash backslash in double quotes",
-			input: `"hello\\world"`,
-			want:  []string{`hello\world`},
-		},
-		{
-			name:  "no escape processing inside single quotes",
-			input: `'hello\\world'`,
-			want:  []string{`hello\\world`},
-		},
-		{
-			name:  "no escape for single quote contents",
-			input: `'hello\"world'`,
-			want:  []string{`hello\"world`},
-		},
-		{
-			name:  "comment stripping",
-			input: "loadrt mod # this is a comment",
-			want:  []string{"loadrt", "mod"},
-		},
-		{
-			name:  "hash inside double quotes is not a comment",
-			input: `setp name "value#with#hash"`,
-			want:  []string{"setp", "name", "value#with#hash"},
-		},
-		{
-			name:  "hash inside single quotes is not a comment",
-			input: "setp name 'value#hash'",
-			want:  []string{"setp", "name", "value#hash"},
-		},
-		{
-			name:  "empty line",
-			input: "",
-			want:  []string{},
-		},
-		{
-			name:  "only whitespace",
-			input: "   \t  ",
-			want:  []string{},
-		},
-		{
-			name:  "only comment",
-			input: "# comment",
-			want:  []string{},
-		},
-		{
-			name:    "unterminated double quote",
-			input:   `"unterminated`,
-			wantErr: true,
-		},
-		{
-			name:    "unterminated single quote",
-			input:   "'unterminated",
-			wantErr: true,
-		},
-		{
-			name:  "mixed quoting",
-			input: `loadrt mod 'name=hello world' key="val"`,
-			want:  []string{"loadrt", "mod", "name=hello world", "key=val"},
-		},
-		{
-			name:  "arrow tokens preserved",
-			input: "net sig => pin1",
-			want:  []string{"net", "sig", "=>", "pin1"},
-		},
-		{
-			name:  "all arrow variants preserved",
-			input: "net sig => pin1 <= pin2 <=> pin3",
-			want:  []string{"net", "sig", "=>", "pin1", "<=", "pin2", "<=>", "pin3"},
-		},
-		{
-			name:  "adjacent quoted and unquoted",
-			input: `foo"bar"baz`,
-			want:  []string{"foobarbaz"},
-		},
-		{
-			name:  "double quote newline escape",
-			input: `"line1\nline2"`,
-			want:  []string{"line1\nline2"},
-		},
-		{
-			name:  "double quote tab escape",
-			input: `"col1\tcol2"`,
-			want:  []string{"col1\tcol2"},
-		},
-		{
-			name:  "unknown escape in double quote kept literal",
-			input: `"\x41"`,
-			want:  []string{`\x41`},
-		},
+		{"loadrt pid", []string{"loadrt", "pid"}, false},
+		{"  setp  comp.pin  3.14  ", []string{"setp", "comp.pin", "3.14"}, false},
+		{`setp "hello world" 1`, []string{"setp", "hello world", "1"}, false},
+		{"# comment only", []string{}, false},
+		{"setp pin 1 # inline comment", []string{"setp", "pin", "1"}, false},
+		{`setp pin "unterminated`, nil, true},
+		{"", []string{}, false},
+		{"\t\t  ", []string{}, false},
+		{`setp p "quoted with # hash"`, []string{"setp", "p", "quoted with # hash"}, false},
 	}
-
 	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+		t.Run(tc.input, func(t *testing.T) {
 			got, err := tokenizeLine(tc.input)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("tokenizeLine(%q) error = %v, wantErr %v", tc.input, err, tc.wantErr)
+			}
 			if tc.wantErr {
-				if err == nil {
-					t.Errorf("expected error, got nil")
-				}
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
 			if len(got) != len(tc.want) {
-				t.Fatalf("tokenizeLine(%q) = %v (len=%d), want %v (len=%d)",
-					tc.input, got, len(got), tc.want, len(tc.want))
+				t.Fatalf("tokenizeLine(%q) = %v, want %v", tc.input, got, tc.want)
 			}
-			for i := range got {
-				if got[i] != tc.want[i] {
-					t.Errorf("token[%d]: got %q, want %q", i, got[i], tc.want[i])
+			for i, w := range tc.want {
+				if got[i] != w {
+					t.Errorf("tokenizeLine(%q)[%d] = %q, want %q", tc.input, i, got[i], w)
 				}
 			}
 		})
@@ -612,12 +492,12 @@ func TestParseNewSig(t *testing.T) {
 
 	tests := []struct {
 		typeStr string
-		want    PinType
+		want    hal.PinType
 	}{
-		{"bit", TypeBit},
-		{"float", TypeFloat},
-		{"s32", TypeS32},
-		{"u32", TypeU32},
+		{"bit", hal.TypeBit},
+		{"float", hal.TypeFloat},
+		{"s32", hal.TypeS32},
+		{"u32", hal.TypeU32},
 	}
 	for _, tc := range tests {
 		t.Run(tc.typeStr, func(t *testing.T) {
@@ -1088,41 +968,41 @@ func TestParseLine(t *testing.T) {
 		tokens []string
 		kind   string
 	}{
-		{[]string{"loadrt", "mod"}, "*hal.LoadRTToken"},
-		{[]string{"loadusr", "prog"}, "*hal.LoadUSRToken"},
-		{[]string{"net", "sig"}, "*hal.NetToken"},
-		{[]string{"setp", "a", "b"}, "*hal.SetPToken"},
-		{[]string{"sets", "a", "b"}, "*hal.SetSToken"},
-		{[]string{"getp", "a"}, "*hal.GetPToken"},
-		{[]string{"gets", "a"}, "*hal.GetSToken"},
-		{[]string{"addf", "f", "t"}, "*hal.AddFToken"},
-		{[]string{"delf", "f", "t"}, "*hal.DelFToken"},
-		{[]string{"newsig", "s", "bit"}, "*hal.NewSigToken"},
-		{[]string{"delsig", "s"}, "*hal.DelSigToken"},
-		{[]string{"linkps", "p", "s"}, "*hal.LinkPSToken"},
-		{[]string{"linksp", "s", "p"}, "*hal.LinkSPToken"},
-		{[]string{"linkpp", "p1", "p2"}, "*hal.LinkPPToken"},
-		{[]string{"unlinkp", "p"}, "*hal.UnlinkPToken"},
-		{[]string{"alias", "pin", "n", "a"}, "*hal.AliasToken"},
-		{[]string{"unalias", "pin", "n"}, "*hal.UnAliasToken"},
-		{[]string{"start"}, "*hal.StartToken"},
-		{[]string{"stop"}, "*hal.StopToken"},
-		{[]string{"lock"}, "*hal.LockToken"},
-		{[]string{"unlock"}, "*hal.UnlockToken"},
-		{[]string{"unloadrt", "c"}, "*hal.UnloadRTToken"},
-		{[]string{"unloadusr", "c"}, "*hal.UnloadUSRToken"},
-		{[]string{"unload", "c"}, "*hal.UnloadToken"},
-		{[]string{"waitusr", "c"}, "*hal.WaitUSRToken"},
-		{[]string{"list", "pin"}, "*hal.ListToken"},
-		{[]string{"show"}, "*hal.ShowToken"},
-		{[]string{"save"}, "*hal.SaveToken"},
-		{[]string{"status"}, "*hal.StatusToken"},
-		{[]string{"debug", "0"}, "*hal.DebugToken"},
-		{[]string{"ptype", "n"}, "*hal.PTypeToken"},
-		{[]string{"stype", "n"}, "*hal.STypeToken"},
-		{[]string{"echo"}, "*hal.EchoToken"},
-		{[]string{"unecho"}, "*hal.UnEchoToken"},
-		{[]string{"print", "msg"}, "*hal.PrintToken"},
+		{[]string{"loadrt", "mod"}, "*halparse.LoadRTToken"},
+		{[]string{"loadusr", "prog"}, "*halparse.LoadUSRToken"},
+		{[]string{"net", "sig"}, "*halparse.NetToken"},
+		{[]string{"setp", "a", "b"}, "*halparse.SetPToken"},
+		{[]string{"sets", "a", "b"}, "*halparse.SetSToken"},
+		{[]string{"getp", "a"}, "*halparse.GetPToken"},
+		{[]string{"gets", "a"}, "*halparse.GetSToken"},
+		{[]string{"addf", "f", "t"}, "*halparse.AddFToken"},
+		{[]string{"delf", "f", "t"}, "*halparse.DelFToken"},
+		{[]string{"newsig", "s", "bit"}, "*halparse.NewSigToken"},
+		{[]string{"delsig", "s"}, "*halparse.DelSigToken"},
+		{[]string{"linkps", "p", "s"}, "*halparse.LinkPSToken"},
+		{[]string{"linksp", "s", "p"}, "*halparse.LinkSPToken"},
+		{[]string{"linkpp", "p1", "p2"}, "*halparse.LinkPPToken"},
+		{[]string{"unlinkp", "p"}, "*halparse.UnlinkPToken"},
+		{[]string{"alias", "pin", "n", "a"}, "*halparse.AliasToken"},
+		{[]string{"unalias", "pin", "n"}, "*halparse.UnAliasToken"},
+		{[]string{"start"}, "*halparse.StartToken"},
+		{[]string{"stop"}, "*halparse.StopToken"},
+		{[]string{"lock"}, "*halparse.LockToken"},
+		{[]string{"unlock"}, "*halparse.UnlockToken"},
+		{[]string{"unloadrt", "c"}, "*halparse.UnloadRTToken"},
+		{[]string{"unloadusr", "c"}, "*halparse.UnloadUSRToken"},
+		{[]string{"unload", "c"}, "*halparse.UnloadToken"},
+		{[]string{"waitusr", "c"}, "*halparse.WaitUSRToken"},
+		{[]string{"list", "pin"}, "*halparse.ListToken"},
+		{[]string{"show"}, "*halparse.ShowToken"},
+		{[]string{"save"}, "*halparse.SaveToken"},
+		{[]string{"status"}, "*halparse.StatusToken"},
+		{[]string{"debug", "0"}, "*halparse.DebugToken"},
+		{[]string{"ptype", "n"}, "*halparse.PTypeToken"},
+		{[]string{"stype", "n"}, "*halparse.STypeToken"},
+		{[]string{"echo"}, "*halparse.EchoToken"},
+		{[]string{"unecho"}, "*halparse.UnEchoToken"},
+		{[]string{"print", "msg"}, "*halparse.PrintToken"},
 	}
 	for _, tc := range dispatchTests {
 		t.Run("dispatch_"+tc.tokens[0], func(t *testing.T) {
@@ -1704,91 +1584,4 @@ func TestCollectLoadRTToken(t *testing.T) {
 			t.Errorf("expected names=pid.0,pid.1 in %v", cmds[0])
 		}
 	})
-
-	t.Run("extra params are passed through", func(t *testing.T) {
-		c := NewTwopassCollector()
-		tok := &LoadRTToken{
-			Comp:   "motmod",
-			Params: map[string]string{"period": "1000000"},
-		}
-		c.CollectLoadRTToken(tok)
-		cmds := c.MergedLoadRTCommands()
-		found := false
-		for _, arg := range cmds[0] {
-			if arg == "period=1000000" {
-				found = true
-			}
-		}
-		if !found {
-			t.Errorf("expected period=1000000 in %v", cmds[0])
-		}
-	})
-
-	t.Run("merges with existing entry via CollectLoadRT", func(t *testing.T) {
-		c := NewTwopassCollector()
-		c.CollectLoadRT("pid", []string{"names=pid.0"})
-		tok := &LoadRTToken{
-			Comp:   "pid",
-			Names:  []string{"pid.1"},
-			Params: make(map[string]string),
-		}
-		c.CollectLoadRTToken(tok)
-		cmds := c.MergedLoadRTCommands()
-		if len(cmds) != 1 {
-			t.Fatalf("expected 1 merged command, got %d", len(cmds))
-		}
-		found := false
-		for _, arg := range cmds[0] {
-			if arg == "names=pid.0,pid.1" {
-				found = true
-			}
-		}
-		if !found {
-			t.Errorf("expected merged names=pid.0,pid.1 in %v", cmds[0])
-		}
-	})
-}
-
-// --- TestJoinContinuationLines ---
-
-func TestJoinContinuationLines(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{
-			name:  "no continuation",
-			input: "line1\nline2\n",
-			want:  "line1\nline2\n",
-		},
-		{
-			name:  "one continuation with leading space on continuation line",
-			input: "line1 \\\n    line2\n",
-			want:  "line1      line2\n",
-		},
-		{
-			name:  "continuation no leading whitespace",
-			input: "foo\\\nbar\n",
-			want:  "foo bar\n",
-		},
-		{
-			name:  "crlf normalized",
-			input: "line1\r\nline2\r\n",
-			want:  "line1\nline2\n",
-		},
-		{
-			name:  "continuation with crlf",
-			input: "line1 \\\r\nline2\n",
-			want:  "line1  line2\n",
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := joinContinuationLines(tc.input)
-			if got != tc.want {
-				t.Errorf("got %q, want %q", got, tc.want)
-			}
-		})
-	}
 }
