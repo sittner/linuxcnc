@@ -60,29 +60,9 @@
 #endif
 
 #include "rtapi.h"
+#include "rtapi_task.h"
 #include "hal.h"
 #include "hal/hal_priv.h"
-
-/* rtapi_task structure - converted from C++ class hierarchy (rtapi_uspace.hh deleted) */
-struct rtapi_task {
-    int magic;
-    int id;
-    int owner;
-    int uses_fp;
-    size_t stacksize;
-    int prio;
-    long period;
-    struct timespec nextstart;
-    unsigned ratio;
-    long pll_correction;
-    long pll_correction_limit;
-    void *arg;
-    void (*taskcode)(void*);
-};
-
-#define MAX_TASKS  64
-#define TASK_MAGIC    21979
-#define TASK_MAGIC_INIT   ((struct rtapi_task*)(-1))
 
 /* Declarations for compatibility with uspace_common.h */
 static uid_t euid, ruid;
