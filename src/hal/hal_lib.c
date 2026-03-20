@@ -2768,6 +2768,7 @@ int halpr_rtapi_app_main(void)
     }
     /* done */
     rtapi_pid = getpid();
+    ref_cnt++;  /* hold a reference so hal_exit() can't tear down shmem */
     rtapi_print_msg(RTAPI_MSG_DBG,
 	"HAL_LIB: kernel lib installed successfully\n");
     return 0;
@@ -2778,6 +2779,7 @@ void halpr_rtapi_app_exit(void)
     hal_thread_t *thread;
 
     rtapi_print_msg(RTAPI_MSG_DBG, "HAL_LIB: removing kernel lib\n");
+    ref_cnt--;  /* release the reference taken in halpr_rtapi_app_main */
     /* grab mutex before manipulating list */
     rtapi_mutex_get(&(hal_data->mutex));
     /* must remove all threads before unloading this module */
