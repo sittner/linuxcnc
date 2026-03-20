@@ -515,6 +515,121 @@ SERVO_PERIOD = 1000000
 	}
 }
 
+// --------------------------------------------------------------------------
+// Keys — distinct key names in a section
+// --------------------------------------------------------------------------
+
+func TestKeys_BasicSection(t *testing.T) {
+	dir := t.TempDir()
+	f := writeFile(t, dir, "keys_basic.ini", `
+[JOINT_0]
+MIN_LIMIT = -1
+MAX_LIMIT = 1
+MAX_VELOCITY = 5
+`)
+	ini, err := inifile.Parse(f)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	got := ini.Keys("JOINT_0")
+	want := []string{"MIN_LIMIT", "MAX_LIMIT", "MAX_VELOCITY"}
+	if len(got) != len(want) {
+		t.Fatalf("Keys len = %d, want %d; got %v", len(got), len(want), got)
+	}
+	for i, k := range want {
+		if got[i] != k {
+			t.Errorf("Keys[%d] = %q, want %q", i, got[i], k)
+		}
+	}
+}
+
+func TestKeys_RepeatedKeys(t *testing.T) {
+	dir := t.TempDir()
+	f := writeFile(t, dir, "keys_repeated.ini", `
+[HAL]
+HALFILE = first.hal
+HALFILE = second.hal
+HALFILE = third.hal
+`)
+	ini, err := inifile.Parse(f)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	got := ini.Keys("HAL")
+	want := []string{"HALFILE"}
+	if len(got) != len(want) {
+		t.Fatalf("Keys len = %d, want %d; got %v", len(got), len(want), got)
+	}
+	if got[0] != want[0] {
+		t.Errorf("Keys[0] = %q, want %q", got[0], want[0])
+	}
+}
+
+func TestKeys_MissingSectionReturnsNil(t *testing.T) {
+	dir := t.TempDir()
+	f := writeFile(t, dir, "keys_missing.ini", `
+[EXISTING]
+KEY = value
+`)
+	ini, err := inifile.Parse(f)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	got := ini.Keys("NONEXISTENT")
+	if got != nil {
+		t.Errorf("Keys missing section = %v, want nil", got)
+	}
+}
+
+func TestKeys_MultipleSectionOccurrences(t *testing.T) {
+	dir := t.TempDir()
+	// Simulate #INCLUDE merging: same section name appears in two files.
+	writeFile(t, dir, "extra.ini", `
+[JOINT_0]
+MAX_VELOCITY = 5
+MAX_ACCELERATION = 20
+`)
+	f := writeFile(t, dir, "main.ini", `
+[JOINT_0]
+MIN_LIMIT = -1
+MAX_LIMIT = 1
+MAX_VELOCITY = 5
+#INCLUDE extra.ini
+`)
+	ini, err := inifile.Parse(f)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	got := ini.Keys("JOINT_0")
+	// Keys from both occurrences merged; MAX_VELOCITY deduplicated.
+	want := []string{"MIN_LIMIT", "MAX_LIMIT", "MAX_VELOCITY", "MAX_ACCELERATION"}
+	if len(got) != len(want) {
+		t.Fatalf("Keys len = %d, want %d; got %v", len(got), len(want), got)
+	}
+	for i, k := range want {
+		if got[i] != k {
+			t.Errorf("Keys[%d] = %q, want %q", i, got[i], k)
+		}
+	}
+}
+
+func TestKeys_EmptySection(t *testing.T) {
+	dir := t.TempDir()
+	f := writeFile(t, dir, "keys_empty.ini", `
+[EMPTY_SEC]
+[OTHER]
+KEY = value
+`)
+	ini, err := inifile.Parse(f)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	got := ini.Keys("EMPTY_SEC")
+	if len(got) != 0 {
+		t.Errorf("Keys empty section = %v, want nil or empty", got)
+	}
+}
+
 func TestSet_CreatesNewSection(t *testing.T) {
 	dir := t.TempDir()
 	f := writeFile(t, dir, "setsec.ini", `

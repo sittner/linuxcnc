@@ -202,6 +202,33 @@ func (ini *IniFile) GetAll(section, key string) []string {
 	return result
 }
 
+// Keys returns the distinct key names present in the named section, in the
+// order they first appear.  If the section appears more than once (e.g. via
+// #INCLUDE), keys from all occurrences are merged.  Returns nil if the
+// section does not exist.
+func (ini *IniFile) Keys(section string) []string {
+	found := false
+	seen := make(map[string]bool)
+	var result []string
+	for i := range ini.Sections {
+		if ini.Sections[i].Name != section {
+			continue
+		}
+		found = true
+		for j := range ini.Sections[i].Entries {
+			key := ini.Sections[i].Entries[j].Key
+			if !seen[key] {
+				seen[key] = true
+				result = append(result, key)
+			}
+		}
+	}
+	if !found {
+		return nil
+	}
+	return result
+}
+
 // GetN returns the n-th occurrence of key in section (1-based), matching the
 // behaviour of `inivar -num N`.  Returns an empty string if there is no n-th
 // occurrence.
