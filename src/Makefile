@@ -167,8 +167,7 @@ SUBDIRS := \
     libnml/linklist libnml/cms libnml/rcs libnml/inifile libnml/os_intf \
     libnml/nml libnml/buffer libnml/posemath libnml \
     \
-    rtapi/examples/timer rtapi/examples/semaphore rtapi/examples/shmem \
-    rtapi/examples/extint rtapi/examples/fifo rtapi/examples rtapi \
+    rtapi \
     \
     hal/components hal/drivers hal/drivers/mesa-hostmot2 \
     hal/user_comps/devices hal/user_comps/mb2hal \
@@ -466,8 +465,7 @@ SRCHEADERS := \
     rtapi/rtapi_stdint.h \
     rtapi/rtapi_ctype.h \
     rtapi/rtapi_errno.h \
-    rtapi/rtapi_string.h \
-    rtapi/rtapi_vsnprintf.h
+    rtapi/rtapi_string.h
 
 # the "headers" target installs all the header files in ../include
 .PHONY: headers
@@ -603,11 +601,6 @@ setuid:
 ifeq ($(BUILD_SYS),uspace)
 	chown root ../bin/rtapi_app
 	chmod 4750 ../bin/rtapi_app
-else
-	chown root ../bin/pci_write
-	chmod 4750 ../bin/pci_write
-	chown root ../bin/pci_read
-	chmod 4750 ../bin/pci_read
 endif
 	chown root ../bin/linuxcnc_module_helper
 	chmod 4750 ../bin/linuxcnc_module_helper
@@ -717,7 +710,7 @@ install-kernel-indep: install-dirs
 	$(DIR) $(DESTDIR)$(sampleconfsdir)
 	((cd ../configs && tar --exclude CVS --exclude .cvsignore --exclude .gitignore -cf - .) | (cd $(DESTDIR)$(sampleconfsdir) && tar -xf -))
 
-	$(EXE) $(filter-out ../bin/rtapi_app ../bin/linuxcnc_module_helper ../bin/pci_write ../bin/pci_read ../bin/test_rtapi_vsnprintf, $(filter ../bin/%,$(TARGETS))) $(DESTDIR)$(bindir)
+	$(EXE) $(filter-out ../bin/rtapi_app ../bin/linuxcnc_module_helper ../bin/test_rtapi_vsnprintf, $(filter ../bin/%,$(TARGETS))) $(DESTDIR)$(bindir)
 	$(EXE) ../scripts/linuxcnc $(DESTDIR)$(bindir)
 	$(EXE) ../scripts/linuxcnc_info $(DESTDIR)$(bindir)
 	$(EXE) ../scripts/setup_designer $(DESTDIR)$(bindir)
@@ -857,8 +850,6 @@ install-kernel-dep:
 	$(SETUID) ../bin/linuxcnc_module_helper $(DESTDIR)$(bindir)
 ifneq "$(BUILD_SYS)" "uspace"
 	$(FILE) Module.symvers $(DESTDIR)$(EMC2_RTLIB_DIR)
-	$(SETUID) ../bin/pci_write $(DESTDIR)$(bindir)
-	$(SETUID) ../bin/pci_read $(DESTDIR)$(bindir)
 else
 	$(SETUID) ../bin/rtapi_app $(DESTDIR)$(bindir)
 endif
@@ -918,8 +909,6 @@ obj-$(CONFIG_RTAPI) += rtapi.o
 rtapi-objs := rtapi/$(RTPREFIX)_rtapi.o
 endif
 
-# Subdirectory: rtapi/examples (unneeded?)
-
 # Subdirectory: hal/components
 obj-$(CONFIG_BOSS_PLC) += boss_plc.o
 boss_plc-objs := hal/components/boss_plc.o $(MATHSTUB)
@@ -973,26 +962,7 @@ ifeq ($(X86ARCH),true)
 obj-$(CONFIG_HAL_SPEAKER) += hal_speaker.o
 hal_speaker-objs := hal/drivers/hal_speaker.o $(MATHSTUB)
 endif
-ifneq ($(BUILD_SYS),uspace)
-obj-$(CONFIG_PCI_8255) += pci_8255.o
-pci_8255-objs := hal/drivers/pci_8255.o
-obj-$(CONFIG_HAL_TIRO) += hal_tiro.o
-hal_tiro-objs := hal/drivers/hal_tiro.o $(MATHSTUB)
-obj-$(CONFIG_HAL_STG) += hal_stg.o
-hal_stg-objs := hal/drivers/hal_stg.o $(MATHSTUB)
-obj-$(CONFIG_HAL_VTI) += hal_vti.o
-hal_vti-objs := hal/drivers/hal_vti.o $(MATHSTUB)
-obj-$(CONFIG_HAL_EVOREG) += hal_evoreg.o
-hal_evoreg-objs := hal/drivers/hal_evoreg.o $(MATHSTUB)
-obj-$(CONFIG_HAL_MOTENC) += hal_motenc.o
-hal_motenc-objs := hal/drivers/hal_motenc.o $(MATHSTUB)
-obj-$(CONFIG_HAL_AX521H) += hal_ax5214h.o
-hal_ax5214h-objs := hal/drivers/hal_ax5214h.o $(MATHSTUB)
-obj-$(CONFIG_HAL_SKELETON) += hal_skeleton.o
-hal_skeleton-objs := hal/drivers/hal_skeleton.o $(MATHSTUB)
-obj-$(CONFIG_OPTO_AC5) += opto_ac5.o
-opto_ac5-objs := hal/drivers/opto_ac5.o $(MATHSTUB)
-endif
+
 obj-$(CONFIG_HAL_GM) += hal_gm.o
 hal_gm-objs := hal/drivers/hal_gm.o $(MATHSTUB)
 obj-$(CONFIG_HAL_PPMC) += hal_ppmc.o
@@ -1319,19 +1289,11 @@ endif
 ../rtlib/sampler$(MODULE_EXT): $(addprefix objects/rt,$(sampler-objs))
 ../rtlib/hal_parport$(MODULE_EXT): $(addprefix objects/rt,$(hal_parport-objs))
 #../rtlib/uparport$(MODULE_EXT): $(addprefix objects/rt,$(uparport-objs))
-../rtlib/pci_8255$(MODULE_EXT): $(addprefix objects/rt,$(pci_8255-objs))
-../rtlib/hal_tiro$(MODULE_EXT): $(addprefix objects/rt,$(hal_tiro-objs))
-../rtlib/hal_stg$(MODULE_EXT): $(addprefix objects/rt,$(hal_stg-objs))
-../rtlib/hal_vti$(MODULE_EXT): $(addprefix objects/rt,$(hal_vti-objs))
-../rtlib/hal_evoreg$(MODULE_EXT): $(addprefix objects/rt,$(hal_evoreg-objs))
-../rtlib/hal_motenc$(MODULE_EXT): $(addprefix objects/rt,$(hal_motenc-objs))
-../rtlib/hal_ax5214h$(MODULE_EXT): $(addprefix objects/rt,$(hal_ax5214h-objs))
+
 ../rtlib/hal_ppmc$(MODULE_EXT): $(addprefix objects/rt,$(hal_ppmc-objs))
-../rtlib/hal_skeleton$(MODULE_EXT): $(addprefix objects/rt,$(hal_skeleton-objs))
 ifeq ($(X86ARCH),true)
 ../rtlib/hal_speaker$(MODULE_EXT): $(addprefix objects/rt,$(hal_speaker-objs))
 endif
-../rtlib/opto_ac5$(MODULE_EXT): $(addprefix objects/rt,$(opto_ac5-objs))
 ../rtlib/scope_rt$(MODULE_EXT): $(addprefix objects/rt,$(scope_rt-objs))
 ../rtlib/hal_lib$(MODULE_EXT): $(addprefix objects/rt,$(hal_lib-objs))
 ../rtlib/motmod$(MODULE_EXT): $(addprefix objects/rt,$(motmod-objs))

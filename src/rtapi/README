@@ -9,7 +9,6 @@ Files
 rtapi.h                 : public RTAPI function declarations
 rtapi_task.h            : struct rtapi_task and related constants
 rtapi_app.h             : EXPORT_SYMBOL / module entry points
-rtapi_common.h          : internal typedefs
 uspace_common.h         : shared code included by both rtapi_app and ulapi
 uspace_rtapi_app.c      : rtapi_app process (module loading, IPC, main)
 uspace_rtapi_lib.c      : RTAPI library linked into liblinuxcnchal.so
@@ -17,7 +16,6 @@ uspace_ulapi.c          : user-level API (non-realtime callers)
 uspace_rtapi_parport.c  : parallel port access helpers
 uspace_rtapi_string.c   : kernel-style string helpers (argv_split, etc.)
 rtapi_pci.c             : usermode PCI device access via libudev
-mathstubs.c             : libm stubs for RT modules
 
 Build
 -----
