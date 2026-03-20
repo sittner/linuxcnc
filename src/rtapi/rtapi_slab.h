@@ -18,15 +18,6 @@
 
 #include "rtapi_gfp.h"
 
-#ifdef __KERNEL__
-#include <linux/slab.h>
-
-#define rtapi_kfree kfree
-#define rtapi_kmalloc kmalloc
-#define rtapi_krealloc krealloc
-#define rtapi_kzalloc kzalloc
-
-#else
 #include <stdlib.h>
 
 #define rtapi_kfree free
@@ -34,5 +25,4 @@
 #define rtapi_kzalloc(sz, flags) calloc(1,(sz))
 #define rtapi_krealloc(p, sz, flags) realloc((p), (sz))
 
-#endif
 #endif

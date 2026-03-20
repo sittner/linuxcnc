@@ -25,10 +25,8 @@
 #include "hal.h"
 #include "rtapi_math.h"
 
-#if !defined(__KERNEL__)
 #include <stdio.h>
 #include <stdlib.h>
-#endif
 
 /* module information */
 MODULE_AUTHOR("Andy Pugh");

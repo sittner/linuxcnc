@@ -23,10 +23,8 @@
 #include "rtapi_string.h"
 #include "hal.h"
 
-#if !defined(__KERNEL__)
 #include <stdio.h>
 #include <stdlib.h>
-#endif
 
 /* module information */
 MODULE_AUTHOR("Andy Pugh");

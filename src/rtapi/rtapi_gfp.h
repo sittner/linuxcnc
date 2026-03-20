@@ -16,24 +16,6 @@
 #ifndef RTAPI_GFP_H
 #define RTAPI_GFP_H
 
-#ifdef __KERNEL__
-#include <linux/gfp.h>
-
-// types
-#define rtapi_gpf_e gpf_e
-#define rtapi_gpf_t gpf_t
-
-// enumerated values
-#define RTAPI_GFP_BUFFER GFP_BUFFER
-#define RTAPI_GFP_ATOMIC GFP_ATOMIC
-#define RTAPI_GFP_KERNEL GFP_KERNEL
-#define RTAPI_GFP_USER GFP_USER
-#define RTAPI_GFP_NOBUFFER GFP_NOBUFFER
-#define RTAPI_GFP_NFS GFP_NFS
-#define RTAPI_GFP_DMA GFP_DMA
-
-#else
-
 enum rtapi_gfp_e {
     RTAPI_GFP_BUFFER,
     RTAPI_GFP_ATOMIC,
@@ -46,7 +28,4 @@ enum rtapi_gfp_e {
 
 typedef unsigned long rtapi_gfp_t;
 
-
-
-#endif
 #endif

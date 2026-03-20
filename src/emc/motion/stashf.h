@@ -18,9 +18,7 @@
 #ifndef STASHF_H
 #define STASHF_H
 #include <stdarg.h>
-#ifndef RTAPI
 #include <stdio.h>
-#endif
 
 #ifdef __cplusplus
 extern "C" {

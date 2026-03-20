@@ -65,11 +65,7 @@
 
 /* Keep the includes here - It might get messy.. */
 
-#ifdef RTAPI
-#include <linux/sched.h>	/* for blocking when needed */
-#else
 #include <sched.h>		/* for blocking when needed */
-#endif
 
 #include "rtapi_bitops.h"
 #include <rtapi_mutex.h>

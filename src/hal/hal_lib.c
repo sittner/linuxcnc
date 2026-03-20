@@ -326,7 +326,6 @@ int hal_exit(int comp_id)
     /* release mutex */
     rtapi_mutex_give(&(hal_data->mutex));
     --ref_cnt;
-#ifdef ULAPI
     if(ref_cnt == 0) {
         rtapi_print_msg(RTAPI_MSG_DBG, "HAL: releasing RTAPI resources\n");
 	/* release RTAPI resources */
@@ -337,7 +336,6 @@ int hal_exit(int comp_id)
 	hal_shmem_base = NULL;
 	hal_data = NULL;
     }
-#endif
     rtapi_exit(comp_id);
     /* done */
     rtapi_print_msg(RTAPI_MSG_DBG,
@@ -4109,105 +4107,3 @@ int hal_stream_num_overruns(hal_stream_t *stream) {
 int hal_stream_num_underruns(hal_stream_t *stream) {
     return stream->fifo->num_underruns;
 }
-
-#ifdef RTAPI
-/* only export symbols when we're building a kernel module */
-
-EXPORT_SYMBOL(hal_init);
-EXPORT_SYMBOL(hal_ready);
-EXPORT_SYMBOL(hal_set_unready);
-EXPORT_SYMBOL(hal_exit);
-EXPORT_SYMBOL(hal_malloc);
-EXPORT_SYMBOL(hal_comp_name);
-
-EXPORT_SYMBOL(hal_pin_bit_new);
-EXPORT_SYMBOL(hal_pin_float_new);
-EXPORT_SYMBOL(hal_pin_u32_new);
-EXPORT_SYMBOL(hal_pin_s32_new);
-EXPORT_SYMBOL(hal_pin_port_new);
-EXPORT_SYMBOL(hal_pin_new);
-
-EXPORT_SYMBOL(hal_pin_bit_newf);
-EXPORT_SYMBOL(hal_pin_float_newf);
-EXPORT_SYMBOL(hal_pin_u32_newf);
-EXPORT_SYMBOL(hal_pin_s32_newf);
-EXPORT_SYMBOL(hal_pin_port_newf);
-
-
-EXPORT_SYMBOL(hal_signal_new);
-EXPORT_SYMBOL(hal_signal_delete);
-EXPORT_SYMBOL(hal_link);
-EXPORT_SYMBOL(hal_unlink);
-
-EXPORT_SYMBOL(hal_param_bit_new);
-EXPORT_SYMBOL(hal_param_float_new);
-EXPORT_SYMBOL(hal_param_u32_new);
-EXPORT_SYMBOL(hal_param_s32_new);
-EXPORT_SYMBOL(hal_param_new);
-
-EXPORT_SYMBOL(hal_param_bit_newf);
-EXPORT_SYMBOL(hal_param_float_newf);
-EXPORT_SYMBOL(hal_param_u32_newf);
-EXPORT_SYMBOL(hal_param_s32_newf);
-
-EXPORT_SYMBOL(hal_param_bit_set);
-EXPORT_SYMBOL(hal_param_float_set);
-EXPORT_SYMBOL(hal_param_u32_set);
-EXPORT_SYMBOL(hal_param_s32_set);
-EXPORT_SYMBOL(hal_param_set);
-
-EXPORT_SYMBOL(hal_set_constructor);
-
-EXPORT_SYMBOL(hal_export_funct);
-
-EXPORT_SYMBOL(hal_create_thread);
-
-EXPORT_SYMBOL(hal_add_funct_to_thread);
-EXPORT_SYMBOL(hal_del_funct_from_thread);
-
-EXPORT_SYMBOL(hal_start_threads);
-EXPORT_SYMBOL(hal_stop_threads);
-
-EXPORT_SYMBOL(hal_shmem_base);
-EXPORT_SYMBOL(halpr_find_comp_by_name);
-EXPORT_SYMBOL(halpr_find_pin_by_name);
-EXPORT_SYMBOL(halpr_find_sig_by_name);
-EXPORT_SYMBOL(halpr_find_param_by_name);
-EXPORT_SYMBOL(halpr_find_thread_by_name);
-EXPORT_SYMBOL(halpr_find_funct_by_name);
-EXPORT_SYMBOL(halpr_find_comp_by_id);
-
-EXPORT_SYMBOL(halpr_find_pin_by_owner);
-EXPORT_SYMBOL(halpr_find_param_by_owner);
-EXPORT_SYMBOL(halpr_find_funct_by_owner);
-
-EXPORT_SYMBOL(halpr_find_pin_by_sig);
-
-EXPORT_SYMBOL(hal_pin_alias);
-EXPORT_SYMBOL(hal_param_alias);
-
-EXPORT_SYMBOL(hal_port_alloc);
-EXPORT_SYMBOL(hal_port_read);
-EXPORT_SYMBOL(hal_port_peek);
-EXPORT_SYMBOL(hal_port_peek_commit);
-EXPORT_SYMBOL(hal_port_write);
-EXPORT_SYMBOL(hal_port_readable);
-EXPORT_SYMBOL(hal_port_writable);
-EXPORT_SYMBOL(hal_port_buffer_size);
-EXPORT_SYMBOL(hal_port_clear);
-
-EXPORT_SYMBOL_GPL(hal_stream_create);
-EXPORT_SYMBOL_GPL(hal_stream_destroy);
-EXPORT_SYMBOL_GPL(hal_stream_readable);
-EXPORT_SYMBOL_GPL(hal_stream_writable);
-EXPORT_SYMBOL_GPL(hal_stream_depth);
-EXPORT_SYMBOL_GPL(hal_stream_maxdepth);
-EXPORT_SYMBOL_GPL(hal_stream_write);
-EXPORT_SYMBOL_GPL(hal_stream_read);
-EXPORT_SYMBOL_GPL(hal_stream_attach);
-EXPORT_SYMBOL_GPL(hal_stream_detach);
-EXPORT_SYMBOL_GPL(hal_stream_element_count);
-EXPORT_SYMBOL_GPL(hal_stream_element_type);
-EXPORT_SYMBOL_GPL(hal_stream_num_overruns);
-EXPORT_SYMBOL_GPL(hal_stream_num_underruns);
-#endif /* rtapi */

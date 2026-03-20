@@ -31,7 +31,6 @@
 
 #include "hm2_modbus.h"
 
-#if !defined(__KERNEL__)
 #include <stdio.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -39,14 +38,6 @@
 #include <endian.h>
 static inline rtapi_u32 be32_to_cpu(rtapi_u32 v) { return be32toh(v); }
 static inline rtapi_u16 be16_to_cpu(rtapi_u16 v) { return be16toh(v); }
-#else
-#include <linux/module.h>
-#include <linux/kernel.h>
-#include <linux/fs.h>
-#include <linux/file.h>
-#include <linux/uaccess.h>
-#include <linux/byteorder/generic.h>
-#endif
 
 // Define to compile in debug messages
 #define DEBUG
@@ -2061,7 +2052,6 @@ static rtapi_u16 crc_modbus(const rtapi_u8 *buffer, size_t len)
 /*                     Mbccb file read and validation                      */
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
-#if !defined(__KERNEL__)
 // Userspace file read
 static ssize_t read_mbccb(const hm2_modbus_inst_t *inst, const char *fname, hm2_modbus_mbccb_header_t **pmbccb)
 {
@@ -2119,56 +2109,6 @@ retry_read:
 	close(fd);
 	return err;	// Read it all, return the size
 }
-
-#else
-
-// In-kernel file read
-static ssize_t read_mbccb(const hm2_modbus_inst_t *inst, const char *fname, hm2_modbus_mbccb_header_t **pmbccb)
-{
-	if(!pmbccb)
-		return -EINVAL;
-
-	struct file *fp;
-	*pmbccb = NULL;
-
-	// Open the file
-	fp = filp_open(fname, O_RDONLY, 0);
-	if(IS_ERR(fp)) {
-		MSG_ERR("%s: error: Failed to open '%s' for reading (error %d)\n", inst->name, fname, (int)PTR_ERR(fp));
-		// FIXME: is it necessary to check negative?
-		return PTR_ERR(fp) < 0 ? PTR_ERR(fp) : -PTR_ERR(fp);
-	}
-
-	ssize_t fsize = fp->f_inode->i_size;	// File's inode file size
-
-	// Allocate memory
-	*pmbccb = rtapi_kzalloc(fsize, RTAPI_GFP_KERNEL);
-	if(!*pmbccb) {
-		MSG_ERR("%s: error: Failed to allocate %zd bytes memory for mbccb buffer\n", inst->name, fsize);
-		filp_close(fp, NULL);
-		return -ENOMEM;
-	}
-
-	// Read the entire file
-	ssize_t err = kernel_read(fp, *pmbccb, fsize, NULL);
-	if(err < 0) {
-		MSG_ERR("%s: error: Failed to read from '%s' (error %zd)\n", inst->name, fname, err);
-		rtapi_kfree(*pmbccb);
-		*pmbccb = NULL;
-		filp_close(fp, NULL);
-		return err;
-	}
-	if(err != fsize) {
-		MSG_ERR("%s: error: Read %zd bytes instead of %zd bytes from '%s', aborting\n", inst->name, err, fsize, fname);
-		rtapi_kfree(*pmbccb);
-		*pmbccb = NULL;
-		filp_close(fp, NULL);
-		return -EIO;	// Assume IO error if the sizes do not match
-	}
-	filp_close(fp, NULL);
-	return err;	// Read it all, return the size
-}
-#endif
 
 
 static int check_htype(unsigned type)

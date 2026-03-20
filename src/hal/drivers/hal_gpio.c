@@ -359,13 +359,7 @@ int rtapi_app_main(void){
 
 rtapi_print_msg(RTAPI_MSG_INFO, "Libgpiod is %i\n", LIBGPIOD_VER);
 
-#ifdef __KERNEL__
-    // this calculation fits in a 32-bit unsigned
-    // as long as CPUs are under about 6GHz
-    ns2tsc_factor = (cpu_khz << 6) / 15625ul;
-#else
     ns2tsc_factor = 1ll<<12;
-#endif
     
     comp_id = hal_init("hal_gpio");
     if (comp_id < 0) {

@@ -21,13 +21,8 @@
 #include "rtapi_string.h"
 #include <stdarg.h>
 
-#ifdef __KERNEL__
-#include <linux/kernel.h>
-#define gettext(s) s
-#else
 #include <stdio.h>
 #include <libintl.h>
-#endif
 
 static int SET_ERRNO(int value) {
 #ifdef RTAPI

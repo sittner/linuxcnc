@@ -126,9 +126,7 @@
 #include <rtapi.h>
 RTAPI_BEGIN_DECLS
 
-#ifdef ULAPI
 #include <signal.h>
-#endif
 
 #include <rtapi_errno.h>
 
@@ -875,7 +873,6 @@ extern unsigned hal_port_buffer_size(hal_port_t port);
 */
 extern void hal_port_clear(hal_port_t port);
 
-#ifdef ULAPI
 /** hal_port_wait_readable spin waits on a port until it has at least 
     count bytes available for reading, or *stop > 0
  */
@@ -885,7 +882,6 @@ extern void hal_port_wait_readable(hal_port_t** port, unsigned count, sig_atomic
     count bytes available for writing or *stop > 0
  */
 extern void hal_port_wait_writable(hal_port_t** port, unsigned count, sig_atomic_t* stop);
-#endif
 
 
 
@@ -932,15 +928,11 @@ extern int hal_stream_depth(hal_stream_t *stream);
 extern int hal_stream_maxdepth(hal_stream_t *stream);
 extern int hal_stream_num_underruns(hal_stream_t *stream);
 extern int hal_stream_num_overruns(hal_stream_t *stream);
-#ifdef ULAPI
 extern void hal_stream_wait_readable(hal_stream_t *stream, sig_atomic_t *stop);
-#endif
 
 extern int hal_stream_write(hal_stream_t *stream, union hal_stream_data *buf);
 extern bool hal_stream_writable(hal_stream_t *stream);
-#ifdef ULAPI
 extern void hal_stream_wait_writable(hal_stream_t *stream, sig_atomic_t *stop);
-#endif
 
 RTAPI_END_DECLS
 

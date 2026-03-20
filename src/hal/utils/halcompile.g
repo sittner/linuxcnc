@@ -271,9 +271,7 @@ def prologue(f):
         sys.argv[0], time.asctime()), file=f)
     print("""\
 #include "rtapi.h"
-#ifdef RTAPI
 #include "rtapi_app.h"
-#endif
 #include "rtapi_string.h"
 #include "rtapi_errno.h"
 #include "hal.h"
