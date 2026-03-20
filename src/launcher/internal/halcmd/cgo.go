@@ -1,7 +1,7 @@
 package halcmd
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/../../../hal -I${SRCDIR}/../../.. -I${SRCDIR}/../../../rtapi -I${SRCDIR}/../../../../include -DULAPI
+#cgo CFLAGS: -I${SRCDIR}/../../../hal -I${SRCDIR}/../../.. -I${SRCDIR}/../../../rtapi -I${SRCDIR}/../../../../include
 #cgo LDFLAGS: -L${SRCDIR}/../../../../lib -llinuxcnchal
 
 #include <stdlib.h>

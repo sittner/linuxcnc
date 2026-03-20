@@ -38,10 +38,9 @@ static int msg_level = RTAPI_MSG_ERR;	/* message printing level */
 
 #include "config.h"
 
-/* For C code using RTAPI, provide a compatible WITH_ROOT macro */
-#if defined(RTAPI) && !defined(__cplusplus) && !defined(WITH_ROOT)
-extern void with_root_enter(void);
-extern void with_root_exit(void);
+/* Provide WITH_ROOT macro for privilege escalation during shmem operations.
+ * Includers must define with_root_enter()/with_root_exit() before including this file. */
+#ifndef WITH_ROOT
 #define WITH_ROOT for(int _wr = (with_root_enter(), 1); _wr; _wr = 0, with_root_exit())
 #endif
 
@@ -62,9 +61,7 @@ static rtapi_shmem_handle shmem_array[MAX_SHM] = {{0},};
 
 int rtapi_shmem_new(int key, int module_id, unsigned long int size)
 {
-#ifdef RTAPI
   WITH_ROOT;
-#endif
   rtapi_shmem_handle *shmem;
   int i;
 
@@ -102,7 +99,6 @@ shmget_again:
   int res = shmctl(shmem->id, IPC_STAT, &stat);
   if(res < 0) perror("shmctl IPC_STAT");
 
-#ifdef RTAPI
   /* At present, setuid rtapi_app runs with geteuid() == 0 at all times but the
    * fsuid is ruid except when WITH_ROOT when it's 0.
    *
@@ -135,7 +131,6 @@ shmget_again:
       rtapi_print_msg(RTAPI_MSG_ERR,
           "shared memory segment not locked as requested\n");
   }
-#endif
 #endif
 
   /* and map it into process space */

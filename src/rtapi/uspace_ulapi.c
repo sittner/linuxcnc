@@ -23,6 +23,11 @@
 #include "rtapi.h"
 #include <unistd.h>
 #include <rtapi_errno.h>
+
+/* No-op stubs for WITH_ROOT macro in uspace_common.h */
+static void with_root_enter(void) {}
+static void with_root_exit(void) {}
+
 #include "rtapi/uspace_common.h"
 
 

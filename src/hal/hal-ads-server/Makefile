@@ -6,11 +6,11 @@ COMPONENT := hal-ads-server
 # Detect LinuxCNC environment
 ifdef EMC2_HOME
     # RIP (Run-In-Place) environment
-    CGO_CFLAGS := -I$(EMC2_HOME)/include -I$(EMC2_HOME)/src/hal -I$(EMC2_HOME)/src/rtapi -DULAPI
+    CGO_CFLAGS := -I$(EMC2_HOME)/include -I$(EMC2_HOME)/src/hal -I$(EMC2_HOME)/src/rtapi
     CGO_LDFLAGS := -L$(EMC2_HOME)/lib -Wl,-rpath,$(EMC2_HOME)/lib -llinuxcnchal
 else
     # Installed LinuxCNC
-    CGO_CFLAGS := -I/usr/include/linuxcnc -DULAPI
+    CGO_CFLAGS := -I/usr/include/linuxcnc
     CGO_LDFLAGS := -L/usr/lib/linuxcnc -Wl,-rpath,/usr/lib/linuxcnc -llinuxcnchal
 endif
 
