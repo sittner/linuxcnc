@@ -569,4 +569,3 @@ MAX_LIMIT = 10
 		t.Error("expected warning about unspecified AXIS_X MIN_LIMIT")
 	}
 }
-

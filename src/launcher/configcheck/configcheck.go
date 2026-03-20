@@ -18,12 +18,12 @@ const progname = "check_config"
 // Default values matching src/emc/nml_intf/emccfg.h, src/emc/ini/inijoint.cc,
 // src/emc/ini/iniaxis.cc.
 const (
-	defaultAxisMaxVelocity     = 1.0
-	defaultAxisMaxAcceleration = 1.0
-	defaultJointMaxVelocity    = 1.0
+	defaultAxisMaxVelocity      = 1.0
+	defaultAxisMaxAcceleration  = 1.0
+	defaultJointMaxVelocity     = 1.0
 	defaultJointMaxAcceleration = 1.0
-	defaultAxisMinLimit        = -1e99
-	defaultAxisMaxLimit        = +1e99
+	defaultAxisMinLimit         = -1e99
+	defaultAxisMaxLimit         = +1e99
 )
 
 // allCoords is the full set of coordinate letters, used as the default when
@@ -148,7 +148,8 @@ func checkMandatoryItems(ini *inifile.IniFile, r *Result) {
 // a map of parm=value parameters.
 //
 // Example: "trivkins coordinates=XZ kinstype=BOTH"
-//   → module="trivkins", params={"coordinates":"XZ", "kinstype":"BOTH"}
+//
+//	→ module="trivkins", params={"coordinates":"XZ", "kinstype":"BOTH"}
 func parseKinematics(value string) (module string, params map[string]string) {
 	params = make(map[string]string)
 	fields := strings.Fields(value)
