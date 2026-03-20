@@ -368,7 +368,7 @@ static int comp_id;
     for name, fp in functions:
         if name in names:
             Error("Duplicate item name: %s" % name)
-        print("static void %s(struct __comp_state *__comp_inst, long period);" % to_c(name), file=f)
+        print("static void funct_%s(struct __comp_state *__comp_inst, long period);" % to_c(name), file=f)
         names[name] = 1
 
     print("static int __comp_get_data_size(void);", file=f)
@@ -484,7 +484,7 @@ static int comp_id;
     for name, fp in functions:
         print("    rtapi_snprintf(buf, sizeof(buf), \"%%s%s\", prefix);"\
             % to_hal("." + name), file=f)
-        print("    r = hal_export_funct(buf, (void(*)(void *inst, long))%s, inst, %s, 0, comp_id);" % (
+        print("    r = hal_export_funct(buf, (void(*)(void *inst, long))funct_%s, inst, %s, 0, comp_id);" % (
             to_c(name), int(fp)), file=f)
         print("    if(r != 0) return r;", file=f)
     print("    if(__comp_last_inst) __comp_last_inst->_next = inst;", file=f)
@@ -720,7 +720,7 @@ int __comp_parse_names(int *argc, char **argv) {
     print("", file=f)
     if not options.get("no_convenience_defines"):
         print("#undef FUNCTION", file=f)
-        print("#define FUNCTION(name) static void name(struct __comp_state *__comp_inst, long period)", file=f)
+        print("#define FUNCTION(name) static void funct_##name(struct __comp_state *__comp_inst, long period)", file=f)
         print("#undef EXTRA_SETUP", file=f)
         print("#define EXTRA_SETUP() static int extra_setup(struct __comp_state *__comp_inst, char *prefix, long extra_arg)", file=f)
         print("#undef EXTRA_CLEANUP", file=f)

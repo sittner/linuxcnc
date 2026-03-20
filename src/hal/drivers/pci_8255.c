@@ -48,8 +48,8 @@ struct state {
     hal_u32_t ioaddr;
 };
 
-static void read(struct port *inst, long period);
-static void write(struct port *inst, long period);
+static void do_read(struct port *inst, long period);
+static void do_write(struct port *inst, long period);
 static void write_relay(struct state *inst, long period);
 static void write_all(struct state *inst, long period);
 static void read_all(struct state *inst, long period);
@@ -133,10 +133,10 @@ static int export(char *prefix, struct port *inst, int ioaddr, int dir) {
         "%s.dir", prefix);
     if(r != 0) return r;
     rtapi_snprintf(buf, sizeof(buf), "%s.read", prefix);
-    r = hal_export_funct(buf, (void(*)(void *inst, long))read, inst, 0, 0, comp_id);
+    r = hal_export_funct(buf, (void(*)(void *inst, long))do_read, inst, 0, 0, comp_id);
     if(r != 0) return r;
     rtapi_snprintf(buf, sizeof(buf), "%s.write", prefix);
-    r = hal_export_funct(buf, (void(*)(void *inst, long))write, inst, 0, 0, comp_id);
+    r = hal_export_funct(buf, (void(*)(void *inst, long))do_write, inst, 0, 0, comp_id);
     if(r != 0) return r;
 
     rtapi_print_msg(RTAPI_MSG_DBG, "registering %s ... %x %x\n", prefix,
@@ -164,18 +164,18 @@ static void write_all(struct state *inst, long period) {
     int i;
     for(i=0; i<count; i++) {
 	write_relay(&inst[i], period);
-	write(&inst[i].ports[0], period);
-	write(&inst[i].ports[1], period);
-	write(&inst[i].ports[2], period);
+	do_write(&inst[i].ports[0], period);
+	do_write(&inst[i].ports[1], period);
+	do_write(&inst[i].ports[2], period);
     }
 }
 
 static void read_all(struct state *inst, long period) {
     int i;
     for(i=0; i<count; i++) {
-	read(&inst[i].ports[0], period);
-	read(&inst[i].ports[1], period);
-	read(&inst[i].ports[2], period);
+	do_read(&inst[i].ports[0], period);
+	do_read(&inst[i].ports[1], period);
+	do_read(&inst[i].ports[2], period);
     }
 }
 
@@ -289,7 +289,7 @@ static void extra_cleanup(void) {
 #endif
 }
 
-static void write(struct port *inst, long period) {
+static void do_write(struct port *inst, long period) {
     int p = dir_;
     static int first=1;
 
@@ -342,7 +342,7 @@ static void write(struct port *inst, long period) {
     first = 0;
 }
 
-static void read(struct port *inst, long period) {
+static void do_read(struct port *inst, long period) {
     int p = dir_;
     int i;
     if((p & 5) == 5) {
