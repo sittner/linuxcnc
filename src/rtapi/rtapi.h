@@ -754,6 +754,19 @@ int rtapi_open_as_root(const char *filename, int mode);
 
 void rtapi_set_namef(const char *fmt, ...);
 
+/** 'rtapi_malloc()' allocates 'size' bytes of memory suitable for
+    realtime use: all pages are pre-faulted and locked into physical RAM
+    via mlock() so they will never be swapped out.  Returns a pointer to
+    the allocated memory on success, or NULL on failure.
+*/
+    extern void *rtapi_malloc(size_t size);
+
+/** 'rtapi_free()' releases memory previously allocated by rtapi_malloc().
+    'size' must match the value passed to the corresponding rtapi_malloc()
+    call.  The pages are unlocked (munlock()) before the memory is freed.
+*/
+    extern void rtapi_free(void *p, size_t size);
+
 RTAPI_END_DECLS
 
 #endif /* RTAPI_H */
