@@ -839,15 +839,8 @@ install-menu: $(XDGDESKTOP)
 
 endif # userspace
 
-ifneq ($(KERNELRELEASE),)
-include $(BASEPWD)/hal/components/Submakefile
-endif
-
-# KERNELRELEASE is nonempty, therefore we are building modules using the
-# "kbuild" system.  $(BASEPWD) is used here, instead of relative paths, because
-# that's what kbuild seems to require
-
-EXTRA_CFLAGS := $(filter-out -ffast-math,$(RTFLAGS)) -D__MODULE__ -I$(BASEPWD)/../include -I$(BASEPWD) -I$(BASEPWD)/libnml/linklist \
+# Realtime module compilation flags
+RTCFLAGS := $(filter-out -ffast-math,$(RTFLAGS)) -I$(BASEPWD)/../include -I$(BASEPWD) -I$(BASEPWD)/libnml/linklist \
 	-I$(BASEPWD)/libnml/cms -I$(BASEPWD)/libnml/rcs -I$(BASEPWD)/libnml/inifile \
 	-I$(BASEPWD)/libnml/os_intf -I$(BASEPWD)/libnml/nml -I$(BASEPWD)/libnml/buffer \
 	-I$(BASEPWD)/libnml/posemath -I$(BASEPWD)/rtapi -I$(BASEPWD)/hal \
@@ -856,106 +849,98 @@ EXTRA_CFLAGS := $(filter-out -ffast-math,$(RTFLAGS)) -D__MODULE__ -I$(BASEPWD)/.
 	-fno-fast-math $(call cc-option,-mieee-fp) -fno-unsafe-math-optimizations \
 	-Wno-declaration-after-statement \
 	$(INTEGER_OVERFLOW_FLAGS)
-ifneq ($(KERNELRELEASE),)
-ifeq ($(RTARCH):$(RTAI):$(filter $(RTFLAGS),-msse),x86_64:3:)
-EXTRA_CFLAGS += -msse
-EXTRA_CFLAGS += -g
-endif
-endif
-EXTRA_CFLAGS += -fno-builtin-sin -fno-builtin-cos -fno-builtin-sincos
+RTCFLAGS += -fno-builtin-sin -fno-builtin-cos -fno-builtin-sincos
 
 ifdef SEQUENTIAL_SUPPORT
-EXTRA_CFLAGS += -DSEQUENTIAL_SUPPORT
+RTCFLAGS += -DSEQUENTIAL_SUPPORT
 endif
 
-# For each module, there's an addition to obj-m or obj-$(CONFIG_foo)
+# Realtime module declarations
+# For each module, there's an addition to RTMODULES
 # plus a definition of foo-objs, which contains the full path to the
-# object file(s) that the module contains.  Unfortunately, this setup pollutes
-# the source directory with object files and other temporaries, but I can't
-# find a way around it.
+# object file(s) that the module contains.
 
 # Subdirectory:  rtapi
 
 # Subdirectory: hal/components
-obj-$(CONFIG_BOSS_PLC) += boss_plc.o
+RTMODULES += boss_plc.o
 boss_plc-objs := hal/components/boss_plc.o $(MATHSTUB)
-obj-$(CONFIG_DEBOUNCE) += debounce.o
+RTMODULES += debounce.o
 debounce-objs := hal/components/debounce.o $(MATHSTUB)
-obj-$(CONFIG_ENCODER) += encoder.o
+RTMODULES += encoder.o
 encoder-objs := hal/components/encoder.o $(MATHSTUB)
-obj-$(CONFIG_ENUM) += enum.o
+RTMODULES += enum.o
 enum-objs := hal/components/enum.o $(MATHSTUB)
-obj-$(CONFIG_COUNTER) += counter.o
+RTMODULES += counter.o
 counter-objs := hal/components/counter.o $(MATHSTUB)
-obj-$(CONFIG_ENCODER_RATIO) += encoder_ratio.o
+RTMODULES += encoder_ratio.o
 encoder_ratio-objs := hal/components/encoder_ratio.o $(MATHSTUB)
-obj-$(CONFIG_STEPGEN) += stepgen.o
+RTMODULES += stepgen.o
 stepgen-objs := hal/components/stepgen.o $(MATHSTUB)
-obj-$(CONFIG_LCD) += lcd.o
+RTMODULES += lcd.o
 lcd-objs := hal/components/lcd.o $(MATHSTUB)
-obj-$(CONFIG_MATRIX_KB) += matrix_kb.o
+RTMODULES += matrix_kb.o
 matrix_kb-objs := hal/components/matrix_kb.o $(MATHSTUB)
-obj-$(CONFIG_MUX_GENERIC) += mux_generic.o
+RTMODULES += mux_generic.o
 mux_generic-objs := hal/components/mux_generic.o $(MATHSTUB)
-obj-$(CONFIG_PWMGEN) += pwmgen.o
+RTMODULES += pwmgen.o
 pwmgen-objs := hal/components/pwmgen.o $(MATHSTUB)
-obj-$(CONFIG_SIGGEN) += siggen.o
+RTMODULES += siggen.o
 siggen-objs := hal/components/siggen.o $(MATHSTUB)
-obj-$(CONFIG_PID) += pid.o
+RTMODULES += pid.o
 pid-objs := hal/components/pid.o $(MATHSTUB)
-obj-$(CONFIG_THREADS) += threads.o
+RTMODULES += threads.o
 threads-objs := hal/components/threads.o $(MATHSTUB)
-obj-$(CONFIG_SUPPLY) += supply.o
+RTMODULES += supply.o
 supply-objs := hal/components/supply.o $(MATHSTUB)
-obj-$(CONFIG_SIM_ENCODER) += sim_encoder.o
+RTMODULES += sim_encoder.o
 sim_encoder-objs := hal/components/sim_encoder.o $(MATHSTUB)
-obj-$(CONFIG_WEIGHTED_SUM) += weighted_sum.o
+RTMODULES += weighted_sum.o
 weighted_sum-objs := hal/components/weighted_sum.o $(MATHSTUB)
-obj-$(CONFIG_WATCHDOG) += watchdog.o
+RTMODULES += watchdog.o
 watchdog-objs := hal/components/watchdog.o $(MATHSTUB)
-obj-$(CONFIG_MODMATH) += modmath.o
+RTMODULES += modmath.o
 modmath-objs := hal/components/modmath.o $(MATHSTUB)
-obj-$(CONFIG_STREAMER) += streamer.o
+RTMODULES += streamer.o
 streamer-objs := hal/components/streamer.o $(MATHSTUB)
-obj-$(CONFIG_SAMPLER) += sampler.o
+RTMODULES += sampler.o
 sampler-objs := hal/components/sampler.o $(MATHSTUB)
-obj-$(CONFIG_RETAIN) += retain.o
+RTMODULES += retain.o
 retain-objs := hal/components/retain.o $(MATHSTUB)
 
 # Subdirectory: hal/drivers
-obj-$(CONFIG_HAL_PARPORT) += hal_parport.o
+RTMODULES += hal_parport.o
 hal_parport-objs := hal/drivers/hal_parport.o $(MATHSTUB)
 ifeq ($(X86ARCH),true)
-obj-$(CONFIG_HAL_SPEAKER) += hal_speaker.o
+RTMODULES += hal_speaker.o
 hal_speaker-objs := hal/drivers/hal_speaker.o $(MATHSTUB)
 endif
 
-obj-$(CONFIG_HAL_GM) += hal_gm.o
+RTMODULES += hal_gm.o
 hal_gm-objs := hal/drivers/hal_gm.o $(MATHSTUB)
-obj-$(CONFIG_HAL_PPMC) += hal_ppmc.o
+RTMODULES += hal_ppmc.o
 hal_ppmc-objs := hal/drivers/hal_ppmc.o $(MATHSTUB)
 
-#Don't attempt to build Pi / Beaglebone GPIO for RTAI
-obj-$(CONFIG_HAL_BB_GPIO) += hal_bb_gpio.o
+RTMODULES += hal_bb_gpio.o
 hal_bb_gpio-objs  :=			\
     hal/drivers/hal_bb_gpio.o	\
     $(MATHSTUB)
-obj-$(CONFIG_HAL_PI_GPIO) += hal_pi_gpio.o
+RTMODULES += hal_pi_gpio.o
 hal_pi_gpio-objs := 				\
     hal/drivers/hal_pi_gpio.o 		\
     hal/drivers/cpuinfo.o 		\
     $(MATHSTUB)
 ifdef LIBGPIOD_VER
-obj-$(CONFIG_HAL_GPIO) += hal_gpio.o
+RTMODULES += hal_gpio.o
 hal_gpio-objs  :=			\
     hal/drivers/hal_gpio.o	        \
     $(MATHSTUB)
 endif
 
-obj-$(CONFIG_HOSTMOT2) += hostmot2.o hm2_test.o hm2_pci.o hm2_7i43.o hm2_7i90.o setsserial.o
-obj-$(CONFIG_HOSTMOT2) += hm2_modbus.o
-obj-$(CONFIG_HOSTMOT2) += hm2_eth.o
-obj-$(CONFIG_HOSTMOT2) += hm2_spi.o hm2_rpspi.o hm2_spix.o
+RTMODULES += hostmot2.o hm2_test.o hm2_pci.o hm2_7i43.o hm2_7i90.o setsserial.o
+RTMODULES += hm2_modbus.o
+RTMODULES += hm2_eth.o
+RTMODULES += hm2_spi.o hm2_rpspi.o hm2_spix.o
 hostmot2-objs :=			  \
     hal/drivers/mesa-hostmot2/hostmot2.o  \
     hal/drivers/mesa-hostmot2/abs_encoder.o\
@@ -1024,7 +1009,7 @@ setsserial-objs :=			  \
     hal/drivers/mesa-hostmot2/setsserial.o  \
     $(MATHSTUB)
 
-obj-$(CONFIG_CLASSICLADDER_RT) += classicladder_rt.o
+RTMODULES += classicladder_rt.o
 classicladder_rt-objs := hal/classicladder/module_hal.o $(MATHSTUB)
 classicladder_rt-objs += hal/classicladder/arithm_eval.o
 classicladder_rt-objs += hal/classicladder/arrays.o
@@ -1038,45 +1023,45 @@ ifdef SEQUENTIAL_SUPPORT
 classicladder_rt-objs += hal/classicladder/calc_sequential_rt.o
 endif
 
-obj-m += scope_rt.o
+RTMODULES += scope_rt.o
 scope_rt-objs := hal/utils/scope_rt.o $(MATHSTUB)
 
-#obj-m += hal_lib.o
+#RTMODULES += hal_lib.o
 #hal_lib-objs := hal/hal_lib.o $(MATHSTUB)
 
-obj-m += trivkins.o
+RTMODULES += trivkins.o
 trivkins-objs := emc/kinematics/trivkins.o
 trivkins-objs += emc/kinematics/kins_util.o
 
-obj-m += maxkins.o
+RTMODULES += maxkins.o
 maxkins-objs := emc/kinematics/maxkins.o
 
-obj-m += rotatekins.o
+RTMODULES += rotatekins.o
 rotatekins-objs := emc/kinematics/rotatekins.o
 
-obj-m += tripodkins.o
+RTMODULES += tripodkins.o
 tripodkins-objs := emc/kinematics/tripodkins.o
 
-obj-m += corexykins.o
+RTMODULES += corexykins.o
 corexykins-objs := emc/kinematics/corexykins.o
 
-obj-m += lineardeltakins.o
+RTMODULES += lineardeltakins.o
 lineardeltakins-objs := emc/kinematics/lineardeltakins.o
 
-obj-m += pentakins.o
+RTMODULES += pentakins.o
 pentakins-objs := emc/kinematics/pentakins.o
 pentakins-objs += libnml/posemath/_posemath.o
 pentakins-objs += libnml/posemath/sincos.o $(MATHSTUB)
 
-obj-m += rotarydeltakins.o
+RTMODULES += rotarydeltakins.o
 rotarydeltakins-objs := emc/kinematics/rotarydeltakins.o
 rotarydeltakins-objs += libnml/posemath/_posemath.o
 rotarydeltakins-objs += libnml/posemath/sincos.o $(MATHSTUB)
 
-obj-m += rosekins.o
+RTMODULES += rosekins.o
 rosekins-objs := emc/kinematics/rosekins.o
 
-obj-m += scorbot-kins.o
+RTMODULES += scorbot-kins.o
 scorbot-kins-objs := emc/kinematics/scorbot-kins.o
 
 ifeq ($(origin userkfuncs), undefined)
@@ -1084,7 +1069,6 @@ ifeq ($(origin userkfuncs), undefined)
   USERKFUNCS = emc/kinematics/userkfuncs.o
 else
   # user specified file for userkfuncs
-  # works with rtpreempt only (not rtai)
   ifeq ("$(wildcard $(userkfuncs))","")
     $(error No such file: $(userkfuncs))
   endif
@@ -1095,7 +1079,7 @@ endif
 
 #----------------------------------------------------------------
 # SWITCHKINS
-obj-m += genhexkins.o
+RTMODULES += genhexkins.o
 genhexkins-objs := emc/kinematics/genhexkins.o
 genhexkins-objs += libnml/posemath/_posemath.o
 genhexkins-objs += libnml/posemath/sincos.o $(MATHSTUB)
@@ -1103,7 +1087,7 @@ genhexkins-objs += emc/kinematics/kins_util.o
 genhexkins-objs += emc/kinematics/switchkins.o
 genhexkins-objs += $(USERKFUNCS)
 
-obj-m += genserkins.o
+RTMODULES += genserkins.o
 genserkins-objs := emc/kinematics/genserkins.o
 genserkins-objs += emc/kinematics/genserfuncs.o
 genserkins-objs += libnml/posemath/gomath.o
@@ -1112,21 +1096,21 @@ genserkins-objs += emc/kinematics/kins_util.o
 genserkins-objs += emc/kinematics/switchkins.o
 genserkins-objs += $(USERKFUNCS)
 
-obj-m += xyzac-trt-kins.o
+RTMODULES += xyzac-trt-kins.o
 xyzac-trt-kins-objs := emc/kinematics/xyzac-trt-kins.o
 xyzac-trt-kins-objs += emc/kinematics/trtfuncs.o
 xyzac-trt-kins-objs += emc/kinematics/kins_util.o
 xyzac-trt-kins-objs += emc/kinematics/switchkins.o
 xyzac-trt-kins-objs += $(USERKFUNCS)
 
-obj-m += xyzbc-trt-kins.o
+RTMODULES += xyzbc-trt-kins.o
 xyzbc-trt-kins-objs := emc/kinematics/xyzbc-trt-kins.o
 xyzbc-trt-kins-objs += emc/kinematics/trtfuncs.o
 xyzbc-trt-kins-objs += emc/kinematics/kins_util.o
 xyzbc-trt-kins-objs += emc/kinematics/switchkins.o
 xyzbc-trt-kins-objs += $(USERKFUNCS)
 
-obj-m += scarakins.o
+RTMODULES += scarakins.o
 scarakins-objs := emc/kinematics/scarakins.o
 scarakins-objs += libnml/posemath/_posemath.o
 scarakins-objs += libnml/posemath/sincos.o $(MATHSTUB)
@@ -1134,7 +1118,7 @@ scarakins-objs += emc/kinematics/kins_util.o
 scarakins-objs += emc/kinematics/switchkins.o
 scarakins-objs += $(USERKFUNCS)
 
-obj-m += pumakins.o
+RTMODULES += pumakins.o
 pumakins-objs := emc/kinematics/pumakins.o
 pumakins-objs += libnml/posemath/_posemath.o
 pumakins-objs += libnml/posemath/sincos.o $(MATHSTUB)
@@ -1142,7 +1126,7 @@ pumakins-objs += emc/kinematics/kins_util.o
 pumakins-objs += emc/kinematics/switchkins.o
 pumakins-objs += $(USERKFUNCS)
 
-obj-m += 5axiskins.o
+RTMODULES += 5axiskins.o
 5axiskins-objs := emc/kinematics/5axiskins.o
 5axiskins-objs += libnml/posemath/_posemath.o
 5axiskins-objs += libnml/posemath/sincos.o $(MATHSTUB)
@@ -1151,7 +1135,7 @@ obj-m += 5axiskins.o
 5axiskins-objs += $(USERKFUNCS)
 #----------------------------------------------------------------
 
-obj-$(CONFIG_MOTMOD) += motmod.o
+RTMODULES += motmod.o
 motmod-objs := emc/kinematics/cubic.o
 motmod-objs += emc/motion/axis.o
 motmod-objs += emc/motion/motion.o
@@ -1162,11 +1146,11 @@ motmod-objs += emc/motion/emcmotutil.o
 motmod-objs += emc/motion/stashf.o
 motmod-objs += emc/motion/dbuf.o
 
-obj-m += homemod.o
+RTMODULES += homemod.o
 homemod-objs := emc/motion/homemod.o
 homemod-objs += emc/motion/homing.o
 
-obj-m += tpmod.o
+RTMODULES += tpmod.o
 tpmod-objs := emc/tp/tpmod.o
 tpmod-objs += emc/tp/tc.o
 tpmod-objs += emc/tp/tcq.o
@@ -1178,11 +1162,11 @@ tpmod-objs += libnml/posemath/_posemath.o
 tpmod-objs += libnml/posemath/sincos.o $(MATHSTUB)
 
 TORTOBJS = $(foreach file,$($(patsubst %.o,%,$(1))-objs), objects/rt$(file))
-EXTRA_CFLAGS += -fPIC -Os
-RTOBJS := $(sort $(foreach mod,$(obj-m),$(call TORTOBJS,$(mod))))
+RTCFLAGS += -fPIC -Os
+RTOBJS := $(sort $(foreach mod,$(RTMODULES),$(call TORTOBJS,$(mod))))
 RTDEPS := $(sort $(RTOBJS:.o=.d))
 
-modules: $(patsubst %.o,../rtlib/%.so,$(obj-m))
+modules: $(patsubst %.o,../rtlib/%.so,$(RTMODULES))
 ../rtlib/%.so:
 	$(ECHO) Linking $@
 	$(Q)ld -d -r -o objects/$*.tmp $^
@@ -1200,89 +1184,14 @@ $(sort $(RTOBJS)) : objects/rt%.o : %.c
 	@rm -f $@
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -c $(OPT) $(DEBUG) $(EXTRA_DEBUG) \
-		$(EXTRA_CFLAGS) \
+		$(RTCFLAGS) \
 		-MP -MD -MF "${@:.o=.d}" -MT "$@" \
 		$< -o $@
 
-../rtlib/classicladder_rt$(MODULE_EXT): $(addprefix objects/rt,$(classicladder_rt-objs))
-../rtlib/boss_plc$(MODULE_EXT): $(addprefix objects/rt,$(boss_plc-objs))
-../rtlib/debounce$(MODULE_EXT): $(addprefix objects/rt,$(debounce-objs))
-../rtlib/encoder$(MODULE_EXT): $(addprefix objects/rt,$(encoder-objs))
-../rtlib/enum$(MODULE_EXT): $(addprefix objects/rt,$(enum-objs))
-../rtlib/counter$(MODULE_EXT): $(addprefix objects/rt,$(counter-objs))
-../rtlib/encoder_ratio$(MODULE_EXT): $(addprefix objects/rt,$(encoder_ratio-objs))
-../rtlib/stepgen$(MODULE_EXT): $(addprefix objects/rt,$(stepgen-objs))
-../rtlib/lcd$(MODULE_EXT): $(addprefix objects/rt,$(lcd-objs))
-../rtlib/matrix_kb$(MODULE_EXT): $(addprefix objects/rt,$(matrix_kb-objs))
-../rtlib/mux_generic$(MODULE_EXT): $(addprefix objects/rt,$(mux_generic-objs))
-../rtlib/pwmgen$(MODULE_EXT): $(addprefix objects/rt,$(pwmgen-objs))
-../rtlib/siggen$(MODULE_EXT): $(addprefix objects/rt,$(siggen-objs))
-../rtlib/pid$(MODULE_EXT): $(addprefix objects/rt,$(pid-objs))
-../rtlib/threads$(MODULE_EXT): $(addprefix objects/rt,$(threads-objs))
-../rtlib/supply$(MODULE_EXT): $(addprefix objects/rt,$(supply-objs))
-../rtlib/sim_encoder$(MODULE_EXT): $(addprefix objects/rt,$(sim_encoder-objs))
-../rtlib/weighted_sum$(MODULE_EXT): $(addprefix objects/rt,$(weighted_sum-objs))
-../rtlib/watchdog$(MODULE_EXT): $(addprefix objects/rt,$(watchdog-objs))
-../rtlib/modmath$(MODULE_EXT): $(addprefix objects/rt,$(modmath-objs))
-../rtlib/t_on$(MODULE_EXT): $(addprefix objects/rt,$(t_on-objs))
-../rtlib/t_off$(MODULE_EXT): $(addprefix objects/rt,$(t_off-objs))
-../rtlib/t_p$(MODULE_EXT): $(addprefix objects/rt,$(t_p-objs))
-../rtlib/streamer$(MODULE_EXT): $(addprefix objects/rt,$(streamer-objs))
-../rtlib/sampler$(MODULE_EXT): $(addprefix objects/rt,$(sampler-objs))
-../rtlib/hal_parport$(MODULE_EXT): $(addprefix objects/rt,$(hal_parport-objs))
-#../rtlib/uparport$(MODULE_EXT): $(addprefix objects/rt,$(uparport-objs))
-
-../rtlib/hal_ppmc$(MODULE_EXT): $(addprefix objects/rt,$(hal_ppmc-objs))
-ifeq ($(X86ARCH),true)
-../rtlib/hal_speaker$(MODULE_EXT): $(addprefix objects/rt,$(hal_speaker-objs))
-endif
-../rtlib/scope_rt$(MODULE_EXT): $(addprefix objects/rt,$(scope_rt-objs))
-../rtlib/hal_lib$(MODULE_EXT): $(addprefix objects/rt,$(hal_lib-objs))
-../rtlib/motmod$(MODULE_EXT): $(addprefix objects/rt,$(motmod-objs))
-../rtlib/tpmod$(MODULE_EXT): $(addprefix objects/rt,$(tpmod-objs))
-../rtlib/homemod$(MODULE_EXT): $(addprefix objects/rt,$(homemod-objs))
-../rtlib/joint_ctrl$(MODULE_EXT): $(addprefix objects/rt,$(joint_ctrl-objs))
-../rtlib/trivkins$(MODULE_EXT): $(addprefix objects/rt,$(trivkins-objs))
-../rtlib/5axiskins$(MODULE_EXT): $(addprefix objects/rt,$(5axiskins-objs))
-../rtlib/maxkins$(MODULE_EXT): $(addprefix objects/rt,$(maxkins-objs))
-../rtlib/rotatekins$(MODULE_EXT): $(addprefix objects/rt,$(rotatekins-objs))
-../rtlib/tripodkins$(MODULE_EXT): $(addprefix objects/rt,$(tripodkins-objs))
-../rtlib/corexykins$(MODULE_EXT): $(addprefix objects/rt,$(corexykins-objs))
-../rtlib/lineardeltakins$(MODULE_EXT): $(addprefix objects/rt,$(lineardeltakins-objs))
-../rtlib/pentakins$(MODULE_EXT): $(addprefix objects/rt,$(pentakins-objs))
-../rtlib/rotarydeltakins$(MODULE_EXT): $(addprefix objects/rt,$(rotarydeltakins-objs))
-../rtlib/rosekins$(MODULE_EXT): $(addprefix objects/rt,$(rosekins-objs))
-../rtlib/scorbot-kins$(MODULE_EXT): $(addprefix objects/rt,$(scorbot-kins-objs))
-../rtlib/hal_gm$(MODULE_EXT): $(addprefix objects/rt,$(hal_gm-objs))
-../rtlib/hostmot2$(MODULE_EXT): $(addprefix objects/rt,$(hostmot2-objs))
-../rtlib/hm2_test$(MODULE_EXT): $(addprefix objects/rt,$(hm2_test-objs))
-../rtlib/hm2_pci$(MODULE_EXT): $(addprefix objects/rt,$(hm2_pci-objs))
-../rtlib/hm2_7i43$(MODULE_EXT): $(addprefix objects/rt,$(hm2_7i43-objs))
-../rtlib/hm2_7i90$(MODULE_EXT): $(addprefix objects/rt,$(hm2_7i90-objs))
-../rtlib/setsserial$(MODULE_EXT): $(addprefix objects/rt,$(setsserial-objs))
-../rtlib/hal_parport$(MODULE_EXT): $(addprefix objects/rt,$(hal_parport-objs))
-../rtlib/hal_ppmc$(MODULE_EXT): $(addprefix objects/rt,$(hal_ppmc-objs))
-../rtlib/hm2_eth$(MODULE_EXT): $(addprefix objects/rt,$(hm2_eth-objs))
-../rtlib/hm2_spi$(MODULE_EXT): $(addprefix objects/rt,$(hm2_spi-objs))
-../rtlib/hm2_rpspi$(MODULE_EXT): $(addprefix objects/rt,$(hm2_rpspi-objs))
-../rtlib/hm2_spix$(MODULE_EXT): $(addprefix objects/rt,$(hm2_spix-objs))
-../rtlib/hm2_modbus$(MODULE_EXT): $(addprefix objects/rt,$(hm2_modbus-objs))
-../rtlib/hal_bb_gpio$(MODULE_EXT): $(addprefix objects/rt,$(hal_bb_gpio-objs))
-../rtlib/hal_pi_gpio$(MODULE_EXT): $(addprefix objects/rt,$(hal_pi_gpio-objs))
-../rtlib/retain$(MODULE_EXT): $(addprefix objects/rt,$(retain-objs))
-ifdef LIBGPIOD_VER
-../rtlib/hal_gpio$(MODULE_EXT): $(addprefix objects/rt,$(hal_gpio-objs))
-endif
-
-#----------------------------------------------------------------
-# SWITCHKINS
-../rtlib/genhexkins$(MODULE_EXT):     $(addprefix objects/rt,$(genhexkins-objs))
-../rtlib/genserkins$(MODULE_EXT):     $(addprefix objects/rt,$(genserkins-objs))
-../rtlib/xyzac-trt-kins$(MODULE_EXT): $(addprefix objects/rt,$(xyzac-trt-kins-objs))
-../rtlib/xyzbc-trt-kins$(MODULE_EXT): $(addprefix objects/rt,$(xyzbc-trt-kins-objs))
-../rtlib/scarakins$(MODULE_EXT):      $(addprefix objects/rt,$(scarakins-objs))
-../rtlib/pumakins$(MODULE_EXT):       $(addprefix objects/rt,$(pumakins-objs))
-#----------------------------------------------------------------
+# Auto-generate per-module dependency rules:
+# ../rtlib/foo.so: objects/rt<foo-objs>
+$(foreach mod,$(patsubst %.o,%,$(RTMODULES)),\
+  $(eval ../rtlib/$(mod)$(MODULE_EXT): $(addprefix objects/rt,$($(mod)-objs))))
 
 ifeq ($(TRIVIAL_BUILD),no)
 READ_RTDEPS = $(wildcard $(RTDEPS))

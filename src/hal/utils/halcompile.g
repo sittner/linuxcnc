@@ -293,7 +293,6 @@ static int comp_id;
         s = s.replace("\v", "\\v")
         return '"%s"' % s
 
-    print("#ifdef MODULE_INFO", file=f)
     for v in docs:
         if not v: continue
         v = ":".join(map(str, v))
@@ -301,7 +300,6 @@ static int comp_id;
         license = finddoc('license')
     if license and license[1]:
         print("MODULE_LICENSE(\"%s\");" % license[1].split("\n")[0], file=f)
-    print("#endif // MODULE_INFO", file=f)
     print("", file=f)
 
 
@@ -815,7 +813,7 @@ def build_rt(tempdir, filename, mode, origfilename):
     objname = os.path.basename(os.path.splitext(filename)[0] + ".o")
     makefile = os.path.join(tempdir, "Makefile")
     f = open(makefile, "w")
-    print("obj-m += %s" % objname, file=f)
+    print("RTMODULES += %s" % objname, file=f)
     print("include %s" % find_modinc(), file=f)
     print("EXTRA_CFLAGS += -I%s" % os.path.abspath(os.path.dirname(origfilename)), file=f)
     print("EXTRA_CFLAGS += -I%s" % os.path.abspath('.'), file=f)
@@ -828,7 +826,7 @@ def build_rt(tempdir, filename, mode, origfilename):
     if result != 0:
         raise SystemExit(os.WEXITSTATUS(result) or 1)
     if mode == COMPILE:
-        for extension in ".ko", ".so", ".o":
+        for extension in ".so", ".o":
             kobjname = os.path.splitext(filename)[0] + extension
             if os.path.exists(kobjname):
                 shutil.copy(kobjname, os.path.basename(kobjname))

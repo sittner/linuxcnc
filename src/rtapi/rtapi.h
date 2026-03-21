@@ -703,11 +703,6 @@ RTAPI_BEGIN_DECLS
 #define MODULE_DEVICE_TABLE(x,y)     MODULE_INFO2(struct rtapi_pci_device_id*, device_table, x, y)
 #define MODULE_INFO(x,y)             MODULE_INFO2x(char*, x, __LINE__, y)
 
-/* --- KERNEL_VERSION / LINUX_VERSION_CODE fallbacks --- */
-
-#define KERNEL_VERSION(a,b,c) (((a) << 16) + ((b) << 8) + (c))
-#define LINUX_VERSION_CODE 0
-
 /* --- RTAPI_MP_* parameter macros --- */
 
 #define RTAPI_STRINGIFY(x) #x
