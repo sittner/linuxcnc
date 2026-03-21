@@ -151,37 +151,64 @@ static void signal_handler(int sig, siginfo_t *si, void *uctx)
     exit(1);
 }
 
-static const size_t PRE_ALLOC_SIZE = 1024*1024*32;
 static const struct rlimit unlimited = {RLIM_INFINITY, RLIM_INFINITY};
+
+/* Allocate memory suitable for realtime use: pre-fault + mlock. */
+static void *rtapi_malloc(size_t size) {
+    void *p = malloc(size);
+    if (!p) return NULL;
+
+    /* Pre-fault all pages (read+write) */
+    long pagesize = sysconf(_SC_PAGESIZE);
+    volatile char *c = (volatile char *)p;
+    for (size_t i = 0; i < size; i += pagesize) {
+        c[i] = c[i];
+    }
+    /* Touch the last page if size is not a multiple of pagesize */
+    if (size > 0 && (size % (size_t)pagesize) != 0) {
+        c[size - 1] = c[size - 1];
+    }
+
+    /* Lock into physical RAM */
+    if (mlock(p, size) < 0) {
+        rtapi_print_msg(RTAPI_MSG_WARN,
+            "rtapi_malloc: mlock(%zu) failed: %s\n", size, strerror(errno));
+    }
+    return p;
+}
+
+/* Free realtime-locked memory. */
+static void rtapi_free(void *p, size_t size) {
+    if (!p) return;
+    munlock(p, size);
+    free(p);
+}
 
 static void configure_memory(void)
 {
+    /* Raise memlock rlimit — needed for per-region mlock() and SHM_LOCK */
     int res = setrlimit(RLIMIT_MEMLOCK, &unlimited);
     if(res < 0) perror("setrlimit");
 
-    res = mlockall(MCL_CURRENT | MCL_FUTURE);
-    if(res < 0) perror("mlockall");
+    /* Do NOT mlockall() — it would lock the entire Go heap.
+     * RT memory is locked individually:
+     *   - SysV shmem segments: SHM_LOCK in rtapi_shmem_new()
+     *   - Task structs: mlock() in rtapi_malloc()
+     *   - Thread stacks: mlock() in task_start()
+     */
 
 #ifdef __linux__
+    /* Prevent glibc from returning C-side malloc pages to OS
+     * (avoids page faults on reuse). Does not affect Go allocator. */
     if (!mallopt(M_TRIM_THRESHOLD, -1)) {
         rtapi_print_msg(RTAPI_MSG_WARN,
                   "mallopt(M_TRIM_THRESHOLD, -1) failed\n");
     }
     if (!mallopt(M_MMAP_MAX, 0)) {
         rtapi_print_msg(RTAPI_MSG_WARN,
-                  "mallopt(M_MMAP_MAX, -1) failed\n");
+                  "mallopt(M_MMAP_MAX, 0) failed\n");
     }
 #endif
-    char *buf = (char *)malloc(PRE_ALLOC_SIZE);
-    if (buf == NULL) {
-        rtapi_print_msg(RTAPI_MSG_WARN, "malloc(PRE_ALLOC_SIZE) failed\n");
-        return;
-    }
-    long pagesize = sysconf(_SC_PAGESIZE);
-    for (size_t i = 0; i < PRE_ALLOC_SIZE; i += pagesize) {
-        buf[i] = 0;
-    }
-    free(buf);
 }
 
 static int harden_rt(void)
@@ -452,6 +479,24 @@ static int task_start(int task_id, unsigned long int period_nsec)
     if((ret = pthread_create(&task->thr, &attr, &task_wrapper, (void*)task)) != 0)
         return -ret;
 
+    /* Lock the RT thread's stack into physical RAM */
+#ifdef __linux__
+    {
+        pthread_attr_t query_attr;
+        void *stackaddr;
+        size_t stacksize;
+        if (pthread_getattr_np(task->thr, &query_attr) == 0) {
+            if (pthread_attr_getstack(&query_attr, &stackaddr, &stacksize) == 0) {
+                if (mlock(stackaddr, stacksize) < 0) {
+                    rtapi_print_msg(RTAPI_MSG_WARN,
+                        "task_start: mlock stack failed: %s\n", strerror(errno));
+                }
+            }
+            pthread_attr_destroy(&query_attr);
+        }
+    }
+#endif
+
     return 0;
 }
 
@@ -494,7 +539,7 @@ static int task_delete(int id)
     pthread_join(task->thr, 0);
     task->task.magic = 0;
     task_array[id] = 0;
-    free(task);
+    rtapi_free(task, sizeof(struct posix_task));
     return 0;
 }
 
@@ -508,7 +553,7 @@ static int task_new(void (*taskcode)(void*), void *arg,
     int n = allocate_task_id();
     if(n < 0) return n;
 
-    struct posix_task *task = (struct posix_task*)malloc(sizeof(struct posix_task));
+    struct posix_task *task = (struct posix_task*)rtapi_malloc(sizeof(struct posix_task));
     if(!task) {
         task_array[n] = 0;
         return -ENOMEM;
