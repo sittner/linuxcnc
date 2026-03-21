@@ -154,7 +154,7 @@ static void signal_handler(int sig, siginfo_t *si, void *uctx)
 static const struct rlimit unlimited = {RLIM_INFINITY, RLIM_INFINITY};
 
 /* Allocate memory suitable for realtime use: pre-fault + mlock. */
-static void *rtapi_malloc(size_t size) {
+void *rtapi_malloc(size_t size) {
     void *p = malloc(size);
     if (!p) return NULL;
 
@@ -178,7 +178,7 @@ static void *rtapi_malloc(size_t size) {
 }
 
 /* Free realtime-locked memory. */
-static void rtapi_free(void *p, size_t size) {
+void rtapi_free(void *p, size_t size) {
     if (!p) return;
     munlock(p, size);
     free(p);
