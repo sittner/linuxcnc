@@ -50,8 +50,6 @@ func TestStopAlwaysSucceeds(t *testing.T) {
 	}
 }
 
-
-
 // TestSplitLines exercises the splitLines helper.
 func TestSplitLines(t *testing.T) {
 	cases := []struct {
