@@ -580,6 +580,7 @@ pycheck: pycheck-python-files pycheck-python-script
 # files (Note that files in depends/ might be rebuilt, and there's little that
 # can be done about it)
 setuid:
+	setcap cap_sys_nice,cap_ipc_lock,cap_sys_rawio=ep ../bin/linuxcnc-launcher
 	chown root ../bin/rtapi_app
 	chmod 4750 ../bin/rtapi_app
 
