@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <time.h>
 
-/* rtapi_task structure — single definition shared by uspace_rtapi_app.c
+/* rtapi_task structure — single definition shared by the launcher CGo shims
    and uspace_rtapi_lib.c.  Converted from the C++ class hierarchy that
    lived in the now-deleted rtapi_uspace.hh. */
 struct rtapi_task {

@@ -1049,58 +1049,9 @@ int do_status_cmd(char *type)
 
 int do_loadrt_cmd(char *mod_name, char *args[])
 {
-    char arg_string[MAX_CMD_LEN+1];
-    int m=0, n=0, retval;
-    hal_comp_t *comp;
-    const char *argv[MAX_TOK+3];
-    char *cp1;
-    argv[m++] = "-Wn";
-    argv[m++] = mod_name;
-    argv[m++] = EMC2_BIN_DIR "/rtapi_app";
-    argv[m++] = "load";
-    argv[m++] = mod_name;
-    /* loop thru remaining arguments */
-    while ( args[n] && args[n][0] != '\0' ) {
-        argv[m++] = args[n++];
-    }
-    argv[m++] = NULL;
-    retval = do_loadusr_cmd(argv);
-
-    if ( retval != 0 ) {
-	halcmd_error("insmod for %s failed, returned %d\n"
-        , mod_name, retval );
-	return -1;
-    }
-    /* make the args that were passed to the module into a single string */
-    n = 0;
-    arg_string[0] = '\0';
-    while ( args[n] && args[n][0] != '\0' ) {
-	strncat(arg_string, args[n++], MAX_CMD_LEN);
-	strncat(arg_string, " ", MAX_CMD_LEN);
-    }
-    /* allocate HAL shmem for the string */
-    cp1 = (char*)hal_malloc(strlen(arg_string)+1);
-    if ( cp1 == NULL ) {
-	halcmd_error("failed to allocate memory for module args\n");
-	return -1;
-    }
-    /* copy string to shmem */
-    strcpy(cp1, arg_string);
-    /* get mutex before accessing shared data */
-    rtapi_mutex_get(&(hal_data->mutex));
-    /* search component list for the newly loaded component */
-    comp = halpr_find_comp_by_name(mod_name);
-    if (comp == 0) {
-	rtapi_mutex_give(&(hal_data->mutex));
-	halcmd_error("module '%s' not loaded\n", mod_name);
-	return -EINVAL;
-    }
-    /* link args to comp struct */
-    comp->insmod_args = SHMOFF(cp1);
-    rtapi_mutex_give(&(hal_data->mutex));
-    /* print success message */
-    halcmd_info("Realtime module '%s' loaded\n", mod_name);
-    return 0;
+    halcmd_error("loadrt is not available in standalone halcmd.\n"
+                 "RT module loading is handled in-process by the launcher.\n");
+    return -ENOSYS;
 }
 
 int do_delsig_cmd(char *mod_name)
@@ -1263,25 +1214,9 @@ int do_unloadrt_cmd(char *mod_name)
 
 static int unloadrt_comp(char *mod_name)
 {
-    int retval;
-    const char *argv[4];
-
-    argv[0] = EMC2_BIN_DIR "/rtapi_app";
-    argv[1] = "unload";
-    argv[2] = mod_name;
-    /* add a NULL to terminate the argv array */
-    argv[3] = NULL;
-
-    retval = hal_systemv(argv);
-
-    if ( retval != 0 ) {
-	halcmd_error("rmmod failed, returned %d\n", retval);
-	return -1;
-    }
-    /* print success message */
-    halcmd_info("Realtime module '%s' unloaded\n",
-	mod_name);
-    return 0;
+    halcmd_error("unloadrt is not available in standalone halcmd.\n"
+                 "RT module unloading is handled in-process by the launcher.\n");
+    return -ENOSYS;
 }
 
 int do_unload_cmd(char *mod_name) {

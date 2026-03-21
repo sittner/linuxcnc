@@ -160,19 +160,19 @@ static void signal_handler(int sig, siginfo_t *si, void *uctx)
     switch (sig) {
     case SIGXCPU:
         rtapi_print_msg(RTAPI_MSG_ERR,
-                        "rtapi_app: BUG: SIGXCPU received - exiting\n");
+                        "BUG: SIGXCPU received - exiting\n");
         exit(0);
         break;
 
     case SIGTERM:
         rtapi_print_msg(RTAPI_MSG_ERR,
-                        "rtapi_app: SIGTERM - shutting down\n");
+                        "SIGTERM - shutting down\n");
         exit(0);
         break;
 
     default:
         rtapi_print_msg(RTAPI_MSG_ERR,
-                        "rtapi_app: caught signal %d - dumping core\n", sig);
+                        "caught signal %d - dumping core\n", sig);
         sleep(1);
         signal(sig, SIG_DFL);
         raise(sig);
@@ -496,7 +496,7 @@ static void *task_wrapper(void *arg)
           (void*)task, task->period, task->ratio);
 
     pthread_setspecific(task_key, arg);
-    rtapi_set_namef("rtapi_app:T#%d", task->id);
+    rtapi_set_namef("rtapi:T#%d", task->id);
 
     if(do_thread_lock)
         pthread_mutex_lock(&thread_lock);

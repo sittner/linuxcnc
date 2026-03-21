@@ -1327,19 +1327,10 @@ static int unloadrt_comp(char *mod_name)
 	return -1;
     }
     if ( pid == 0 ) {
-	/* this is the child process - prepare to exec() rtapi_app */
-	argv[0] = EMC2_BIN_DIR "/rtapi_app";
-	argv[1] = "unload";
-	argv[2] = mod_name;
-	/* add a NULL to terminate the argv array */
-	argv[3] = NULL;
-	/* print debugging info if "very verbose" (-V) */
-	rtapi_print_msg(RTAPI_MSG_DBG, "%s %s %s\n", argv[0], argv[1], argv[2] );
-	/* call execv() to invoke rmmod */
-	execv(argv[0], argv);
-	/* should never get here */
+	/* rtapi_app binary no longer exists; RT module management is
+	   handled in-process by the launcher. */
 	rtapi_print_msg(RTAPI_MSG_ERR,
-	    "HAL:%d: ERROR: execv(%s) failed\n", linenumber, argv[0] );
+	    "HAL:%d: ERROR: unloadrt not available in halrmt\n", linenumber);
 	exit(1);
     }
     /* this is the parent process, wait for child to end */

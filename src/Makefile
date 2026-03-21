@@ -137,7 +137,7 @@ ifeq ($(origin KERNELRELEASE),undefined)
 # The "modules" target is the gateway to the kernel module build.
 build-software: userspace modules
 ifeq ($(RUN_IN_PLACE),yes)
-	@if [ -f ../bin/rtapi_app ]; then if ! [ `id -u` = 0 -a -O  ../bin/rtapi_app -a -u ../bin/rtapi_app ]; then $(VECHO) "You now need to run 'sudo make setuid' in order to run in place with access to hardware."; fi; fi
+	@if [ -f ../bin/linuxcnc-launcher ]; then if ! getcap ../bin/linuxcnc-launcher 2>/dev/null | grep -q cap_sys_nice; then $(VECHO) "You now need to run 'sudo make setuid' in order to run in place with access to hardware."; fi; fi
 endif
 
 VERSION=$(shell cat ../VERSION)
@@ -581,8 +581,6 @@ pycheck: pycheck-python-files pycheck-python-script
 # can be done about it)
 setuid:
 	setcap cap_sys_nice,cap_ipc_lock,cap_sys_rawio=ep ../bin/linuxcnc-launcher
-	chown root ../bin/rtapi_app
-	chmod 4750 ../bin/rtapi_app
 
 # These rules allows a header file from this directory to be installed into
 # ../include.  A pair of rules like these will exist in the Submakefile
@@ -686,7 +684,7 @@ install-kernel-indep: install-dirs
 	$(DIR) $(DESTDIR)$(sampleconfsdir)
 	((cd ../configs && tar --exclude CVS --exclude .cvsignore --exclude .gitignore -cf - .) | (cd $(DESTDIR)$(sampleconfsdir) && tar -xf -))
 
-	$(EXE) $(filter-out ../bin/rtapi_app ../bin/test_rtapi_vsnprintf, $(filter ../bin/%,$(TARGETS))) $(DESTDIR)$(bindir)
+	$(EXE) $(filter-out ../bin/test_rtapi_vsnprintf, $(filter ../bin/%,$(TARGETS))) $(DESTDIR)$(bindir)
 	$(EXE) ../scripts/linuxcnc $(DESTDIR)$(bindir)
 	$(EXE) ../scripts/linuxcnc_info $(DESTDIR)$(bindir)
 	$(EXE) ../scripts/setup_designer $(DESTDIR)$(bindir)
@@ -823,7 +821,6 @@ install-kernel-dep:
 		$(DESTDIR)$(bindir) \
 		$(DESTDIR)$(sysconfdir)/linuxcnc
 	$(FILE) ../rtlib/*$(MODULE_EXT) $(DESTDIR)$(EMC2_RTLIB_DIR)
-	$(SETUID) ../bin/rtapi_app $(DESTDIR)$(bindir)
 	$(FILE) ../scripts/rtapi.conf $(DESTDIR)$(sysconfdir)/linuxcnc
 endif # RUN_IN_PLACE
 

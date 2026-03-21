@@ -1,7 +1,6 @@
 package realtime
 
 import (
-	"log/slog"
 	"os"
 	"testing"
 )
@@ -38,34 +37,5 @@ func TestStartDevZeroAccessible(t *testing.T) {
 func TestStartFailsWhenDevZeroMissing(t *testing.T) {
 	if err := checkDevZeroAt("/nonexistent/device"); err == nil {
 		t.Error("expected error for non-existent device, got nil")
-	}
-}
-
-// TestStopAlwaysSucceeds verifies that Stop() succeeds (IPC cleanup only).
-func TestStopAlwaysSucceeds(t *testing.T) {
-	m := New(slog.New(slog.NewTextHandler(os.Stderr, nil)))
-
-	if err := m.Stop(); err != nil {
-		t.Fatalf("Stop() returned error: %v", err)
-	}
-}
-
-// TestSplitLines exercises the splitLines helper.
-func TestSplitLines(t *testing.T) {
-	cases := []struct {
-		input string
-		want  int
-	}{
-		{"", 0},
-		{"line1\nline2\n", 2},
-		{"line1\nline2", 2},
-		{"\n\n", 0},
-		{"S rtapi_app\nZ rtapi_app\n", 2},
-	}
-	for _, tc := range cases {
-		got := splitLines(tc.input)
-		if len(got) != tc.want {
-			t.Errorf("splitLines(%q) = %d lines, want %d", tc.input, len(got), tc.want)
-		}
 	}
 }

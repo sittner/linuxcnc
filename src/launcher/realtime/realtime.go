@@ -4,9 +4,8 @@
 // bash script.  Kernel-module paths (RTAI, Xenomai) are intentionally not
 // implemented here.
 //
-// With the removal of rtapi_app as a separate process, this package only
-// handles environment validation and IPC cleanup.  RT module loading now
-// happens in-process via dlopen in the halcmd CGo shims.
+// RT module loading happens in-process via dlopen in the halcmd CGo shims.
+// This package only handles environment validation on startup.
 package realtime
 
 import (
@@ -56,16 +55,6 @@ func (m *Manager) Start() error {
 	return nil
 }
 
-// Stop performs the realtime shutdown sequence (uspace).
-//
-// SysV shared memory segments are cleaned up in-process by
-// halpr_rtapi_app_exit() → rtapi_shmem_delete() which calls shmdt/shmctl.
-// No external ipcrm is needed.
-func (m *Manager) Stop() error {
-	m.logger.Info("realtime environment stopped")
-	return nil
-}
-
 // checkDevZero verifies that /dev/zero is accessible.
 func checkDevZero() error {
 	return checkDevZeroAt(shmDev)
@@ -80,22 +69,4 @@ func checkDevZeroAt(path string) error {
 	}
 	_ = f.Close()
 	return nil
-}
-
-// splitLines splits s on newlines and returns non-empty lines.
-func splitLines(s string) []string {
-	var lines []string
-	start := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\n' {
-			if line := s[start:i]; len(line) > 0 {
-				lines = append(lines, line)
-			}
-			start = i + 1
-		}
-	}
-	if tail := s[start:]; len(tail) > 0 {
-		lines = append(lines, tail)
-	}
-	return lines
 }

@@ -252,10 +252,9 @@ func (l *Launcher) Run() error {
 		return fmt.Errorf("realtime start failed: %w", err)
 	}
 
-	// Initialize the in-process RTAPI/HAL environment.  This replaces the
-	// former rtapi_app daemon: HAL shared memory is set up, the message
-	// queue thread is started, and RT module loading will happen in-process
-	// via dlopen instead of fork+exec.
+	// Initialize the in-process RTAPI/HAL environment.  Sets up HAL shared
+	// memory, starts the message queue thread, and prepares for RT module
+	// loading via dlopen.
 	// Must be called before hal.NewComponent() / hal_init().
 	l.logger.Info("initializing RTAPI app (in-process)")
 	if err := halcmd.RtapiAppInit(); err != nil {

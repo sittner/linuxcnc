@@ -9,8 +9,8 @@ Files
 rtapi.h                 : public RTAPI function declarations
 rtapi_task.h            : struct rtapi_task and related constants
 rtapi_app.h             : EXPORT_SYMBOL / module entry points
-uspace_common.h         : shared code included by both rtapi_app and ulapi
-uspace_rtapi_app.c      : rtapi_app process (module loading, IPC, main)
+uspace_common.h         : shared code included by the launcher and ulapi
+uspace_rtapi_app.c      : legacy rtapi_app process (no longer built)
 uspace_rtapi_lib.c      : RTAPI library linked into liblinuxcnchal.so
 uspace_ulapi.c          : user-level API (non-realtime callers)
 uspace_rtapi_parport.c  : parallel port access helpers
@@ -19,8 +19,8 @@ rtapi_pci.c             : usermode PCI device access via libudev
 
 Build
 -----
-The Submakefile-based build compiles uspace_rtapi_app.c and its
-companions into bin/rtapi_app, linked against liblinuxcnchal.so.
+RT module loading is now handled in-process by the Go launcher via
+dlopen.  The standalone rtapi_app binary is no longer built.
 
 The meson.build exports source/include variables for the unit-test
 build only.
