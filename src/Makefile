@@ -321,7 +321,7 @@ INFILES = \
         ../scripts/linuxcnc ../scripts/realtime \
 	../scripts/linuxcnc_info ../scripts/setup_designer \
 	../scripts/haltcl ../scripts/rtapi.conf Makefile.inc Makefile.modinc \
-	../tcl/linuxcnc.tcl ../scripts/halrun ../scripts/rip-environment \
+	../tcl/linuxcnc.tcl ../scripts/rip-environment \
 	../scripts/linuxcncmkdesktop \
 	../lib/python/nf.py \
 	../share/desktop-directories/linuxcnc-doc.directory \
@@ -334,7 +334,6 @@ INFILES = \
 	../share/applications/linuxcnc-pncconf.desktop \
 	../share/applications/linuxcnc-stepconf.desktop \
 	../scripts/linuxcnc_var \
-	../scripts/halcmd_twopass \
 	../scripts/runtests \
 
 $(INFILES): %: %.in config.status
@@ -697,8 +696,6 @@ install-kernel-indep: install-dirs
 	$(FILE) $(filter-out %/skeleton.9, $(wildcard ../docs/man/man9/*.9)) $(DESTDIR)$(mandir)/man9
 	$(FILE) objects/*.msg $(DESTDIR)$(tcldir)/msgs
 	$(EXE) ../scripts/realtime $(DESTDIR)$(prefix)/lib/linuxcnc
-	$(EXE) ../scripts/halrun $(DESTDIR)$(bindir)
-	$(EXE) ../scripts/halcmd_twopass $(DESTDIR)$(bindir)
 	$(EXE) ../scripts/haltcl $(DESTDIR)$(bindir)
 	$(EXE) ../scripts/simulate_probe $(DESTDIR)$(bindir)
 	$(EXE) ../scripts/sim_pin $(DESTDIR)$(bindir)

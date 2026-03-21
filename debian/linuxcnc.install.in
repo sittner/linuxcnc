@@ -17,11 +17,9 @@ usr/bin/hal-histogram
 usr/bin/hal_input
 usr/bin/hal_manualtoolchange
 usr/bin/halcmd
-usr/bin/halcmd_twopass
 usr/bin/halmeter
 usr/bin/halreport
 usr/bin/halrmt
-usr/bin/halrun
 usr/bin/halsampler
 usr/bin/halscope
 usr/bin/halshow
