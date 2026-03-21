@@ -1304,7 +1304,6 @@ static int doUnload(char *mod_name, connectionRecType *context)
 static int unloadrt_comp(char *mod_name)
 {
     int retval, status;
-    char *argv[4];
     pid_t pid;
 
     /* now we need to fork, and then exec rmmod.... */
