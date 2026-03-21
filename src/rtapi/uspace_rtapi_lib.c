@@ -238,9 +238,8 @@ static int harden_rt(void)
     if (setrlimit(RLIMIT_RTPRIO, &unlimited) < 0)
     {
         rtapi_print_msg(RTAPI_MSG_WARN,
-                  "setrlimit(RTLIMIT_RTPRIO): %s\n",
+                  "setrlimit(RLIMIT_RTPRIO): %s (not fatal with CAP_SYS_NICE)\n",
                   strerror(errno));
-        return -errno;
     }
 
     if (setrlimit(RLIMIT_CORE, &unlimited) < 0)
