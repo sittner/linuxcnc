@@ -77,20 +77,22 @@ func (l *Launcher) doCleanup() {
 		time.Sleep(200 * time.Millisecond)
 	}
 
-	// Step 7 — Shut down the in-process RTAPI/HAL environment.
-	// This tears down HAL threads, releases shared memory, and stops the
-	// message queue thread.  Must happen after all RT components are
-	// unloaded (step 5) but before hal_exit() (final step).
-	l.logger.Debug("shutting down RTAPI app (in-process)")
-	halcmd.RtapiAppCleanup()
-
-	// Step 8 — Stop realtime environment (validation/IPC cleanup only).
-	// mirrors scripts/linuxcnc.in line 722.
-	if l.rtMgr != nil {
-		if err := l.rtMgr.Stop(); err != nil {
-			l.logger.Error("realtime stop failed", "error", err)
+	// Step 7 — Exit the launcher's own HAL component.
+	// Must happen while HAL shared memory is still valid, i.e. before
+	// RtapiAppCleanup() tears it down.
+	if l.halComp != nil {
+		if err := l.halComp.Exit(); err != nil {
+			l.logger.Debug("hal exit returned error", "error", err)
 		}
 	}
+
+	// Step 8 — Shut down the in-process RTAPI/HAL environment.
+	// This tears down HAL threads, releases shared memory (via
+	// rtapi_shmem_delete → shmdt/shmctl), and stops the message queue
+	// thread.  Must happen after all HAL components (including the
+	// launcher's own) have exited.  No external ipcrm is needed.
+	l.logger.Debug("shutting down RTAPI app (in-process)")
+	halcmd.RtapiAppCleanup()
 
 	// Step 9 — Stop in-process NML server.
 	// stopServer() signals the server to stop, waits for the goroutine to
@@ -109,14 +111,6 @@ func (l *Launcher) doCleanup() {
 		l.logger.Info("releasing lock file")
 		if err := l.lock.Release(); err != nil {
 			l.logger.Error("releasing lock file", "error", err)
-		}
-	}
-
-	// Final step — exit the launcher's HAL connection.
-	// hal_exit() must be the last HAL operation, after everything else is done.
-	if l.halComp != nil {
-		if err := l.halComp.Exit(); err != nil {
-			l.logger.Debug("hal exit returned error", "error", err)
 		}
 	}
 }

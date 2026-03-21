@@ -50,16 +50,7 @@ func TestStopAlwaysSucceeds(t *testing.T) {
 	}
 }
 
-// TestCleanupIPC verifies that cleanupIPC() runs without panic or error when
-// no LinuxCNC IPC resources are present.
-func TestCleanupIPC(t *testing.T) {
-	m := New(slog.New(slog.NewTextHandler(os.Stderr, nil)))
-	// ipcrm on non-existent keys should not return a hard error (it exits
-	// non-zero but we suppress that intentionally — matching the bash script).
-	if err := m.cleanupIPC(); err != nil {
-		t.Errorf("cleanupIPC() returned unexpected error: %v", err)
-	}
-}
+
 
 // TestSplitLines exercises the splitLines helper.
 func TestSplitLines(t *testing.T) {

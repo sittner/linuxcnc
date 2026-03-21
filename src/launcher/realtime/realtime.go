@@ -58,13 +58,10 @@ func (m *Manager) Start() error {
 
 // Stop performs the realtime shutdown sequence (uspace).
 //
-// Cleans up IPC resources (shared memory segments).  RT module teardown
-// happens in-process via halcmd.RtapiAppCleanup().
+// SysV shared memory segments are cleaned up in-process by
+// halpr_rtapi_app_exit() → rtapi_shmem_delete() which calls shmdt/shmctl.
+// No external ipcrm is needed.
 func (m *Manager) Stop() error {
-	m.logger.Info("cleaning up realtime environment")
-	if err := m.cleanupIPC(); err != nil {
-		m.logger.Warn("IPC cleanup encountered errors", "error", err)
-	}
 	m.logger.Info("realtime environment stopped")
 	return nil
 }
