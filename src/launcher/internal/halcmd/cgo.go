@@ -14,6 +14,7 @@ package halcmd
 #include <ctype.h>
 #include <fnmatch.h>
 #include <fcntl.h>
+#include <spawn.h>
 #include <dlfcn.h>
 #include <stdatomic.h>
 #include <pthread.h>
@@ -24,6 +25,8 @@ package halcmd
 #include "rtapi.h"
 #include "hal.h"
 #include "hal_priv.h"
+
+extern char **environ;
 
 // Helper to convert hal_type_t to int for Go
 static inline int get_hal_type(hal_type_t t) { return (int)t; }
@@ -818,20 +821,25 @@ static int hal_shim_loadusr(int flags, const char *wait_name, int timeout_s,
     }
     argv[m] = NULL;
 
-    pid = fork();
-    if (pid < 0) return -errno;
+    {
+        posix_spawn_file_actions_t file_actions;
+        posix_spawnattr_t attr;
+        int spawn_ret;
 
-    if (pid == 0) {
-        // Child process
+        posix_spawn_file_actions_init(&file_actions);
         if (no_stdin) {
-            int fd = open("/dev/null", O_RDONLY);
-            if (fd >= 0) {
-                dup2(fd, 0);
-                close(fd);
-            }
+            posix_spawn_file_actions_addopen(&file_actions, 0, "/dev/null", O_RDONLY, 0);
         }
-        execvp(prog, (char *const *)argv);
-        _exit(127);
+        posix_spawnattr_init(&attr);
+
+        spawn_ret = posix_spawnp(&pid, prog, &file_actions, &attr, (char *const *)argv, environ);
+
+        posix_spawn_file_actions_destroy(&file_actions);
+        posix_spawnattr_destroy(&attr);
+
+        if (spawn_ret != 0) {
+            return -spawn_ret;
+        }
     }
 
     // Parent process
