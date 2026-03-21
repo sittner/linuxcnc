@@ -377,10 +377,6 @@ static int detect_env_override() {
 }
 
 static int detect_realtime() {
-    struct stat st;
-    if ((stat(EMC2_BIN_DIR "/rtapi_app", &st) < 0)
-            || st.st_uid != 0 || !(st.st_mode & S_ISUID))
-        return 0;
     return detect_env_override() || detect_preempt_rt();
 }
 

@@ -2,7 +2,7 @@ package halcmd
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../hal -I${SRCDIR}/../../.. -I${SRCDIR}/../../../rtapi -I${SRCDIR}/../../../../include
-#cgo LDFLAGS: -L${SRCDIR}/../../../../lib -llinuxcnchal
+#cgo LDFLAGS: -L${SRCDIR}/../../../../lib -llinuxcnchal -ldl
 
 #include <stdlib.h>
 #include <string.h>
@@ -14,7 +14,14 @@ package halcmd
 #include <ctype.h>
 #include <fnmatch.h>
 #include <fcntl.h>
+#include <dlfcn.h>
+#include <stdatomic.h>
+#include <pthread.h>
+#include <stdarg.h>
+#include <time.h>
+#include <limits.h>
 #include "config.h"
+#include "rtapi.h"
 #include "hal.h"
 #include "hal_priv.h"
 
@@ -61,27 +68,289 @@ static int hal_shim_list_comps(char *buf, int buf_size) {
 // helpers. 256 exceeds any realistic LinuxCNC machine configuration.
 #define HAL_SHIM_MAX_COMPS 256
 
-// shim_systemv forks and execs argv[0] with the given argument vector,
-// waits for it to exit, and returns its exit status.
-// This replicates what hal_systemv() does in halcmd_commands.cc, but
-// hal_systemv() is not part of liblinuxcnchal so we implement it inline.
-static int shim_systemv(const char *const argv[]) {
-    pid_t pid = fork();
-    if (pid < 0) return -1;
-    if (pid == 0) {
-        execvp(argv[0], (char *const *)argv);
-        _exit(127);
+// ===== In-process RT module management =====
+// Replaces the former rtapi_app IPC: modules are dlopen'd directly in this
+// process.  The module table, load/unload/newinst logic are adapted from
+// uspace_rtapi_app.c.
+
+#define RT_MAX_MODULES 64
+struct rt_module_entry {
+    char name[256];
+    void *handle;
+    int in_use;
+};
+static struct rt_module_entry rt_modules[RT_MAX_MODULES];
+static pthread_mutex_t rt_modules_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static void *rt_find_module(const char *name) {
+    pthread_mutex_lock(&rt_modules_lock);
+    for (int i = 0; i < RT_MAX_MODULES; i++) {
+        if (rt_modules[i].in_use && strcmp(rt_modules[i].name, name) == 0) {
+            void *handle = rt_modules[i].handle;
+            pthread_mutex_unlock(&rt_modules_lock);
+            return handle;
+        }
     }
-    int status;
-    if (waitpid(pid, &status, 0) < 0) return -1;
-    if (WIFEXITED(status)) return WEXITSTATUS(status);
+    pthread_mutex_unlock(&rt_modules_lock);
+    return NULL;
+}
+
+static int rt_add_module(const char *name, void *handle) {
+    pthread_mutex_lock(&rt_modules_lock);
+    for (int i = 0; i < RT_MAX_MODULES; i++) {
+        if (!rt_modules[i].in_use) {
+            strncpy(rt_modules[i].name, name, sizeof(rt_modules[i].name) - 1);
+            rt_modules[i].name[sizeof(rt_modules[i].name) - 1] = '\0';
+            rt_modules[i].handle = handle;
+            rt_modules[i].in_use = 1;
+            pthread_mutex_unlock(&rt_modules_lock);
+            return 0;
+        }
+    }
+    pthread_mutex_unlock(&rt_modules_lock);
     return -1;
 }
 
-// hal_shim_unload_all unloads all HAL components, exactly as halcmd's
-// "unload all" command does:
+static void rt_remove_module(const char *name) {
+    pthread_mutex_lock(&rt_modules_lock);
+    for (int i = 0; i < RT_MAX_MODULES; i++) {
+        if (rt_modules[i].in_use && strcmp(rt_modules[i].name, name) == 0) {
+            rt_modules[i].in_use = 0;
+            rt_modules[i].name[0] = '\0';
+            rt_modules[i].handle = NULL;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&rt_modules_lock);
+}
+
+static void rt_remove_quotes(char *s) {
+    char *src = s;
+    char *dst = s;
+    while (*src) {
+        if (*src != '"') {
+            *dst++ = *src;
+        }
+        src++;
+    }
+    *dst = '\0';
+}
+
+static int rt_do_one_item(char item_type_char, const char *param_name,
+                          const char *param_value, void *vitem, int idx) {
+    char *endp;
+    switch (item_type_char) {
+        case 'l': {
+            long *litem = *(long **)vitem;
+            litem[idx] = strtol(param_value, &endp, 0);
+            if (*endp) {
+                rtapi_print_msg(RTAPI_MSG_ERR,
+                    "`%s' invalid for parameter `%s'",
+                    param_value, param_name);
+                return -1;
+            }
+            return 0;
+        }
+        case 'i': {
+            int *iitem = *(int **)vitem;
+            iitem[idx] = strtol(param_value, &endp, 0);
+            if (*endp) {
+                rtapi_print_msg(RTAPI_MSG_ERR,
+                    "`%s' invalid for parameter `%s'",
+                    param_value, param_name);
+                return -1;
+            }
+            return 0;
+        }
+        case 's': {
+            char **sitem = *(char ***)vitem;
+            sitem[idx] = strdup(param_value);
+            return 0;
+        }
+        default:
+            rtapi_print_msg(RTAPI_MSG_ERR,
+                "%s: Invalid type character `%c'\n",
+                param_name, item_type_char);
+            return -1;
+    }
+}
+
+static int rt_do_comp_args(void *module, const char *const args[], int nargs) {
+    int i;
+    for (i = 0; i < nargs; i++) {
+        char s[1024];
+        strncpy(s, args[i], sizeof(s) - 1);
+        s[sizeof(s) - 1] = '\0';
+        rt_remove_quotes(s);
+        char *eq = strchr(s, '=');
+        if (!eq) {
+            rtapi_print_msg(RTAPI_MSG_ERR, "Invalid parameter `%s'\n", s);
+            return -1;
+        }
+        *eq = '\0';
+        char *param_name = s;
+        char *param_value = eq + 1;
+
+        char sym_name[512];
+        snprintf(sym_name, sizeof(sym_name), "rtapi_info_address_%s", param_name);
+        void *item = dlsym(module, sym_name);
+        if (!item) {
+            rtapi_print_msg(RTAPI_MSG_ERR,
+                "Unknown parameter `%s'\n", param_name);
+            return -1;
+        }
+
+        snprintf(sym_name, sizeof(sym_name), "rtapi_info_type_%s", param_name);
+        char **item_type = (char **)dlsym(module, sym_name);
+        if (!item_type || !*item_type) {
+            rtapi_print_msg(RTAPI_MSG_ERR,
+                "Unknown parameter `%s' (type information missing)\n",
+                param_name);
+            return -1;
+        }
+
+        snprintf(sym_name, sizeof(sym_name), "rtapi_info_size_%s", param_name);
+        int *max_size_ptr = (int *)dlsym(module, sym_name);
+
+        char item_type_char = **item_type;
+        if (max_size_ptr) {
+            int max_size = *max_size_ptr;
+            char *tok = param_value;
+            int idx = 0;
+            while (tok && *tok) {
+                if (idx == max_size) {
+                    rtapi_print_msg(RTAPI_MSG_ERR,
+                        "%s: can only take %d arguments\n",
+                        param_name, max_size);
+                    return -1;
+                }
+                char *comma = strchr(tok, ',');
+                char substr[256];
+                if (comma) {
+                    size_t len = comma - tok;
+                    if (len >= sizeof(substr)) len = sizeof(substr) - 1;
+                    strncpy(substr, tok, len);
+                    substr[len] = '\0';
+                    tok = comma + 1;
+                } else {
+                    strncpy(substr, tok, sizeof(substr) - 1);
+                    substr[sizeof(substr) - 1] = '\0';
+                    tok = NULL;
+                }
+                int result = rt_do_one_item(item_type_char, param_name, substr, item, idx);
+                if (result != 0) return result;
+                idx++;
+            }
+        } else {
+            int result = rt_do_one_item(item_type_char, param_name, param_value, item, 0);
+            if (result != 0) return result;
+        }
+    }
+    return 0;
+}
+
+// ===== Message queue for RT thread messages =====
+// RT threads cannot safely write to stdout/stderr.  Messages are queued and
+// consumed by a background pthread that drains them to the appropriate stream.
+
+#define RT_MSG_QUEUE_SIZE 128
+struct rt_message_t {
+    msg_level_t level;
+    char msg[1024];
+};
+static struct rt_message_t rt_msg_queue[RT_MSG_QUEUE_SIZE];
+static _Atomic int rt_msg_head = 0;
+static _Atomic int rt_msg_tail = 0;
+static pthread_t rt_queue_thread;
+static _Atomic int rt_queue_running = 0;
+static pthread_t rt_main_thread;
+
+static void rt_msg_queue_push(msg_level_t level, const char *msg) {
+    int head = atomic_load_explicit(&rt_msg_head, memory_order_relaxed);
+    int next = (head + 1) % RT_MSG_QUEUE_SIZE;
+    if (next == atomic_load_explicit(&rt_msg_tail, memory_order_acquire)) {
+        return;  // Queue full, message dropped
+    }
+    rt_msg_queue[head].level = level;
+    snprintf(rt_msg_queue[head].msg, sizeof(rt_msg_queue[head].msg), "%s", msg);
+    atomic_store_explicit(&rt_msg_head, next, memory_order_release);
+}
+
+static int rt_msg_queue_consume_all(void) {
+    int processed = 0;
+    int tail = atomic_load_explicit(&rt_msg_tail, memory_order_relaxed);
+    while (tail != atomic_load_explicit(&rt_msg_head, memory_order_acquire)) {
+        msg_level_t level = rt_msg_queue[tail].level;
+        char msg_copy[sizeof(rt_msg_queue[tail].msg)];
+        strncpy(msg_copy, rt_msg_queue[tail].msg, sizeof(msg_copy) - 1);
+        msg_copy[sizeof(msg_copy) - 1] = '\0';
+        int next_tail = (tail + 1) % RT_MSG_QUEUE_SIZE;
+        atomic_store_explicit(&rt_msg_tail, next_tail, memory_order_release);
+        tail = next_tail;
+        fputs(msg_copy, level == RTAPI_MSG_ALL ? stdout : stderr);
+        processed++;
+    }
+    return processed;
+}
+
+static void *rt_queue_function(void *arg) {
+    (void)arg;
+    while (atomic_load(&rt_queue_running)) {
+        rt_msg_queue_consume_all();
+        struct timespec ts = {0, 10000000}; // 10ms
+        nanosleep(&ts, NULL);
+    }
+    rt_msg_queue_consume_all(); // drain remaining
+    return NULL;
+}
+
+static void rt_msg_handler(msg_level_t level, const char *fmt, va_list ap) {
+    if (rt_queue_running && !pthread_equal(pthread_self(), rt_main_thread)) {
+        char buf[1024];
+        vsnprintf(buf, sizeof(buf), fmt, ap);
+        rt_msg_queue_push(level, buf);
+    } else {
+        vfprintf(level == RTAPI_MSG_ALL ? stdout : stderr, fmt, ap);
+    }
+}
+
+// hal_shim_rtapi_app_init performs the in-process equivalent of rtapi_app's
+// master() startup: sets up the message handler, starts the message queue
+// thread, and calls halpr_rtapi_app_main().
+static int hal_shim_rtapi_app_init(void) {
+    int result;
+    rt_main_thread = pthread_self();
+    rtapi_set_msg_handler(rt_msg_handler);
+
+    atomic_store(&rt_queue_running, 1);
+    result = pthread_create(&rt_queue_thread, NULL, &rt_queue_function, NULL);
+    if (result != 0) {
+        atomic_store(&rt_queue_running, 0);
+        errno = result;
+        return -result;
+    }
+
+    result = halpr_rtapi_app_main();
+    if (result != 0) {
+        atomic_store(&rt_queue_running, 0);
+        pthread_join(rt_queue_thread, NULL);
+        return result;
+    }
+    return 0;
+}
+
+// hal_shim_rtapi_app_cleanup performs the in-process equivalent of rtapi_app's
+// master() cleanup: calls halpr_rtapi_app_exit() and stops the message queue.
+static void hal_shim_rtapi_app_cleanup(void) {
+    halpr_rtapi_app_exit();
+    atomic_store(&rt_queue_running, 0);
+    pthread_join(rt_queue_thread, NULL);
+    rt_msg_queue_consume_all();
+}
+
+// hal_shim_unload_all unloads all HAL components:
 //   - Userspace components: send SIGTERM to their owning process
-//   - Realtime components: call "rtapi_app unload <name>" via shim_systemv
+//   - Realtime components: unload via direct dlclose (in-process)
 // The component identified by except_id is skipped (pass 0 to not skip any).
 // Returns 0 on success, or a negative errno value on error.
 static int hal_shim_unload_all(int except_id) {
@@ -93,7 +362,7 @@ static int hal_shim_unload_all(int except_id) {
         return -EINVAL;
     }
 
-    // Phase 1: send SIGTERM to userspace components (same as do_unloadusr_cmd)
+    // Phase 1: send SIGTERM to userspace components
     rtapi_mutex_get(&(hal_data->mutex));
     next = hal_data->comp_list_ptr;
     while (next != 0) {
@@ -107,8 +376,7 @@ static int hal_shim_unload_all(int except_id) {
     }
     rtapi_mutex_give(&(hal_data->mutex));
 
-    // Phase 2: collect realtime component names then unload via rtapi_app
-    // (same as do_unloadrt_cmd)
+    // Phase 2: collect realtime component names then unload in-process
     {
         char comps[HAL_SHIM_MAX_COMPS][HAL_NAME_LEN+1];
         int n = 0;
@@ -120,7 +388,6 @@ static int hal_shim_unload_all(int except_id) {
             comp = (hal_comp_t *)SHMPTR(next);
             if (comp->type == COMPONENT_TYPE_REALTIME) {
                 if (comp->comp_id != except_id && n < HAL_SHIM_MAX_COMPS) {
-                    // skip pseudo-components (names starting with "__")
                     if (strstr(comp->name, HAL_PSEUDO_COMP_PREFIX) != comp->name) {
                         snprintf(comps[n], sizeof(comps[n]), "%s", comp->name);
                         n++;
@@ -131,14 +398,15 @@ static int hal_shim_unload_all(int except_id) {
         }
         rtapi_mutex_give(&(hal_data->mutex));
 
-        // unload each realtime component via rtapi_app
+        // unload each realtime component in-process
         for (i = 0; i < n; i++) {
-            const char *argv[4];
-            argv[0] = EMC2_BIN_DIR "/rtapi_app";
-            argv[1] = "unload";
-            argv[2] = comps[i];
-            argv[3] = NULL;
-            shim_systemv(argv);
+            void *w = rt_find_module(comps[i]);
+            if (w != NULL) {
+                int (*stop)(void) = (int (*)(void))dlsym(w, "rtapi_app_exit");
+                if (stop) stop();
+                rt_remove_module(comps[i]);
+                dlclose(w);
+            }
         }
     }
 
@@ -611,40 +879,106 @@ static int hal_shim_loadusr(int flags, const char *wait_name, int timeout_s,
     return 0;
 }
 
-// hal_shim_loadrt loads a realtime module via rtapi_app.
-// On USPACE: fork "rtapi_app load <mod> [args]" and poll HAL shared memory
-// until the component <mod> becomes ready, matching what halcmd's
-// do_loadrt_cmd() does (routes through do_loadusr_cmd with -Wn <mod>).
-// Using shim_systemv() here would block forever because rtapi_app is a
-// persistent daemon that never exits after loading a module.
+// hal_shim_loadrt loads a realtime module in-process via dlopen.
+// Replaces the former fork+exec of rtapi_app.  The module's .so is opened
+// with RTLD_GLOBAL|RTLD_NOW, module parameters are parsed via dlsym'd
+// rtapi_info_* symbols, and rtapi_app_main() is called.  Waits for the
+// component to appear in HAL shared memory (ready flag).
 // Returns 0 on success, non-zero on error.
 static int hal_shim_loadrt(const char *mod, const char *const args[], int nargs) {
-    // Build the args for hal_shim_loadusr: ["load", mod, args...]
-    const char *uargs[256];
-    int m = 0;
-    int i;
-
-    if (2 + nargs >= 256) return -E2BIG;
-
-    uargs[m++] = "load";
-    uargs[m++] = mod;
-    for (i = 0; i < nargs; i++) {
-        uargs[m++] = args[i];
+    if (rt_find_module(mod) != NULL) {
+        rtapi_print_msg(RTAPI_MSG_ERR, "%s: already loaded\n", mod);
+        return -EEXIST;
     }
 
-    // flags=1: wait_ready — poll until component <mod> appears in HAL.
-    // timeout_s=0: use default (10 seconds).
-    return hal_shim_loadusr(1, mod, 0, EMC2_BIN_DIR "/rtapi_app", uargs, m);
+    char what[PATH_MAX];
+    snprintf(what, sizeof(what), "%s/%s.so", EMC2_RTLIB_DIR, mod);
+    void *module = dlopen(what, RTLD_GLOBAL | RTLD_NOW);
+    if (!module) {
+        rtapi_print_msg(RTAPI_MSG_ERR, "%s: dlopen: %s\n", mod, dlerror());
+        return -ENOENT;
+    }
+
+    int (*start)(void) = (int (*)(void))dlsym(module, "rtapi_app_main");
+    if (!start) {
+        rtapi_print_msg(RTAPI_MSG_ERR, "%s: dlsym: %s\n", mod, dlerror());
+        dlclose(module);
+        return -ENOENT;
+    }
+
+    if (nargs > 0) {
+        int result = rt_do_comp_args(module, args, nargs);
+        if (result < 0) {
+            dlclose(module);
+            return result;
+        }
+    }
+
+    int result = start();
+    if (result < 0) {
+        rtapi_print_msg(RTAPI_MSG_ERR, "%s: rtapi_app_main: %s (%d)\n",
+            mod, strerror(-result), result);
+        dlclose(module);
+        return result;
+    }
+
+    if (rt_add_module(mod, module) < 0) {
+        rtapi_print_msg(RTAPI_MSG_ERR, "%s: too many modules\n", mod);
+        dlclose(module);
+        return -ENOMEM;
+    }
+
+    // Wait for the component to become ready in HAL shmem, matching the
+    // old behaviour of hal_shim_loadusr with wait_ready.
+    if (hal_data != NULL) {
+        int max_us = 10 * HAL_SHIM_USECS_PER_SEC;
+        int elapsed = 0;
+        int step_us = HAL_SHIM_POLL_USECS;
+        int ready = 0;
+        while (!ready && elapsed < max_us) {
+            usleep((useconds_t)step_us);
+            elapsed += step_us;
+            hal_comp_t *comp;
+            rtapi_mutex_get(&(hal_data->mutex));
+            comp = halpr_find_comp_by_name(mod);
+            if (comp && comp->ready) ready = 1;
+            rtapi_mutex_give(&(hal_data->mutex));
+        }
+        if (!ready) {
+            rtapi_print_msg(RTAPI_MSG_ERR,
+                "%s: component did not become ready within timeout\n", mod);
+            return -ETIMEDOUT;
+        }
+    }
+
+    return 0;
 }
 
-// hal_shim_unloadrt unloads a realtime module via rtapi_app.
+// hal_shim_unloadrt unloads a realtime module in-process.
+// Calls rtapi_app_exit() on the module and dlclose()s it.
 static int hal_shim_unloadrt(const char *mod) {
-    const char *argv[4];
-    argv[0] = EMC2_BIN_DIR "/rtapi_app";
-    argv[1] = "unload";
-    argv[2] = mod;
-    argv[3] = NULL;
-    return shim_systemv(argv);
+    void *w = rt_find_module(mod);
+    if (w == NULL) {
+        rtapi_print_msg(RTAPI_MSG_ERR, "%s: not loaded\n", mod);
+        return -ENOENT;
+    }
+    int (*stop)(void) = (int (*)(void))dlsym(w, "rtapi_app_exit");
+    if (stop) stop();
+    rt_remove_module(mod);
+    dlclose(w);
+    return 0;
+}
+
+// hal_shim_newinst creates a new instance of a HAL component.
+static int hal_shim_newinst(const char *type, const char *name, const char *arg) {
+    hal_comp_t *comp = halpr_find_comp_by_name((char *)type);
+    if (!comp) {
+        rtapi_print_msg(RTAPI_MSG_ERR,
+            "newinst: component %s not found\n", type);
+        return -ENOENT;
+    }
+    if (!arg) arg = "";
+    return comp->make((char *)name, (char *)arg);
 }
 
 // hal_shim_unloadusr sends SIGTERM to the process owning a user-space component.
@@ -1727,7 +2061,7 @@ func halNet(sigName string, pinNames []string) error {
 
 // ===== Go wrappers for 1d process management shims =====
 
-// halLoadRT wraps hal_shim_loadrt() to load a realtime HAL module.
+// halLoadRT wraps hal_shim_loadrt() to load a realtime HAL module in-process.
 func halLoadRT(mod string, args []string) error {
 	cMod := C.CString(mod)
 	defer C.free(unsafe.Pointer(cMod))
@@ -1744,6 +2078,40 @@ func halLoadRT(mod string, args []string) error {
 	}
 	ret := C.hal_shim_loadrt(cMod, (**C.char)(unsafe.Pointer(&cArgs[0])), C.int(len(cArgs)))
 	return halError(int(ret), "hal_shim_loadrt")
+}
+
+// halUnloadRT wraps hal_shim_unloadrt() to unload a realtime HAL module in-process.
+func halUnloadRT(mod string) error {
+	cMod := C.CString(mod)
+	defer C.free(unsafe.Pointer(cMod))
+	ret := C.hal_shim_unloadrt(cMod)
+	return halError(int(ret), "hal_shim_unloadrt")
+}
+
+// halNewInst wraps hal_shim_newinst() to create a new component instance.
+func halNewInst(compType, name, arg string) error {
+	cType := C.CString(compType)
+	defer C.free(unsafe.Pointer(cType))
+	cName := C.CString(name)
+	defer C.free(unsafe.Pointer(cName))
+	cArg := C.CString(arg)
+	defer C.free(unsafe.Pointer(cArg))
+	ret := C.hal_shim_newinst(cType, cName, cArg)
+	return halError(int(ret), "hal_shim_newinst")
+}
+
+// halRtapiAppInit wraps hal_shim_rtapi_app_init() — initializes HAL shared
+// memory and starts the message queue thread.  Must be called before hal_init().
+func halRtapiAppInit() error {
+	ret := C.hal_shim_rtapi_app_init()
+	return halError(int(ret), "hal_shim_rtapi_app_init")
+}
+
+// halRtapiAppCleanup wraps hal_shim_rtapi_app_cleanup() — tears down HAL
+// threads, releases shared memory, and stops the message queue.
+// Must be called after all components are unloaded and before hal_exit().
+func halRtapiAppCleanup() {
+	C.hal_shim_rtapi_app_cleanup()
 }
 
 // halLoadUSR wraps hal_shim_loadusr() to start a user-space HAL component.
@@ -1771,14 +2139,6 @@ func halLoadUSR(flags int, waitName string, timeoutSecs int, prog string, args [
 	ret := C.hal_shim_loadusr(C.int(flags), cWaitName, C.int(timeoutSecs), cProg,
 		(**C.char)(unsafe.Pointer(&cArgs[0])), C.int(len(cArgs)))
 	return halError(int(ret), "hal_shim_loadusr")
-}
-
-// halUnloadRT wraps hal_shim_unloadrt() to unload a realtime HAL module.
-func halUnloadRT(mod string) error {
-	cMod := C.CString(mod)
-	defer C.free(unsafe.Pointer(cMod))
-	ret := C.hal_shim_unloadrt(cMod)
-	return halError(int(ret), "hal_shim_unloadrt")
 }
 
 // halUnloadUSR wraps hal_shim_unloadusr() to send SIGTERM to a user-space component.

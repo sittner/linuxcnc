@@ -4,7 +4,6 @@ import (
 	"log/slog"
 	"os"
 	"testing"
-	"time"
 )
 
 // TestNew verifies that New() returns a non-nil Manager with the expected
@@ -17,9 +16,6 @@ func TestNew(t *testing.T) {
 	if m.logger == nil {
 		t.Error("logger should not be nil")
 	}
-	if m.stopTimeout != defaultStopTimeout {
-		t.Errorf("stopTimeout = %v, want %v", m.stopTimeout, defaultStopTimeout)
-	}
 }
 
 // TestStartDevZeroAccessible verifies that Start() succeeds when /dev/zero is
@@ -31,11 +27,7 @@ func TestStartDevZeroAccessible(t *testing.T) {
 
 	m := New(nil)
 
-	// Overwrite the rtapi_app path so that IsRunning() returns false even if
-	// rtapi_app happens to be installed on the test machine.
-	m.rtapiAppPath = "/nonexistent/rtapi_app"
-
-	// Start() should succeed: /dev/zero is accessible and IsRunning() is false.
+	// Start() should succeed: /dev/zero is accessible.
 	if err := m.Start(); err != nil {
 		t.Fatalf("Start() returned unexpected error: %v", err)
 	}
@@ -49,30 +41,13 @@ func TestStartFailsWhenDevZeroMissing(t *testing.T) {
 	}
 }
 
-// TestStopNotRunning verifies that Stop() is a no-op (returns nil) when
-// rtapi_app is not running.
-func TestStopNotRunning(t *testing.T) {
+// TestStopAlwaysSucceeds verifies that Stop() succeeds (IPC cleanup only).
+func TestStopAlwaysSucceeds(t *testing.T) {
 	m := New(slog.New(slog.NewTextHandler(os.Stderr, nil)))
-	// Point rtapiAppPath at something that definitely does not exist so that
-	// IsRunning() returns false.
-	m.rtapiAppPath = "/nonexistent/rtapi_app"
-	m.stopTimeout = 500 * time.Millisecond
 
 	if err := m.Stop(); err != nil {
-		t.Fatalf("Stop() on non-running process returned error: %v", err)
+		t.Fatalf("Stop() returned error: %v", err)
 	}
-}
-
-// TestIsRunningWithFakeProcess verifies that IsRunning() returns false when
-// the rtapi_app process is not present.
-func TestIsRunningWithFakeProcess(t *testing.T) {
-	m := New(nil)
-
-	// In a CI / test environment rtapi_app should not be running.  The test
-	// cannot guarantee this on a developer machine with a live LinuxCNC
-	// instance, so we only assert false when the process is not present.
-	running := m.IsRunning()
-	t.Logf("IsRunning() = %v", running)
 }
 
 // TestCleanupIPC verifies that cleanupIPC() runs without panic or error when
@@ -103,34 +78,5 @@ func TestSplitLines(t *testing.T) {
 		if len(got) != tc.want {
 			t.Errorf("splitLines(%q) = %d lines, want %d", tc.input, len(got), tc.want)
 		}
-	}
-}
-
-// TestIsRunningFiltersZombies verifies that IsRunning correctly ignores zombie
-// processes (lines starting with 'Z').
-func TestIsRunningFiltersZombies(t *testing.T) {
-	// Build a synthetic output that would come from ps (zombie only).
-	// splitLines + zombie filter should leave 0 non-zombie lines → not running.
-	lines := splitLines("Z rtapi_app\nZ rtapi_app\n")
-	running := false
-	for _, line := range lines {
-		if len(line) > 0 && line[0] != 'Z' {
-			running = true
-		}
-	}
-	if running {
-		t.Error("zombie-only ps output should not be considered running")
-	}
-
-	// Non-zombie line should be detected as running.
-	lines2 := splitLines("S rtapi_app\n")
-	running2 := false
-	for _, line := range lines2 {
-		if len(line) > 0 && line[0] != 'Z' {
-			running2 = true
-		}
-	}
-	if !running2 {
-		t.Error("non-zombie ps output should be considered running")
 	}
 }

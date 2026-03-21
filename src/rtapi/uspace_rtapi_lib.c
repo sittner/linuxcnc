@@ -216,15 +216,16 @@ static void configure_memory(void)
 
 static int harden_rt(void)
 {
-    if(!rtapi_is_realtime()) return -EINVAL;
+    /* With setcap-based privileges (cap_sys_nice, cap_ipc_lock, cap_sys_rawio)
+     * we no longer need setuid or root.  Capabilities are inherited by the
+     * process, so iopl/mlockall/SCHED_FIFO work without uid juggling. */
 
-    with_root_enter();
 #if defined(__linux__) && (defined(__x86_64__) || defined(__i386__))
     if (iopl(3) < 0) {
         rtapi_print_msg(RTAPI_MSG_ERR,
                         "iopl() failed: %s\n"
                         "cannot gain I/O privileges - "
-                        "forgot 'sudo make setuid' or using secure boot? -"
+                        "missing cap_sys_rawio capability or using secure boot? -"
                         "parallel port access is not allowed\n",
                         strerror(errno));
     }
@@ -238,7 +239,6 @@ static int harden_rt(void)
         rtapi_print_msg(RTAPI_MSG_WARN,
                   "setrlimit(RTLIMIT_RTPRIO): %s\n",
                   strerror(errno));
-        with_root_exit();
         return -errno;
     }
 
@@ -267,8 +267,8 @@ static int harden_rt(void)
     sigaction(SIGSEGV, &sig_act, (struct sigaction *) NULL);
     sigaction(SIGILL,  &sig_act, (struct sigaction *) NULL);
     sigaction(SIGFPE,  &sig_act, (struct sigaction *) NULL);
-    sigaction(SIGTERM, &sig_act, (struct sigaction *) NULL);
-    sigaction(SIGINT, &sig_act, (struct sigaction *) NULL);
+    /* SIGTERM and SIGINT are handled by the Go runtime / launcher;
+     * do not override them here to avoid conflicting handlers. */
 
 #ifdef __linux__
     int fd = open("/dev/cpu_dma_latency", O_WRONLY | O_CLOEXEC);
@@ -282,7 +282,6 @@ static int harden_rt(void)
         }
     }
 #endif
-    with_root_exit();
     return 0;
 }
 
@@ -292,7 +291,7 @@ static void initialize_app(void)
     if(initialized) return;
     initialized = 1;
     
-    if(euid != 0 || harden_rt() < 0) {
+    if(harden_rt() < 0) {
         rtapi_print_msg(RTAPI_MSG_ERR, "Note: Using POSIX non-realtime\n");
         app_policy = SCHED_OTHER;
         do_thread_lock = 1;

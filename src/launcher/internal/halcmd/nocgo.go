@@ -48,6 +48,9 @@ func halLoadRT(_ string, _ []string) error { return ErrNoCGO }
 func halUnloadRT(_ string) error           { return ErrNoCGO }
 func halUnloadUSR(_ string) error          { return ErrNoCGO }
 func halWaitUSR(_ string, _ int) error     { return ErrNoCGO }
+func halNewInst(_, _, _ string) error      { return ErrNoCGO }
+func halRtapiAppInit() error               { return ErrNoCGO }
+func halRtapiAppCleanup()                  {}
 
 func halLoadUSR(_ int, _ string, _ int, _ string, _ []string) error {
 	return ErrNoCGO

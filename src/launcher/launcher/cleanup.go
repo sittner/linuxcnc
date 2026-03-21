@@ -77,7 +77,14 @@ func (l *Launcher) doCleanup() {
 		time.Sleep(200 * time.Millisecond)
 	}
 
-	// Step 7 — Stop realtime environment.
+	// Step 7 — Shut down the in-process RTAPI/HAL environment.
+	// This tears down HAL threads, releases shared memory, and stops the
+	// message queue thread.  Must happen after all RT components are
+	// unloaded (step 5) but before hal_exit() (final step).
+	l.logger.Debug("shutting down RTAPI app (in-process)")
+	halcmd.RtapiAppCleanup()
+
+	// Step 8 — Stop realtime environment (validation/IPC cleanup only).
 	// mirrors scripts/linuxcnc.in line 722.
 	if l.rtMgr != nil {
 		if err := l.rtMgr.Stop(); err != nil {
@@ -85,7 +92,7 @@ func (l *Launcher) doCleanup() {
 		}
 	}
 
-	// Step 8 — Stop in-process NML server.
+	// Step 9 — Stop in-process NML server.
 	// stopServer() signals the server to stop, waits for the goroutine to
 	// exit, then calls emcsvr.Cleanup() which runs the C++ NML destructors.
 	// Those destructors call shmdt() for each attached segment and invoke
@@ -96,7 +103,7 @@ func (l *Launcher) doCleanup() {
 	l.logger.Debug("stopping NML server")
 	l.stopServer()
 
-	// Step 9 — Release lock file.
+	// Step 10 — Release lock file.
 	// mirrors scripts/linuxcnc.in lines 733–735.
 	if l.lock != nil {
 		l.logger.Info("releasing lock file")

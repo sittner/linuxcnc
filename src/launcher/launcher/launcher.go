@@ -252,6 +252,16 @@ func (l *Launcher) Run() error {
 		return fmt.Errorf("realtime start failed: %w", err)
 	}
 
+	// Initialize the in-process RTAPI/HAL environment.  This replaces the
+	// former rtapi_app daemon: HAL shared memory is set up, the message
+	// queue thread is started, and RT module loading will happen in-process
+	// via dlopen instead of fork+exec.
+	// Must be called before hal.NewComponent() / hal_init().
+	l.logger.Info("initializing RTAPI app (in-process)")
+	if err := halcmd.RtapiAppInit(); err != nil {
+		return fmt.Errorf("rtapi app init: %w", err)
+	}
+
 	// Initialize HAL connection — same as halcmd calling hal_init("halcmd").
 	// This is required before any hal-go API calls (StartThreads, StopThreads, etc.).
 	halComp, err := hal.NewComponent("launcher")
@@ -269,7 +279,7 @@ func (l *Launcher) Run() error {
 	// Load the threads HAL component to create RT threads (servo-thread,
 	// optionally base-thread). Thread creation has been decoupled from
 	// motmod — the launcher now loads the threads component which runs
-	// inside rtapi_app with proper RT scheduling.
+	// in-process via dlopen with proper RT scheduling.
 	// This must happen before motmod, HAL files, or any component that
 	// uses addf to attach functions to threads.
 	if err := l.loadThreads(); err != nil {
@@ -527,9 +537,8 @@ func (l *Launcher) logConfiguration() {
 // Thread creation has been decoupled from motmod — motmod now only exports
 // functions, so the threads must exist before motmod or HAL files run.
 //
-// The threads component is loaded via hal.LoadRT() which sends the command to
-// rtapi_app (the privileged RT process). rtapi_app dlopen()s threads.so and
-// calls hal_create_thread() inside its own process space, ensuring the RT
+// The threads component is loaded in-process via hal.LoadRT() which
+// dlopen()s threads.so and calls hal_create_thread(), ensuring the RT
 // pthreads get proper RT scheduling.
 //
 // Logic (reads [EMCMOT]SERVO_PERIOD and [EMCMOT]BASE_PERIOD from INI):

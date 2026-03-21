@@ -46,6 +46,26 @@ func UnloadAll(exceptCompID int) error {
 	return halUnloadAll(exceptCompID)
 }
 
+// NewInst creates a new instance of a HAL component type.
+// Equivalent to "halcmd newinst <type> <name> [arg]".
+func NewInst(compType, name, arg string) error {
+	return halNewInst(compType, name, arg)
+}
+
+// RtapiAppInit initializes the in-process RTAPI/HAL environment.
+// Sets up the message queue thread and initializes HAL shared memory.
+// Must be called before hal_init() / hal.NewComponent().
+func RtapiAppInit() error {
+	return halRtapiAppInit()
+}
+
+// RtapiAppCleanup shuts down the in-process RTAPI/HAL environment.
+// Tears down HAL threads, releases shared memory, and stops the
+// message queue.  Must be called after all components are unloaded.
+func RtapiAppCleanup() {
+	halRtapiAppCleanup()
+}
+
 // ===== Signal commands =====
 
 // NewSig creates a new HAL signal with the given name and type.
