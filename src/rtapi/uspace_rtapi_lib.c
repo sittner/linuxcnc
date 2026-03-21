@@ -479,24 +479,6 @@ static int task_start(int task_id, unsigned long int period_nsec)
     if((ret = pthread_create(&task->thr, &attr, &task_wrapper, (void*)task)) != 0)
         return -ret;
 
-    /* Lock the RT thread's stack into physical RAM */
-#ifdef __linux__
-    {
-        pthread_attr_t query_attr;
-        void *stackaddr;
-        size_t stacksize;
-        if (pthread_getattr_np(task->thr, &query_attr) == 0) {
-            if (pthread_attr_getstack(&query_attr, &stackaddr, &stacksize) == 0) {
-                if (mlock(stackaddr, stacksize) < 0) {
-                    rtapi_print_msg(RTAPI_MSG_WARN,
-                        "task_start: mlock stack failed: %s\n", strerror(errno));
-                }
-            }
-            pthread_attr_destroy(&query_attr);
-        }
-    }
-#endif
-
     return 0;
 }
 
@@ -506,6 +488,37 @@ static void *task_wrapper(void *arg)
 {
     struct posix_task *ptask = (struct posix_task*)arg;
     struct rtapi_task *task = &ptask->task;
+
+    /* Lock our own stack into RAM — must happen before any RT work.
+     * Uses pthread_self() so there is no race with the parent thread. */
+#ifdef __linux__
+    {
+        pthread_attr_t self_attr;
+        void *stackaddr;
+        size_t stacksize, guardsize;
+        if (pthread_getattr_np(pthread_self(), &self_attr) == 0) {
+            if (pthread_attr_getstack(&self_attr, &stackaddr, &stacksize) == 0
+                && pthread_attr_getguardsize(&self_attr, &guardsize) == 0) {
+                /* Skip guard page(s) at the bottom — they are PROT_NONE,
+                 * mlock() on them would fail with ENOMEM. */
+                void *lockaddr = (char*)stackaddr + guardsize;
+                size_t locksize = stacksize - guardsize;
+                /* Pre-fault every page of the usable stack */
+                volatile char *p = (volatile char *)lockaddr;
+                long pagesize = sysconf(_SC_PAGESIZE);
+                for (size_t i = 0; i < locksize; i += pagesize) {
+                    (void)p[i];
+                }
+                if (mlock(lockaddr, locksize) < 0) {
+                    rtapi_print_msg(RTAPI_MSG_WARN,
+                        "task_wrapper: mlock stack (%zu bytes) failed: %s\n",
+                        locksize, strerror(errno));
+                }
+            }
+            pthread_attr_destroy(&self_attr);
+        }
+    }
+#endif
 
     long int period = app_period;
     if(task->period < period) task->period = period;
