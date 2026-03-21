@@ -539,6 +539,47 @@ static int task_start(int task_id, unsigned long int period_nsec)
 
 #define RTAPI_CLOCK (CLOCK_MONOTONIC)
 
+#ifdef __linux__
+/* Pre-fault all readable pages in the process address space.
+ * Reads /proc/self/maps and touches one byte per page so that
+ * pages are resident when the RT deadline starts.  Does NOT mlock —
+ * pages may be evicted later under memory pressure, but that is
+ * acceptable because the critical RT allocations (task structs,
+ * thread stacks, shmem) are individually mlocked elsewhere. */
+static void prefault_mapped_pages(void)
+{
+    FILE *f = fopen("/proc/self/maps", "r");
+    if (!f) {
+        rtapi_print_msg(RTAPI_MSG_WARN,
+            "prefault_mapped_pages: cannot open /proc/self/maps: %s\n",
+            strerror(errno));
+        return;
+    }
+
+    long pagesize = sysconf(_SC_PAGESIZE);
+    char line[256];
+
+    while (fgets(line, sizeof(line), f)) {
+        unsigned long start, end;
+        char perms[5];
+        /* Format: "start-end perms offset dev inode pathname" */
+        if (sscanf(line, "%lx-%lx %4s", &start, &end, perms) != 3)
+            continue;
+        if (perms[0] != 'r')
+            continue;   /* skip non-readable mappings */
+
+        /* Align start to page boundary (maps always report aligned addrs,
+         * but be defensive) */
+        unsigned long aligned = (start + (unsigned long)pagesize - 1)
+                                & ~((unsigned long)pagesize - 1);
+        for (unsigned long addr = aligned; addr < end; addr += pagesize) {
+            (void)*(volatile const char *)addr;  /* read one byte per page */
+        }
+    }
+    fclose(f);
+}
+#endif
+
 static void *task_wrapper(void *arg)
 {
     struct posix_task *ptask = (struct posix_task*)arg;
@@ -587,6 +628,13 @@ static void *task_wrapper(void *arg)
 
     if(do_thread_lock)
         pthread_mutex_lock(&thread_lock);
+
+    /* Pre-fault all currently-mapped pages so the first RT cycle
+     * doesn't hit page faults on .so text, data, or other mapped regions.
+     * This is a one-time cost at thread start, not a permanent lock. */
+#ifdef __linux__
+    prefault_mapped_pages();
+#endif
 
     struct timespec now;
     clock_gettime(RTAPI_CLOCK, &now);
