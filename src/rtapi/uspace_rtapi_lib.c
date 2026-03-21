@@ -123,6 +123,69 @@ static void init_task_key(void) {
     pthread_key_create(&task_key, NULL);
 }
 
+#ifdef __linux__
+/* Lock all file-backed code/data pages into RAM exactly once per process.
+ * Called from task_wrapper() via pthread_once so that the expensive
+ * /proc/self/maps walk is skipped on the second and subsequent RT tasks. */
+static pthread_once_t mlock_maps_once = PTHREAD_ONCE_INIT;
+static void mlock_code_data_pages(void)
+{
+    FILE *maps = fopen("/proc/self/maps", "r");
+    if (!maps) {
+        rtapi_print_msg(RTAPI_MSG_WARN,
+            "task_wrapper: could not open /proc/self/maps: %s\n",
+            strerror(errno));
+        return;
+    }
+
+    /* Use getline() so arbitrarily long pathnames don't truncate the line. */
+    char *line = NULL;
+    size_t line_cap = 0;
+    while (getline(&line, &line_cap, maps) > 0) {
+        unsigned long start, end;
+        char perms[5];
+        /* 512 bytes is enough to identify pseudo-mapping names like [heap];
+         * real file paths that extend beyond this are still handled correctly
+         * because we only need the first token to distinguish them from the
+         * [xxx] pseudo-mappings that must be skipped. */
+        char name[512];
+
+        name[0] = '\0';
+        int n = sscanf(line, "%lx-%lx %4s %*x %*x:%*x %*u %511s",
+                       &start, &end, perms, name);
+        if (n < 3) continue;
+
+        /* Skip anonymous mappings (no backing file / name) */
+        if (name[0] == '\0') continue;
+
+        /* Skip special kernel pseudo-mappings and heap/stack
+         * (stack is already locked by the preceding block; heap must
+         * remain unlockable so the Go allocator is not pinned). */
+        if (strcmp(name, "[heap]")     == 0) continue;
+        if (strcmp(name, "[stack]")    == 0) continue;
+        if (strcmp(name, "[vvar]")     == 0) continue;
+        if (strcmp(name, "[vdso]")     == 0) continue;
+        if (strcmp(name, "[vsyscall]") == 0) continue;
+
+        /* Only lock readable mappings */
+        if (perms[0] != 'r') continue;
+
+        size_t len = end - start;
+        if (mlock((void *)(uintptr_t)start, len) < 0) {
+            /* ENOMEM can occur for mappings the kernel refuses to lock
+             * (e.g. special device-backed regions); warn for others. */
+            if (errno != ENOMEM) {
+                rtapi_print_msg(RTAPI_MSG_WARN,
+                    "task_wrapper: mlock(%s, 0x%lx-0x%lx) failed: %s\n",
+                    name, start, end, strerror(errno));
+            }
+        }
+    }
+    free(line);
+    fclose(maps);
+}
+#endif
+
 static pthread_once_t lock_once = PTHREAD_ONCE_INIT;
 static pthread_mutex_t thread_lock;
 static void init_thread_lock(void) {
@@ -573,6 +636,12 @@ static void *task_wrapper(void *arg)
             pthread_attr_destroy(&self_attr);
         }
     }
+
+    /* Lock all file-backed code/data pages (.text, .rodata, .data, .bss)
+     * of the main binary and every loaded shared library into RAM.
+     * Uses pthread_once so the /proc/self/maps walk happens only once,
+     * regardless of how many RT tasks are created. */
+    pthread_once(&mlock_maps_once, mlock_code_data_pages);
 #endif
 
     long int period = app_period;
