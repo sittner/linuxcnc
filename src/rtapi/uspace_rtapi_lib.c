@@ -22,14 +22,7 @@
 #include "config.h"
 #include "linuxcnc.h"
 
-#include <stdatomic.h>
-
-#ifdef __linux__
-#include <sys/fsuid.h>
-#endif
 #include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/un.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -65,7 +58,7 @@
 #include "hal/hal_priv.h"
 
 /* Declarations for compatibility with uspace_common.h */
-static uid_t euid, ruid;
+static uid_t euid = 0, ruid = 0;
 
 /* Helper function for rtapi_timespec_less */
 static int rtapi_timespec_less(const struct timespec ta, const struct timespec tb) {
@@ -76,28 +69,11 @@ static int rtapi_timespec_less(const struct timespec ta, const struct timespec t
 
 /* Forward declaration of rtapi_timespec_advance */
 void rtapi_timespec_advance(struct timespec *result, const struct timespec *src, unsigned long nsec);
-static _Atomic int with_root_level = 0;
 
-static void with_root_enter(void) {
-    if(atomic_fetch_add(&with_root_level, 1) == 0) {
-#ifdef __linux__
-        setfsuid(euid);
-#endif
-    }
-}
-
-static void with_root_exit(void) {
-    if(atomic_fetch_sub(&with_root_level, 1) == 1) {
-#ifdef __linux__
-        setfsuid(ruid);
-#endif
-    }
-}
-
-void __attribute__((constructor)) init_root_func(void) {
-    euid = geteuid();
-    ruid = getuid();
-}
+/* No-op stubs: under capabilities (cap_sys_nice, cap_ipc_lock, cap_sys_rawio),
+ * euid == ruid so the old setfsuid() toggling is unnecessary. */
+static void with_root_enter(void) {}
+static void with_root_exit(void) {}
 
 #include "rtapi/uspace_common.h"
 
@@ -164,12 +140,6 @@ static void signal_handler(int sig, siginfo_t *si, void *uctx)
         exit(0);
         break;
 
-    case SIGTERM:
-        rtapi_print_msg(RTAPI_MSG_ERR,
-                        "SIGTERM - shutting down\n");
-        exit(0);
-        break;
-
     default:
         rtapi_print_msg(RTAPI_MSG_ERR,
                         "caught signal %d - dumping core\n", sig);
@@ -216,6 +186,10 @@ static void configure_memory(void)
 
 static int harden_rt(void)
 {
+    /* Initialize euid/ruid here; used by uspace_common.h for shmem ownership. */
+    euid = geteuid();
+    ruid = getuid();
+
     /* With setcap-based privileges (cap_sys_nice, cap_ipc_lock, cap_sys_rawio)
      * we no longer need setuid or root.  Capabilities are inherited by the
      * process, so iopl/mlockall/SCHED_FIFO work without uid juggling. */
@@ -793,9 +767,7 @@ void rtapi_timespec_advance(struct timespec *result, const struct timespec *src,
 }
 
 int rtapi_open_as_root(const char *filename, int mode) {
-    with_root_enter();
     int r = open(filename, mode);
-    with_root_exit();
     if(r < 0) return -errno;
     return r;
 }
