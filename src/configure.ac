@@ -250,7 +250,6 @@ RTPREFIX=uspace
 RTDIR=$(pwd -P)
 ULAPI_CFLAGS=""
 RTFLAGS="-DUSPACE"
-BUILD_SYS=uspace
 MODEXT=.so
 MODULE_DIR=${prefix}/lib/linuxcnc/modules
 ULAPI_LDFLAGS=""
@@ -441,68 +440,8 @@ PKG_CHECK_MODULES([LIBGPIOD], [libgpiod < 3.0.0],
 # compiled against.                                                          #
 ##############################################################################
 
-if test $RTS '!=' uspace; then
-AC_MSG_CHECKING([for kernel version string])
-
-if test -e $KERNELDIR/include/linux/utsrelease.h; then
-    VERSION_FILE=$KERNELDIR/include/linux/utsrelease.h
-elif test -e $KERNELDIR/include/generated/utsrelease.h; then
-    VERSION_FILE=$KERNELDIR/include/generated/utsrelease.h
-else
-    VERSION_FILE=$KERNELDIR/include/linux/version.h
-fi
-KERNEL_VERS=`$CC -E -dM ${VERSION_FILE} | grep UTS | cut -s -d '"' -f 2`
-
-if test -z "$KERNEL_VERS"; then
-    AC_MSG_ERROR(Kernel version string not found)
-fi
-
-AC_MSG_RESULT([$KERNEL_VERS])
-AC_SUBST([KERNEL_VERS])
-AC_DEFINE_UNQUOTED([RTAPI_KERNEL_VERSION], "$KERNEL_VERS", [Required kernel version])
-
-# Do a quick test for module extension..
-AC_MSG_CHECKING([for kernel module extension])
-MODEXT=`$RTS --module-ext 2>/dev/null` || MODEXT=".o"
-if test "x" = "x$MODEXT"; then
-    MODEXT=".o"
-fi
-AC_MSG_RESULT([$MODEXT])
-
-# This check should see if kbuild is or isn't used
-AC_MSG_CHECKING([kernel build system])
-# FIXME FIXME FIXME
-# right now it will assume based on the kernel module extension
-EXT_RTFLAGS=""
-BUILD_SYS="normal"
-
-if test "x$MODEXT" = "x.ko" ; then
-    BUILD_SYS="kbuild"
-else
-    EXT_RTFLAGS="-DEXPORT_SYMTAB"
-fi
-
-AC_ARG_WITH(kbuild,
-    AS_HELP_STRING(
-        [--with-kbuild],
-        [Specify if your kernel uses kbuild or not.]
-    ),
-    [
-        case "$withval" in
-        "" | y | ye | yes )
-	    BUILD_SYS="kbuild"
-          ;;
-        n | no )
-	    BUILD_SYS="normal"
-          ;;
-        esac
-    ])
-AC_MSG_RESULT([$BUILD_SYS])
-fi
 AC_SUBST([MODEXT])
 AC_DEFINE_UNQUOTED([MODULE_EXT], "$MODEXT", [Extension for realtime modules])
-AC_SUBST([BUILD_SYS])
-AC_SUBST([EXT_RTFLAGS])
 
 ##############################################################################
 # Subsection 3.3 - check the moduledir where modules can get installed       #

@@ -3,8 +3,6 @@ INCLUDES += rtapi
 $(patsubst ./rtapi/%,../include/%,$(wildcard ./rtapi/*.h)): ../include/%.h: ./rtapi/%.h
 	cp $^ $@
 
-ifeq ($(BUILD_SYS),uspace)
-
 RTAPI_APP_SRCS := \
 	rtapi/uspace_rtapi_app.c \
 	rtapi/uspace_rtapi_parport.c \
@@ -19,4 +17,4 @@ $(call TOOBJSDEPS, $(RTAPI_APP_SRCS)): EXTRAFLAGS += -DSIM \
 	$(ECHO) Linking $(notdir $@)
 	$(Q)$(CC) -rdynamic -o $@ $^ $(LIBDL) -pthread -lrt $(LIBUDEV_LIBS) -ldl $(LDFLAGS)
 TARGETS += ../bin/rtapi_app
-endif
+

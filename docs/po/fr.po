@@ -1053,19 +1053,10 @@ msgstr ""
 
 #. type: Plain text
 #: help/rtfaults.adoc:17
-msgid "For standalone modules, add the same line just above the line:"
+msgid ""
+"For standalone modules, add the same line just above the `include` line for "
+"`Makefile.modinc`:"
 msgstr ""
-
-#. type: Plain text
-#: help/rtfaults.adoc:19
-#, no-wrap
-msgid "  ifeq ($(BUILDSYS),kbuild)\n"
-msgstr ""
-
-#. type: Plain text
-#: help/rtfaults.adoc:21
-msgid "and (re)build the component"
-msgstr "et (re)construire le composant"
 
 #. type: Plain text
 #: help/rtfaults.adoc:25

@@ -1259,21 +1259,10 @@ msgstr "EXTRA_CFLAGS += -g\n"
 
 #. type: Plain text
 #: help/rtfaults.adoc:17
-msgid "For standalone modules, add the same line just above the line:"
+msgid ""
+"For standalone modules, add the same line just above the `include` line for "
+"`Makefile.modinc`:"
 msgstr ""
-"Fügen Sie bei eigenständigen Modulen dieselbe Zeile direkt über dieser Zeile "
-"hinzu:"
-
-#. type: Plain text
-#: help/rtfaults.adoc:19
-#, no-wrap
-msgid "  ifeq ($(BUILDSYS),kbuild)\n"
-msgstr "  ifeq ($(BUILDSYS),kbuild)\n"
-
-#. type: Plain text
-#: help/rtfaults.adoc:21
-msgid "and (re)build the component"
-msgstr "und bauen (nochmals) die Komponente"
 
 #. type: Plain text
 #: help/rtfaults.adoc:25
