@@ -1327,9 +1327,9 @@ static int unloadrt_comp(char *mod_name)
 	return -1;
     }
     if ( pid == 0 ) {
-	/* this is the child process - prepare to exec() rmmod */
-	argv[0] = EMC2_BIN_DIR "/linuxcnc_module_helper";
-	argv[1] = "remove";
+	/* this is the child process - prepare to exec() rtapi_app */
+	argv[0] = EMC2_BIN_DIR "/rtapi_app";
+	argv[1] = "unload";
 	argv[2] = mod_name;
 	/* add a NULL to terminate the argv array */
 	argv[3] = NULL;

@@ -40,7 +40,6 @@ usr/bin/latency-test
 usr/bin/lineardelta
 usr/bin/linuxcnc
 usr/bin/linuxcnc_info
-usr/bin/linuxcnc_module_helper
 usr/bin/linuxcnc_var
 usr/bin/linuxcnclcd
 usr/bin/linuxcncmkdesktop
