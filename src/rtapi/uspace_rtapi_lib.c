@@ -554,9 +554,14 @@ static void *task_wrapper(void *arg)
     pthread_setspecific(task_key, arg);
     rtapi_set_namef("rtapi:T#%d", task->id);
 
-    // warm up pages for first run
-    mlockall(MCL_CURRENT);
-    munlockall();
+    // pre-fault and permanently lock this thread's stack
+    // use 768 KiB — within the 1 MiB minimum set in task_new(), leaving room
+    // for the wrapper's own frame and guard pages
+    volatile char stack_probe[768 * 1024];
+    memset((char *)stack_probe, 0, sizeof(stack_probe));
+    if (mlock((char *)stack_probe, sizeof(stack_probe)) < 0)
+        rtapi_print_msg(RTAPI_MSG_WARN,
+            "task_wrapper: mlock(stack_probe) failed: %s\n", strerror(errno));
 
     if(do_thread_lock)
         pthread_mutex_lock(&thread_lock);
