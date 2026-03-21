@@ -580,7 +580,7 @@ pycheck: pycheck-python-files pycheck-python-script
 # files (Note that files in depends/ might be rebuilt, and there's little that
 # can be done about it)
 setuid:
-	setcap cap_sys_nice,cap_ipc_lock,cap_sys_rawio=ep ../bin/linuxcnc-launcher
+	setcap cap_sys_nice,cap_ipc_lock,cap_sys_rawio,cap_sys_resource=ep ../bin/linuxcnc-launcher
 
 # These rules allows a header file from this directory to be installed into
 # ../include.  A pair of rules like these will exist in the Submakefile
