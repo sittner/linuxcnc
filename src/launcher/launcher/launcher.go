@@ -114,13 +114,6 @@ func New(opts Options, logger *slog.Logger) *Launcher {
 // responsibility of the display GUI (AXIS, QtVCP, gmoccapy, etc.) to load
 // its own post-GUI HAL files after creating its HAL pins.
 func (l *Launcher) Run() error {
-	// Initialize RT application environment as early as possible:
-	// sets up RLIMIT_MEMLOCK/RLIMIT_RTPRIO, calls mlockall(MCL_CURRENT) to lock
-	// all currently-mapped pages (libc, librtapi, vdso, initial Go runtime pages),
-	// installs signal handlers, and grants I/O privileges.
-	// Must precede any HAL, NML, or component initialization.
-	halcmd.RtapiInitializeApp()
-
 	l.setupEnvironment()
 
 	// Export INI file path and config directory so that child processes

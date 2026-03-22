@@ -29,6 +29,8 @@ import (
 	"path/filepath"
 
 	"github.com/sittner/linuxcnc/src/launcher/launcher"
+
+	halcmd "github.com/sittner/linuxcnc/src/launcher/internal/halcmd"
 )
 
 // multiFlag is a flag.Value that accumulates repeated string flags (e.g. -H).
@@ -54,6 +56,13 @@ func (m *multiFlag) Set(value string) error {
 }
 
 func main() {
+	// Initialize RT application environment as early as possible:
+	// sets up RLIMIT_MEMLOCK/RLIMIT_RTPRIO, calls mlockall(MCL_CURRENT) to lock
+	// all currently-mapped pages (libc, librtapi, vdso, initial Go runtime pages),
+	// installs signal handlers, and grants I/O privileges.
+	// Must precede any HAL, NML, or component initialization.
+	halcmd.RtapiInitializeApp()
+
 	os.Exit(run(os.Args[1:]))
 }
 
