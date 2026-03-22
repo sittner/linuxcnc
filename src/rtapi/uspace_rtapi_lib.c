@@ -193,6 +193,7 @@ int rtapi_lock_mem(void *p, size_t size, int prefault_rw) {
           c[size - 1] = dummy;
         }
     }
+    (void)dummy;
 
     /* Lock into physical RAM */
     ret = mlock(p, size);
@@ -352,6 +353,16 @@ static void configure_memory(void)
                   "mallopt(M_MMAP_MAX, 0) failed\n");
     }
 #endif
+
+    /* Lock all currently-mapped pages: libc, librtapi, ld-linux, vdso,
+     * and initial Go runtime pages (~5-15 MB). MCL_CURRENT is a one-shot
+     * snapshot — it does NOT affect future allocations (no MCL_FUTURE),
+     * so the Go heap can still grow freely. HAL component .so files
+     * loaded later are covered by rtapi_dlopen(). */
+    if (mlockall(MCL_CURRENT) < 0) {
+        rtapi_print_msg(RTAPI_MSG_WARN,
+            "mlockall(MCL_CURRENT) failed: %s\n", strerror(errno));
+    }
 }
 
 static int harden_rt(void)
@@ -443,16 +454,6 @@ void rtapi_initialize_app(void)
         rtapi_print_msg(RTAPI_MSG_ERR, "Note: Using POSIX realtime\n");
         app_policy = SCHED_FIFO;
         do_thread_lock = 0;
-
-        /* Lock all currently-mapped pages: libc, librtapi, ld-linux, vdso,
-         * and initial Go runtime pages (~5-15 MB). MCL_CURRENT is a one-shot
-         * snapshot — it does NOT affect future allocations (no MCL_FUTURE),
-         * so the Go heap can still grow freely. HAL component .so files
-         * loaded later are covered by rtapi_dlopen(). */
-        if (mlockall(MCL_CURRENT) < 0) {
-            rtapi_print_msg(RTAPI_MSG_WARN,
-                "mlockall(MCL_CURRENT) failed: %s\n", strerror(errno));
-        }
     }
     
     pthread_once(&key_once, init_task_key);
@@ -899,37 +900,31 @@ static long clock_set_period(long nsecs)
 
 int rtapi_prio_highest(void)
 {
-    rtapi_initialize_app();
     return prio_highest();
 }
 
 int rtapi_prio_lowest(void)
 {
-    rtapi_initialize_app();
     return prio_lowest();
 }
 
 int rtapi_prio_next_higher(int prio)
 {
-    rtapi_initialize_app();
     return prio_next_higher(prio);
 }
 
 int rtapi_prio_next_lower(int prio)
 {
-    rtapi_initialize_app();
     return prio_next_lower(prio);
 }
 
 long rtapi_clock_set_period(long nsecs)
 {
-    rtapi_initialize_app();
     return clock_set_period(nsecs);
 }
 
 int rtapi_task_new(void (*taskcode)(void*), void *arg,
         int prio, int owner, unsigned long int stacksize, int uses_fp) {
-    rtapi_initialize_app();
     return task_new(taskcode, arg, prio, owner, stacksize, uses_fp);
 }
 
