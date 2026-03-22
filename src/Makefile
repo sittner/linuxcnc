@@ -577,6 +577,13 @@ pycheck: pycheck-python-files pycheck-python-script
 # So that nothing is built as root, this rule does not depend on the touched
 # files (Note that files in depends/ might be rebuilt, and there's little that
 # can be done about it)
+# Capabilities required by linuxcnc-launcher:
+#   cap_net_admin  - EtherCAT: manage network interfaces and settings
+#   cap_net_raw    - EtherCAT: send/receive raw Ethernet frames
+#   cap_ipc_lock   - lock shared memory (mlock) for realtime operation
+#   cap_sys_resource - raise resource limits (e.g. RLIMIT_MEMLOCK, RLIMIT_RTPRIO)
+#   cap_sys_nice   - set realtime scheduling priorities (SCHED_FIFO/SCHED_RR)
+#   cap_sys_rawio  - direct hardware I/O port access (ioperm/iopl for parport, PCI BARs)
 setuid:
 	setcap cap_net_admin,cap_net_raw,cap_ipc_lock,cap_sys_resource,cap_sys_nice,cap_sys_rawio=ep ../bin/linuxcnc-launcher
 
