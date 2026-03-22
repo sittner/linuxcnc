@@ -762,12 +762,11 @@ void rtapi_set_namef(const char *fmt, ...);
 extern void *rtapi_malloc(size_t size);
 
 /** 'rtapi_free()' releases memory previously allocated by rtapi_malloc().
-    'size' must match the value passed to the corresponding rtapi_malloc()
     call.  The pages are unlocked (munlock()) before the memory is freed.
 */
-extern void rtapi_free(void *p, size_t size);
+extern void rtapi_free(void *p);
 
-extern int rtapi_lock_mem(void *p, size_t size);
+extern int rtapi_lock_mem(void *p, size_t size, int prefault_rw);
 extern void rtapi_unlock_mem(void *p, size_t size);
 
 extern void *rtapi_dlopen(const char *path, int flags);

@@ -160,20 +160,20 @@ void *rtapi_malloc(size_t size) {
     if (!p) return NULL;
 
     /* Pre-fault and lock all pages (read+write) */
-    rtapi_lock_mem(p, malloc_usable_size(p));
+    rtapi_lock_mem(p, malloc_usable_size(p), 1);
 
     return p;
 }
 
 /* Free realtime-locked memory. */
-void rtapi_free(void *p, size_t size) {
+void rtapi_free(void *p) {
     if (!p) return;
     rtapi_unlock_mem(p, malloc_usable_size(p));
     free(p);
 }
 
 /* pre-fault + mlock RT memory. */
-int rtapi_lock_mem(void *p, size_t size) {
+int rtapi_lock_mem(void *p, size_t size, int prefault_rw) {
     int ret;
 
     /* Pre-fault all pages */
@@ -182,12 +182,17 @@ int rtapi_lock_mem(void *p, size_t size) {
     volatile char dummy;
     for (size_t i = 0; i < size; i += pagesize) {
         dummy = c[i];
+        if (prefault_rw) {
+          c[i] = dummy;
+        }
     }
     /* Touch the last byte if size is not a multiple of pagesize */
     if (size > 0 && (size % (size_t)pagesize) != 0) {
         dummy = c[size - 1];
+        if (prefault_rw) {
+          c[size - 1] = dummy;
+        }
     }
-    (void)dummy;  // suppress -Wunused-but-set-variable
 
     /* Lock into physical RAM */
     ret = mlock(p, size);
@@ -221,14 +226,55 @@ static int dl_mlock_callback(struct dl_phdr_info *info, size_t size, void *data)
     if (!info->dlpi_name || strcmp(info->dlpi_name, target) != 0)
         return 0;
 
+    // First pass: find the RELRO range (if any)
+    uintptr_t relro_start = 0, relro_end = 0;
+    for (int i = 0; i < info->dlpi_phnum; i++) {
+        const ElfW(Phdr) *phdr = &info->dlpi_phdr[i];
+        if (phdr->p_type == PT_GNU_RELRO) {
+            relro_start = info->dlpi_addr + phdr->p_vaddr;
+            relro_end   = relro_start + phdr->p_memsz;
+            break;
+        }
+    }
+
+    // Second pass: lock PT_LOAD segments
     for (int i = 0; i < info->dlpi_phnum; i++) {
         const ElfW(Phdr) *phdr = &info->dlpi_phdr[i];
         if (phdr->p_type != PT_LOAD)
             continue;
 
-        void  *seg_addr = (void *)(info->dlpi_addr + phdr->p_vaddr);
-        size_t seg_size = phdr->p_memsz;
-        rtapi_lock_mem(seg_addr, seg_size);
+        uintptr_t seg_start = info->dlpi_addr + phdr->p_vaddr;
+        size_t    seg_size  = phdr->p_memsz;
+        uintptr_t seg_end   = seg_start + seg_size;
+
+        int writable = (phdr->p_flags & PF_W) != 0;
+
+        if (writable && relro_start) {
+            // This segment may be partially or fully covered by RELRO.
+            // Split into: RELRO part (read-only) and non-RELRO part (writable).
+
+            // RELRO portion (made read-only by dynamic linker)
+            if (relro_start < seg_end && relro_end > seg_start) {
+                uintptr_t ro_start = relro_start > seg_start ? relro_start : seg_start;
+                uintptr_t ro_end   = relro_end < seg_end ? relro_end : seg_end;
+                rtapi_lock_mem((void *)ro_start, ro_end - ro_start, 0);
+            }
+
+            // Before RELRO (still writable)
+            if (seg_start < relro_start) {
+                uintptr_t end = relro_start < seg_end ? relro_start : seg_end;
+                rtapi_lock_mem((void *)seg_start, end - seg_start, 1);
+            }
+
+            // After RELRO (still writable — .data, .bss)
+            if (seg_end > relro_end) {
+                uintptr_t start = relro_end > seg_start ? relro_end : seg_start;
+                rtapi_lock_mem((void *)start, seg_end - start, 1);
+            }
+        } else {
+            // No RELRO overlap — use ELF flags as-is
+            rtapi_lock_mem((void *)seg_start, seg_size, writable);
+        }
     }
     return 1;
 }
@@ -658,7 +704,7 @@ static void *task_wrapper(void *arg)
                 stack_locksize = stacksize - guardsize;
 
                 /* Pre-fault and lock all pages (read+write) */
-                rtapi_lock_mem(stack_lockaddr, stack_locksize);
+                rtapi_lock_mem(stack_lockaddr, stack_locksize, 1);
             }
             pthread_attr_destroy(&self_attr);
         }
@@ -702,7 +748,7 @@ static int task_delete(int id)
     pthread_join(task->thr, 0);
     task->task.magic = 0;
     task_array[id] = 0;
-    rtapi_free(task, sizeof(struct posix_task));
+    rtapi_free(task);
     return 0;
 }
 
