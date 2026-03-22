@@ -35,7 +35,7 @@ char *rtapi_strdup(const char *s)
 	if (!s)
 		return NULL;
 
-	len = strnlen(s);
+	len = strlen(s);
 	buf = rtapi_malloc(len+1);
 	if (buf) {
 		memcpy(buf, s, len);
@@ -169,6 +169,7 @@ char **rtapi_argv_split(const char *str, int *argcp)
 	return NULL;
 }
 
+EXPORT_SYMBOL(rtapi_strdup);
 EXPORT_SYMBOL(rtapi_strndup);
 EXPORT_SYMBOL(rtapi_argv_split);
 EXPORT_SYMBOL(rtapi_argv_free);

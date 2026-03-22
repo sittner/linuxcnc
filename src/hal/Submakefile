@@ -3,10 +3,16 @@ INCLUDES += hal
 ../include/%.h: ./hal/%.h
 	cp $^ $@
 
-HALLIBSRCS := hal/hal_lib.c rtapi/uspace_rtapi_lib.c
+HALLIBSRCS := \
+  hal/hal_lib.c \
+  rtapi/uspace_rtapi_lib.c \
+  rtapi/uspace_rtapi_string.c \
+  rtapi/rtapi_pci.c \
+  rtapi/uspace_rtapi_parport.c
+
 $(call TOOBJSDEPS, $(HALLIBSRCS)): EXTRAFLAGS += -fPIC $(ULAPI_CFLAGS)
 USERSRCS += $(HALLIBSRCS)
-HALLIB_LIBS := -pthread -lrt
+HALLIB_LIBS := -pthread -lrt -ludev
 
 HALLIB := ../lib/liblinuxcnchal.so
 
