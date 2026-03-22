@@ -165,6 +165,30 @@ void *rtapi_malloc(size_t size) {
     return p;
 }
 
+void *rtapi_calloc(size_t size) {
+    void *p = rtapi_malloc(size);
+    if (!p) return NULL;
+
+    memset(p, 0, size);
+
+    return p;
+}
+
+void *rtapi_realloc(void *ptr, size_t size) {
+    /* unlock old area */
+    if (ptr) {
+        rtapi_unlock_mem(ptr, malloc_usable_size(ptr));
+    }
+
+    void *p = realloc(ptr, size);
+    if (!p) return NULL;
+
+    /* Pre-fault and lock all pages (read+write) */
+    rtapi_lock_mem(p, malloc_usable_size(p), 1);
+
+    return p;
+}
+
 /* Free realtime-locked memory. */
 void rtapi_free(void *p) {
     if (!p) return;

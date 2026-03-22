@@ -760,6 +760,8 @@ void rtapi_set_namef(const char *fmt, ...);
     the allocated memory on success, or NULL on failure.
 */
 extern void *rtapi_malloc(size_t size);
+extern void *rtapi_calloc(size_t size);
+extern void *rtapi_realloc(void *ptr, size_t size);
 
 /** 'rtapi_free()' releases memory previously allocated by rtapi_malloc().
     call.  The pages are unlocked (munlock()) before the memory is freed.

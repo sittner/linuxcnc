@@ -444,7 +444,6 @@ SRCHEADERS := \
     rtapi/rtapi_byteorder.h \
     rtapi/rtapi_device.h \
     rtapi/rtapi_firmware.h \
-    rtapi/rtapi_gfp.h \
     rtapi/rtapi_io.h \
     rtapi/rtapi_limits.h \
     rtapi/rtapi_list.h \
@@ -454,7 +453,6 @@ SRCHEADERS := \
     rtapi/rtapi_mutex.h \
     rtapi/rtapi_parport.h \
     rtapi/rtapi_pci.h \
-    rtapi/rtapi_slab.h \
     rtapi/rtapi_stdint.h \
     rtapi/rtapi_ctype.h \
     rtapi/rtapi_errno.h \

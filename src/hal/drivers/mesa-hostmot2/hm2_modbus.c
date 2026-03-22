@@ -20,7 +20,6 @@
 
 
 #include "rtapi.h"
-#include "rtapi_slab.h"
 #include "rtapi_app.h"
 #include "rtapi_string.h"
 #include "rtapi_byteorder.h"
@@ -2078,7 +2077,7 @@ static ssize_t read_mbccb(const hm2_modbus_inst_t *inst, const char *fname, hm2_
 	}
 
 	// Allocate memory
-	*pmbccb = rtapi_kzalloc(sb.st_size, RTAPI_GFP_KERNEL);
+	*pmbccb = rtapi_calloc(sb.st_size);
 	if(!*pmbccb) {
 		MSG_ERR("%s: error: Failed to allocate %zd bytes memory for mbccb buffer\n", inst->name, (ssize_t)sb.st_size);
 		close(fd);
@@ -2094,14 +2093,14 @@ retry_read:
 		if(errno == EINTR)
 			goto retry_read;	// Interrupted syscall
 		MSG_ERR("%s: error: Failed to read from '%s' (error %d)\n", inst->name, fname, errno);
-		rtapi_kfree(*pmbccb);
+		rtapi_free(*pmbccb);
 		*pmbccb = NULL;
 		close(fd);
 		return rv;
 	}
 	if(err != (ssize_t)sb.st_size) {
 		MSG_ERR("%s: error: Read %zd bytes instead of %zd bytes from '%s', aborting\n", inst->name, err, (ssize_t)sb.st_size, fname);
-		rtapi_kfree(*pmbccb);
+		rtapi_free(*pmbccb);
 		*pmbccb = NULL;
 		close(fd);
 		return -EIO;
@@ -2536,7 +2535,7 @@ static int load_mbccb(hm2_modbus_inst_t *inst, const char *fname)
 	return 0;	// Success
 
 errout:
-	rtapi_kfree(mbccb);
+	rtapi_free(mbccb);
 	return rv;
 }
 
@@ -2552,11 +2551,11 @@ static void docleanup(void)
 	if(mb.insts) {
 		for(int i = 0; i < mb.ninsts; i++) {
 			if(mb.insts[i].cmds)
-				rtapi_kfree(mb.insts[i].cmds);
+				rtapi_free(mb.insts[i].cmds);
 			if(mb.insts[i].mbccb)
-				rtapi_kfree(mb.insts[i].mbccb);
+				rtapi_free(mb.insts[i].mbccb);
 		}
-		rtapi_kfree(mb.insts);
+		rtapi_free(mb.insts);
 	}
 }
 
@@ -2582,7 +2581,7 @@ int rtapi_app_main(void)
 	// Count the instances.
 	for(mb.ninsts = 0; mb.ninsts < MAX_PORTS && ports[mb.ninsts]; mb.ninsts++) {}
 	// Allocate memory for the instances
-	if(!(mb.insts = (hm2_modbus_inst_t *)rtapi_kzalloc(mb.ninsts * sizeof(*mb.insts), RTAPI_GFP_KERNEL))) {
+	if(!(mb.insts = (hm2_modbus_inst_t *)rtapi_calloc(mb.ninsts * sizeof(*mb.insts)))) {
 		MSG_ERR(COMP_NAME": Allocate instance memory failed\n");
 		hal_exit(comp_id);
 		return -ENOMEM;
@@ -2630,7 +2629,7 @@ int rtapi_app_main(void)
 
 		if(inst->ninit > 0) {
 			// Allocate inits memory
-			if(!(inst->_init = rtapi_kzalloc(inst->ninit * sizeof(*inst->_init), RTAPI_GFP_KERNEL))) {
+			if(!(inst->_init = rtapi_calloc(inst->ninit * sizeof(*inst->_init)))) {
 				MSG_ERR("%s: error: Failed to allocate init commands memory\n", inst->name);
 				retval = -ENOMEM;
 				goto errout;
@@ -2638,7 +2637,7 @@ int rtapi_app_main(void)
 		}
 
 		// Allocate commands memory
-		if(!(inst->_cmds = rtapi_kzalloc(inst->ncmds * sizeof(*inst->_cmds), RTAPI_GFP_KERNEL))) {
+		if(!(inst->_cmds = rtapi_calloc(inst->ncmds * sizeof(*inst->_cmds)))) {
 			MSG_ERR("%s: error: Failed to allocate commands memory\n", inst->name);
 			retval = -ENOMEM;
 			goto errout;
