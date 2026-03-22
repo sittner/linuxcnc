@@ -772,6 +772,8 @@ extern void rtapi_unlock_mem(void *p, size_t size);
 extern void *rtapi_dlopen(const char *path, int flags);
 extern int rtapi_dlclose(void *handle);
 
+extern void rtapi_initialize_app(void);
+
 RTAPI_END_DECLS
 
 #endif /* RTAPI_H */

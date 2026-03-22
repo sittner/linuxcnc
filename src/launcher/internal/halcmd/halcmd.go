@@ -52,6 +52,19 @@ func NewInst(compType, name, arg string) error {
 	return halNewInst(compType, name, arg)
 }
 
+// RtapiInitializeApp initializes the RTAPI application environment.
+// It sets up RT rlimits, calls mlockall(MCL_CURRENT) to lock currently-mapped
+// pages (libc, librtapi, vdso, and initial Go runtime pages), installs signal
+// handlers, and grants I/O privileges.  The function is idempotent: subsequent
+// calls return immediately.
+//
+// This must be called as early as possible — before any HAL, NML, or component
+// initialization — so that the locked page set is minimal and all RT privileges
+// are in place before any RT-sensitive code runs.
+func RtapiInitializeApp() {
+	halRtapiInitializeApp()
+}
+
 // RtapiAppInit initializes the in-process RTAPI/HAL environment.
 // Sets up the message queue thread and initializes HAL shared memory.
 // Must be called before hal_init() / hal.NewComponent().

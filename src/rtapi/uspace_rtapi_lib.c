@@ -193,6 +193,7 @@ int rtapi_lock_mem(void *p, size_t size, int prefault_rw) {
           c[size - 1] = dummy;
         }
     }
+    (void)dummy;
 
     /* Lock into physical RAM */
     ret = mlock(p, size);
@@ -328,15 +329,16 @@ int rtapi_dlclose(void *handle) {
 
 static void configure_memory(void)
 {
-    /* Raise memlock rlimit — needed for per-region mlock() and SHM_LOCK */
+    /* Raise memlock rlimit — needed for mlockall(), per-region mlock() and SHM_LOCK */
     int res = setrlimit(RLIMIT_MEMLOCK, &unlimited);
     if(res < 0) perror("setrlimit");
 
-    /* Do NOT mlockall() — it would lock the entire Go heap.
-     * RT memory is locked individually:
+    /* Memory locking strategy (Go-safe — no MCL_FUTURE):
+     *   - Pre-loaded libs (libc, librtapi, vdso): mlockall(MCL_CURRENT) in rtapi_initialize_app()
+     *   - HAL component .so files: rtapi_dlopen() locks PT_LOAD segments
      *   - SysV shmem segments: SHM_LOCK in rtapi_shmem_new()
      *   - Task structs: mlock() in rtapi_malloc()
-     *   - Thread stacks: mlock() in task_start()
+     *   - Thread stacks: mlock() in task_wrapper()
      */
 
 #ifdef __linux__
@@ -351,6 +353,16 @@ static void configure_memory(void)
                   "mallopt(M_MMAP_MAX, 0) failed\n");
     }
 #endif
+
+    /* Lock all currently-mapped pages: libc, librtapi, ld-linux, vdso,
+     * and initial Go runtime pages (~5-15 MB). MCL_CURRENT is a one-shot
+     * snapshot — it does NOT affect future allocations (no MCL_FUTURE),
+     * so the Go heap can still grow freely. HAL component .so files
+     * loaded later are covered by rtapi_dlopen(). */
+    if (mlockall(MCL_CURRENT) < 0) {
+        rtapi_print_msg(RTAPI_MSG_WARN,
+            "mlockall(MCL_CURRENT) failed: %s\n", strerror(errno));
+    }
 }
 
 static int harden_rt(void)
@@ -428,7 +440,7 @@ static int harden_rt(void)
     return 0;
 }
 
-static void initialize_app(void)
+void rtapi_initialize_app(void)
 {
     static int initialized = 0;
     if(initialized) return;
@@ -888,37 +900,31 @@ static long clock_set_period(long nsecs)
 
 int rtapi_prio_highest(void)
 {
-    initialize_app();
     return prio_highest();
 }
 
 int rtapi_prio_lowest(void)
 {
-    initialize_app();
     return prio_lowest();
 }
 
 int rtapi_prio_next_higher(int prio)
 {
-    initialize_app();
     return prio_next_higher(prio);
 }
 
 int rtapi_prio_next_lower(int prio)
 {
-    initialize_app();
     return prio_next_lower(prio);
 }
 
 long rtapi_clock_set_period(long nsecs)
 {
-    initialize_app();
     return clock_set_period(nsecs);
 }
 
 int rtapi_task_new(void (*taskcode)(void*), void *arg,
         int prio, int owner, unsigned long int stacksize, int uses_fp) {
-    initialize_app();
     return task_new(taskcode, arg, prio, owner, stacksize, uses_fp);
 }
 
