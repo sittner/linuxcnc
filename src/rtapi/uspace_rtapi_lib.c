@@ -39,6 +39,7 @@
 #include <spawn.h>
 #include <sched.h>
 #include <pthread.h>
+#include <link.h>
 #ifdef HAVE_SYS_IO_H
 #include <sys/io.h>
 #endif
@@ -158,30 +159,125 @@ void *rtapi_malloc(size_t size) {
     void *p = malloc(size);
     if (!p) return NULL;
 
-    /* Pre-fault all pages (read+write) */
-    long pagesize = sysconf(_SC_PAGESIZE);
-    volatile char *c = (volatile char *)p;
-    for (size_t i = 0; i < size; i += pagesize) {
-        c[i] = c[i];
-    }
-    /* Touch the last page if size is not a multiple of pagesize */
-    if (size > 0 && (size % (size_t)pagesize) != 0) {
-        c[size - 1] = c[size - 1];
-    }
+    /* Pre-fault and lock all pages (read+write) */
+    rtapi_lock_mem(p, malloc_usable_size(p));
 
-    /* Lock into physical RAM */
-    if (mlock(p, size) < 0) {
-        rtapi_print_msg(RTAPI_MSG_WARN,
-            "rtapi_malloc: mlock(%zu) failed: %s\n", size, strerror(errno));
-    }
     return p;
 }
 
 /* Free realtime-locked memory. */
 void rtapi_free(void *p, size_t size) {
     if (!p) return;
-    munlock(p, size);
+    rtapi_unlock_mem(p, malloc_usable_size(p));
     free(p);
+}
+
+/* pre-fault + mlock RT memory. */
+int rtapi_lock_mem(void *p, size_t size) {
+    int ret;
+
+    /* Pre-fault all pages */
+    long pagesize = sysconf(_SC_PAGESIZE);
+    volatile char *c = (volatile char *)p;
+    volatile char dummy;
+    for (size_t i = 0; i < size; i += pagesize) {
+        dummy = c[i];
+    }
+    /* Touch the last byte if size is not a multiple of pagesize */
+    if (size > 0 && (size % (size_t)pagesize) != 0) {
+        dummy = c[size - 1];
+    }
+    (void)dummy;  // suppress -Wunused-but-set-variable
+
+    /* Lock into physical RAM */
+    ret = mlock(p, size);
+    if (ret < 0) {
+        rtapi_print_msg(RTAPI_MSG_WARN,
+            "rtapi_lock_mem: mlock(%zu) failed: %s\n", size, strerror(errno));
+    }
+    return ret;
+}
+
+/* unlock RT memory. */
+void rtapi_unlock_mem(void *p, size_t size) {
+    if (!p) return;
+    munlock(p, size);
+}
+
+// Get the resolved path from a dlopen handle
+static const char *dl_resolve_name(void *handle) {
+    struct link_map *lm = NULL;
+    if (dlinfo(handle, RTLD_DI_LINKMAP, &lm) != 0 || !lm) {
+        rtapi_print_msg(RTAPI_MSG_WARN,
+            "rtapi: dlinfo failed: %s\n", dlerror());
+        return NULL;
+    }
+    return lm->l_name;  // resolved path, e.g. "/usr/lib/libexample.so"
+}
+
+static int dl_mlock_callback(struct dl_phdr_info *info, size_t size, void *data) {
+    const char *target = (const char *)data;
+
+    if (!info->dlpi_name || strcmp(info->dlpi_name, target) != 0)
+        return 0;
+
+    for (int i = 0; i < info->dlpi_phnum; i++) {
+        const ElfW(Phdr) *phdr = &info->dlpi_phdr[i];
+        if (phdr->p_type != PT_LOAD)
+            continue;
+
+        void  *seg_addr = (void *)(info->dlpi_addr + phdr->p_vaddr);
+        size_t seg_size = phdr->p_memsz;
+        rtapi_lock_mem(seg_addr, seg_size);
+    }
+    return 1;
+}
+
+static int dl_munlock_callback(struct dl_phdr_info *info, size_t size, void *data) {
+    const char *target = (const char *)data;
+
+    if (!info->dlpi_name || strcmp(info->dlpi_name, target) != 0)
+        return 0;
+
+    for (int i = 0; i < info->dlpi_phnum; i++) {
+        const ElfW(Phdr) *phdr = &info->dlpi_phdr[i];
+        if (phdr->p_type != PT_LOAD)
+            continue;
+
+        void  *seg_addr = (void *)(info->dlpi_addr + phdr->p_vaddr);
+        size_t seg_size = phdr->p_memsz;
+        rtapi_unlock_mem(seg_addr, seg_size);
+    }
+    return 1;
+}
+
+void *rtapi_dlopen(const char *path, int flags) {
+    void *handle = dlopen(path, flags);
+    if (!handle) {
+        rtapi_print_msg(RTAPI_MSG_ERR,
+            "rtapi_dlopen: %s\n", dlerror());
+        return NULL;
+    }
+
+    // Lock all segments of the loaded library
+    const char *resolved = dl_resolve_name(handle);
+    if (resolved) {
+        dl_iterate_phdr(dl_mlock_callback, (void *)resolved);
+    }
+
+    return handle;
+}
+
+int rtapi_dlclose(void *handle) {
+    // Unlock all segments of the loaded library
+    if (handle) {
+        const char *resolved = dl_resolve_name(handle);
+        if (resolved) {
+            dl_iterate_phdr(dl_munlock_callback, (void *)resolved);
+        }
+    }
+
+    return dlclose(handle);
 }
 
 static void configure_memory(void)
@@ -543,6 +639,8 @@ static void *task_wrapper(void *arg)
 {
     struct posix_task *ptask = (struct posix_task*)arg;
     struct rtapi_task *task = &ptask->task;
+    void *stack_lockaddr = NULL;
+    size_t stack_locksize = 0;
 
     /* Lock our own stack into RAM — must happen before any RT work.
      * Uses pthread_self() so there is no race with the parent thread. */
@@ -556,19 +654,11 @@ static void *task_wrapper(void *arg)
                 && pthread_attr_getguardsize(&self_attr, &guardsize) == 0) {
                 /* Skip guard page(s) at the bottom — they are PROT_NONE,
                  * mlock() on them would fail with ENOMEM. */
-                void *lockaddr = (char*)stackaddr + guardsize;
-                size_t locksize = stacksize - guardsize;
-                /* Pre-fault every page of the usable stack */
-                volatile char *p = (volatile char *)lockaddr;
-                long pagesize = sysconf(_SC_PAGESIZE);
-                for (size_t i = 0; i < locksize; i += pagesize) {
-                    (void)p[i];
-                }
-                if (mlock(lockaddr, locksize) < 0) {
-                    rtapi_print_msg(RTAPI_MSG_WARN,
-                        "task_wrapper: mlock stack (%zu bytes) failed: %s\n",
-                        locksize, strerror(errno));
-                }
+                stack_lockaddr = (char*)stackaddr + guardsize;
+                stack_locksize = stacksize - guardsize;
+
+                /* Pre-fault and lock all pages (read+write) */
+                rtapi_lock_mem(stack_lockaddr, stack_locksize);
             }
             pthread_attr_destroy(&self_attr);
         }
@@ -593,6 +683,11 @@ static void *task_wrapper(void *arg)
     rtapi_timespec_advance(&task->nextstart, &now, task->period + task->pll_correction);
 
     (task->taskcode)(task->arg);
+
+#ifdef __linux__
+    /* Pre-fault and lock all pages (read+write) */
+    rtapi_unlock_mem(stack_lockaddr, stack_locksize);
+#endif
 
     rtapi_print("ERROR: reached end of wrapper for task %d\n", task->id);
     return NULL;

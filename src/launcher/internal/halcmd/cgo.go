@@ -72,7 +72,7 @@ static int hal_shim_list_comps(char *buf, int buf_size) {
 #define HAL_SHIM_MAX_COMPS 256
 
 // ===== In-process RT module management =====
-// Replaces the former rtapi_app IPC: modules are dlopen'd directly in this
+// Replaces the former rtapi_app IPC: modules are rtapi_dlopen'd directly in this
 // process.  The module table, load/unload/newinst logic are adapted from
 // uspace_rtapi_app.c.
 
@@ -353,7 +353,7 @@ static void hal_shim_rtapi_app_cleanup(void) {
 
 // hal_shim_unload_all unloads all HAL components:
 //   - Userspace components: send SIGTERM to their owning process
-//   - Realtime components: unload via direct dlclose (in-process)
+//   - Realtime components: unload via direct rtapi_dlclose (in-process)
 // The component identified by except_id is skipped (pass 0 to not skip any).
 // Returns 0 on success, or a negative errno value on error.
 static int hal_shim_unload_all(int except_id) {
@@ -408,7 +408,7 @@ static int hal_shim_unload_all(int except_id) {
                 int (*stop)(void) = (int (*)(void))dlsym(w, "rtapi_app_exit");
                 if (stop) stop();
                 rt_remove_module(comps[i]);
-                dlclose(w);
+                rtapi_dlclose(w);
             }
         }
     }
@@ -887,7 +887,7 @@ static int hal_shim_loadusr(int flags, const char *wait_name, int timeout_s,
     return 0;
 }
 
-// hal_shim_loadrt loads a realtime module in-process via dlopen.
+// hal_shim_loadrt loads a realtime module in-process via rtapi_dlopen.
 // Replaces the former fork+exec of rtapi_app.  The module's .so is opened
 // with RTLD_GLOBAL|RTLD_NOW, module parameters are parsed via dlsym'd
 // rtapi_info_* symbols, and rtapi_app_main() is called.  Waits for the
@@ -901,23 +901,23 @@ static int hal_shim_loadrt(const char *mod, const char *const args[], int nargs)
 
     char what[PATH_MAX];
     snprintf(what, sizeof(what), "%s/%s.so", EMC2_RTLIB_DIR, mod);
-    void *module = dlopen(what, RTLD_GLOBAL | RTLD_NOW);
+    void *module = rtapi_dlopen(what, RTLD_GLOBAL | RTLD_NOW);
     if (!module) {
-        rtapi_print_msg(RTAPI_MSG_ERR, "%s: dlopen: %s\n", mod, dlerror());
+        rtapi_print_msg(RTAPI_MSG_ERR, "%s: rtapi_dlopen: %s\n", mod, dlerror());
         return -ENOENT;
     }
 
     int (*start)(void) = (int (*)(void))dlsym(module, "rtapi_app_main");
     if (!start) {
         rtapi_print_msg(RTAPI_MSG_ERR, "%s: dlsym: %s\n", mod, dlerror());
-        dlclose(module);
+        rtapi_dlclose(module);
         return -ENOENT;
     }
 
     if (nargs > 0) {
         int result = rt_do_comp_args(module, args, nargs);
         if (result < 0) {
-            dlclose(module);
+            rtapi_dlclose(module);
             return result;
         }
     }
@@ -926,13 +926,13 @@ static int hal_shim_loadrt(const char *mod, const char *const args[], int nargs)
     if (result < 0) {
         rtapi_print_msg(RTAPI_MSG_ERR, "%s: rtapi_app_main: %s (%d)\n",
             mod, strerror(-result), result);
-        dlclose(module);
+        rtapi_dlclose(module);
         return result;
     }
 
     if (rt_add_module(mod, module) < 0) {
         rtapi_print_msg(RTAPI_MSG_ERR, "%s: too many modules\n", mod);
-        dlclose(module);
+        rtapi_dlclose(module);
         return -ENOMEM;
     }
 
@@ -963,7 +963,7 @@ static int hal_shim_loadrt(const char *mod, const char *const args[], int nargs)
 }
 
 // hal_shim_unloadrt unloads a realtime module in-process.
-// Calls rtapi_app_exit() on the module and dlclose()s it.
+// Calls rtapi_app_exit() on the module and rtapi_dlclose()s it.
 static int hal_shim_unloadrt(const char *mod) {
     void *w = rt_find_module(mod);
     if (w == NULL) {
@@ -973,7 +973,7 @@ static int hal_shim_unloadrt(const char *mod) {
     int (*stop)(void) = (int (*)(void))dlsym(w, "rtapi_app_exit");
     if (stop) stop();
     rt_remove_module(mod);
-    dlclose(w);
+    rtapi_dlclose(w);
     return 0;
 }
 
