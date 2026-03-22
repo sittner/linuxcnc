@@ -2115,6 +2115,13 @@ func halRtapiAppInit() error {
 	return halError(int(ret), "hal_shim_rtapi_app_init")
 }
 
+// halRtapiInitializeApp wraps rtapi_initialize_app() — idempotently sets up
+// RT rlimits, mlockall(MCL_CURRENT), signal handlers, and io privileges.
+// Safe to call multiple times (guarded internally by a once flag).
+func halRtapiInitializeApp() {
+	C.rtapi_initialize_app()
+}
+
 // halRtapiAppCleanup wraps hal_shim_rtapi_app_cleanup() — tears down HAL
 // threads, releases shared memory, and stops the message queue.
 // Must be called after all components are unloaded and before hal_exit().
