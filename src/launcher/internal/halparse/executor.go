@@ -117,7 +117,14 @@ func executeToken(tok Token) error {
 // 3. All other HAL commands (in order)
 // Returns the first error encountered.
 func (r *ParseResult) Execute() error {
-	// Phase 1: merge and execute loadrt tokens
+	// Phase 1: execute loadusr tokens
+	for _, tok := range r.LoadUSR {
+		if err := executeToken(tok); err != nil {
+			return err
+		}
+	}
+
+	// Phase 2: merge and execute loadrt tokens
 	collector := NewTwopassCollector()
 	for _, tok := range r.LoadRT {
 		if d, ok := tok.Data.(*LoadRTToken); ok {
@@ -139,13 +146,6 @@ func (r *ParseResult) Execute() error {
 				}
 			}
 			return &ExecutionError{Loc: loc, Err: err}
-		}
-	}
-
-	// Phase 2: execute loadusr tokens
-	for _, tok := range r.LoadUSR {
-		if err := executeToken(tok); err != nil {
-			return err
 		}
 	}
 
