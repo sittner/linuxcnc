@@ -81,7 +81,7 @@ func TestGenerateXMLEmpty(t *testing.T) {
 // TestGenerateXMLGalvHmi generates XML from galv-hmi.conf and verifies it is
 // a syntactically valid PLCopen TC6 XML document.
 func TestGenerateXMLGalvHmi(t *testing.T) {
-	f, err := os.Open("testdata/galv-hmi.conf")
+	f, err := os.Open("../../../../configs/protocols/ads/galv-hmi.conf")
 	if err != nil {
 		t.Skipf("galv-hmi.conf not found: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestGenerateXMLGalvHmi(t *testing.T) {
 // that every non-pad field has the same offset in both layouts.
 func TestLayoutConsistencyGalvHmi(t *testing.T) {
 	// --- Layout from conf ---
-	fConf, err := os.Open("testdata/galv-hmi.conf")
+	fConf, err := os.Open("../../../../configs/protocols/ads/galv-hmi.conf")
 	if err != nil {
 		t.Skipf("galv-hmi.conf not found: %v", err)
 	}
@@ -677,7 +677,7 @@ stBlock
 // produce <enum><values> blocks in the generated XML, matching the structure
 // of the reference DISPLAY_DATA.xml.
 func TestGenerateXMLEnumGalvHmiEnums(t *testing.T) {
-	f, err := os.Open("testdata/galv-hmi.conf")
+	f, err := os.Open("../../../../configs/protocols/ads/galv-hmi.conf")
 	if err != nil {
 		t.Skipf("galv-hmi.conf not found: %v", err)
 	}
@@ -829,7 +829,7 @@ stBlock
 // TestGenerateXMLStructGalvHmi verifies that the updated galv-hmi.conf with
 // @struct directives generates XML matching the structure of DISPLAY_DATA.xml.
 func TestGenerateXMLStructGalvHmi(t *testing.T) {
-	f, err := os.Open("testdata/galv-hmi.conf")
+	f, err := os.Open("../../../../configs/protocols/ads/galv-hmi.conf")
 	if err != nil {
 		t.Skipf("galv-hmi.conf not found: %v", err)
 	}

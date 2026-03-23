@@ -303,7 +303,7 @@ root
 // TestLayoutGalvHmiSelectedOffsets parses the clean galv-hmi.conf and checks
 // the computed offsets for a selected set of leaf pins in the stData section.
 func TestLayoutGalvHmiSelectedOffsets(t *testing.T) {
-	f, err := os.Open("testdata/galv-hmi.conf")
+	f, err := os.Open("../../../../configs/protocols/ads/galv-hmi.conf")
 	if err != nil {
 		t.Skipf("galv-hmi.conf not found: %v", err)
 	}
@@ -379,7 +379,7 @@ func TestLayoutGalvHmiSelectedOffsets(t *testing.T) {
 // offsets for non-pad pins as the clean galv-hmi.conf layout.
 // This verifies that correct manual padding is idempotent under auto-alignment.
 func TestLayoutIdempotencyGalvHmiPadding(t *testing.T) {
-	fPad, err := os.Open("testdata/galv-hmi-padding.conf")
+	fPad, err := os.Open("../../../../configs/protocols/ads/galv-hmi-padding.conf")
 	if err != nil {
 		t.Skipf("galv-hmi-padding.conf not found: %v", err)
 	}
