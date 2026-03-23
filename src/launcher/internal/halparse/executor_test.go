@@ -239,9 +239,9 @@ func TestAliasKindStr(t *testing.T) {
 	}
 }
 
-// TestParseResultExecute verifies that Execute returns ErrNoCGO from the first
-// merged loadrt call when LoadRT tokens are present.
-func TestParseResultExecute(t *testing.T) {
+// TestParseResultLoad verifies that Load returns ErrNoCGO from the first
+// loadusr call when LoadUSR tokens are present.
+func TestParseResultLoad(t *testing.T) {
 	r := &ParseResult{
 		LoadRT: []Token{
 			{
@@ -262,6 +262,26 @@ func TestParseResultExecute(t *testing.T) {
 			},
 		},
 	}
+	err := r.Load()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, halcmd.ErrNoCGO) {
+		t.Errorf("expected ErrNoCGO, got %v", err)
+	}
+}
+
+// TestParseResultExecute verifies that Execute returns ErrNoCGO from the first
+// HALCmd token.
+func TestParseResultExecute(t *testing.T) {
+	r := &ParseResult{
+		HALCmd: []Token{
+			{
+				Location: SourceLoc{File: "test.hal", Line: 3},
+				Data:     &SetPToken{Name: "x.y", Value: "1"},
+			},
+		},
+	}
 	err := r.Execute()
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -271,17 +291,25 @@ func TestParseResultExecute(t *testing.T) {
 	}
 }
 
-// TestParseResultExecute_Empty verifies that an empty ParseResult returns nil.
-func TestParseResultExecute_Empty(t *testing.T) {
+// TestParseResultLoad_Empty verifies that an empty ParseResult's Load returns nil.
+func TestParseResultLoad_Empty(t *testing.T) {
 	r := &ParseResult{}
-	if err := r.Execute(); err != nil {
-		t.Errorf("expected nil for empty ParseResult, got %v", err)
+	if err := r.Load(); err != nil {
+		t.Errorf("expected nil for empty ParseResult Load, got %v", err)
 	}
 }
 
-// TestParseResultExecute_LoadRTMerge verifies that two LoadRTTokens for the
+// TestParseResultExecute_Empty verifies that an empty ParseResult's Execute returns nil.
+func TestParseResultExecute_Empty(t *testing.T) {
+	r := &ParseResult{}
+	if err := r.Execute(); err != nil {
+		t.Errorf("expected nil for empty ParseResult Execute, got %v", err)
+	}
+}
+
+// TestParseResultLoad_LoadRTMerge verifies that two LoadRTTokens for the
 // same module are merged into a single LoadRT call (one error, not two).
-func TestParseResultExecute_LoadRTMerge(t *testing.T) {
+func TestParseResultLoad_LoadRTMerge(t *testing.T) {
 	r := &ParseResult{
 		LoadRT: []Token{
 			{
@@ -294,7 +322,7 @@ func TestParseResultExecute_LoadRTMerge(t *testing.T) {
 			},
 		},
 	}
-	err := r.Execute()
+	err := r.Load()
 	// Both tokens are for the same module; TwopassCollector merges them into a
 	// single LoadRT("and2", "count=3") call.  The call fails with ErrNoCGO.
 	if err == nil {

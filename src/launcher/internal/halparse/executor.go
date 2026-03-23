@@ -111,12 +111,14 @@ func executeToken(tok Token) error {
 	return nil
 }
 
-// Execute runs all commands in a ParseResult in the correct order:
-// 1. Merged loadrt commands (via TwopassCollector)
-// 2. loadusr commands (in order)
-// 3. All other HAL commands (in order)
-// Returns the first error encountered.
-func (r *ParseResult) Execute() error {
+// Load executes only the component loading phases:
+//   - Phase 1: loadusr commands (with -W/-Wn flags)
+//   - Phase 2: merged loadrt commands (via TwopassCollector)
+//
+// After Load returns, all RT and USR components are loaded and ready,
+// but no wiring (net, addf, setp, etc.) has been performed yet.
+// Call Execute() afterwards to run the remaining HAL commands.
+func (r *ParseResult) Load() error {
 	// Phase 1: execute loadusr tokens
 	for _, tok := range r.LoadUSR {
 		if err := executeToken(tok); err != nil {
@@ -149,7 +151,12 @@ func (r *ParseResult) Execute() error {
 		}
 	}
 
-	// Phase 3: execute remaining HAL commands
+	return nil
+}
+
+// Execute runs the remaining HAL commands (net, addf, setp, etc.).
+// Must be called after Load().
+func (r *ParseResult) Execute() error {
 	for _, tok := range r.HALCmd {
 		if err := executeToken(tok); err != nil {
 			return err
@@ -161,7 +168,7 @@ func (r *ParseResult) Execute() error {
 
 // buildLoadRTArgs reconstructs the string args from a LoadRTToken for LoadRT().
 // This is used only by executeToken() for direct single-token dispatch (e.g.
-// interactive halcmd calls). ParseResult.Execute() does NOT use this function;
+// interactive halcmd calls). ParseResult.Load() does NOT use this function;
 // it feeds LoadRTTokens through TwopassCollector.CollectLoadRTToken() →
 // MergedLoadRTCommands() instead.
 func buildLoadRTArgs(d *LoadRTToken) []string {
