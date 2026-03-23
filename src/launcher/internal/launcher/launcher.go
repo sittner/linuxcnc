@@ -31,6 +31,7 @@ import (
 	"github.com/sittner/linuxcnc/src/launcher/internal/protocols"
 	"github.com/sittner/linuxcnc/src/launcher/internal/lockfile"
 	"github.com/sittner/linuxcnc/src/launcher/internal/realtime"
+	"github.com/sittner/linuxcnc/src/launcher/pkg/gomodule"
 )
 
 // Options holds the parsed command-line options.
@@ -67,6 +68,7 @@ type Launcher struct {
 	appProcesses []*exec.Cmd          // [APPLICATIONS]APP background processes
 	halComp      *hal.Component       // launcher's HAL component (like halcmd's hal_init)
 	protocols    []protocols.Protocol // active protocol instances (ADS, etc.)
+	goModules    []gomodule.Module    // Go plugin modules loaded via "load" command
 }
 
 // New creates a new Launcher with the given options and logger.
@@ -328,6 +330,21 @@ func (l *Launcher) Run() error {
 		l.logger.Warn("HAL component loading error (continuing)", "error", err)
 	}
 
+	// Phase 1.3: Load "load" command modules — auto-detect Go plugins vs C RT modules.
+	// Go plugins are loaded in-process via plugin.Open and stored in l.goModules.
+	// C RT modules are forwarded to halcmd.LoadRT (same as "loadrt").
+	if err := halResult.IterLoads(func(path string, args []string, params string) error {
+		if isGoPlugin(path) {
+			return l.loadGoPlugin(path, params)
+		}
+		return halcmd.LoadRT(path, args...)
+	}); err != nil {
+		if !l.opts.ContinueOnError {
+			return fmt.Errorf("module loading (load command) failed: %w", err)
+		}
+		l.logger.Warn("module loading error (continuing)", "error", err)
+	}
+
 	// Phase 1.5: Initialize protocols (ADS, etc.) — creates HAL pins that
 	// can be wired by net/addf/setp in the HAL files.
 	if err := l.initProtocols(); err != nil {
@@ -374,6 +391,11 @@ func (l *Launcher) Run() error {
 	// 6d. Start HAL threads (step 4.3.10).
 	if err := l.startHalThreads(); err != nil {
 		return fmt.Errorf("hal start threads: %w", err)
+	}
+
+	// 6d.3. Start Go plugin modules (Start() is called after HAL threads are running).
+	if err := l.startGoModules(); err != nil {
+		return fmt.Errorf("Go module start failed: %w", err)
 	}
 
 	// 6d.5. Start protocol network listeners (ADS TCP, etc.).

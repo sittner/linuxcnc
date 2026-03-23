@@ -320,6 +320,19 @@ type PrintToken struct {
 
 func (*PrintToken) tokenData() {}
 
+// LoadToken represents the universal "load" command.
+// At execution time the loader inspects the .so to decide whether it is a
+// Go plugin (loaded via plugin.Open) or a C RT module (loaded via LoadRT).
+// The detection is performed by the launcher; the halparse executor handles
+// only the C RT module fallback path.
+type LoadToken struct {
+	Path   string   // path to the .so file (may be absolute or module-name)
+	Args   []string // remaining arguments after the path
+	Params string   // Args joined with spaces (passthrough for Go plugin Factory)
+}
+
+func (*LoadToken) tokenData() {}
+
 // PathResolver resolves source file paths. The caller provides an implementation
 // backed by whatever path resolution logic they have (e.g. the launcher's
 // resolve.go with LIB: prefix and HALLIB_PATH support).
@@ -334,12 +347,15 @@ type INILookup interface {
 	GetAll() map[string]map[string]string // needed for HalTemplateData
 }
 
-// ParseResult holds the three execution buckets produced by MultiFileParser.
+// ParseResult holds the execution buckets produced by MultiFileParser.
 // LoadRT tokens are merged via TwopassCollector before execution.
 // LoadUSR tokens with -W or -Wn flags are executed after all RT components load.
+// Loads tokens are from the universal "load" command; C RT modules are executed
+// in order during the Load phase, and Go plugins are handled by the launcher.
 // HALCmd tokens are everything else, executed in order after components start.
 type ParseResult struct {
 	LoadRT  []Token
 	LoadUSR []Token
+	Loads   []Token // universal "load" command tokens (*LoadToken)
 	HALCmd  []Token
 }

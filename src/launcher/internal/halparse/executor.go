@@ -99,6 +99,13 @@ func executeToken(tok Token) error {
 		return nil
 	case *PrintToken:
 		return nil
+	case *LoadToken:
+		// The universal "load" command: fall back to LoadRT for C modules.
+		// Go plugin detection and loading requires launcher context and is
+		// handled separately by the launcher after ParseResult.Load() returns.
+		// If this token was passed directly to executeToken (e.g. from a
+		// HALCmd bucket), treat it as a C RT module load.
+		err = halcmd.LoadRT(d.Path, d.Args...)
 	default:
 		return &ExecutionError{
 			Loc: tok.Location,
@@ -118,6 +125,11 @@ func executeToken(tok Token) error {
 // After Load returns, all RT and USR components are loaded and ready,
 // but no wiring (net, addf, setp, etc.) has been performed yet.
 // Call Execute() afterwards to run the remaining HAL commands.
+//
+// Note: Loads tokens (from the universal "load" command) are NOT processed
+// here. The launcher iterates ParseResult.Loads directly after calling Load()
+// so that it can distinguish Go plugins (handled in-process) from C RT modules
+// (forwarded to halcmd.LoadRT).
 func (r *ParseResult) Load() error {
 	// Phase 1: execute loadusr tokens
 	for _, tok := range r.LoadUSR {
@@ -163,6 +175,31 @@ func (r *ParseResult) Execute() error {
 		}
 	}
 
+	return nil
+}
+
+// IterLoads calls fn once for each "load" command token in ParseResult.Loads,
+// passing the module path, its argument slice, and the pre-joined params string.
+//
+// The caller is responsible for detecting Go plugins vs C RT modules and
+// dispatching accordingly.  A typical caller pattern:
+//
+//	err := result.IterLoads(func(path string, args []string, params string) error {
+//	    if isGoPlugin(path) {
+//	        return loadGoPlugin(path, params)
+//	    }
+//	    return halcmd.LoadRT(path, args...)
+//	})
+func (r *ParseResult) IterLoads(fn func(path string, args []string, params string) error) error {
+	for _, tok := range r.Loads {
+		d, ok := tok.Data.(*LoadToken)
+		if !ok {
+			continue
+		}
+		if err := fn(d.Path, d.Args, d.Params); err != nil {
+			return &ExecutionError{Loc: tok.Location, Err: err}
+		}
+	}
 	return nil
 }
 
