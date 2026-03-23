@@ -10,9 +10,9 @@ HALLIBSRCS := \
   rtapi/rtapi_pci.c \
   rtapi/uspace_rtapi_parport.c
 
-$(call TOOBJSDEPS, $(HALLIBSRCS)): EXTRAFLAGS += -fPIC $(ULAPI_CFLAGS)
+$(call TOOBJSDEPS, $(HALLIBSRCS)): EXTRAFLAGS += -fPIC $(ULAPI_CFLAGS) $(LIBUDEV_CFLAGS)
 USERSRCS += $(HALLIBSRCS)
-HALLIB_LIBS := -pthread -lrt -ludev
+HALLIB_LIBS := -pthread -lrt $(LIBUDEV_LIBS)
 
 HALLIB := ../lib/liblinuxcnchal.so
 
