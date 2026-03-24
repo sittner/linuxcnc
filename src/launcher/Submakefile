@@ -51,7 +51,30 @@ LAUNCHER_SRC := $(wildcard launcher/*.go) \
 	$(ECHO) Building ads-xml-gen
 	$(Q)cd launcher && CGO_ENABLED=0 $(GO) build -o $(TOP)/bin/ads-xml-gen ./cmd/ads-xml-gen
 
-TARGETS += ../bin/linuxcnc-launcher ../bin/ads-xml-gen
+# ---------------------------------------------------------------------------
+# Copy launcher public packages to share/ for RIP builds
+# ---------------------------------------------------------------------------
+
+# Files that external Go plugins need (gomodule interface + inifile parser).
+LAUNCHER_PKG_FILES := \
+    ../share/linuxcnc/launcher/pkg/gomodule/gomodule.go \
+    ../share/linuxcnc/launcher/pkg/inifile/types.go \
+    ../share/linuxcnc/launcher/pkg/inifile/parser.go \
+    ../share/linuxcnc/launcher/pkg/inifile/expand.go \
+    ../share/linuxcnc/launcher/go.mod
+
+../share/linuxcnc/launcher/pkg/%: launcher/pkg/%
+	$(ECHO) Copying launcher pkg file $<
+	@mkdir -p $(dir $@)
+	$(Q)cp -f $< $@
+
+# The installed go.mod must not carry the local replace directive.
+../share/linuxcnc/launcher/go.mod: launcher/go.mod
+	$(ECHO) Generating launcher share go.mod
+	@mkdir -p $(dir $@)
+	$(Q)printf 'module github.com/sittner/linuxcnc/src/launcher\n\ngo 1.21\n' > $@
+
+TARGETS += ../bin/linuxcnc-launcher ../bin/ads-xml-gen $(LAUNCHER_PKG_FILES)
 
 # Test target
 .PHONY: test-launcher
@@ -63,13 +86,22 @@ clean: launcher-clean
 .PHONY: launcher-clean
 launcher-clean:
 	rm -f ../bin/linuxcnc-launcher ../bin/ads-xml-gen
+	rm -f $(LAUNCHER_PKG_FILES)
 
 # Install
 install: launcher-install
 .PHONY: launcher-install
-launcher-install: ../bin/linuxcnc-launcher ../bin/ads-xml-gen
+launcher-install: ../bin/linuxcnc-launcher ../bin/ads-xml-gen $(LAUNCHER_PKG_FILES)
 	$(DIR) $(DESTDIR)$(EMC2_BIN_DIR)
 	$(INSTALL) -m 0755 ../bin/linuxcnc-launcher $(DESTDIR)$(EMC2_BIN_DIR)/linuxcnc-launcher
 	$(INSTALL) -m 0755 ../bin/ads-xml-gen $(DESTDIR)$(EMC2_BIN_DIR)/ads-xml-gen
+	# Install launcher public packages for external Go plugin development
+	$(DIR) $(DESTDIR)$(datadir)/linuxcnc/launcher/pkg/gomodule
+	$(DIR) $(DESTDIR)$(datadir)/linuxcnc/launcher/pkg/inifile
+	$(Q)for f in $(LAUNCHER_PKG_FILES); do \
+		dest=$(DESTDIR)$(datadir)/linuxcnc/launcher/$$(echo $$f | sed 's|^../share/linuxcnc/launcher/||'); \
+		mkdir -p $$(dirname $$dest); \
+		$(INSTALL) -m 0644 $$f $$dest; \
+	done
 
 endif # BUILD_GOLANG
