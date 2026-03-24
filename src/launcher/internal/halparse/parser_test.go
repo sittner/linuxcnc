@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	hal "linuxcnc.org/hal"
+	hal "github.com/sittner/linuxcnc/src/launcher/pkg/hal"
 )
 
 // mockINI is a test implementation of INILookup.

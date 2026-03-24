@@ -1,25 +1,23 @@
-// Example HAL component - Passthrough
-//
-// This component demonstrates the hal-go API by creating pins of each type
-// and copying input values to corresponding output pins.
-//
-// Pins created:
-//   - mycomponent.in-bit    (input)  -> mycomponent.out-bit    (output)
-//   - mycomponent.in-float  (input)  -> mycomponent.out-float  (output)
-//   - mycomponent.in-s32    (input)  -> mycomponent.out-s32    (output)
-//   - mycomponent.in-u32    (input)  -> mycomponent.out-u32    (output)
-//   - mycomponent.in-str    (input)  -> mycomponent.out-str    (output)
-//
-// Note: string pins use the HAL "port" type and require a port signal to be
-// created and linked before data can transfer (e.g. newsig my-msg port /
-// net my-msg comp.out-str other.in-str / sets my-msg 1024).
+// passthrough is a simple HAL component that copies input pins to output pins.
+// It demonstrates the basic usage of the hal-go package.
 //
 // Usage:
+//   go build -o passthrough
 //   halrun
-//   halcmd: loadusr -W ./mycomponent
-//   halcmd: setp mycomponent.in-float 123.456
-//   halcmd: show pin mycomponent.*
-//   halcmd: unload mycomponent
+//   loadusr ./passthrough
+//   show pin passthrough.*
+//
+// Pins created:
+//   passthrough.in-bit      (bit, in)
+//   passthrough.out-bit     (bit, out)
+//   passthrough.in-float    (float, in)
+//   passthrough.out-float   (float, out)
+//   passthrough.in-s32      (s32, in)
+//   passthrough.out-s32     (s32, out)
+//   passthrough.in-u32      (u32, in)
+//   passthrough.out-u32     (u32, out)
+//   passthrough.in-str      (port, in)
+//   passthrough.out-str     (port, out)
 
 package main
 
@@ -27,12 +25,12 @@ import (
 	"log"
 	"time"
 
-	"linuxcnc.org/hal"
+	"github.com/sittner/linuxcnc/src/launcher/pkg/hal"
 )
 
 func main() {
-	// Create component - name should match binary name for loadusr -W
-	comp, err := hal.NewComponent("mycomponent")
+	// Create component
+	comp, err := hal.NewComponent("passthrough")
 	if err != nil {
 		log.Fatalf("Failed to create component: %v", err)
 	}
@@ -90,11 +88,12 @@ func main() {
 		log.Fatalf("Failed to create out-str pin: %v", err)
 	}
 
-	// Mark component as ready
+	// Mark component ready
 	if err := comp.Ready(); err != nil {
 		log.Fatalf("Failed to mark component ready: %v", err)
 	}
-	log.Println("mycomponent ready")
+
+	log.Println("passthrough component ready")
 
 	// Main loop - copy inputs to outputs
 	for comp.Running() {
@@ -107,5 +106,5 @@ func main() {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	log.Println("mycomponent exiting")
+	log.Println("passthrough component exiting")
 }

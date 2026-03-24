@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	hal "linuxcnc.org/hal"
+	hal "github.com/sittner/linuxcnc/src/launcher/pkg/hal"
 )
 
 // tokenizeLine splits a single HAL config line into raw string tokens.

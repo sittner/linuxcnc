@@ -1,4 +1,4 @@
-# hal-go-plugin-template
+# go-comp-template
 
 A skeleton Go plugin for LinuxCNC's in-process Go module loader.
 
@@ -36,7 +36,7 @@ factory function as the `params string` argument.
 
 ```bash
 # From within the LinuxCNC source tree (recommended):
-cd src/hal/hal-go-plugin-template
+cd src/hal/go-comp-template
 make
 
 # Or with explicit CGO flags (when building outside the source tree):
@@ -46,7 +46,7 @@ CGO_ENABLED=1 go build -buildmode=plugin -o mygomodule.so .
 ```
 
 The resulting `mygomodule.so` can be installed to
-`/usr/lib/linuxcnc/go-modules/` with `make install`.
+`$EMC2_GOMOD_DIR/` with `make install`.
 
 ## Plugin Interface
 
@@ -69,8 +69,8 @@ The `Module` interface has three lifecycle methods:
 ## Usage in a HAL file
 
 ```
-# Load the plugin — path can be absolute or a module name resolvable via HAL_RTMOD_DIR
-load /usr/lib/linuxcnc/go-modules/mygomodule.so config=/path/to/config.ini
+# Load the plugin — path can be absolute or a module name resolvable via EMC2_GOMOD_DIR
+load $EMC2_GOMOD_DIR/mygomodule.so config=/path/to/config.ini
 
 # After the plugin is loaded, its HAL pins are available for wiring:
 net my-signal go-passthrough.in-f  some-component.output-pin
@@ -84,16 +84,16 @@ net my-signal go-passthrough.out-f some-other-component.input-pin
   resident in memory until the process exits. This is fine for LinuxCNC, where
   components loaded at startup live for the entire machine session.
 
-- All dependency versions (e.g. `linuxcnc.org/hal`, standard library, and any
+- All dependency versions (e.g. `github.com/sittner/linuxcnc/src/launcher/pkg/hal`, standard library, and any
   third-party packages) must match the versions used to build `linuxcnc-launcher`
   at the time both binaries were compiled. A mismatch causes `plugin.Open()` to
   fail at runtime with a clear message like:
-  `plugin was built with a different version of package linuxcnc.org/hal`
+  `plugin was built with a different version of package github.com/sittner/linuxcnc/src/launcher/pkg/hal`
 
 - To verify compatibility, compare the module info of both binaries:
   ```bash
   go version -m /usr/bin/linuxcnc-launcher
-  go version -m /usr/lib/linuxcnc/go-modules/mygomodule.so
+  go version -m $EMC2_GOMOD_DIR/mygomodule.so
   ```
   The Go toolchain version and all shared dependency versions must match exactly.
 

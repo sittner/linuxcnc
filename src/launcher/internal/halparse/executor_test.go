@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	halcmd "github.com/sittner/linuxcnc/src/launcher/internal/halcmd"
-	hal "linuxcnc.org/hal"
+	hal "github.com/sittner/linuxcnc/src/launcher/pkg/hal"
 )
 
 // TestExecuteToken_AllTypes verifies that executeToken dispatches each concrete

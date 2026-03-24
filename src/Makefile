@@ -172,7 +172,6 @@ SUBDIRS := \
     hal/user_comps/pi500_vfd \
     hal/user_comps/huanyang-vfd \
 	hal/user_comps/xhc-whb04b-6 \
-	hal/hal-go \
 	hal/hal-ads-server \
 	launcher \
     \

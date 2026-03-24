@@ -3,7 +3,7 @@ package halparse
 import (
 	"fmt"
 
-	hal "linuxcnc.org/hal"
+	hal "github.com/sittner/linuxcnc/src/launcher/pkg/hal"
 )
 
 // SourceLoc records the file and line number where a token originated.

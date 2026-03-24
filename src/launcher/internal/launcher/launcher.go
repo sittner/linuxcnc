@@ -20,7 +20,7 @@ import (
 	"syscall"
 	"time"
 
-	hal "linuxcnc.org/hal"
+	hal "github.com/sittner/linuxcnc/src/launcher/pkg/hal"
 
 	halcmd "github.com/sittner/linuxcnc/src/launcher/internal/halcmd"
 
