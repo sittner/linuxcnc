@@ -330,14 +330,11 @@ func (l *Launcher) Run() error {
 		l.logger.Warn("HAL component loading error (continuing)", "error", err)
 	}
 
-	// Phase 1.3: Load "load" command modules — auto-detect Go plugins vs C RT modules.
-	// Go plugins are loaded in-process via plugin.Open and stored in l.goModules.
-	// C RT modules are forwarded to halcmd.LoadRT (same as "loadrt").
+	// Phase 1.3: Load Go plugin modules from "load" commands.
+	// The "load" command is exclusively for Go plugins; bare module names
+	// are resolved against EMC2_GOMOD_DIR (same pattern as loadrt/EMC2_RTLIB_DIR).
 	if err := halResult.IterLoads(func(path string, args []string, params string) error {
-		if isGoPlugin(path) {
-			return l.loadGoPlugin(path, params)
-		}
-		return halcmd.LoadRT(path, args...)
+		return l.loadGoPlugin(resolveGoModulePath(path), params)
 	}); err != nil {
 		if !l.opts.ContinueOnError {
 			return fmt.Errorf("module loading (load command) failed: %w", err)

@@ -1,41 +1,28 @@
-// Package launcher — gomodules.go handles loading, lifecycle management, and
-// detection of Go plugin .so files loaded via the "load" HAL command.
+// Package launcher — gomodules.go handles loading, lifecycle management of
+// Go plugin .so files loaded via the "load" HAL command.
 package launcher
 
 import (
-	"debug/elf"
 	"fmt"
+	"path/filepath"
 	"plugin"
 	"strings"
 
+	"github.com/sittner/linuxcnc/src/launcher/internal/config"
 	"github.com/sittner/linuxcnc/src/launcher/pkg/gomodule"
 )
 
-// isGoPlugin inspects the ELF dynamic symbol table of the .so at path to
-// determine whether it is a Go plugin built with "go build -buildmode=plugin".
-//
-// Go plugins always export symbols with "runtime." or "go:" prefixes that
-// C .so files never have. This is a read-only ELF header check — the file
-// is not executed or loaded into memory.
-func isGoPlugin(path string) bool {
-	f, err := elf.Open(path)
-	if err != nil {
-		return false
+// resolveGoModulePath resolves a Go module name or path to an absolute .so path.
+// If the name contains a '/' it is treated as an absolute or relative path and
+// used as-is.  Otherwise, the bare module name is resolved to
+// $EMC2_GOMOD_DIR/<name>.so — the same pattern loadrt uses with EMC2_RTLIB_DIR.
+func resolveGoModulePath(name string) string {
+	if strings.Contains(name, "/") {
+		return name
 	}
-	defer f.Close()
-
-	syms, err := f.DynamicSymbols()
-	if err != nil {
-		return false
-	}
-
-	for _, s := range syms {
-		if strings.HasPrefix(s.Name, "runtime.") || strings.HasPrefix(s.Name, "go:") {
-			return true
-		}
-	}
-
-	return false
+	// Strip .so suffix if the user specified it explicitly.
+	name = strings.TrimSuffix(name, ".so")
+	return filepath.Join(config.EMC2GomodDir, name+".so")
 }
 
 // loadGoPlugin loads a Go plugin .so, looks up the "New" symbol, validates

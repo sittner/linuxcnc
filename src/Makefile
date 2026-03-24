@@ -645,6 +645,7 @@ install-docs:
 
 install-dirs:
 	$(DIR) $(DESTDIR)$(EMC2_RTLIB_DIR) \
+		$(DESTDIR)$(EMC2_GOMOD_DIR) \
 		$(DESTDIR)$(sysconfdir)/linuxcnc $(DESTDIR)$(bindir) $(DESTDIR)$(libdir) \
 		$(DESTDIR)/lib/linuxcnc $(DESTDIR)$(includedir)/linuxcnc \
 		$(DESTDIR)$(docsdir) $(DESTDIR)$(ncfilesdir) \
