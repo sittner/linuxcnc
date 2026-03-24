@@ -58,12 +58,12 @@ func (l *Launcher) loadGoPlugin(path, params string) error {
 		return fmt.Errorf("load Go plugin %q: missing \"New\" symbol: %w", path, err)
 	}
 
-	factory, ok := sym.(gomodule.Factory)
+	factoryPtr, ok := sym.(*gomodule.Factory)
 	if !ok {
-		return fmt.Errorf("load Go plugin %q: \"New\" symbol has wrong type %T (expected func(*inifile.IniFile, *slog.Logger, string) (gomodule.Module, error))", path, sym)
+		return fmt.Errorf("load Go plugin %q: \"New\" symbol has wrong type %T (expected *gomodule.Factory)", path, sym)
 	}
 
-	mod, err := factory(l.ini, l.logger, params)
+	mod, err := (*factoryPtr)(l.ini, l.logger, params)
 	if err != nil {
 		return fmt.Errorf("load Go plugin %q: factory error: %w", path, err)
 	}

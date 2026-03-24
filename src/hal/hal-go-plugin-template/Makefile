@@ -13,23 +13,23 @@ DESTDIR     ?=
 # In RIP mode, install alongside the source tree; otherwise install system-wide.
 ifdef EMC2_HOME
 INSTALL_DIR := $(EMC2_HOME)/lib/linuxcnc/go-modules
+LIB_DIR     := $(EMC2_HOME)/lib
 else
 INSTALL_DIR := $(DESTDIR)/usr/lib/linuxcnc/go-modules
+LIB_DIR     := /usr/lib
 endif
 
-# CGO flags are inherited from the environment; set them to match the LinuxCNC
-# build tree if building outside the source tree.
-# Example:
-#   CGO_CFLAGS="-I/usr/include/linuxcnc" \
-#   CGO_LDFLAGS="-L/usr/lib -llinuxcnchal" \
-#   make
+# CGO_LDFLAGS must match the launcher binary — Go's plugin loader rejects
+# plugins when any shared CGO dependency (linuxcnc.org/hal) was compiled
+# with different flags.
+CGO_LDFLAGS ?= -Wl,-rpath,$(LIB_DIR)
 
 .PHONY: all install clean
 
 all: $(PLUGIN_SO)
 
 $(PLUGIN_SO): main.go go.mod
-	CGO_ENABLED=1 go build -buildmode=plugin -o $(PLUGIN_SO) .
+	CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" go build -buildmode=plugin -o $(PLUGIN_SO) .
 
 install: $(PLUGIN_SO)
 	install -d $(INSTALL_DIR)
