@@ -69,6 +69,7 @@ func (l *Launcher) loadGoPlugin(path, params string) error {
 	}
 
 	if err := mod.Init(); err != nil {
+		mod.Stop() // clean up factory-allocated resources
 		return fmt.Errorf("load Go plugin %q: Init() error: %w", path, err)
 	}
 
