@@ -25,8 +25,8 @@ type passthroughModule struct {
 	logger  *slog.Logger
 	params  string
 	comp    *hal.Component
-	inputF  *hal.PinFloat64 // in  float64
-	outputF *hal.PinFloat64 // out float64
+	inputF  *hal.Pin[float64] // in  float64
+	outputF *hal.Pin[float64] // out float64
 }
 
 // Init creates the HAL component and its pins.
@@ -41,14 +41,14 @@ func (m *passthroughModule) Init() error {
 	}
 	m.comp = comp
 
-	m.inputF, err = comp.AddInFloat64("in-f", 0.0)
+	m.inputF, err = hal.NewPin[float64](comp, "in-f", hal.In)
 	if err != nil {
-		return fmt.Errorf("AddInFloat64: %w", err)
+		return fmt.Errorf("NewPin[float64] in-f: %w", err)
 	}
 
-	m.outputF, err = comp.AddOutFloat64("out-f", 0.0)
+	m.outputF, err = hal.NewPin[float64](comp, "out-f", hal.Out)
 	if err != nil {
-		return fmt.Errorf("AddOutFloat64: %w", err)
+		return fmt.Errorf("NewPin[float64] out-f: %w", err)
 	}
 
 	if err := comp.Ready(); err != nil {
