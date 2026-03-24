@@ -324,9 +324,8 @@ func (*PrintToken) tokenData() {}
 // The launcher resolves bare module names against EMC2_GOMOD_DIR and
 // loads them via plugin.Open.  C RT modules use "loadrt" instead.
 type LoadToken struct {
-	Path   string   // module name or absolute path to .so
-	Args   []string // remaining arguments after the path
-	Params string   // Args joined with spaces (passthrough for Go plugin Factory)
+	Path string   // module name or absolute path to .so
+	Args []string // remaining arguments after the path
 }
 
 func (*LoadToken) tokenData() {}

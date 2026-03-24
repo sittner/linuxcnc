@@ -23,7 +23,7 @@ import (
 // to an output float pin.  Replace this with your own logic.
 type passthroughModule struct {
 	logger  *slog.Logger
-	params  string
+	args    []string
 	comp    *hal.Component
 	inputF  *hal.Pin[float64] // in  float64
 	outputF *hal.Pin[float64] // out float64
@@ -33,7 +33,7 @@ type passthroughModule struct {
 // This is called after the plugin is loaded and before HAL file wiring,
 // so the pins created here can be connected via net/setp/addf in the HAL file.
 func (m *passthroughModule) Init() error {
-	m.logger.Info("passthroughModule Init()", "params", m.params)
+	m.logger.Info("passthroughModule Init()", "args", m.args)
 
 	comp, err := hal.NewComponent("go-passthrough")
 	if err != nil {
@@ -84,20 +84,20 @@ func (m *passthroughModule) Stop() {
 //
 // The signature must match gomodule.Factory exactly:
 //
-//	func(ini *inifile.IniFile, logger *slog.Logger, params string) (gomodule.Module, error)
+//	func(ini *inifile.IniFile, logger *slog.Logger, args []string) (gomodule.Module, error)
 //
-// params contains everything after the module path on the "load" line, e.g.:
+// args contains the individual arguments after the module path on the "load" line, e.g.:
 //
 //	load /path/to/mygomodule.so config=/path/to/config.ini key=value
 //
-// would give params = "config=/path/to/config.ini key=value".
+// would give args = []string{"config=/path/to/config.ini", "key=value"}.
 //
 // The variable is exported by name: the launcher calls plugin.Lookup("New")
 // at runtime to find it.  It must be declared as a package-level var (not a
 // function) so that its address is stable and the linker exports it correctly.
-var New gomodule.Factory = func(ini *inifile.IniFile, logger *slog.Logger, params string) (gomodule.Module, error) {
+var New gomodule.Factory = func(ini *inifile.IniFile, logger *slog.Logger, args []string) (gomodule.Module, error) {
 	return &passthroughModule{
 		logger: logger.With("plugin", "go-passthrough"),
-		params: params,
+		args:   args,
 	}, nil
 }

@@ -335,30 +335,29 @@ func TestParseResultLoad_LoadRTMerge(t *testing.T) {
 }
 
 // TestParseResultIterLoads verifies that IterLoads calls the callback for each
-// LoadToken in Loads, providing the correct path, args, and params.
+// LoadToken in Loads, providing the correct path and args.
 func TestParseResultIterLoads(t *testing.T) {
 	r := &ParseResult{
 		Loads: []Token{
 			{
 				Location: SourceLoc{File: "test.hal", Line: 1},
-				Data:     &LoadToken{Path: "/tmp/foo.so", Args: []string{"a=1", "b=2"}, Params: "a=1 b=2"},
+				Data:     &LoadToken{Path: "/tmp/foo.so", Args: []string{"a=1", "b=2"}},
 			},
 			{
 				Location: SourceLoc{File: "test.hal", Line: 2},
-				Data:     &LoadToken{Path: "/tmp/bar.so", Args: nil, Params: ""},
+				Data:     &LoadToken{Path: "/tmp/bar.so", Args: nil},
 			},
 		},
 	}
 
 	type call struct {
-		path   string
-		args   []string
-		params string
+		path string
+		args []string
 	}
 	var calls []call
 
-	err := r.IterLoads(func(path string, args []string, params string) error {
-		calls = append(calls, call{path, args, params})
+	err := r.IterLoads(func(path string, args []string) error {
+		calls = append(calls, call{path, args})
 		return nil
 	})
 	if err != nil {
@@ -370,8 +369,8 @@ func TestParseResultIterLoads(t *testing.T) {
 	if calls[0].path != "/tmp/foo.so" {
 		t.Errorf("calls[0].path = %q, want %q", calls[0].path, "/tmp/foo.so")
 	}
-	if calls[0].params != "a=1 b=2" {
-		t.Errorf("calls[0].params = %q, want %q", calls[0].params, "a=1 b=2")
+	if len(calls[0].args) != 2 || calls[0].args[0] != "a=1" || calls[0].args[1] != "b=2" {
+		t.Errorf("calls[0].args = %v, want [a=1 b=2]", calls[0].args)
 	}
 	if calls[1].path != "/tmp/bar.so" {
 		t.Errorf("calls[1].path = %q, want %q", calls[1].path, "/tmp/bar.so")
@@ -389,7 +388,7 @@ func TestParseResultIterLoads_ErrorPropagation(t *testing.T) {
 	}
 
 	sentinelErr := errors.New("intentional failure")
-	err := r.IterLoads(func(_ string, _ []string, _ string) error {
+	err := r.IterLoads(func(_ string, _ []string) error {
 		return sentinelErr
 	})
 	if err == nil {

@@ -281,9 +281,6 @@ func TestParseLoad(t *testing.T) {
 		if len(lt.Args) != 0 {
 			t.Errorf("Args = %v, want []", lt.Args)
 		}
-		if lt.Params != "" {
-			t.Errorf("Params = %q, want empty", lt.Params)
-		}
 	})
 
 	t.Run("path with single arg", func(t *testing.T) {
@@ -298,9 +295,6 @@ func TestParseLoad(t *testing.T) {
 		if len(lt.Args) != 1 || lt.Args[0] != "config=/etc/foo.ini" {
 			t.Errorf("Args = %v, want [config=/etc/foo.ini]", lt.Args)
 		}
-		if lt.Params != "config=/etc/foo.ini" {
-			t.Errorf("Params = %q, want %q", lt.Params, "config=/etc/foo.ini")
-		}
 	})
 
 	t.Run("path with multiple args", func(t *testing.T) {
@@ -309,9 +303,6 @@ func TestParseLoad(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		lt := tok.Data.(*LoadToken)
-		if lt.Params != "a=1 b=2" {
-			t.Errorf("Params = %q, want %q", lt.Params, "a=1 b=2")
-		}
 		if len(lt.Args) != 2 {
 			t.Errorf("Args len = %d, want 2", len(lt.Args))
 		}
@@ -341,9 +332,6 @@ func TestParseLine_load(t *testing.T) {
 	if lt.Path != "/tmp/foo.so" {
 		t.Errorf("Path = %q, want %q", lt.Path, "/tmp/foo.so")
 	}
-	if lt.Params != "x=1" {
-		t.Errorf("Params = %q, want %q", lt.Params, "x=1")
-	}
 }
 
 // --- TestSingleFileParser_load_classified ---
@@ -364,9 +352,6 @@ func TestSingleFileParser_load_classified(t *testing.T) {
 	}
 	if lt.Path != "/tmp/foo.so" {
 		t.Errorf("Path = %q, want %q", lt.Path, "/tmp/foo.so")
-	}
-	if lt.Params != "config=bar" {
-		t.Errorf("Params = %q, want %q", lt.Params, "config=bar")
 	}
 	if len(result.LoadRT) != 0 {
 		t.Errorf("expected 0 LoadRT tokens, got %d", len(result.LoadRT))

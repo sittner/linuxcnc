@@ -178,21 +178,21 @@ func (r *ParseResult) Execute() error {
 }
 
 // IterLoads calls fn once for each "load" command token in ParseResult.Loads,
-// passing the module path, its argument slice, and the pre-joined params string.
+// passing the module path and its argument slice.
 //
 // The "load" command is exclusively for Go plugins.  The launcher resolves
 // bare module names against EMC2_GOMOD_DIR and loads them via plugin.Open.
 //
-//	err := result.IterLoads(func(path string, args []string, params string) error {
-//	    return loadGoPlugin(resolveGoModulePath(path), params)
+//	err := result.IterLoads(func(path string, args []string) error {
+//	    return loadGoPlugin(resolveGoModulePath(path), args)
 //	})
-func (r *ParseResult) IterLoads(fn func(path string, args []string, params string) error) error {
+func (r *ParseResult) IterLoads(fn func(path string, args []string) error) error {
 	for _, tok := range r.Loads {
 		d, ok := tok.Data.(*LoadToken)
 		if !ok {
 			continue
 		}
-		if err := fn(d.Path, d.Args, d.Params); err != nil {
+		if err := fn(d.Path, d.Args); err != nil {
 			return &ExecutionError{Loc: tok.Location, Err: err}
 		}
 	}

@@ -53,12 +53,12 @@ type Module interface {
 // Parameters:
 //   - ini: the parsed INI configuration file for the current machine config
 //   - logger: a structured logger scoped to the launcher
-//   - params: everything after the module path on the "load" command line,
-//     passed through verbatim so the plugin can parse its own arguments
+//   - args: the arguments from the "load" command line (everything after the
+//     module path), split by the parser into individual tokens
 //
 // Example HAL file usage:
 //
 //	load /usr/lib/linuxcnc/go-modules/mymodule.so config=/path/to/config.ini
 //
-// In this example, params would be "config=/path/to/config.ini".
-type Factory func(ini *inifile.IniFile, logger *slog.Logger, params string) (Module, error)
+// In this example, args would be []string{"config=/path/to/config.ini"}.
+type Factory func(ini *inifile.IniFile, logger *slog.Logger, args []string) (Module, error)

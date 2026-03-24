@@ -646,7 +646,6 @@ func parseLoad(tokens []string, loc SourceLoc) (Token, *ParseError) {
 	}
 	if len(tokens) > 1 {
 		tok.Args = tokens[1:]
-		tok.Params = strings.Join(tokens[1:], " ")
 	}
 	return Token{Location: loc, Data: tok}, nil
 }
