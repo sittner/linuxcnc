@@ -27,11 +27,11 @@ import (
 	"github.com/sittner/linuxcnc/src/launcher/internal/config"
 	"github.com/sittner/linuxcnc/src/launcher/internal/emcsvr"
 	"github.com/sittner/linuxcnc/src/launcher/internal/halfile"
-	"github.com/sittner/linuxcnc/src/launcher/pkg/inifile"
-	"github.com/sittner/linuxcnc/src/launcher/internal/protocols"
 	"github.com/sittner/linuxcnc/src/launcher/internal/lockfile"
+	"github.com/sittner/linuxcnc/src/launcher/internal/protocols"
 	"github.com/sittner/linuxcnc/src/launcher/internal/realtime"
 	"github.com/sittner/linuxcnc/src/launcher/pkg/gomodule"
+	"github.com/sittner/linuxcnc/src/launcher/pkg/inifile"
 )
 
 // Options holds the parsed command-line options.
