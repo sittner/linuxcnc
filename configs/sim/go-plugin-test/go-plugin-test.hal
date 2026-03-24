@@ -6,7 +6,7 @@
 # Load the Go passthrough plugin.
 # In RIP mode the plugin is installed at $EMC2_HOME/lib/linuxcnc/go-modules/
 # by "make install" in src/hal/hal-go-plugin-template.
-load $EMC2_HOME/lib/linuxcnc/go-modules/mygomodule.so
+load mygomodule
 
 # Set a test value on the input pin and verify with show
 setp go-passthrough.in-f 42.0
