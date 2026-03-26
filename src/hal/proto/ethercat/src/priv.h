@@ -103,18 +103,18 @@ void lcec_update_slave_state_hal(lcec_slave_state_t *hal_data, ec_slave_config_s
 /**
  * @brief Create a single HAL pin using a printf-style format string and @c va_list.
  *
- * @param type           HAL data type (e.g. @c HAL_BIT, @c HAL_U32).
- * @param dir            HAL pin direction (e.g. @c HAL_IN, @c HAL_OUT).
+ * @param type           HAL data type (e.g. @c GOMC_HAL_BIT, @c GOMC_HAL_U32).
+ * @param dir            HAL pin direction (e.g. @c GOMC_HAL_IN, @c GOMC_HAL_OUT).
  * @param data_ptr_addr  Address of the pointer-to-HAL-value to populate.
  * @param fmt            printf-style format string for the pin name.
  * @param ap             Argument list for @p fmt.
  * @return 0 on success, non-zero on failure.
  */
-int lcec_pin_newfv(int comp_id, hal_type_t type, hal_pin_dir_t dir, void **data_ptr_addr, const char *fmt, va_list ap);
+int lcec_pin_newfv(int comp_id, gomc_hal_type_t type, int dir, void **data_ptr_addr, const char *fmt, va_list ap);
 
 int lcec_pin_newfv_list(int comp_id, void *base, const lcec_pindesc_t *list, va_list ap);
 
-int lcec_param_newfv(int comp_id, hal_type_t type, hal_pin_dir_t dir, void *data_addr, const char *fmt, va_list ap);
+int lcec_param_newfv(int comp_id, gomc_hal_type_t type, int dir, void *data_addr, const char *fmt, va_list ap);
 
 int lcec_param_newfv_list(int comp_id, void *base, const lcec_pindesc_t *list, va_list ap);
 
@@ -128,11 +128,11 @@ int lcec_param_newfv_list(int comp_id, void *base, const lcec_pindesc_t *list, v
  * @param master  Master to configure.
  */
 void lcec_dc_init_r2m(struct lcec_master *master);
-#ifdef RTAPI_TASK_PLL_SUPPORT
+#ifdef GOMC_RTAPI_TASK_PLL_SUPPORT
 /**
  * @brief Initialise DC synchronisation callbacks for master → ref-clock mode.
  *
- * Available only when @c RTAPI_TASK_PLL_SUPPORT is defined.  Configures
+ * Available only when @c GOMC_RTAPI_TASK_PLL_SUPPORT is defined.  Configures
  * @c master->dcsync_callbacks to drive the reference clock from the RTAPI PLL,
  * enabling the EtherCAT bus to be synchronised to the LinuxCNC servo thread.
  *

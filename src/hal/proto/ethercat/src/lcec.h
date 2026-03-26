@@ -33,6 +33,8 @@
 #ifndef _LCEC_H_
 #define _LCEC_H_
 
+#include "launcher/pkg/cmodule/gomc_env.h"
+
 #include <rtapi.h>
 #include <rtapi_stdint.h>
 #include <stdlib.h>
@@ -291,17 +293,17 @@ typedef struct {
  * and remain valid for the lifetime of the HAL component.
  */
 typedef struct lcec_master_data {
-  hal_u32_t *slaves_responding; /**< Number of slaves currently visible on the bus. */
-  hal_bit_t *state_init;        /**< TRUE when at least one slave is in INIT state. */
-  hal_bit_t *state_preop;       /**< TRUE when at least one slave is in PRE-OP state. */
-  hal_bit_t *state_safeop;      /**< TRUE when at least one slave is in SAFE-OP state. */
-  hal_bit_t *state_op;          /**< TRUE when all slaves are in OP state. */
-  hal_bit_t *link_up;           /**< TRUE when the EtherCAT physical link is up. */
-  hal_bit_t *all_op;            /**< TRUE when the master reports all slaves operational. */
-#ifdef RTAPI_TASK_PLL_SUPPORT
-  hal_s32_t *pll_err;           /**< Current PLL phase error in nanoseconds. */
-  hal_s32_t *pll_out;           /**< Current PLL correction output in nanoseconds. */
-  hal_u32_t *pll_reset_cnt;     /**< Cumulative number of PLL resets since module load. */
+  gomc_hal_u32_t *slaves_responding; /**< Number of slaves currently visible on the bus. */
+  gomc_hal_bit_t *state_init;        /**< TRUE when at least one slave is in INIT state. */
+  gomc_hal_bit_t *state_preop;       /**< TRUE when at least one slave is in PRE-OP state. */
+  gomc_hal_bit_t *state_safeop;      /**< TRUE when at least one slave is in SAFE-OP state. */
+  gomc_hal_bit_t *state_op;          /**< TRUE when all slaves are in OP state. */
+  gomc_hal_bit_t *link_up;           /**< TRUE when the EtherCAT physical link is up. */
+  gomc_hal_bit_t *all_op;            /**< TRUE when the master reports all slaves operational. */
+#ifdef GOMC_RTAPI_TASK_PLL_SUPPORT
+  gomc_hal_s32_t *pll_err;           /**< Current PLL phase error in nanoseconds. */
+  gomc_hal_s32_t *pll_out;           /**< Current PLL correction output in nanoseconds. */
+  gomc_hal_u32_t *pll_reset_cnt;     /**< Cumulative number of PLL resets since module load. */
 #endif
 } lcec_master_data_t;
 
@@ -313,12 +315,12 @@ typedef struct lcec_master_data {
  * lifetime of the HAL component.
  */
 typedef struct lcec_slave_state {
-  hal_bit_t *online;        /**< TRUE when the slave is reachable on the bus. */
-  hal_bit_t *operational;   /**< TRUE when the slave is in OP state. */
-  hal_bit_t *state_init;    /**< TRUE when the slave AL state is INIT. */
-  hal_bit_t *state_preop;   /**< TRUE when the slave AL state is PRE-OP. */
-  hal_bit_t *state_safeop;  /**< TRUE when the slave AL state is SAFE-OP. */
-  hal_bit_t *state_op;      /**< TRUE when the slave AL state is OP. */
+  gomc_hal_bit_t *online;        /**< TRUE when the slave is reachable on the bus. */
+  gomc_hal_bit_t *operational;   /**< TRUE when the slave is in OP state. */
+  gomc_hal_bit_t *state_init;    /**< TRUE when the slave AL state is INIT. */
+  gomc_hal_bit_t *state_preop;   /**< TRUE when the slave AL state is PRE-OP. */
+  gomc_hal_bit_t *state_safeop;  /**< TRUE when the slave AL state is SAFE-OP. */
+  gomc_hal_bit_t *state_op;      /**< TRUE when the slave AL state is OP. */
 } lcec_slave_state_t;
 
 /**
@@ -369,7 +371,7 @@ typedef struct lcec_master {
   int ref_clock_sync_counter;               /**< Remaining cycles before the next DC ref-clock sync. */
   uint64_t app_time_ns;    /**< Application time written to the EtherCAT master each cycle (ns). */
   uint64_t ref_time_ns;    /**< Reference time snapshot used for computing the DC time offset (ns). */
-#ifdef RTAPI_TASK_PLL_SUPPORT
+#ifdef GOMC_RTAPI_TASK_PLL_SUPPORT
   uint64_t dc_time_ns;     /**< DC system time read from the reference clock slave (ns). */
   int dc_started;          /**< Non-zero once the DC synchronisation PI controller has been seeded. */
   int64_t dc_diff_ns;      /**< Current DC phase error (application time minus DC time) in ns. */
@@ -518,8 +520,8 @@ typedef struct lcec_slave {
  * parameter.
  */
 typedef struct {
-  hal_type_t    type;   /**< HAL data type (HAL_BIT, HAL_U32, HAL_S32, HAL_FLOAT). */
-  hal_pin_dir_t dir;    /**< Pin/parameter direction (HAL_IN, HAL_OUT, HAL_IO, HAL_RO, HAL_RW). */
+  gomc_hal_type_t    type;   /**< HAL data type (GOMC_HAL_BIT, GOMC_HAL_U32, GOMC_HAL_S32, GOMC_HAL_FLOAT). */
+  int dir;    /**< Pin/parameter direction (GOMC_HAL_IN, GOMC_HAL_OUT, GOMC_HAL_IO, GOMC_HAL_RO, GOMC_HAL_RW). */
   int           offset; /**< Byte offset of the pointer field within the driver's HAL data struct. */
   const char   *fmt;    /**< printf-style name format string; NULL terminates the descriptor list. */
 } lcec_pindesc_t;
@@ -585,7 +587,7 @@ int lcec_read_idn(struct lcec_slave *slave, uint8_t drive_no, uint16_t idn, uint
  * @param ...            Format arguments.
  * @return 0 on success, negative HAL error code on failure.
  */
-int lcec_pin_newf(int comp_id, hal_type_t type, hal_pin_dir_t dir, void **data_ptr_addr, const char *fmt, ...);
+int lcec_pin_newf(int comp_id, gomc_hal_type_t type, int dir, void **data_ptr_addr, const char *fmt, ...);
 
 /**
  * @brief Create a list of HAL pins described by a NULL-terminated lcec_pindesc_t array.
@@ -606,13 +608,13 @@ int lcec_pin_newf_list(int comp_id, void *base, const lcec_pindesc_t *list, ...)
  *
  * @param comp_id    HAL component ID.
  * @param type       HAL data type.
- * @param dir        Parameter direction (HAL_RO or HAL_RW).
+ * @param dir        Parameter direction (GOMC_HAL_RO or GOMC_HAL_RW).
  * @param data_addr  Address of the parameter's storage.
  * @param fmt        printf-style format string for the parameter name.
  * @param ...        Format arguments.
  * @return 0 on success, negative HAL error code on failure.
  */
-int lcec_param_newf(int comp_id, hal_type_t type, hal_pin_dir_t dir, void *data_addr, const char *fmt, ...);
+int lcec_param_newf(int comp_id, gomc_hal_type_t type, int dir, void *data_addr, const char *fmt, ...);
 
 /**
  * @brief Create a list of HAL parameters described by a NULL-terminated lcec_pindesc_t array.

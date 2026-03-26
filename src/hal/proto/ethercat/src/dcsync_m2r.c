@@ -20,7 +20,7 @@
  *      synchronisation.
  *   3. post_send()   – runs the PI controller and applies the PLL correction.
  *
- * This file is compiled only when @c RTAPI_TASK_PLL_SUPPORT is defined.
+ * This file is compiled only when @c GOMC_RTAPI_TASK_PLL_SUPPORT is defined.
  *
  * @copyright Copyright (C) 2026 Sascha Ittner <sascha.ittner@modusoft.de>
  *
@@ -41,7 +41,7 @@
 
 #include "priv.h"
 
-#ifdef RTAPI_TASK_PLL_SUPPORT
+#ifdef GOMC_RTAPI_TASK_PLL_SUPPORT
 
 /**
  * @brief Target closed-loop settling time in seconds.
@@ -302,7 +302,7 @@ static void post_send(struct lcec_master *master) {
  * @param master  Master to configure.  @c master->app_time_period must already
  *                be set to the servo period in nanoseconds before this call.
  *
- * @note This function is available only when @c RTAPI_TASK_PLL_SUPPORT is
+ * @note This function is available only when @c GOMC_RTAPI_TASK_PLL_SUPPORT is
  *       defined at compile time.
  * @note Non-real-time: called once during component initialisation.
  */

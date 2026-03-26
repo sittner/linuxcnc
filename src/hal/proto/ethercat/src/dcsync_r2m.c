@@ -7,7 +7,7 @@
  * the RTAPI task PLL is @b not adjusted; instead the EtherCAT bus time follows
  * the LinuxCNC time base passively.
  *
- * This mode is suitable when no @c RTAPI_TASK_PLL_SUPPORT is available or
+ * This mode is suitable when no @c GOMC_RTAPI_TASK_PLL_SUPPORT is available or
  * when the system integrator prefers the simpler, one-direction scheme.
  *
  * Call sequence each servo cycle:

@@ -101,7 +101,7 @@ ec_sync_info_t lcec_el1252_syncs[] = {
 /** \brief data structure of one channel of the device */
 typedef struct {
   // data exposed as PIN to Linuxcnc/Machinekit
-  hal_bit_t *in;      /**< HAL output pin: current digital input state. */
+  gomc_hal_bit_t *in;      /**< HAL output pin: current digital input state. */
 
   uint8_t    Status;     /**< Cached edge-detection status byte from the PDO. */
   uint64_t   LatchPos;   /**< Cached timestamp of last positive edge (0→1). */
@@ -118,8 +118,8 @@ typedef struct {
 } lcec_el1252_chan_t;
 
 static const lcec_pindesc_t slave_pins[] = {
-  { HAL_BIT, HAL_OUT, offsetof(lcec_el1252_chan_t, in), "%s.%s.%s.din-%d" },
-  { HAL_TYPE_UNSPECIFIED, HAL_DIR_UNSPECIFIED, -1, NULL }
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_el1252_chan_t, in), "%s.%s.%s.din-%d" },
+  { GOMC_HAL_TYPE_UNSPECIFIED, GOMC_HAL_DIR_UNSPECIFIED, -1, NULL }
 };
 
 /** \brief complete data structure for EL1252 */

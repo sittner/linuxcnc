@@ -50,13 +50,13 @@
  */
 typedef struct {
   char name[LCEC_CONF_STR_MAXLEN]; /**< HAL pin name (without master/slave prefix). */
-  hal_type_t type;                 /**< HAL pin type (BIT, S32, U32, FLOAT). */
+  gomc_hal_type_t type;                 /**< HAL pin type (BIT, S32, U32, FLOAT). */
   LCEC_PDOENT_TYPE_T subType;      /**< Sub-type for FLOAT pins (signed, unsigned, IEEE 754). */
-  hal_float_t floatScale;          /**< Scale factor applied to FLOAT values on read/write. */
-  hal_float_t floatOffset;         /**< Offset applied to FLOAT values after scaling on read. */
+  gomc_hal_float_t floatScale;          /**< Scale factor applied to FLOAT values on read/write. */
+  gomc_hal_float_t floatOffset;         /**< Offset applied to FLOAT values after scaling on read. */
   uint8_t bitOffset;               /**< Bit offset within the PDO entry for complex sub-pins. */
   uint8_t bitLength;               /**< Number of bits occupied by this pin's value. */
-  hal_pin_dir_t dir;               /**< HAL pin direction (HAL_IN or HAL_OUT). */
+  int dir;               /**< HAL pin direction (GOMC_HAL_IN or GOMC_HAL_OUT). */
   void *pin[LCEC_CONF_GENERIC_MAX_SUBPINS]; /**< Pointers to the registered HAL pin values. */
   uint16_t pdo_idx;                /**< CANopen object index of the mapped PDO entry. */
   uint8_t pdo_sidx;                /**< CANopen sub-index of the mapped PDO entry. */
@@ -76,7 +76,7 @@ typedef struct {
   ec_pdo_info_t *pdos;              /**< Next free slot in the PDO array. */
   ec_sync_info_t *sync_managers;    /**< Next free slot in the sync manager array. */
   lcec_generic_pin_t *hal_data;     /**< Next free slot in the HAL pin array. */
-  hal_pin_dir_t hal_dir;            /**< HAL direction inferred from the current sync manager. */
+  int hal_dir;            /**< HAL direction inferred from the current sync manager. */
   LCEC_CONF_PDOENTRY_T *pe_conf;    /**< Last PDO entry config, used by complex sub-entries. */
 } lcec_generic_conf_state_t;
 

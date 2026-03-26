@@ -5,8 +5,8 @@
  *
  * The EL2202 provides two independent digital output channels.  Each channel
  * exposes two HAL pins:
- *  - @c dout-N   (HAL_BIT, IN) — desired logic level of the output.
- *  - @c tristate-N (HAL_BIT, IN) — when TRUE the output is placed in
+ *  - @c dout-N   (GOMC_HAL_BIT, IN) — desired logic level of the output.
+ *  - @c tristate-N (GOMC_HAL_BIT, IN) — when TRUE the output is placed in
  *    high-impedance (tri-state) mode regardless of @c dout-N.
  *
  * EtherCAT identifiers:
@@ -72,8 +72,8 @@ ec_sync_info_t lcec_el2202_syncs[] = {
  */
 typedef struct {
   // data exposed as PIN to Linuxcnc/Machinekit
-  hal_bit_t *out;           /**< HAL input pin: desired output logic level. */
-  hal_bit_t *tristate;      /**< HAL input pin: TRUE to enable tri-state (high-Z) on this channel. */
+  gomc_hal_bit_t *out;           /**< HAL input pin: desired output logic level. */
+  gomc_hal_bit_t *tristate;      /**< HAL input pin: TRUE to enable tri-state (high-Z) on this channel. */
   // OffSets and BitPositions used to access data in EC PDOs
   unsigned int out_offs;        /**< Byte offset of the output bit within the process data image. */
   unsigned int out_bitp;        /**< Bit position of the output bit within the process data byte. */
@@ -91,9 +91,9 @@ typedef struct {
 } lcec_el2202_data_t;
 
 static const lcec_pindesc_t slave_pins[] = {
-  { HAL_BIT, HAL_IN, offsetof(lcec_el2202_chan_t, out), "%s.%s.%s.dout-%d" },
-  { HAL_BIT, HAL_IN, offsetof(lcec_el2202_chan_t, tristate), "%s.%s.%s.tristate-%d" },
-  { HAL_TYPE_UNSPECIFIED, HAL_DIR_UNSPECIFIED, -1, NULL }
+  { GOMC_HAL_BIT, GOMC_HAL_IN, offsetof(lcec_el2202_chan_t, out), "%s.%s.%s.dout-%d" },
+  { GOMC_HAL_BIT, GOMC_HAL_IN, offsetof(lcec_el2202_chan_t, tristate), "%s.%s.%s.tristate-%d" },
+  { GOMC_HAL_TYPE_UNSPECIFIED, GOMC_HAL_DIR_UNSPECIFIED, -1, NULL }
 };
 
 /**

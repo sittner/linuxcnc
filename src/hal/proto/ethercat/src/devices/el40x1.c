@@ -36,35 +36,35 @@
  * initialization and accessed by the real-time write callback.
  */
 typedef struct {
-  hal_bit_t *pos;       /**< Output HIGH when the commanded value is positive. */
-  hal_bit_t *neg;       /**< Output HIGH when the commanded value is negative. */
-  hal_bit_t *enable;    /**< Input: when 0 the DAC output is forced to zero. */
-  hal_bit_t *absmode;   /**< Input: when 1 the absolute value of @c value is used. */
-  hal_float_t *value;   /**< Input: desired analog output value (in user units). */
-  hal_float_t *scale;   /**< IO: full-scale user-unit value mapping to duty cycle ±1.0. */
-  hal_float_t *offset;  /**< IO: DC offset added to the scaled value before clamping. */
+  gomc_hal_bit_t *pos;       /**< Output HIGH when the commanded value is positive. */
+  gomc_hal_bit_t *neg;       /**< Output HIGH when the commanded value is negative. */
+  gomc_hal_bit_t *enable;    /**< Input: when 0 the DAC output is forced to zero. */
+  gomc_hal_bit_t *absmode;   /**< Input: when 1 the absolute value of @c value is used. */
+  gomc_hal_float_t *value;   /**< Input: desired analog output value (in user units). */
+  gomc_hal_float_t *scale;   /**< IO: full-scale user-unit value mapping to duty cycle ±1.0. */
+  gomc_hal_float_t *offset;  /**< IO: DC offset added to the scaled value before clamping. */
   double old_scale;     /**< Shadow copy of @c scale used to detect changes. */
   double scale_recip;   /**< Reciprocal of @c scale, recomputed when scale changes. */
-  hal_float_t *min_dc;  /**< IO: minimum allowable duty cycle (clamped to [-1, 1]). */
-  hal_float_t *max_dc;  /**< IO: maximum allowable duty cycle (clamped to [-1, 1]). */
-  hal_float_t *curr_dc; /**< Output: actual duty cycle sent to the terminal this cycle. */
-  hal_s32_t *raw_val;   /**< Output: raw 16-bit signed integer written to the PDO. */
+  gomc_hal_float_t *min_dc;  /**< IO: minimum allowable duty cycle (clamped to [-1, 1]). */
+  gomc_hal_float_t *max_dc;  /**< IO: maximum allowable duty cycle (clamped to [-1, 1]). */
+  gomc_hal_float_t *curr_dc; /**< Output: actual duty cycle sent to the terminal this cycle. */
+  gomc_hal_s32_t *raw_val;   /**< Output: raw 16-bit signed integer written to the PDO. */
   unsigned int val_pdo_os; /**< Byte offset of the output value entry in the process image. */
 } lcec_el40x1_data_t;
 
 static const lcec_pindesc_t slave_pins[] = {
-  { HAL_FLOAT, HAL_IO, offsetof(lcec_el40x1_data_t, scale), "%s.%s.%s.aout-scale" },
-  { HAL_FLOAT, HAL_IO, offsetof(lcec_el40x1_data_t, offset), "%s.%s.%s.aout-offset" },
-  { HAL_FLOAT, HAL_IO, offsetof(lcec_el40x1_data_t, min_dc), "%s.%s.%s.aout-min-dc" },
-  { HAL_FLOAT, HAL_IO, offsetof(lcec_el40x1_data_t, max_dc), "%s.%s.%s.aout-max-dc" },
-  { HAL_FLOAT, HAL_OUT, offsetof(lcec_el40x1_data_t, curr_dc), "%s.%s.%s.aout-curr-dc" },
-  { HAL_BIT, HAL_IN, offsetof(lcec_el40x1_data_t, enable), "%s.%s.%s.aout-enable" },
-  { HAL_BIT, HAL_IN, offsetof(lcec_el40x1_data_t, absmode), "%s.%s.%s.aout-absmode" },
-  { HAL_FLOAT, HAL_IN, offsetof(lcec_el40x1_data_t, value), "%s.%s.%s.aout-value" },
-  { HAL_S32, HAL_OUT, offsetof(lcec_el40x1_data_t, raw_val), "%s.%s.%s.aout-raw" },
-  { HAL_BIT, HAL_OUT, offsetof(lcec_el40x1_data_t, pos), "%s.%s.%s.aout-pos" },
-  { HAL_BIT, HAL_OUT, offsetof(lcec_el40x1_data_t, neg), "%s.%s.%s.aout-neg" },
-  { HAL_TYPE_UNSPECIFIED, HAL_DIR_UNSPECIFIED, -1, NULL }
+  { GOMC_HAL_FLOAT, GOMC_HAL_IO, offsetof(lcec_el40x1_data_t, scale), "%s.%s.%s.aout-scale" },
+  { GOMC_HAL_FLOAT, GOMC_HAL_IO, offsetof(lcec_el40x1_data_t, offset), "%s.%s.%s.aout-offset" },
+  { GOMC_HAL_FLOAT, GOMC_HAL_IO, offsetof(lcec_el40x1_data_t, min_dc), "%s.%s.%s.aout-min-dc" },
+  { GOMC_HAL_FLOAT, GOMC_HAL_IO, offsetof(lcec_el40x1_data_t, max_dc), "%s.%s.%s.aout-max-dc" },
+  { GOMC_HAL_FLOAT, GOMC_HAL_OUT, offsetof(lcec_el40x1_data_t, curr_dc), "%s.%s.%s.aout-curr-dc" },
+  { GOMC_HAL_BIT, GOMC_HAL_IN, offsetof(lcec_el40x1_data_t, enable), "%s.%s.%s.aout-enable" },
+  { GOMC_HAL_BIT, GOMC_HAL_IN, offsetof(lcec_el40x1_data_t, absmode), "%s.%s.%s.aout-absmode" },
+  { GOMC_HAL_FLOAT, GOMC_HAL_IN, offsetof(lcec_el40x1_data_t, value), "%s.%s.%s.aout-value" },
+  { GOMC_HAL_S32, GOMC_HAL_OUT, offsetof(lcec_el40x1_data_t, raw_val), "%s.%s.%s.aout-raw" },
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_el40x1_data_t, pos), "%s.%s.%s.aout-pos" },
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_el40x1_data_t, neg), "%s.%s.%s.aout-neg" },
+  { GOMC_HAL_TYPE_UNSPECIFIED, GOMC_HAL_DIR_UNSPECIFIED, -1, NULL }
 };
 
 static ec_pdo_entry_info_t lcec_el40x1_channel[] = {

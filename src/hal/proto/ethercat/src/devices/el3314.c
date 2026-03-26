@@ -36,13 +36,13 @@
  * @brief Per-channel HAL pins and PDO offsets for one EL3314 thermocouple channel.
  */
 typedef struct {
-  hal_bit_t *overrange;      /**< HAL bit output: temperature exceeds the sensor's measurable range. */
-  hal_bit_t *underrange;     /**< HAL bit output: temperature is below the sensor's measurable range. */
-  hal_bit_t *error;          /**< HAL bit output: channel error flag (open circuit, short, etc.). */
-  hal_s32_t *raw_val;        /**< HAL s32 output: raw 16-bit signed temperature value (0.1 °C per count). */
-  hal_float_t *scale;        /**< HAL float I/O: multiplier applied before adding bias (default 1.0). */
-  hal_float_t *bias;         /**< HAL float I/O: offset added after scaling in °C (default 0.0). */
-  hal_float_t *val;          /**< HAL float output: temperature in °C = bias + scale * raw * 0.1. */
+  gomc_hal_bit_t *overrange;      /**< HAL bit output: temperature exceeds the sensor's measurable range. */
+  gomc_hal_bit_t *underrange;     /**< HAL bit output: temperature is below the sensor's measurable range. */
+  gomc_hal_bit_t *error;          /**< HAL bit output: channel error flag (open circuit, short, etc.). */
+  gomc_hal_s32_t *raw_val;        /**< HAL s32 output: raw 16-bit signed temperature value (0.1 °C per count). */
+  gomc_hal_float_t *scale;        /**< HAL float I/O: multiplier applied before adding bias (default 1.0). */
+  gomc_hal_float_t *bias;         /**< HAL float I/O: offset added after scaling in °C (default 0.0). */
+  gomc_hal_float_t *val;          /**< HAL float output: temperature in °C = bias + scale * raw * 0.1. */
   unsigned int ovr_pdo_os;   /**< Byte offset of the overrange bit in the EtherCAT process data image. */
   unsigned int ovr_pdo_bp;   /**< Bit position of the overrange flag within its byte. */
   unsigned int udr_pdo_os;   /**< Byte offset of the underrange bit in the EtherCAT process data image. */
@@ -60,14 +60,14 @@ typedef struct {
 } lcec_el3314_data_t;
 
 static const lcec_pindesc_t slave_pins[] = {
-  { HAL_BIT, HAL_OUT, offsetof(lcec_el3314_chan_t, overrange), "%s.%s.%s.temp-%d-overrange" },
-  { HAL_BIT, HAL_OUT, offsetof(lcec_el3314_chan_t, underrange), "%s.%s.%s.temp-%d-underrange" },
-  { HAL_BIT, HAL_OUT, offsetof(lcec_el3314_chan_t, error), "%s.%s.%s.temp-%d-error" },
-  { HAL_S32, HAL_OUT, offsetof(lcec_el3314_chan_t, raw_val), "%s.%s.%s.temp-%d-raw" },
-  { HAL_FLOAT, HAL_OUT, offsetof(lcec_el3314_chan_t, val), "%s.%s.%s.temp-%d-val" },
-  { HAL_FLOAT, HAL_IO, offsetof(lcec_el3314_chan_t, scale), "%s.%s.%s.temp-%d-scale" },
-  { HAL_FLOAT, HAL_IO, offsetof(lcec_el3314_chan_t, bias), "%s.%s.%s.temp-%d-bias" },
-  { HAL_TYPE_UNSPECIFIED, HAL_DIR_UNSPECIFIED, -1, NULL }
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_el3314_chan_t, overrange), "%s.%s.%s.temp-%d-overrange" },
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_el3314_chan_t, underrange), "%s.%s.%s.temp-%d-underrange" },
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_el3314_chan_t, error), "%s.%s.%s.temp-%d-error" },
+  { GOMC_HAL_S32, GOMC_HAL_OUT, offsetof(lcec_el3314_chan_t, raw_val), "%s.%s.%s.temp-%d-raw" },
+  { GOMC_HAL_FLOAT, GOMC_HAL_OUT, offsetof(lcec_el3314_chan_t, val), "%s.%s.%s.temp-%d-val" },
+  { GOMC_HAL_FLOAT, GOMC_HAL_IO, offsetof(lcec_el3314_chan_t, scale), "%s.%s.%s.temp-%d-scale" },
+  { GOMC_HAL_FLOAT, GOMC_HAL_IO, offsetof(lcec_el3314_chan_t, bias), "%s.%s.%s.temp-%d-bias" },
+  { GOMC_HAL_TYPE_UNSPECIFIED, GOMC_HAL_DIR_UNSPECIFIED, -1, NULL }
 };
 
 static ec_pdo_entry_info_t lcec_el3314_channels[][9] = {

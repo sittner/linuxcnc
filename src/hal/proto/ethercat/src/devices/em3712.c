@@ -29,13 +29,13 @@
  * @brief Per-channel HAL data for one EM3712 input channel.
  */
 typedef struct {
-  hal_bit_t *overrange;       /**< OUT: measurement above sensor range */
-  hal_bit_t *underrange;      /**< OUT: measurement below sensor range */
-  hal_bit_t *error;           /**< OUT: channel error flag */
-  hal_s32_t *raw_val;         /**< OUT: raw 16-bit signed measurement */
-  hal_float_t *scale;         /**< IO: scale factor applied to normalised value */
-  hal_float_t *bias;          /**< IO: offset added after scaling */
-  hal_float_t *val;           /**< OUT: scaled and biased output value */
+  gomc_hal_bit_t *overrange;       /**< OUT: measurement above sensor range */
+  gomc_hal_bit_t *underrange;      /**< OUT: measurement below sensor range */
+  gomc_hal_bit_t *error;           /**< OUT: channel error flag */
+  gomc_hal_s32_t *raw_val;         /**< OUT: raw 16-bit signed measurement */
+  gomc_hal_float_t *scale;         /**< IO: scale factor applied to normalised value */
+  gomc_hal_float_t *bias;          /**< IO: offset added after scaling */
+  gomc_hal_float_t *val;           /**< OUT: scaled and biased output value */
   unsigned int ovr_pdo_os;    /**< PDO byte offset: overrange bit (0x6000/0x6010:02) */
   unsigned int ovr_pdo_bp;    /**< Bit position: overrange bit */
   unsigned int udr_pdo_os;    /**< PDO byte offset: underrange bit (0x6000/0x6010:01) */
@@ -53,14 +53,14 @@ typedef struct {
 } lcec_em3712_data_t;
 
 static const lcec_pindesc_t slave_pins[] = {
-  { HAL_BIT, HAL_OUT, offsetof(lcec_em3712_chan_t, overrange), "%s.%s.%s.temp-%d-overrange" },
-  { HAL_BIT, HAL_OUT, offsetof(lcec_em3712_chan_t, underrange), "%s.%s.%s.temp-%d-underrange" },
-  { HAL_BIT, HAL_OUT, offsetof(lcec_em3712_chan_t, error), "%s.%s.%s.temp-%d-error" },
-  { HAL_S32, HAL_OUT, offsetof(lcec_em3712_chan_t, raw_val), "%s.%s.%s.temp-%d-raw" },
-  { HAL_FLOAT, HAL_OUT, offsetof(lcec_em3712_chan_t, val), "%s.%s.%s.temp-%d-val" },
-  { HAL_FLOAT, HAL_IO, offsetof(lcec_em3712_chan_t, scale), "%s.%s.%s.temp-%d-scale" },
-  { HAL_FLOAT, HAL_IO, offsetof(lcec_em3712_chan_t, bias), "%s.%s.%s.temp-%d-bias" },
-  { HAL_TYPE_UNSPECIFIED, HAL_DIR_UNSPECIFIED, -1, NULL }
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_em3712_chan_t, overrange), "%s.%s.%s.temp-%d-overrange" },
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_em3712_chan_t, underrange), "%s.%s.%s.temp-%d-underrange" },
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_em3712_chan_t, error), "%s.%s.%s.temp-%d-error" },
+  { GOMC_HAL_S32, GOMC_HAL_OUT, offsetof(lcec_em3712_chan_t, raw_val), "%s.%s.%s.temp-%d-raw" },
+  { GOMC_HAL_FLOAT, GOMC_HAL_OUT, offsetof(lcec_em3712_chan_t, val), "%s.%s.%s.temp-%d-val" },
+  { GOMC_HAL_FLOAT, GOMC_HAL_IO, offsetof(lcec_em3712_chan_t, scale), "%s.%s.%s.temp-%d-scale" },
+  { GOMC_HAL_FLOAT, GOMC_HAL_IO, offsetof(lcec_em3712_chan_t, bias), "%s.%s.%s.temp-%d-bias" },
+  { GOMC_HAL_TYPE_UNSPECIFIED, GOMC_HAL_DIR_UNSPECIFIED, -1, NULL }
 };
 
 static ec_pdo_entry_info_t lcec_em3712_channels[][9] = {

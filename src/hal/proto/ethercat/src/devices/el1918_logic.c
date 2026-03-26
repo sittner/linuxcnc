@@ -29,8 +29,8 @@
  * @brief CRC PDO data for one FSoE data channel within a slave connection.
  */
 typedef struct {
-  hal_u32_t *fsoe_master_crc; /**< HAL output: FSoE master CRC for this data channel. */
-  hal_u32_t *fsoe_slave_crc;  /**< HAL output: FSoE slave CRC for this data channel. */
+  gomc_hal_u32_t *fsoe_master_crc; /**< HAL output: FSoE master CRC for this data channel. */
+  gomc_hal_u32_t *fsoe_slave_crc;  /**< HAL output: FSoE slave CRC for this data channel. */
   unsigned int fsoe_master_crc_os; /**< PDO offset: FSoE master CRC. */
   unsigned int fsoe_slave_crc_os;  /**< PDO offset: FSoE slave CRC. */
 } lcec_el1918_logic_fsoe_crc_t;
@@ -41,11 +41,11 @@ typedef struct {
 typedef struct {
   struct lcec_slave *fsoe_slave; /**< Pointer to the connected FSoE slave. */
 
-  hal_u32_t *fsoe_master_cmd;    /**< HAL output: FSoE master command word. */
-  hal_u32_t *fsoe_master_connid; /**< HAL output: FSoE master connection ID. */
+  gomc_hal_u32_t *fsoe_master_cmd;    /**< HAL output: FSoE master command word. */
+  gomc_hal_u32_t *fsoe_master_connid; /**< HAL output: FSoE master connection ID. */
 
-  hal_u32_t *fsoe_slave_cmd;    /**< HAL output: FSoE slave command word. */
-  hal_u32_t *fsoe_slave_connid; /**< HAL output: FSoE slave connection ID. */
+  gomc_hal_u32_t *fsoe_slave_cmd;    /**< HAL output: FSoE slave command word. */
+  gomc_hal_u32_t *fsoe_slave_connid; /**< HAL output: FSoE slave connection ID. */
 
   unsigned int fsoe_master_cmd_os;    /**< PDO offset: FSoE master command. */
   unsigned int fsoe_master_connid_os; /**< PDO offset: FSoE master connection ID. */
@@ -65,14 +65,14 @@ typedef struct {
 typedef struct {
   int fsoe_count; /**< Number of FSoE slaves connected to this EL1918. */
 
-  hal_u32_t *state;         /**< HAL output: EL1918 internal state register. */
-  hal_u32_t *cycle_counter; /**< HAL output: EL1918 cycle counter. */
+  gomc_hal_u32_t *state;         /**< HAL output: EL1918 internal state register. */
+  gomc_hal_u32_t *cycle_counter; /**< HAL output: EL1918 cycle counter. */
 
-  hal_bit_t *std_in_pins[LCEC_EL1918_LOGIC_DIO_MAX_COUNT]; /**< Standard input HAL pins (HAL_IN). */
+  gomc_hal_bit_t *std_in_pins[LCEC_EL1918_LOGIC_DIO_MAX_COUNT]; /**< Standard input HAL pins (GOMC_HAL_IN). */
   int std_in_count;    /**< Number of configured standard input pins. */
   unsigned int std_in_os; /**< PDO offset for the packed standard-input byte. */
 
-  hal_bit_t *std_out_pins[LCEC_EL1918_LOGIC_DIO_MAX_COUNT]; /**< Standard output HAL pins (HAL_OUT). */
+  gomc_hal_bit_t *std_out_pins[LCEC_EL1918_LOGIC_DIO_MAX_COUNT]; /**< Standard output HAL pins (GOMC_HAL_OUT). */
   int std_out_count;    /**< Number of configured standard output pins. */
   unsigned int std_out_os; /**< PDO offset for the packed standard-output byte. */
 
@@ -84,29 +84,29 @@ typedef struct {
 } lcec_el1918_logic_data_t;
 
 static const lcec_pindesc_t slave_pins[] = {
-  { HAL_U32, HAL_OUT, offsetof(lcec_el1918_logic_data_t, state), "%s.%s.%s.state" },
-  { HAL_U32, HAL_OUT, offsetof(lcec_el1918_logic_data_t, cycle_counter), "%s.%s.%s.cycle-counter" },
-  { HAL_TYPE_UNSPECIFIED, HAL_DIR_UNSPECIFIED, -1, NULL }
+  { GOMC_HAL_U32, GOMC_HAL_OUT, offsetof(lcec_el1918_logic_data_t, state), "%s.%s.%s.state" },
+  { GOMC_HAL_U32, GOMC_HAL_OUT, offsetof(lcec_el1918_logic_data_t, cycle_counter), "%s.%s.%s.cycle-counter" },
+  { GOMC_HAL_TYPE_UNSPECIFIED, GOMC_HAL_DIR_UNSPECIFIED, -1, NULL }
 };
 
 static const lcec_pindesc_t fsoe_pins[] = {
-  { HAL_U32, HAL_OUT, offsetof(lcec_el1918_logic_fsoe_t, fsoe_master_cmd), "%s.%s.%s.fsoe-%d-master-cmd" },
-  { HAL_U32, HAL_OUT, offsetof(lcec_el1918_logic_fsoe_t, fsoe_master_connid), "%s.%s.%s.fsoe-%d-master-connid" },
-  { HAL_U32, HAL_OUT, offsetof(lcec_el1918_logic_fsoe_t, fsoe_slave_cmd), "%s.%s.%s.fsoe-%d-slave-cmd" },
-  { HAL_U32, HAL_OUT, offsetof(lcec_el1918_logic_fsoe_t, fsoe_slave_connid), "%s.%s.%s.fsoe-%d-slave-connid" },
-  { HAL_TYPE_UNSPECIFIED, HAL_DIR_UNSPECIFIED, -1, NULL }
+  { GOMC_HAL_U32, GOMC_HAL_OUT, offsetof(lcec_el1918_logic_fsoe_t, fsoe_master_cmd), "%s.%s.%s.fsoe-%d-master-cmd" },
+  { GOMC_HAL_U32, GOMC_HAL_OUT, offsetof(lcec_el1918_logic_fsoe_t, fsoe_master_connid), "%s.%s.%s.fsoe-%d-master-connid" },
+  { GOMC_HAL_U32, GOMC_HAL_OUT, offsetof(lcec_el1918_logic_fsoe_t, fsoe_slave_cmd), "%s.%s.%s.fsoe-%d-slave-cmd" },
+  { GOMC_HAL_U32, GOMC_HAL_OUT, offsetof(lcec_el1918_logic_fsoe_t, fsoe_slave_connid), "%s.%s.%s.fsoe-%d-slave-connid" },
+  { GOMC_HAL_TYPE_UNSPECIFIED, GOMC_HAL_DIR_UNSPECIFIED, -1, NULL }
 };
 
 static const lcec_pindesc_t fsoe_crc_pins[] = {
-  { HAL_U32, HAL_OUT, offsetof(lcec_el1918_logic_fsoe_crc_t, fsoe_master_crc), "%s.%s.%s.fsoe-%d-master-crc" },
-  { HAL_U32, HAL_OUT, offsetof(lcec_el1918_logic_fsoe_crc_t, fsoe_slave_crc), "%s.%s.%s.fsoe-%d-slave-crc" },
-  { HAL_TYPE_UNSPECIFIED, HAL_DIR_UNSPECIFIED, -1, NULL }
+  { GOMC_HAL_U32, GOMC_HAL_OUT, offsetof(lcec_el1918_logic_fsoe_crc_t, fsoe_master_crc), "%s.%s.%s.fsoe-%d-master-crc" },
+  { GOMC_HAL_U32, GOMC_HAL_OUT, offsetof(lcec_el1918_logic_fsoe_crc_t, fsoe_slave_crc), "%s.%s.%s.fsoe-%d-slave-crc" },
+  { GOMC_HAL_TYPE_UNSPECIFIED, GOMC_HAL_DIR_UNSPECIFIED, -1, NULL }
 };
 
 void lcec_el1918_logic_read(struct lcec_slave *slave, long period);
 void lcec_el1918_logic_write(struct lcec_slave *slave, long period);
 
-static int export_std_pins(struct lcec_slave *slave, ec_pdo_entry_reg_t **pdo_entry_regs, int pid, hal_bit_t **pin, hal_pin_dir_t dir) {
+static int export_std_pins(struct lcec_slave *slave, ec_pdo_entry_reg_t **pdo_entry_regs, int pid, gomc_hal_bit_t **pin, int dir) {
   lcec_master_t *master = slave->master;
   lcec_slave_modparam_t *p;
   int count, err;
@@ -118,7 +118,7 @@ static int export_std_pins(struct lcec_slave *slave, ec_pdo_entry_reg_t **pdo_en
     }
 
     // export pin
-    if ((err = lcec_pin_newf(master->comp_id, HAL_BIT, dir, (void *) pin, "%s.%s.%s.%s", master->instance_name, master->name, slave->name, p->value.str)) != 0) {
+    if ((err = lcec_pin_newf(master->comp_id, GOMC_HAL_BIT, dir, (void *) pin, "%s.%s.%s.%s", master->instance_name, master->name, slave->name, p->value.str)) != 0) {
       return err;
     }
 
@@ -231,7 +231,7 @@ int lcec_el1918_logic_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_r
   }
 
   // map and export stdios
-  hal_data->std_in_count = export_std_pins(slave, pdo_entry_regs, LCEC_EL1918_LOGIC_PARAM_STDIN_NAME, hal_data->std_in_pins, HAL_IN);
+  hal_data->std_in_count = export_std_pins(slave, pdo_entry_regs, LCEC_EL1918_LOGIC_PARAM_STDIN_NAME, hal_data->std_in_pins, GOMC_HAL_IN);
   if (hal_data->std_in_count < 0) {
     return hal_data->std_in_count;
   }
@@ -239,7 +239,7 @@ int lcec_el1918_logic_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_r
     LCEC_PDO_INIT(pdo_entry_regs, slave->index, slave->vid, slave->pid, 0xf788, 0x00, &hal_data->std_in_os, NULL);
   }
 
-  hal_data->std_out_count = export_std_pins(slave, pdo_entry_regs, LCEC_EL1918_LOGIC_PARAM_STDOUT_NAME, hal_data->std_out_pins, HAL_OUT);
+  hal_data->std_out_count = export_std_pins(slave, pdo_entry_regs, LCEC_EL1918_LOGIC_PARAM_STDOUT_NAME, hal_data->std_out_pins, GOMC_HAL_OUT);
   if (hal_data->std_out_count < 0) {
     return hal_data->std_out_count;
   }

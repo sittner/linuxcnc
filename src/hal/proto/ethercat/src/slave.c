@@ -30,13 +30,13 @@
 
 /** @brief HAL pin descriptors exported for each slave's EtherCAT AL state. */
 static const lcec_pindesc_t slave_pins[] = {
-  { HAL_BIT, HAL_OUT, offsetof(lcec_slave_state_t, online), "%s.%s.%s.slave-online" },
-  { HAL_BIT, HAL_OUT, offsetof(lcec_slave_state_t, operational), "%s.%s.%s.slave-oper" },
-  { HAL_BIT, HAL_OUT, offsetof(lcec_slave_state_t, state_init), "%s.%s.%s.slave-state-init" },
-  { HAL_BIT, HAL_OUT, offsetof(lcec_slave_state_t, state_preop), "%s.%s.%s.slave-state-preop" },
-  { HAL_BIT, HAL_OUT, offsetof(lcec_slave_state_t, state_safeop), "%s.%s.%s.slave-state-safeop" },
-  { HAL_BIT, HAL_OUT, offsetof(lcec_slave_state_t, state_op), "%s.%s.%s.slave-state-op" },
-  { HAL_TYPE_UNSPECIFIED, HAL_DIR_UNSPECIFIED, -1, NULL }
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_slave_state_t, online), "%s.%s.%s.slave-online" },
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_slave_state_t, operational), "%s.%s.%s.slave-oper" },
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_slave_state_t, state_init), "%s.%s.%s.slave-state-init" },
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_slave_state_t, state_preop), "%s.%s.%s.slave-state-preop" },
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_slave_state_t, state_safeop), "%s.%s.%s.slave-state-safeop" },
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_slave_state_t, state_op), "%s.%s.%s.slave-state-op" },
+  { GOMC_HAL_TYPE_UNSPECIFIED, GOMC_HAL_DIR_UNSPECIFIED, -1, NULL }
 };
 
 /**

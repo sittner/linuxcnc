@@ -30,7 +30,7 @@
  * @brief A single standard safety digital I/O bit mapped from a PDO.
  */
 typedef struct {
-  hal_bit_t *pin;         /**< HAL bit pin pointer (input or output depending on direction) */
+  gomc_hal_bit_t *pin;         /**< HAL bit pin pointer (input or output depending on direction) */
 
   unsigned int os;        /**< PDO byte offset in the process data image */
   unsigned int bp;        /**< Bit position within the PDO byte */
@@ -44,8 +44,8 @@ typedef struct {
  * and the slave side. These are exposed read-only for diagnostic purposes.
  */
 typedef struct {
-  hal_u32_t *fsoe_master_crc;     /**< Master-side CRC value for this channel */
-  hal_u32_t *fsoe_slave_crc;      /**< Slave-side CRC value for this channel */
+  gomc_hal_u32_t *fsoe_master_crc;     /**< Master-side CRC value for this channel */
+  gomc_hal_u32_t *fsoe_slave_crc;      /**< Slave-side CRC value for this channel */
   unsigned int fsoe_master_crc_os; /**< PDO byte offset of the master CRC */
   unsigned int fsoe_slave_crc_os;  /**< PDO byte offset of the slave CRC */
 } lcec_el6900_fsoe_crc_t;
@@ -59,11 +59,11 @@ typedef struct {
 typedef struct {
   struct lcec_slave *fsoe_slave;         /**< Pointer to the associated FsoE EtherCAT slave */
 
-  hal_u32_t *fsoe_master_cmd;            /**< FsoE command byte written by master */
-  hal_u32_t *fsoe_master_connid;         /**< FsoE connection ID from master */
+  gomc_hal_u32_t *fsoe_master_cmd;            /**< FsoE command byte written by master */
+  gomc_hal_u32_t *fsoe_master_connid;         /**< FsoE connection ID from master */
 
-  hal_u32_t *fsoe_slave_cmd;             /**< FsoE command byte received from slave */
-  hal_u32_t *fsoe_slave_connid;          /**< FsoE connection ID from slave */
+  gomc_hal_u32_t *fsoe_slave_cmd;             /**< FsoE command byte received from slave */
+  gomc_hal_u32_t *fsoe_slave_connid;          /**< FsoE connection ID from slave */
 
   unsigned int fsoe_master_cmd_os;       /**< PDO byte offset: master command */
   unsigned int fsoe_master_connid_os;    /**< PDO byte offset: master connection ID */
@@ -83,11 +83,11 @@ typedef struct {
 typedef struct {
   int fsoe_count;                     /**< Number of configured FsoE slaves */
 
-  hal_u32_t *control;                 /**< Control word written to the EL6900 (0xF200:01) */
-  hal_u32_t *state;                   /**< State word read from the EL6900 (0xF100:01, bits 0-1) */
-  hal_bit_t *login_active;            /**< TRUE when at least one FsoE connection is active */
-  hal_bit_t *input_size_missmatch;    /**< TRUE when input PDO size mismatch detected */
-  hal_bit_t *output_size_missmatch;   /**< TRUE when output PDO size mismatch detected */
+  gomc_hal_u32_t *control;                 /**< Control word written to the EL6900 (0xF200:01) */
+  gomc_hal_u32_t *state;                   /**< State word read from the EL6900 (0xF100:01, bits 0-1) */
+  gomc_hal_bit_t *login_active;            /**< TRUE when at least one FsoE connection is active */
+  gomc_hal_bit_t *input_size_missmatch;    /**< TRUE when input PDO size mismatch detected */
+  gomc_hal_bit_t *output_size_missmatch;   /**< TRUE when output PDO size mismatch detected */
 
   int std_ins_count;                  /**< Number of configured standard safety inputs */
   lcec_el6900_fsoe_io_t std_ins[LCEC_EL6900_DIO_MAX_COUNT];  /**< Standard safety input bits */
@@ -109,26 +109,26 @@ typedef struct {
 } lcec_el6900_data_t;
 
 static const lcec_pindesc_t slave_pins[] = {
-  { HAL_U32, HAL_IN, offsetof(lcec_el6900_data_t, control), "%s.%s.%s.control" },
-  { HAL_U32, HAL_OUT, offsetof(lcec_el6900_data_t, state), "%s.%s.%s.state" },
-  { HAL_BIT, HAL_OUT, offsetof(lcec_el6900_data_t, login_active), "%s.%s.%s.login-active" },
-  { HAL_BIT, HAL_OUT, offsetof(lcec_el6900_data_t, input_size_missmatch), "%s.%s.%s.input-size-missmatch" },
-  { HAL_BIT, HAL_OUT, offsetof(lcec_el6900_data_t, output_size_missmatch), "%s.%s.%s.output-size-missmatch" },
-  { HAL_TYPE_UNSPECIFIED, HAL_DIR_UNSPECIFIED, -1, NULL }
+  { GOMC_HAL_U32, GOMC_HAL_IN, offsetof(lcec_el6900_data_t, control), "%s.%s.%s.control" },
+  { GOMC_HAL_U32, GOMC_HAL_OUT, offsetof(lcec_el6900_data_t, state), "%s.%s.%s.state" },
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_el6900_data_t, login_active), "%s.%s.%s.login-active" },
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_el6900_data_t, input_size_missmatch), "%s.%s.%s.input-size-missmatch" },
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_el6900_data_t, output_size_missmatch), "%s.%s.%s.output-size-missmatch" },
+  { GOMC_HAL_TYPE_UNSPECIFIED, GOMC_HAL_DIR_UNSPECIFIED, -1, NULL }
 };
 
 static const lcec_pindesc_t fsoe_pins[] = {
-  { HAL_U32, HAL_OUT, offsetof(lcec_el6900_fsoe_t, fsoe_master_cmd), "%s.%s.%s.fsoe-%d-master-cmd" },
-  { HAL_U32, HAL_OUT, offsetof(lcec_el6900_fsoe_t, fsoe_master_connid), "%s.%s.%s.fsoe-%d-master-connid" },
-  { HAL_U32, HAL_OUT, offsetof(lcec_el6900_fsoe_t, fsoe_slave_cmd), "%s.%s.%s.fsoe-%d-slave-cmd" },
-  { HAL_U32, HAL_OUT, offsetof(lcec_el6900_fsoe_t, fsoe_slave_connid), "%s.%s.%s.fsoe-%d-slave-connid" },
-  { HAL_TYPE_UNSPECIFIED, HAL_DIR_UNSPECIFIED, -1, NULL }
+  { GOMC_HAL_U32, GOMC_HAL_OUT, offsetof(lcec_el6900_fsoe_t, fsoe_master_cmd), "%s.%s.%s.fsoe-%d-master-cmd" },
+  { GOMC_HAL_U32, GOMC_HAL_OUT, offsetof(lcec_el6900_fsoe_t, fsoe_master_connid), "%s.%s.%s.fsoe-%d-master-connid" },
+  { GOMC_HAL_U32, GOMC_HAL_OUT, offsetof(lcec_el6900_fsoe_t, fsoe_slave_cmd), "%s.%s.%s.fsoe-%d-slave-cmd" },
+  { GOMC_HAL_U32, GOMC_HAL_OUT, offsetof(lcec_el6900_fsoe_t, fsoe_slave_connid), "%s.%s.%s.fsoe-%d-slave-connid" },
+  { GOMC_HAL_TYPE_UNSPECIFIED, GOMC_HAL_DIR_UNSPECIFIED, -1, NULL }
 };
 
 static const lcec_pindesc_t fsoe_crc_pins[] = {
-  { HAL_U32, HAL_OUT, offsetof(lcec_el6900_fsoe_crc_t, fsoe_master_crc), "%s.%s.%s.fsoe-%d-master-crc%d" },
-  { HAL_U32, HAL_OUT, offsetof(lcec_el6900_fsoe_crc_t, fsoe_slave_crc), "%s.%s.%s.fsoe-%d-slave-crc%d" },
-  { HAL_TYPE_UNSPECIFIED, HAL_DIR_UNSPECIFIED, -1, NULL }
+  { GOMC_HAL_U32, GOMC_HAL_OUT, offsetof(lcec_el6900_fsoe_crc_t, fsoe_master_crc), "%s.%s.%s.fsoe-%d-master-crc%d" },
+  { GOMC_HAL_U32, GOMC_HAL_OUT, offsetof(lcec_el6900_fsoe_crc_t, fsoe_slave_crc), "%s.%s.%s.fsoe-%d-slave-crc%d" },
+  { GOMC_HAL_TYPE_UNSPECIFIED, GOMC_HAL_DIR_UNSPECIFIED, -1, NULL }
 };
 
 void lcec_el6900_read(struct lcec_slave *slave, long period);
@@ -145,10 +145,10 @@ void lcec_el6900_write(struct lcec_slave *slave, long period);
  * @param pid             Parameter ID to match (LCEC_EL6900_PARAM_STDIN_NAME or _STDOUT_NAME).
  * @param io              Array of I/O descriptors to fill.
  * @param index           PDO object index base (e.g. 0xF201 for inputs).
- * @param dir             HAL pin direction (HAL_IN or HAL_OUT).
+ * @param dir             HAL pin direction (GOMC_HAL_IN or GOMC_HAL_OUT).
  * @return Number of pins registered on success, negative errno on failure.
  */
-static int init_std_pdos(struct lcec_slave *slave, ec_pdo_entry_reg_t **pdo_entry_regs, int pid, lcec_el6900_fsoe_io_t *io, int index, hal_pin_dir_t dir) {
+static int init_std_pdos(struct lcec_slave *slave, ec_pdo_entry_reg_t **pdo_entry_regs, int pid, lcec_el6900_fsoe_io_t *io, int index, int dir) {
   lcec_master_t *master = slave->master;
   lcec_slave_modparam_t *p;
   int count, err;
@@ -163,7 +163,7 @@ static int init_std_pdos(struct lcec_slave *slave, ec_pdo_entry_reg_t **pdo_entr
     LCEC_PDO_INIT(pdo_entry_regs, slave->index, slave->vid, slave->pid, index, 0x01 + count, &io->os, &io->bp);
 
     // export pin
-    if ((err = lcec_pin_newf(master->comp_id, HAL_BIT, dir, (void *) &io->pin, "%s.%s.%s.%s", master->instance_name, master->name, slave->name, p->value.str)) != 0) {
+    if ((err = lcec_pin_newf(master->comp_id, GOMC_HAL_BIT, dir, (void *) &io->pin, "%s.%s.%s.%s", master->instance_name, master->name, slave->name, p->value.str)) != 0) {
       return err;
     }
 
@@ -274,12 +274,12 @@ int lcec_el6900_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
   }
 
   // map and export stdios
-  hal_data->std_ins_count = init_std_pdos(slave, pdo_entry_regs, LCEC_EL6900_PARAM_STDIN_NAME, hal_data->std_ins, 0xf201, HAL_IN);
+  hal_data->std_ins_count = init_std_pdos(slave, pdo_entry_regs, LCEC_EL6900_PARAM_STDIN_NAME, hal_data->std_ins, 0xf201, GOMC_HAL_IN);
   if (hal_data->std_ins_count < 0) {
     return hal_data->std_ins_count;
   }
   pdo_entry_regs += hal_data->std_ins_count;
-  hal_data->std_outs_count = init_std_pdos(slave, pdo_entry_regs, LCEC_EL6900_PARAM_STDOUT_NAME, hal_data->std_outs, 0xf101, HAL_OUT);
+  hal_data->std_outs_count = init_std_pdos(slave, pdo_entry_regs, LCEC_EL6900_PARAM_STDOUT_NAME, hal_data->std_outs, 0xf101, GOMC_HAL_OUT);
   if (hal_data->std_outs_count < 0) {
     return hal_data->std_outs_count;
   }

@@ -67,7 +67,7 @@ int lcec_ax5200_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
   int i;
   lcec_class_ax5_chan_t *chan;
   int err;
-  char pfx[HAL_NAME_LEN];
+  char pfx[GOMC_HAL_NAME_LEN];
 
   // initialize callbacks
   slave->proc_read = lcec_ax5200_read;
@@ -86,7 +86,7 @@ int lcec_ax5200_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
     chan = &hal_data->chans[i];
 
     // init subclasses
-    rtapi_snprintf(pfx, HAL_NAME_LEN, "ch%d.", i);
+    snprintf(pfx, GOMC_HAL_NAME_LEN, "ch%d.", i);
     if ((err = lcec_class_ax5_init(slave, pdo_entry_regs, chan, i, pfx)) != 0) {
       return err;
     }

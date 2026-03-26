@@ -41,7 +41,7 @@
  */
 static void lcec_ec_log_callback(int level, const char *fmt, va_list ap) {
   char buf[256];
-  rtapi_vsnprintf(buf, sizeof(buf), fmt, ap);
+  vsnprintf(buf, sizeof(buf), fmt, ap);
   rtapi_print(LCEC_MSG_PFX "%s", buf);
 }
 #endif
@@ -70,7 +70,7 @@ int lcec_rt_init(lcec_rt_context_t *ctx, LCEC_CONF_OUTBUF_T *buf) {
   int slave_count;
   lcec_master_t *master;
   lcec_slave_t *slave;
-  char name[HAL_NAME_LEN + 1];
+  char name[GOMC_HAL_NAME_LEN + 1];
   ec_pdo_entry_reg_t *pdo_entry_regs;
   lcec_slave_sdoconf_t *sdo_config;
   lcec_slave_idnconf_t *idn_config;
@@ -207,19 +207,19 @@ int lcec_rt_init(lcec_rt_context_t *ctx, LCEC_CONF_OUTBUF_T *buf) {
     }
 
     // init hal data
-    rtapi_snprintf(name, HAL_NAME_LEN, "%s.%s", ctx->instance_name, master->name);
+    snprintf(name, GOMC_HAL_NAME_LEN, "%s.%s", ctx->instance_name, master->name);
     if ((master->hal_data = lcec_init_master_hal(ctx->comp_id, name, 0)) == NULL) {
       goto fail1;
     }
 
     // export read function
-    rtapi_snprintf(name, HAL_NAME_LEN, "%s.%s.read", ctx->instance_name, master->name);
+    snprintf(name, GOMC_HAL_NAME_LEN, "%s.%s.read", ctx->instance_name, master->name);
     if (hal_export_funct(name, lcec_read_master, master, 0, 0, ctx->comp_id) != 0) {
       rtapi_print_msg (RTAPI_MSG_ERR, LCEC_MSG_PFX "master %s read funct export failed\n", master->name);
       goto fail1;
     }
     // export write function
-    rtapi_snprintf(name, HAL_NAME_LEN, "%s.%s.write", ctx->instance_name, master->name);
+    snprintf(name, GOMC_HAL_NAME_LEN, "%s.%s.write", ctx->instance_name, master->name);
     if (hal_export_funct(name, lcec_write_master, master, 0, 0, ctx->comp_id) != 0) {
       rtapi_print_msg (RTAPI_MSG_ERR, LCEC_MSG_PFX "master %s write funct export failed\n", master->name);
       goto fail1;
@@ -227,13 +227,13 @@ int lcec_rt_init(lcec_rt_context_t *ctx, LCEC_CONF_OUTBUF_T *buf) {
   }
 
   // export read-all function
-  rtapi_snprintf(name, HAL_NAME_LEN, "%s.read-all", ctx->instance_name);
+  snprintf(name, GOMC_HAL_NAME_LEN, "%s.read-all", ctx->instance_name);
   if (hal_export_funct(name, lcec_read_all, ctx, 0, 0, ctx->comp_id) != 0) {
     rtapi_print_msg (RTAPI_MSG_ERR, LCEC_MSG_PFX "read-all funct export failed\n");
     goto fail1;
   }
   // export write-all function
-  rtapi_snprintf(name, HAL_NAME_LEN, "%s.write-all", ctx->instance_name);
+  snprintf(name, GOMC_HAL_NAME_LEN, "%s.write-all", ctx->instance_name);
   if (hal_export_funct(name, lcec_write_all, ctx, 0, 0, ctx->comp_id) != 0) {
     rtapi_print_msg (RTAPI_MSG_ERR, LCEC_MSG_PFX "write-all funct export failed\n");
     goto fail1;
@@ -279,12 +279,12 @@ int lcec_rt_start(lcec_rt_context_t *ctx)  {
     if (master->ref_clock_sync_cycles >= 0) {
       lcec_dc_init_r2m(master);
     } else {
-#ifdef RTAPI_TASK_PLL_SUPPORT
+#ifdef GOMC_RTAPI_TASK_PLL_SUPPORT
       lcec_dc_init_m2r(master);
 #else
       rtapi_print_msg(RTAPI_MSG_ERR,
           LCEC_MSG_PFX "master %s: M2R DC sync mode not available"
-          " (RTAPI_TASK_PLL_SUPPORT missing).\n", master->name);
+          " (GOMC_RTAPI_TASK_PLL_SUPPORT missing).\n", master->name);
       return -EINVAL;
 #endif
     }

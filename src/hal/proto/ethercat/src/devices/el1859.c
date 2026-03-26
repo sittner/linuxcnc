@@ -26,10 +26,10 @@
  * @brief Per-channel HAL data for one EL1859 input/output pair.
  */
 typedef struct {
-  hal_bit_t *in;       /**< HAL output pin: digital input state. */
-  hal_bit_t *in_not;   /**< HAL output pin: inverted digital input state. */
-  hal_bit_t *out;      /**< HAL input pin: digital output command. */
-  hal_bit_t invert;    /**< HAL parameter: invert output polarity when non-zero. */
+  gomc_hal_bit_t *in;       /**< HAL output pin: digital input state. */
+  gomc_hal_bit_t *in_not;   /**< HAL output pin: inverted digital input state. */
+  gomc_hal_bit_t *out;      /**< HAL input pin: digital output command. */
+  gomc_hal_bit_t invert;    /**< HAL parameter: invert output polarity when non-zero. */
   unsigned int pdo_in_os;  /**< Byte offset of the input PDO entry in the process data image. */
   unsigned int pdo_in_bp;  /**< Bit position within pdo_in_os. */
   unsigned int pdo_out_os; /**< Byte offset of the output PDO entry in the process data image. */
@@ -38,15 +38,15 @@ typedef struct {
 } lcec_el1859_pin_t;
 
 static const lcec_pindesc_t slave_pins[] = {
-  { HAL_BIT, HAL_OUT, offsetof(lcec_el1859_pin_t, in), "%s.%s.%s.din-%d" },
-  { HAL_BIT, HAL_OUT, offsetof(lcec_el1859_pin_t, in_not), "%s.%s.%s.din-%d-not" },
-  { HAL_BIT, HAL_IN, offsetof(lcec_el1859_pin_t, out), "%s.%s.%s.dout-%d" },
-  { HAL_TYPE_UNSPECIFIED, HAL_DIR_UNSPECIFIED, -1, NULL }
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_el1859_pin_t, in), "%s.%s.%s.din-%d" },
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_el1859_pin_t, in_not), "%s.%s.%s.din-%d-not" },
+  { GOMC_HAL_BIT, GOMC_HAL_IN, offsetof(lcec_el1859_pin_t, out), "%s.%s.%s.dout-%d" },
+  { GOMC_HAL_TYPE_UNSPECIFIED, GOMC_HAL_DIR_UNSPECIFIED, -1, NULL }
 };
 
 static const lcec_pindesc_t slave_params[] = {
-  { HAL_BIT, HAL_RW, offsetof(lcec_el1859_pin_t, invert), "%s.%s.%s.dout-%d-invert" },
-  { HAL_TYPE_UNSPECIFIED, HAL_DIR_UNSPECIFIED, -1, NULL }
+  { GOMC_HAL_BIT, GOMC_HAL_RW, offsetof(lcec_el1859_pin_t, invert), "%s.%s.%s.dout-%d-invert" },
+  { GOMC_HAL_TYPE_UNSPECIFIED, GOMC_HAL_DIR_UNSPECIFIED, -1, NULL }
 };
 
 /**

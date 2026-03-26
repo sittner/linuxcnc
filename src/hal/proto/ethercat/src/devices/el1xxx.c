@@ -32,16 +32,16 @@
  * @brief Per-channel HAL data for an EL1xxx digital input terminal.
  */
 typedef struct {
-  hal_bit_t *in;      /**< HAL output pin: current digital input state. */
-  hal_bit_t *in_not;  /**< HAL output pin: inverted digital input state. */
+  gomc_hal_bit_t *in;      /**< HAL output pin: current digital input state. */
+  gomc_hal_bit_t *in_not;  /**< HAL output pin: inverted digital input state. */
   unsigned int pdo_os; /**< Byte offset of this channel's PDO entry in the process data image. */
   unsigned int pdo_bp; /**< Bit position within the byte at pdo_os. */
 } lcec_el1xxx_pin_t;
 
 static const lcec_pindesc_t slave_pins[] = {
-  { HAL_BIT, HAL_OUT, offsetof(lcec_el1xxx_pin_t, in), "%s.%s.%s.din-%d" },
-  { HAL_BIT, HAL_OUT, offsetof(lcec_el1xxx_pin_t, in_not), "%s.%s.%s.din-%d-not" },
-  { HAL_TYPE_UNSPECIFIED, HAL_DIR_UNSPECIFIED, -1, NULL }
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_el1xxx_pin_t, in), "%s.%s.%s.din-%d" },
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_el1xxx_pin_t, in_not), "%s.%s.%s.din-%d-not" },
+  { GOMC_HAL_TYPE_UNSPECIFIED, GOMC_HAL_DIR_UNSPECIFIED, -1, NULL }
 };
 
 /**

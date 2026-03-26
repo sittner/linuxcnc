@@ -31,18 +31,18 @@
  * @brief Per-channel HAL pins and PDO mapping data for one EL5002 SSI channel.
  */
 typedef struct {
-  hal_bit_t *reset;       /**< HAL IN: reset the relative position counter to zero. */
-  hal_bit_t *abs_mode;    /**< HAL IN: when high, pos outputs the raw absolute count; otherwise outputs relative count. */
-  hal_bit_t *err_data;    /**< HAL OUT: data error flag from the SSI frame (PDO 0x6000/0x01). */
-  hal_bit_t *err_frame;   /**< HAL OUT: frame error flag from the SSI frame (PDO 0x6000/0x02). */
-  hal_bit_t *err_power;   /**< HAL OUT: power-fail flag from the SSI frame (PDO 0x6000/0x03). */
-  hal_bit_t *err_sync;    /**< HAL OUT: sync error flag (PDO 0x6000/0x0e). */
-  hal_bit_t *tx_state;    /**< HAL OUT: TxPDO state bit indicating PDO validity (PDO 0x6000/0x0f). */
-  hal_bit_t *tx_toggle;   /**< HAL OUT: TxPDO toggle bit; alternates each new PDO (PDO 0x6000/0x10). */
-  hal_s32_t *raw_count;   /**< HAL OUT: raw 32-bit position value directly from the SSI frame. */
-  hal_s32_t *count;       /**< HAL OUT: relative position count (zeroed on reset or initialisation). */
-  hal_float_t *pos;       /**< HAL OUT: scaled position in user units (count * scale or raw_count * scale). */
-  hal_float_t *pos_scale; /**< HAL IO: counts per user unit; reciprocal applied internally. */
+  gomc_hal_bit_t *reset;       /**< HAL IN: reset the relative position counter to zero. */
+  gomc_hal_bit_t *abs_mode;    /**< HAL IN: when high, pos outputs the raw absolute count; otherwise outputs relative count. */
+  gomc_hal_bit_t *err_data;    /**< HAL OUT: data error flag from the SSI frame (PDO 0x6000/0x01). */
+  gomc_hal_bit_t *err_frame;   /**< HAL OUT: frame error flag from the SSI frame (PDO 0x6000/0x02). */
+  gomc_hal_bit_t *err_power;   /**< HAL OUT: power-fail flag from the SSI frame (PDO 0x6000/0x03). */
+  gomc_hal_bit_t *err_sync;    /**< HAL OUT: sync error flag (PDO 0x6000/0x0e). */
+  gomc_hal_bit_t *tx_state;    /**< HAL OUT: TxPDO state bit indicating PDO validity (PDO 0x6000/0x0f). */
+  gomc_hal_bit_t *tx_toggle;   /**< HAL OUT: TxPDO toggle bit; alternates each new PDO (PDO 0x6000/0x10). */
+  gomc_hal_s32_t *raw_count;   /**< HAL OUT: raw 32-bit position value directly from the SSI frame. */
+  gomc_hal_s32_t *count;       /**< HAL OUT: relative position count (zeroed on reset or initialisation). */
+  gomc_hal_float_t *pos;       /**< HAL OUT: scaled position in user units (count * scale or raw_count * scale). */
+  gomc_hal_float_t *pos_scale; /**< HAL IO: counts per user unit; reciprocal applied internally. */
 
   unsigned int err_data_os;   /**< Byte offset of err_data bit in process data image. */
   unsigned int err_data_bp;   /**< Bit position of err_data within the byte. */
@@ -73,19 +73,19 @@ typedef struct {
 } lcec_el5002_data_t;
 
 static const lcec_pindesc_t slave_pins[] = {
-  { HAL_BIT, HAL_IN, offsetof(lcec_el5002_chan_t, reset), "%s.%s.%s.enc-%d-reset" },
-  { HAL_BIT, HAL_IN, offsetof(lcec_el5002_chan_t, abs_mode), "%s.%s.%s.enc-%d-abs-mode" },
-  { HAL_BIT, HAL_OUT, offsetof(lcec_el5002_chan_t, err_data), "%s.%s.%s.enc-%d-err-data" },
-  { HAL_BIT, HAL_OUT, offsetof(lcec_el5002_chan_t, err_frame), "%s.%s.%s.enc-%d-err-frame" },
-  { HAL_BIT, HAL_OUT, offsetof(lcec_el5002_chan_t, err_power), "%s.%s.%s.enc-%d-err-power" },
-  { HAL_BIT, HAL_OUT, offsetof(lcec_el5002_chan_t, err_sync), "%s.%s.%s.enc-%d-err-sync" },
-  { HAL_BIT, HAL_OUT, offsetof(lcec_el5002_chan_t, tx_state), "%s.%s.%s.enc-%d-tx-state" },
-  { HAL_BIT, HAL_OUT, offsetof(lcec_el5002_chan_t, tx_toggle), "%s.%s.%s.enc-%d-tx-toggle" },
-  { HAL_S32, HAL_OUT, offsetof(lcec_el5002_chan_t, raw_count), "%s.%s.%s.enc-%d-raw-count" },
-  { HAL_S32, HAL_OUT, offsetof(lcec_el5002_chan_t, count), "%s.%s.%s.enc-%d-count" },
-  { HAL_FLOAT, HAL_OUT, offsetof(lcec_el5002_chan_t, pos), "%s.%s.%s.enc-%d-pos" },
-  { HAL_FLOAT, HAL_IO, offsetof(lcec_el5002_chan_t, pos_scale), "%s.%s.%s.enc-%d-pos-scale" },
-  { HAL_TYPE_UNSPECIFIED, HAL_DIR_UNSPECIFIED, -1, NULL }
+  { GOMC_HAL_BIT, GOMC_HAL_IN, offsetof(lcec_el5002_chan_t, reset), "%s.%s.%s.enc-%d-reset" },
+  { GOMC_HAL_BIT, GOMC_HAL_IN, offsetof(lcec_el5002_chan_t, abs_mode), "%s.%s.%s.enc-%d-abs-mode" },
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_el5002_chan_t, err_data), "%s.%s.%s.enc-%d-err-data" },
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_el5002_chan_t, err_frame), "%s.%s.%s.enc-%d-err-frame" },
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_el5002_chan_t, err_power), "%s.%s.%s.enc-%d-err-power" },
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_el5002_chan_t, err_sync), "%s.%s.%s.enc-%d-err-sync" },
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_el5002_chan_t, tx_state), "%s.%s.%s.enc-%d-tx-state" },
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_el5002_chan_t, tx_toggle), "%s.%s.%s.enc-%d-tx-toggle" },
+  { GOMC_HAL_S32, GOMC_HAL_OUT, offsetof(lcec_el5002_chan_t, raw_count), "%s.%s.%s.enc-%d-raw-count" },
+  { GOMC_HAL_S32, GOMC_HAL_OUT, offsetof(lcec_el5002_chan_t, count), "%s.%s.%s.enc-%d-count" },
+  { GOMC_HAL_FLOAT, GOMC_HAL_OUT, offsetof(lcec_el5002_chan_t, pos), "%s.%s.%s.enc-%d-pos" },
+  { GOMC_HAL_FLOAT, GOMC_HAL_IO, offsetof(lcec_el5002_chan_t, pos_scale), "%s.%s.%s.enc-%d-pos-scale" },
+  { GOMC_HAL_TYPE_UNSPECIFIED, GOMC_HAL_DIR_UNSPECIFIED, -1, NULL }
 };
 
 static ec_pdo_entry_info_t lcec_el5002_channel1_in[] = {

@@ -30,8 +30,8 @@
  * @brief Per-channel HAL data for one EL1904 safe digital input.
  */
 typedef struct {
-  hal_bit_t *fsoe_in;     /**< HAL output pin: FSoE safe digital input state. */
-  hal_bit_t *fsoe_in_not; /**< HAL output pin: Inverted FSoE safe digital input state. */
+  gomc_hal_bit_t *fsoe_in;     /**< HAL output pin: FSoE safe digital input state. */
+  gomc_hal_bit_t *fsoe_in_not; /**< HAL output pin: Inverted FSoE safe digital input state. */
 
   unsigned int fsoe_in_os; /**< Byte offset of the safe input bit in the process data image. */
   unsigned int fsoe_in_bp; /**< Bit position within fsoe_in_os. */
@@ -41,13 +41,13 @@ typedef struct {
  * @brief Complete HAL data structure for the EL1904.
  */
 typedef struct {
-  hal_u32_t *fsoe_master_cmd;    /**< HAL output: FSoE master command word. */
-  hal_u32_t *fsoe_master_crc;    /**< HAL output: FSoE master CRC. */
-  hal_u32_t *fsoe_master_connid; /**< HAL output: FSoE master connection ID. */
+  gomc_hal_u32_t *fsoe_master_cmd;    /**< HAL output: FSoE master command word. */
+  gomc_hal_u32_t *fsoe_master_crc;    /**< HAL output: FSoE master CRC. */
+  gomc_hal_u32_t *fsoe_master_connid; /**< HAL output: FSoE master connection ID. */
 
-  hal_u32_t *fsoe_slave_cmd;    /**< HAL output: FSoE slave command word. */
-  hal_u32_t *fsoe_slave_crc;    /**< HAL output: FSoE slave CRC. */
-  hal_u32_t *fsoe_slave_connid; /**< HAL output: FSoE slave connection ID. */
+  gomc_hal_u32_t *fsoe_slave_cmd;    /**< HAL output: FSoE slave command word. */
+  gomc_hal_u32_t *fsoe_slave_crc;    /**< HAL output: FSoE slave CRC. */
+  gomc_hal_u32_t *fsoe_slave_connid; /**< HAL output: FSoE slave connection ID. */
 
   lcec_el1904_data_in_t inputs[LCEC_EL1904_INPUT_COUNT]; /**< Per-channel safe input data. */
 
@@ -62,19 +62,19 @@ typedef struct {
 } lcec_el1904_data_t;
 
 static const lcec_pindesc_t slave_pins[] = {
-  { HAL_U32, HAL_OUT, offsetof(lcec_el1904_data_t, fsoe_master_cmd), "%s.%s.%s.fsoe-master-cmd" },
-  { HAL_U32, HAL_OUT, offsetof(lcec_el1904_data_t, fsoe_master_crc), "%s.%s.%s.fsoe-master-crc" },
-  { HAL_U32, HAL_OUT, offsetof(lcec_el1904_data_t, fsoe_master_connid), "%s.%s.%s.fsoe-master-connid" },
-  { HAL_U32, HAL_OUT, offsetof(lcec_el1904_data_t, fsoe_slave_cmd), "%s.%s.%s.fsoe-slave-cmd" },
-  { HAL_U32, HAL_OUT, offsetof(lcec_el1904_data_t, fsoe_slave_crc), "%s.%s.%s.fsoe-slave-crc" },
-  { HAL_U32, HAL_OUT, offsetof(lcec_el1904_data_t, fsoe_slave_connid), "%s.%s.%s.fsoe-slave-connid" },
-  { HAL_TYPE_UNSPECIFIED, HAL_DIR_UNSPECIFIED, -1, NULL }
+  { GOMC_HAL_U32, GOMC_HAL_OUT, offsetof(lcec_el1904_data_t, fsoe_master_cmd), "%s.%s.%s.fsoe-master-cmd" },
+  { GOMC_HAL_U32, GOMC_HAL_OUT, offsetof(lcec_el1904_data_t, fsoe_master_crc), "%s.%s.%s.fsoe-master-crc" },
+  { GOMC_HAL_U32, GOMC_HAL_OUT, offsetof(lcec_el1904_data_t, fsoe_master_connid), "%s.%s.%s.fsoe-master-connid" },
+  { GOMC_HAL_U32, GOMC_HAL_OUT, offsetof(lcec_el1904_data_t, fsoe_slave_cmd), "%s.%s.%s.fsoe-slave-cmd" },
+  { GOMC_HAL_U32, GOMC_HAL_OUT, offsetof(lcec_el1904_data_t, fsoe_slave_crc), "%s.%s.%s.fsoe-slave-crc" },
+  { GOMC_HAL_U32, GOMC_HAL_OUT, offsetof(lcec_el1904_data_t, fsoe_slave_connid), "%s.%s.%s.fsoe-slave-connid" },
+  { GOMC_HAL_TYPE_UNSPECIFIED, GOMC_HAL_DIR_UNSPECIFIED, -1, NULL }
 };
 
 static const lcec_pindesc_t slave_in_pins[] = {
-  { HAL_BIT, HAL_OUT, offsetof(lcec_el1904_data_in_t, fsoe_in), "%s.%s.%s.fsoe-in-%d" },
-  { HAL_BIT, HAL_OUT, offsetof(lcec_el1904_data_in_t, fsoe_in_not), "%s.%s.%s.fsoe-in-%d-not" },
-  { HAL_TYPE_UNSPECIFIED, HAL_DIR_UNSPECIFIED, -1, NULL }
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_el1904_data_in_t, fsoe_in), "%s.%s.%s.fsoe-in-%d" },
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_el1904_data_in_t, fsoe_in_not), "%s.%s.%s.fsoe-in-%d-not" },
+  { GOMC_HAL_TYPE_UNSPECIFIED, GOMC_HAL_DIR_UNSPECIFIED, -1, NULL }
 };
 
 static const LCEC_CONF_FSOE_T fsoe_conf = {

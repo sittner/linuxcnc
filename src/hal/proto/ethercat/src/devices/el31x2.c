@@ -36,26 +36,26 @@
  * @brief Per-channel HAL pins and PDO offsets for one EL31x2 input channel.
  */
 typedef struct {
-  hal_bit_t *error;          /**< HAL bit output: channel error flag (status byte bit 6). */
-  hal_bit_t *overrange;      /**< HAL bit output: signal exceeds measurable range (status byte bit 1). */
-  hal_bit_t *underrange;     /**< HAL bit output: signal is below measurable range (status byte bit 0). */
-  hal_s32_t *raw_val;        /**< HAL s32 output: raw 16-bit signed ADC value from the terminal. */
-  hal_float_t *scale;        /**< HAL float I/O: multiplier applied to the normalised ADC value (default 1.0). */
-  hal_float_t *bias;         /**< HAL float I/O: offset added after scaling (default 0.0). */
-  hal_float_t *val;          /**< HAL float output: final value = bias + scale * raw / 0x7fff. */
+  gomc_hal_bit_t *error;          /**< HAL bit output: channel error flag (status byte bit 6). */
+  gomc_hal_bit_t *overrange;      /**< HAL bit output: signal exceeds measurable range (status byte bit 1). */
+  gomc_hal_bit_t *underrange;     /**< HAL bit output: signal is below measurable range (status byte bit 0). */
+  gomc_hal_s32_t *raw_val;        /**< HAL s32 output: raw 16-bit signed ADC value from the terminal. */
+  gomc_hal_float_t *scale;        /**< HAL float I/O: multiplier applied to the normalised ADC value (default 1.0). */
+  gomc_hal_float_t *bias;         /**< HAL float I/O: offset added after scaling (default 0.0). */
+  gomc_hal_float_t *val;          /**< HAL float output: final value = bias + scale * raw / 0x7fff. */
   unsigned int state_pdo_os; /**< Byte offset of the channel status byte in the EtherCAT process data image. */
   unsigned int val_pdo_os;   /**< Byte offset of the 16-bit channel value in the EtherCAT process data image. */
 } lcec_el31x2_chan_t;
 
 static const lcec_pindesc_t slave_pins[] = {
-  { HAL_BIT, HAL_OUT, offsetof(lcec_el31x2_chan_t ,error), "%s.%s.%s.ain-%d-error" },
-  { HAL_BIT, HAL_OUT, offsetof(lcec_el31x2_chan_t ,overrange), "%s.%s.%s.ain-%d-overrange" },
-  { HAL_BIT, HAL_OUT, offsetof(lcec_el31x2_chan_t ,underrange), "%s.%s.%s.ain-%d-underrange" },
-  { HAL_S32, HAL_OUT, offsetof(lcec_el31x2_chan_t ,raw_val), "%s.%s.%s.ain-%d-raw" },
-  { HAL_FLOAT, HAL_OUT, offsetof(lcec_el31x2_chan_t ,val), "%s.%s.%s.ain-%d-val" },
-  { HAL_FLOAT, HAL_IO, offsetof(lcec_el31x2_chan_t ,scale), "%s.%s.%s.ain-%d-scale" },
-  { HAL_FLOAT, HAL_IO, offsetof(lcec_el31x2_chan_t ,bias), "%s.%s.%s.ain-%d-bias" },
-  { HAL_TYPE_UNSPECIFIED, HAL_DIR_UNSPECIFIED, -1, NULL }
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_el31x2_chan_t ,error), "%s.%s.%s.ain-%d-error" },
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_el31x2_chan_t ,overrange), "%s.%s.%s.ain-%d-overrange" },
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_el31x2_chan_t ,underrange), "%s.%s.%s.ain-%d-underrange" },
+  { GOMC_HAL_S32, GOMC_HAL_OUT, offsetof(lcec_el31x2_chan_t ,raw_val), "%s.%s.%s.ain-%d-raw" },
+  { GOMC_HAL_FLOAT, GOMC_HAL_OUT, offsetof(lcec_el31x2_chan_t ,val), "%s.%s.%s.ain-%d-val" },
+  { GOMC_HAL_FLOAT, GOMC_HAL_IO, offsetof(lcec_el31x2_chan_t ,scale), "%s.%s.%s.ain-%d-scale" },
+  { GOMC_HAL_FLOAT, GOMC_HAL_IO, offsetof(lcec_el31x2_chan_t ,bias), "%s.%s.%s.ain-%d-bias" },
+  { GOMC_HAL_TYPE_UNSPECIFIED, GOMC_HAL_DIR_UNSPECIFIED, -1, NULL }
 };
 
 /**

@@ -13,8 +13,8 @@
  * in dynamically allocated memory.  At realtime init (@c lcec_generic_init)
  * HAL pins are created for every mapped entry that carries a pin name.
  *
- * Supported HAL pin types: @c HAL_BIT (single bit or bit-array up to
- * @c LCEC_CONF_GENERIC_MAX_SUBPINS), @c HAL_S32, @c HAL_U32, @c HAL_FLOAT.
+ * Supported HAL pin types: @c GOMC_HAL_BIT (single bit or bit-array up to
+ * @c LCEC_CONF_GENERIC_MAX_SUBPINS), @c GOMC_HAL_S32, @c GOMC_HAL_U32, @c GOMC_HAL_FLOAT.
  * Float pins additionally support a scale/offset and an unsigned or IEEE-754
  * sub-type (@c lcecPdoEntTypeFloatUnsigned, @c lcecPdoEntTypeFloatIeee).
  *
@@ -44,13 +44,13 @@ void lcec_generic_read(struct lcec_slave *slave, long period);
 void lcec_generic_write(struct lcec_slave *slave, long period);
 
 /** @brief Read a signed 32-bit value from the process-data image. */
-hal_s32_t lcec_generic_read_s32(uint8_t *pd, lcec_generic_pin_t *hal_data);
+gomc_hal_s32_t lcec_generic_read_s32(uint8_t *pd, lcec_generic_pin_t *hal_data);
 /** @brief Read an unsigned 32-bit value from the process-data image. */
-hal_u32_t lcec_generic_read_u32(uint8_t *pd, lcec_generic_pin_t *hal_data);
+gomc_hal_u32_t lcec_generic_read_u32(uint8_t *pd, lcec_generic_pin_t *hal_data);
 /** @brief Write a signed 32-bit value into the process-data image. */
-void lcec_generic_write_s32(uint8_t *pd, lcec_generic_pin_t *hal_data, hal_s32_t sval);
+void lcec_generic_write_s32(uint8_t *pd, lcec_generic_pin_t *hal_data, gomc_hal_s32_t sval);
 /** @brief Write an unsigned 32-bit value into the process-data image. */
-void lcec_generic_write_u32(uint8_t *pd, lcec_generic_pin_t *hal_data, hal_u32_t uval);
+void lcec_generic_write_u32(uint8_t *pd, lcec_generic_pin_t *hal_data, gomc_hal_u32_t uval);
 
 /**
  * @brief Initialise generic slave configuration at XML parse time.
@@ -141,8 +141,8 @@ void lcec_generic_free_slave(lcec_slave_t *slave) {
  * Fills the next entry in the sync-manager table and advances the internal
  * pointer.  The sentinel entry (@c index == 0xff) is written after each call
  * so the table is always terminated.  Also derives the HAL pin direction
- * from the EtherCAT sync-manager direction (@c EC_DIR_INPUT → @c HAL_OUT,
- * @c EC_DIR_OUTPUT → @c HAL_IN).
+ * from the EtherCAT sync-manager direction (@c EC_DIR_INPUT → @c GOMC_HAL_OUT,
+ * @c EC_DIR_OUTPUT → @c GOMC_HAL_IN).
  *
  * @param state    Configuration parser state.
  * @param sm_conf  Parsed sync-manager configuration element.
@@ -170,10 +170,10 @@ int lcec_generic_conf_sm(lcec_generic_conf_state_t *state, LCEC_CONF_SYNCMANAGER
   // get hal direction
   switch (sm_conf->dir) {
     case EC_DIR_INPUT:
-      state->hal_dir = HAL_OUT;
+      state->hal_dir = GOMC_HAL_OUT;
       break;
     case EC_DIR_OUTPUT:
-      state->hal_dir = HAL_IN;
+      state->hal_dir = GOMC_HAL_IN;
       break;
     default:
       state->hal_dir = 0;
@@ -330,9 +330,9 @@ int lcec_generic_conf_complex_entry(lcec_generic_conf_state_t *state, LCEC_CONF_
  * Iterates over every @c lcec_generic_pin_t slot allocated at parse time.
  * For each slot, calls LCEC_PDO_INIT() to record the byte/bit offsets, then
  * creates HAL pin(s) according to the type:
- *  - @c HAL_BIT with @c bitLength == 1 → single pin.
- *  - @c HAL_BIT with @c bitLength > 1  → array of pins named @c name-0, @c name-1, …
- *  - @c HAL_S32 / @c HAL_U32 / @c HAL_FLOAT → single pin (max 32 bits).
+ *  - @c GOMC_HAL_BIT with @c bitLength == 1 → single pin.
+ *  - @c GOMC_HAL_BIT with @c bitLength > 1  → array of pins named @c name-0, @c name-1, …
+ *  - @c GOMC_HAL_S32 / @c GOMC_HAL_U32 / @c GOMC_HAL_FLOAT → single pin (max 32 bits).
  *
  * @param comp_id         HAL component ID.
  * @param slave           Slave instance.
@@ -355,7 +355,7 @@ int lcec_generic_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t 
     LCEC_PDO_INIT(pdo_entry_regs, slave->index, slave->vid, slave->pid, hal_data->pdo_idx, hal_data->pdo_sidx, &hal_data->pdo_os, &hal_data->pdo_bp);
 
     switch (hal_data->type) {
-      case HAL_BIT:
+      case GOMC_HAL_BIT:
         if (hal_data->bitLength == 1) {
           // single bit pin
           err = lcec_pin_newf(comp_id, hal_data->type, hal_data->dir, &hal_data->pin[0], "%s.%s.%s.%s", master->instance_name, master->name, slave->name, hal_data->name);
@@ -373,8 +373,8 @@ int lcec_generic_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t 
         }
         break;
 
-      case HAL_S32:
-      case HAL_U32:
+      case GOMC_HAL_S32:
+      case GOMC_HAL_U32:
         // check data size
         if (hal_data->bitLength > 32) {
           rtapi_print_msg(RTAPI_MSG_WARN, LCEC_MSG_PFX "unable to export pin %s.%s.%s.%s: invalid process data bitlen!\n", master->instance_name, master->name, slave->name, hal_data->name);
@@ -388,7 +388,7 @@ int lcec_generic_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t 
         }
         break;
 
-      case HAL_FLOAT:
+      case GOMC_HAL_FLOAT:
         // check data size
         if (hal_data->bitLength > 32) {
           rtapi_print_msg(RTAPI_MSG_WARN, LCEC_MSG_PFX "unable to export pin %s.%s.%s.%s: invalid process data bitlen!\n", master->instance_name, master->name, slave->name, hal_data->name);
@@ -414,7 +414,7 @@ int lcec_generic_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t 
  * @brief HAL read function — copy input PDO data to HAL output pins.
  *
  * Called every servo period.  Iterates over all @c lcec_generic_pin_t slots
- * with @c dir == @c HAL_OUT and copies the process-data bits/bytes into the
+ * with @c dir == @c GOMC_HAL_OUT and copies the process-data bits/bytes into the
  * corresponding HAL pin value(s).  Float pins are scaled and offset-adjusted
  * using @c floatScale and @c floatOffset.
  *
@@ -426,32 +426,32 @@ void lcec_generic_read(struct lcec_slave *slave, long period) {
   lcec_generic_pin_t *hal_data = (lcec_generic_pin_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   int i, j, offset;
-  hal_float_t fval;
+  gomc_hal_float_t fval;
 
   // read data
   for (i=0; i < slave->pdo_entry_count; i++, hal_data++) {
     // skip wrong direction and uninitialized pins
-    if (hal_data->dir != HAL_OUT || hal_data->pin[0] == NULL) {
+    if (hal_data->dir != GOMC_HAL_OUT || hal_data->pin[0] == NULL) {
       continue;
     }
 
     switch (hal_data->type) {
-      case HAL_BIT:
+      case GOMC_HAL_BIT:
         offset = ((hal_data->pdo_os << 3) | (hal_data->pdo_bp & 0x07)) + hal_data->bitOffset;
         for (j=0; j < LCEC_CONF_GENERIC_MAX_SUBPINS && hal_data->pin[j] != NULL; j++, offset++) {
-          *((hal_bit_t *) hal_data->pin[j]) = EC_READ_BIT(&pd[offset >> 3], offset & 0x07);
+          *((gomc_hal_bit_t *) hal_data->pin[j]) = EC_READ_BIT(&pd[offset >> 3], offset & 0x07);
         }
         break;
 
-      case HAL_S32:
-        *((hal_s32_t *) hal_data->pin[0]) = lcec_generic_read_s32(pd, hal_data);
+      case GOMC_HAL_S32:
+        *((gomc_hal_s32_t *) hal_data->pin[0]) = lcec_generic_read_s32(pd, hal_data);
         break;
 
-      case HAL_U32:
-        *((hal_u32_t *) hal_data->pin[0]) = lcec_generic_read_u32(pd, hal_data);
+      case GOMC_HAL_U32:
+        *((gomc_hal_u32_t *) hal_data->pin[0]) = lcec_generic_read_u32(pd, hal_data);
         break;
 
-      case HAL_FLOAT:
+      case GOMC_HAL_FLOAT:
         if (hal_data->subType == lcecPdoEntTypeFloatUnsigned) {
           fval = lcec_generic_read_u32(pd, hal_data);
         } else if(hal_data->subType == lcecPdoEntTypeFloatIeee){
@@ -462,7 +462,7 @@ void lcec_generic_read(struct lcec_slave *slave, long period) {
 
         fval *= hal_data->floatScale;
         fval += hal_data->floatOffset;
-        *((hal_float_t *) hal_data->pin[0]) = fval;
+        *((gomc_hal_float_t *) hal_data->pin[0]) = fval;
         break;
 
       default:
@@ -475,7 +475,7 @@ void lcec_generic_read(struct lcec_slave *slave, long period) {
  * @brief HAL write function — copy HAL input pin values to output PDO data.
  *
  * Called every servo period.  Iterates over all @c lcec_generic_pin_t slots
- * with @c dir == @c HAL_IN and writes the HAL pin value(s) into the
+ * with @c dir == @c GOMC_HAL_IN and writes the HAL pin value(s) into the
  * process-data image.  Float pins have their offset applied first, then are
  * scaled before being written as signed or unsigned integers.
  *
@@ -487,40 +487,40 @@ void lcec_generic_write(struct lcec_slave *slave, long period) {
   lcec_generic_pin_t *hal_data = (lcec_generic_pin_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   int i, j, offset;
-  hal_float_t fval;
+  gomc_hal_float_t fval;
 
   // write data
   for (i=0; i<slave->pdo_entry_count; i++, hal_data++) {
     // skip wrong direction and uninitialized pins
-    if (hal_data->dir != HAL_IN || hal_data->pin[0] == NULL) {
+    if (hal_data->dir != GOMC_HAL_IN || hal_data->pin[0] == NULL) {
       continue;
     }
 
     switch (hal_data->type) {
-      case HAL_BIT:
+      case GOMC_HAL_BIT:
         offset = ((hal_data->pdo_os << 3) | (hal_data->pdo_bp & 0x07)) + hal_data->bitOffset;
         for (j=0; j < LCEC_CONF_GENERIC_MAX_SUBPINS && hal_data->pin[j] != NULL; j++, offset++) {
-          EC_WRITE_BIT(&pd[offset >> 3], offset & 0x07, *((hal_bit_t *) hal_data->pin[j]));
+          EC_WRITE_BIT(&pd[offset >> 3], offset & 0x07, *((gomc_hal_bit_t *) hal_data->pin[j]));
         }
         break;
 
-      case HAL_S32:
-        lcec_generic_write_s32(pd, hal_data, *((hal_s32_t *) hal_data->pin[0]));
+      case GOMC_HAL_S32:
+        lcec_generic_write_s32(pd, hal_data, *((gomc_hal_s32_t *) hal_data->pin[0]));
         break;
 
-      case HAL_U32:
-        lcec_generic_write_u32(pd, hal_data, *((hal_u32_t *) hal_data->pin[0]));
+      case GOMC_HAL_U32:
+        lcec_generic_write_u32(pd, hal_data, *((gomc_hal_u32_t *) hal_data->pin[0]));
         break;
 
-      case HAL_FLOAT:
-        fval = *((hal_float_t *) hal_data->pin[0]);
+      case GOMC_HAL_FLOAT:
+        fval = *((gomc_hal_float_t *) hal_data->pin[0]);
         fval += hal_data->floatOffset;
         fval *= hal_data->floatScale;
 
         if (hal_data->subType == lcecPdoEntTypeFloatUnsigned) {
-          lcec_generic_write_u32(pd, hal_data, (hal_u32_t) fval);
+          lcec_generic_write_u32(pd, hal_data, (gomc_hal_u32_t) fval);
         } else {
-          lcec_generic_write_s32(pd, hal_data, (hal_s32_t) fval);
+          lcec_generic_write_s32(pd, hal_data, (gomc_hal_s32_t) fval);
         }
         break;
 
@@ -540,9 +540,9 @@ void lcec_generic_write(struct lcec_slave *slave, long period) {
  * @param hal_data  Pin descriptor with PDO byte offset, bit position, bit length.
  * @return Sign-extended value read from the process data.
  */
-hal_s32_t lcec_generic_read_s32(uint8_t *pd, lcec_generic_pin_t *hal_data) {
+gomc_hal_s32_t lcec_generic_read_s32(uint8_t *pd, lcec_generic_pin_t *hal_data) {
   int i, offset;
-  hal_s32_t sval;
+  gomc_hal_s32_t sval;
 
   if (hal_data->pdo_bp == 0 && hal_data->bitOffset == 0) {
     switch (hal_data->bitLength) {
@@ -574,9 +574,9 @@ hal_s32_t lcec_generic_read_s32(uint8_t *pd, lcec_generic_pin_t *hal_data) {
  * @param hal_data  Pin descriptor with PDO byte offset, bit position, bit length.
  * @return Zero-extended value read from the process data.
  */
-hal_u32_t lcec_generic_read_u32(uint8_t *pd, lcec_generic_pin_t *hal_data) {
+gomc_hal_u32_t lcec_generic_read_u32(uint8_t *pd, lcec_generic_pin_t *hal_data) {
   int i, offset;
-  hal_u32_t uval;
+  gomc_hal_u32_t uval;
 
   if (hal_data->pdo_bp == 0 && hal_data->bitOffset == 0) {
     switch (hal_data->bitLength) {
@@ -609,10 +609,10 @@ hal_u32_t lcec_generic_read_u32(uint8_t *pd, lcec_generic_pin_t *hal_data) {
  * @param hal_data  Pin descriptor with PDO byte offset, bit position, bit length.
  * @param sval      Value to write (clamped to range).
  */
-void lcec_generic_write_s32(uint8_t *pd, lcec_generic_pin_t *hal_data, hal_s32_t sval) {
+void lcec_generic_write_s32(uint8_t *pd, lcec_generic_pin_t *hal_data, gomc_hal_s32_t sval) {
   int i, offset;
 
-  hal_s32_t lim = ((1LL << hal_data->bitLength) >> 1) - 1LL;
+  gomc_hal_s32_t lim = ((1LL << hal_data->bitLength) >> 1) - 1LL;
   if (sval > lim) sval = lim;
   lim = ~lim;
   if (sval < lim) sval = lim;
@@ -649,10 +649,10 @@ void lcec_generic_write_s32(uint8_t *pd, lcec_generic_pin_t *hal_data, hal_s32_t
  * @param hal_data  Pin descriptor with PDO byte offset, bit position, bit length.
  * @param uval      Value to write (clamped to range).
  */
-void lcec_generic_write_u32(uint8_t *pd, lcec_generic_pin_t *hal_data, hal_u32_t uval) {
+void lcec_generic_write_u32(uint8_t *pd, lcec_generic_pin_t *hal_data, gomc_hal_u32_t uval) {
   int i, offset;
 
-  hal_u32_t lim = (1LL << hal_data->bitLength) - 1LL;
+  gomc_hal_u32_t lim = (1LL << hal_data->bitLength) - 1LL;
   if (uval > lim) uval = lim;
 
   if (hal_data->pdo_bp == 0 && hal_data->bitOffset == 0) {

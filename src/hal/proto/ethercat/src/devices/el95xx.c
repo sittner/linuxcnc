@@ -30,8 +30,8 @@
  * @brief HAL data for an EL95xx power supply terminal.
  */
 typedef struct {
-  hal_bit_t *power_ok;              /**< OUT: output voltage within specification */
-  hal_bit_t *overload;              /**< OUT: output overload condition active */
+  gomc_hal_bit_t *power_ok;              /**< OUT: output voltage within specification */
+  gomc_hal_bit_t *overload;              /**< OUT: output overload condition active */
   unsigned int power_ok_pdo_os;     /**< PDO byte offset: power-ok bit (0x6000:01) */
   unsigned int power_ok_pdo_bp;     /**< Bit position: power-ok bit */
   unsigned int overload_pdo_os;     /**< PDO byte offset: overload bit (0x6000:02) */
@@ -39,9 +39,9 @@ typedef struct {
 } lcec_el95xx_data_t;
 
 static const lcec_pindesc_t slave_pins[] = {
-  { HAL_BIT, HAL_OUT, offsetof(lcec_el95xx_data_t, power_ok), "%s.%s.%s.power-ok" },
-  { HAL_BIT, HAL_OUT, offsetof(lcec_el95xx_data_t, overload), "%s.%s.%s.overload" },
-  { HAL_TYPE_UNSPECIFIED, HAL_DIR_UNSPECIFIED, -1, NULL }
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_el95xx_data_t, power_ok), "%s.%s.%s.power-ok" },
+  { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_el95xx_data_t, overload), "%s.%s.%s.overload" },
+  { GOMC_HAL_TYPE_UNSPECIFIED, GOMC_HAL_DIR_UNSPECIFIED, -1, NULL }
 };
 
 /**

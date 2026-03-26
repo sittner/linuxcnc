@@ -42,14 +42,13 @@ typedef enum {
 // Ring buffer slot — fixed-size, cache-line aligned.
 // ---------------------------------------------------------------------------
 
-#define GOMC_LOG_COMPONENT_LEN 32
 #define GOMC_LOG_MSG_LEN       216
 
 typedef struct {
     uint32_t          seq;                              // sequence number (0 = free)
     uint32_t          level;                            // gomc_log_level_t
     int64_t           timestamp_ns;                     // CLOCK_MONOTONIC nanoseconds
-    char              component[GOMC_LOG_COMPONENT_LEN];
+    char              component[GOMC_RTAPI_NAME_LEN + 1];
     char              msg[GOMC_LOG_MSG_LEN];
 } gomc_log_slot_t;
 
@@ -123,8 +122,8 @@ gomc_log_emit(const gomc_log_t *log, gomc_log_level_t level,
     // Fill the slot.
     slot->level = (uint32_t)level;
     slot->timestamp_ns = gomc_log_now_ns();
-    strncpy(slot->component, component, GOMC_LOG_COMPONENT_LEN - 1);
-    slot->component[GOMC_LOG_COMPONENT_LEN - 1] = '\0';
+    strncpy(slot->component, component, GOMC_RTAPI_NAME_LEN);
+    slot->component[GOMC_RTAPI_NAME_LEN] = '\0';
     vsnprintf(slot->msg, GOMC_LOG_MSG_LEN, fmt, ap);
 
     // Publish: set seq to pos+1 so the consumer knows this slot is ready.
@@ -204,7 +203,7 @@ gomc_ring_try_read(gomc_log_ring_t *ring, uint32_t read_pos,
 
     *out_level = slot->level;
     *out_ts = slot->timestamp_ns;
-    memcpy(out_component, slot->component, GOMC_LOG_COMPONENT_LEN);
+    memcpy(out_component, slot->component, GOMC_RTAPI_NAME_LEN + 1);
     memcpy(out_msg, slot->msg, GOMC_LOG_MSG_LEN);
 
     // Release the slot for reuse.
