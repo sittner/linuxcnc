@@ -308,7 +308,6 @@ void lcec_el2521_check_scale(lcec_el2521_data_t *hal_data) {
  */
 void lcec_el2521_read(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
-  const cmod_env_t *env = master->env;
   lcec_el2521_data_t *hal_data = (lcec_el2521_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   int16_t hw_count, hw_count_diff;
@@ -370,7 +369,6 @@ void lcec_el2521_read(struct lcec_slave *slave, long period) {
  */
 void lcec_el2521_write(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
-  const cmod_env_t *env = master->env;
   lcec_el2521_data_t *hal_data = (lcec_el2521_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   uint16_t ctrl;

@@ -392,7 +392,6 @@ int lcec_el70x1_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
  */
 void lcec_el70x1_read(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
-  const cmod_env_t *env = master->env;
   lcec_el70x1_data_t *hal_data = (lcec_el70x1_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
 
@@ -422,7 +421,6 @@ void lcec_el70x1_read(struct lcec_slave *slave, long period) {
  */
 void lcec_el70x1_write(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
-  const cmod_env_t *env = master->env;
   lcec_el70x1_data_t *hal_data = (lcec_el70x1_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   bool enabled, reduce_tourque;

@@ -170,7 +170,6 @@ int lcec_el2202_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
  */
 void lcec_el2202_write(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
-  const cmod_env_t *env = master->env;
   uint8_t *pd = master->process_data;
 
   lcec_el2202_data_t *hal_data = (lcec_el2202_data_t *) slave->hal_data;

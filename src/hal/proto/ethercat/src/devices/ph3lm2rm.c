@@ -302,7 +302,6 @@ int lcec_ph3lm2rm_rm_init(struct lcec_slave *slave, ec_pdo_entry_reg_t **pdo_ent
 
 void lcec_ph3lm2rm_read(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
-  const cmod_env_t *env = master->env;
   lcec_ph3lm2rm_data_t *hal_data = (lcec_ph3lm2rm_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   int i;
@@ -348,7 +347,6 @@ void lcec_ph3lm2rm_enc_read(uint8_t *pd, lcec_ph3lm2rm_enc_data_t *ch) {
 
 void lcec_ph3lm2rm_write(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
-  const cmod_env_t *env = master->env;
   lcec_ph3lm2rm_data_t *hal_data = (lcec_ph3lm2rm_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   int i;

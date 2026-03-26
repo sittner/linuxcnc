@@ -272,7 +272,6 @@ void lcec_deasda_check_scales(lcec_deasda_data_t *hal_data) {
 
 void lcec_deasda_read(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
-  const cmod_env_t *env = master->env;
   lcec_deasda_data_t *hal_data = (lcec_deasda_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   uint16_t status;
@@ -354,7 +353,6 @@ void lcec_deasda_read(struct lcec_slave *slave, long period) {
 
 void lcec_deasda_write(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
-  const cmod_env_t *env = master->env;
   lcec_deasda_data_t *hal_data = (lcec_deasda_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   uint16_t control;

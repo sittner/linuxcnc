@@ -347,7 +347,6 @@ int lcec_el7211_export_pins(lcec_master_t *master, struct lcec_slave *slave, lce
  */
 int lcec_el7211_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t **pdo_entry_regs) {
   lcec_master_t *master = slave->master;
-  const cmod_env_t *env = master->env;
   lcec_el7211_data_t *hal_data;
   int err;
 
@@ -483,7 +482,6 @@ void lcec_el7211_check_scales(lcec_el7211_data_t *hal_data) {
  */
 void lcec_el7211_read(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
-  const cmod_env_t *env = master->env;
   lcec_el7211_data_t *hal_data = (lcec_el7211_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   uint16_t status;
@@ -565,7 +563,6 @@ void lcec_el7211_read(struct lcec_slave *slave, long period) {
  */
 void lcec_el7201_9014_read(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
-  const cmod_env_t *env = master->env;
   lcec_el7211_data_t *hal_data = (lcec_el7211_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   uint16_t info1, info2;
@@ -612,7 +609,6 @@ static inline double clamp(double v, double sub, double sup) {
  */
 void lcec_el7211_write(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
-  const cmod_env_t *env = master->env;
   lcec_el7211_data_t *hal_data = (lcec_el7211_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   uint16_t control;

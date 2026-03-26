@@ -302,7 +302,6 @@ int lcec_el1918_logic_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_r
 
 void lcec_el1918_logic_read(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
-  const cmod_env_t *env = master->env;
   lcec_el1918_logic_data_t *hal_data = (lcec_el1918_logic_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   lcec_el1918_logic_fsoe_t *fsoe_data;
@@ -338,7 +337,6 @@ void lcec_el1918_logic_read(struct lcec_slave *slave, long period) {
 
 void lcec_el1918_logic_write(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
-  const cmod_env_t *env = master->env;
   lcec_el1918_logic_data_t *hal_data = (lcec_el1918_logic_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   uint8_t std_in;

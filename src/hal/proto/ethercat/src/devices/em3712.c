@@ -170,7 +170,6 @@ int lcec_em3712_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
  */
 void lcec_em3712_read(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
-  const cmod_env_t *env = master->env;
   lcec_em3712_data_t *hal_data = (lcec_em3712_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   int i;

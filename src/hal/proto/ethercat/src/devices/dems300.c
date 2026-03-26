@@ -363,7 +363,6 @@ void lcec_dems300_read(struct lcec_slave *slave, long period) {
  */
 void lcec_dems300_write(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
-  const cmod_env_t *env = master->env;
   lcec_dems300_data_t *hal_data = (lcec_dems300_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   uint16_t control;
