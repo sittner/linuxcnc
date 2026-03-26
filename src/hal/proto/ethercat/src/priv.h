@@ -150,7 +150,7 @@ void lcec_dc_init_m2r(struct lcec_master *master);
 typedef struct lcec_rt_context {
   const cmod_env_t *env;              /**< Launcher-provided environment (log, ini, hal, rtapi callbacks). */
   int comp_id;                        /**< HAL component ID from hal_init_ex(). */
-  const char *instance_name;          /**< Instance name from cmod New(). */
+  char instance_name[GOMC_RTAPI_NAME_LEN + 1]; /**< Instance name from cmod New(). */
   const char *ipc_socket;             /**< IPC socket path (EC_USPACE_MASTER), or NULL. */
   lcec_master_t *first_master;        /**< Head of the master linked list (populated by lcec_parse_config). */
   lcec_master_t *last_master;         /**< Tail of the master linked list. */

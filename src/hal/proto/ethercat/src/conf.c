@@ -616,7 +616,8 @@ int New(const cmod_env_t *env, const char *name,
   // initialize RT context
   m->rt_ctx.env = env;
   m->rt_ctx.comp_id = m->hal_comp_id;
-  m->rt_ctx.instance_name = name;
+  strncpy(m->rt_ctx.instance_name, name, GOMC_RTAPI_NAME_LEN);
+  m->rt_ctx.instance_name[GOMC_RTAPI_NAME_LEN] = '\0';
   m->rt_ctx.ipc_socket = ipc_socket;
   m->rt_ctx.first_master = NULL;
   m->rt_ctx.last_master = NULL;
