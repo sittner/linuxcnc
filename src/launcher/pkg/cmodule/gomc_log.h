@@ -23,6 +23,8 @@
 #include <string.h>
 #include <time.h>
 
+#include "gomc_rtapi.h"  // GOMC_RTAPI_NAME_LEN
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -43,12 +45,13 @@ typedef enum {
 // ---------------------------------------------------------------------------
 
 #define GOMC_LOG_MSG_LEN       216
+#define GOMC_LOG_COMPONENT_LEN (GOMC_RTAPI_NAME_LEN + 1)
 
 typedef struct {
     uint32_t          seq;                              // sequence number (0 = free)
     uint32_t          level;                            // gomc_log_level_t
     int64_t           timestamp_ns;                     // CLOCK_MONOTONIC nanoseconds
-    char              component[GOMC_RTAPI_NAME_LEN + 1];
+    char              component[GOMC_LOG_COMPONENT_LEN];
     char              msg[GOMC_LOG_MSG_LEN];
 } gomc_log_slot_t;
 
