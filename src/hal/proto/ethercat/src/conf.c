@@ -486,9 +486,6 @@ static void lcec_conf_destroy(cmod_t *self) {
 
   lcec_rt_cleanup(&m->rt_ctx);
 
-  free(m->rt_ctx.instance_name);
-  free(m->rt_ctx.ipc_socket);
-
   if (m->hal_comp_id >= 0) {
     m->env->hal->exit(m->env->hal->ctx, m->hal_comp_id);
   }
@@ -619,8 +616,8 @@ int New(const cmod_env_t *env, const char *name,
   // initialize RT context
   m->rt_ctx.env = env;
   m->rt_ctx.comp_id = m->hal_comp_id;
-  m->rt_ctx.instance_name = strdup_nullable(name);
-  m->rt_ctx.ipc_socket = strdup_nullable(ipc_socket);
+  m->rt_ctx.instance_name = name;
+  m->rt_ctx.ipc_socket = ipc_socket;
   m->rt_ctx.first_master = NULL;
   m->rt_ctx.last_master = NULL;
   m->rt_ctx.global_hal_data = NULL;

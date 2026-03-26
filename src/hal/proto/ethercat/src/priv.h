@@ -31,10 +31,6 @@
 
 #include "devices/generic.h"
 
-/** @brief Return a heap copy of @p s, or NULL if @p s is NULL. */
-static inline char *strdup_nullable(const char *s) {
-  return s ? strdup(s) : NULL;
-}
 
 /** @brief Forward declaration for the config output buffer (defined in conf_priv.h). */
 struct lcec_conf_outbuf;
@@ -155,8 +151,8 @@ void lcec_dc_init_m2r(struct lcec_master *master);
 typedef struct lcec_rt_context {
   const cmod_env_t *env;              /**< Launcher-provided environment (log, ini, hal, rtapi callbacks). */
   int comp_id;                        /**< HAL component ID from hal_init_ex(). */
-  char *instance_name;                /**< Instance name from cmod New() (heap-allocated, freed on destroy). */
-  char *ipc_socket;                   /**< IPC socket path (heap-allocated), or NULL. */
+  const char *instance_name;          /**< Instance name (owned by launcher, valid until Destroy). */
+  const char *ipc_socket;             /**< IPC socket path (owned by launcher), or NULL. */
   lcec_master_t *first_master;        /**< Head of the master linked list (populated by lcec_parse_config). */
   lcec_master_t *last_master;         /**< Tail of the master linked list. */
   lcec_master_data_t *global_hal_data; /**< HAL pins for aggregate EtherCAT state. */
