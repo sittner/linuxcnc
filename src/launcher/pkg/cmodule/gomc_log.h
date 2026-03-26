@@ -55,8 +55,8 @@ typedef struct {
     char              msg[GOMC_LOG_MSG_LEN];
 } gomc_log_slot_t;
 
-// Compile-time check: slot should be 256 + 16 = 272 bytes.
-// Adjust GOMC_LOG_MSG_LEN if exact power-of-2 alignment is desired.
+// Slot is 264 bytes (4+4+8+32+216).  Adjust GOMC_LOG_MSG_LEN if exact
+// power-of-2 alignment is desired.
 
 // ---------------------------------------------------------------------------
 // Ring buffer — single shared instance per launcher process.
