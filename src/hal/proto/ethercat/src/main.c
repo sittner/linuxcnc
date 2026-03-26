@@ -47,6 +47,13 @@ static const char *lcec_name_g;
 static void lcec_ec_log_callback(int level, const char *fmt, va_list ap) {
   char buf[256];
   vsnprintf(buf, sizeof(buf), fmt, ap);
+
+  // strip trailing newlines from EC library messages
+  size_t len = strlen(buf);
+  while (len > 0 && buf[len - 1] == '\n') {
+    buf[--len] = '\0';
+  }
+
   gomc_log_infof(lcec_log_g, lcec_name_g, "%s", buf);
 }
 #endif
