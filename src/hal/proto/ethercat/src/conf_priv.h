@@ -29,7 +29,6 @@
 
 #include <expat.h>
 
-#include "hal.h"
 #include "priv.h"
 
 /** @brief Size in bytes of the read buffer used when feeding data to expat. */

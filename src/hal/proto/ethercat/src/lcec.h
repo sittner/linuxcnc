@@ -35,17 +35,15 @@
 
 #include "launcher/pkg/cmodule/gomc_env.h"
 
-#include <rtapi.h>
-#include <rtapi_stdint.h>
+#include <errno.h>
+#include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <sys/time.h>
-
-#include "hal.h"
-
-#include "rtapi_ctype.h"
-#include "rtapi_string.h"
-#include "rtapi_math.h"
+#include <ctype.h>
+#include <math.h>
 
 #include "ecrt.h"
 #include "conf.h"
@@ -116,9 +114,6 @@ do {                        \
 } while (0);                \
 
 /** @} */ // lcec_pdo
-
-/** @brief Log message prefix prepended to all LCEC diagnostic output. */
-#define LCEC_MSG_PFX "LCEC: "
 
 /**
  * @defgroup lcec_vendor_ids EtherCAT vendor IDs
@@ -341,6 +336,7 @@ typedef struct lcec_master {
   int comp_id;              /**< HAL component ID (from the owning module instance). */
   char instance_name[LCEC_CONF_STR_MAXLEN]; /**< Instance name from cmod New(); used as HAL pin name prefix. */
   struct lcec_rt_context *rt_ctx; /**< Back-pointer to the owning RT context (for per-instance state). */
+  const cmod_env_t *env;         /**< Convenience copy of rt_ctx->env for device/class code. */
 #ifdef EC_USPACE_MASTER
   int transport_type;                          /**< Transport layer type identifier (userspace build only). */
   char interface[LCEC_CONF_STR_MAXLEN];        /**< Primary network interface name (e.g. "eth0"). */
@@ -587,25 +583,24 @@ int lcec_read_idn(struct lcec_slave *slave, uint8_t drive_no, uint16_t idn, uint
  * @param ...            Format arguments.
  * @return 0 on success, negative HAL error code on failure.
  */
-int lcec_pin_newf(int comp_id, gomc_hal_type_t type, int dir, void **data_ptr_addr, const char *fmt, ...);
+int lcec_pin_newf(const cmod_env_t *env, int comp_id, gomc_hal_type_t type, int dir, void **data_ptr_addr, const char *fmt, ...);
 
 /**
  * @brief Create a list of HAL pins described by a NULL-terminated lcec_pindesc_t array.
  *
- * Iterates @p list until an entry with @c fmt == NULL is found.  Each pin's
- * storage pointer is derived as @p base + descriptor->offset.
- *
+ * @param env   Launcher-provided environment.
  * @param comp_id  HAL component ID.
  * @param base  Base pointer added to each descriptor's @c offset field.
  * @param list  NULL-terminated array of pin descriptors.
  * @param ...   Format arguments applied to every descriptor's @c fmt string.
  * @return 0 on success, negative HAL error code on the first failure.
  */
-int lcec_pin_newf_list(int comp_id, void *base, const lcec_pindesc_t *list, ...);
+int lcec_pin_newf_list(const cmod_env_t *env, int comp_id, void *base, const lcec_pindesc_t *list, ...);
 
 /**
  * @brief Create a single HAL parameter with a printf-formatted name.
  *
+ * @param env        Launcher-provided environment.
  * @param comp_id    HAL component ID.
  * @param type       HAL data type.
  * @param dir        Parameter direction (GOMC_HAL_RO or GOMC_HAL_RW).
@@ -614,18 +609,19 @@ int lcec_pin_newf_list(int comp_id, void *base, const lcec_pindesc_t *list, ...)
  * @param ...        Format arguments.
  * @return 0 on success, negative HAL error code on failure.
  */
-int lcec_param_newf(int comp_id, gomc_hal_type_t type, int dir, void *data_addr, const char *fmt, ...);
+int lcec_param_newf(const cmod_env_t *env, int comp_id, gomc_hal_type_t type, int dir, void *data_addr, const char *fmt, ...);
 
 /**
  * @brief Create a list of HAL parameters described by a NULL-terminated lcec_pindesc_t array.
  *
+ * @param env   Launcher-provided environment.
  * @param comp_id  HAL component ID.
  * @param base  Base pointer added to each descriptor's @c offset field.
  * @param list  NULL-terminated array of parameter descriptors.
  * @param ...   Format arguments applied to every descriptor's @c fmt string.
  * @return 0 on success, negative HAL error code on the first failure.
  */
-int lcec_param_newf_list(int comp_id, void *base, const lcec_pindesc_t *list, ...);
+int lcec_param_newf_list(const cmod_env_t *env, int comp_id, void *base, const lcec_pindesc_t *list, ...);
 
 /**
  * @brief Look up a module parameter value for a slave by its driver-defined ID.

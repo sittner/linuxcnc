@@ -193,6 +193,7 @@ void lcec_em7004_write(struct lcec_slave *slave, long period);
  */
 int lcec_em7004_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t **pdo_entry_regs) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   lcec_em7004_data_t *hal_data;
   lcec_em7004_din_t *din;
   lcec_em7004_dout_t *dout;
@@ -206,8 +207,8 @@ int lcec_em7004_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
   slave->proc_write = lcec_em7004_write;
 
   // alloc hal memory
-  if ((hal_data = hal_malloc(sizeof(lcec_em7004_data_t))) == NULL) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "hal_malloc() for slave %s.%s failed\n", master->name, slave->name);
+  if ((hal_data = env->hal->malloc(env->hal->ctx, sizeof(lcec_em7004_data_t))) == NULL) {
+    gomc_log_errorf(env->log, master->instance_name, "hal_malloc() for slave %s.%s failed", master->name, slave->name);
     return -EIO;
   }
   memset(hal_data, 0, sizeof(lcec_em7004_data_t));
@@ -222,7 +223,7 @@ int lcec_em7004_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
     LCEC_PDO_INIT(pdo_entry_regs, slave->index, slave->vid, slave->pid, 0x6000, i + 1, &din->pdo_os, &din->pdo_bp);
 
     // export pins
-    if ((err = lcec_pin_newf_list(comp_id, din, slave_din_pins, master->instance_name, master->name, slave->name, i)) != 0) {
+    if ((err = lcec_pin_newf_list(env, comp_id, din, slave_din_pins, master->instance_name, master->name, slave->name, i)) != 0) {
       return err;
     }
   }
@@ -233,10 +234,10 @@ int lcec_em7004_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
     LCEC_PDO_INIT(pdo_entry_regs, slave->index, slave->vid, slave->pid, 0x7010, i + 1, &dout->pdo_os, &dout->pdo_bp);
 
     // export pins
-    if ((err = lcec_pin_newf_list(comp_id, dout, slave_dout_pins, master->instance_name, master->name, slave->name, i)) != 0) {
+    if ((err = lcec_pin_newf_list(env, comp_id, dout, slave_dout_pins, master->instance_name, master->name, slave->name, i)) != 0) {
       return err;
     }
-    if ((err = lcec_param_newf_list(comp_id, dout, slave_dout_params, master->instance_name, master->name, slave->name, i)) != 0) {
+    if ((err = lcec_param_newf_list(env, comp_id, dout, slave_dout_params, master->instance_name, master->name, slave->name, i)) != 0) {
       return err;
     }
   }
@@ -247,7 +248,7 @@ int lcec_em7004_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
     LCEC_PDO_INIT(pdo_entry_regs, slave->index, slave->vid, slave->pid, 0x7020 + (i << 4), 0x11, &aout->val_pdo_os, NULL);
 
     // export pins
-    if ((err = lcec_pin_newf_list(comp_id, aout, slave_aout_pins, master->instance_name, master->name, slave->name, i)) != 0) {
+    if ((err = lcec_pin_newf_list(env, comp_id, aout, slave_aout_pins, master->instance_name, master->name, slave->name, i)) != 0) {
       return err;
     }
 
@@ -278,7 +279,7 @@ int lcec_em7004_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
     LCEC_PDO_INIT(pdo_entry_regs, slave->index, slave->vid, slave->pid, 0x7060 + (i << 4), 0x11, &enc->set_count_val_pdo_os, NULL);
 
     // export pins
-    if ((err = lcec_pin_newf_list(comp_id, enc, slave_enc_pins, master->instance_name, master->name, slave->name, i)) != 0) {
+    if ((err = lcec_pin_newf_list(env, comp_id, enc, slave_enc_pins, master->instance_name, master->name, slave->name, i)) != 0) {
       return err;
     }
 
@@ -308,6 +309,7 @@ int lcec_em7004_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
  */
 void lcec_em7004_read(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   lcec_em7004_data_t *hal_data = (lcec_em7004_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   lcec_em7004_din_t *din;
@@ -410,6 +412,7 @@ void lcec_em7004_read(struct lcec_slave *slave, long period) {
  */
 void lcec_em7004_write(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   lcec_em7004_data_t *hal_data = (lcec_em7004_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   lcec_em7004_dout_t *dout;

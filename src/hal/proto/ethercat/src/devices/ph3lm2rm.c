@@ -167,6 +167,7 @@ void lcec_ph3lm2rm_enc_write(uint8_t *pd, lcec_ph3lm2rm_enc_data_t *ch);
  */
 int lcec_ph3lm2rm_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t **pdo_entry_regs) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   lcec_ph3lm2rm_data_t *hal_data;
   char pfx[GOMC_HAL_NAME_LEN];
   int err;
@@ -179,8 +180,8 @@ int lcec_ph3lm2rm_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t
   slave->proc_write = lcec_ph3lm2rm_write;
 
   // alloc hal memory
-  if ((hal_data = hal_malloc(sizeof(lcec_ph3lm2rm_data_t))) == NULL) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "hal_malloc() for slave %s.%s failed\n", master->name, slave->name);
+  if ((hal_data = env->hal->malloc(env->hal->ctx, sizeof(lcec_ph3lm2rm_data_t))) == NULL) {
+    gomc_log_errorf(env->log, master->instance_name, "hal_malloc() for slave %s.%s failed", master->name, slave->name);
     return -EIO;
   }
   memset(hal_data, 0, sizeof(lcec_ph3lm2rm_data_t));
@@ -191,7 +192,7 @@ int lcec_ph3lm2rm_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t
   LCEC_PDO_INIT(pdo_entry_regs, slave->index, slave->vid, slave->pid, 0x6000, 0x01, &hal_data->sync_locked_os, &hal_data->sync_locked_bp);
 
   // export pins
-  if ((err = lcec_pin_newf_list(comp_id, hal_data, slave_pins, master->instance_name, master->name, slave->name)) != 0) {
+  if ((err = lcec_pin_newf_list(env, comp_id, hal_data, slave_pins, master->instance_name, master->name, slave->name)) != 0) {
     return err;
   }
 
@@ -214,6 +215,7 @@ int lcec_ph3lm2rm_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t
 
 int lcec_ph3lm2rm_enc_init(struct lcec_slave *slave, lcec_ph3lm2rm_enc_data_t *hal_data, const char *pfx, double scale) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   int err;
 
   // init encoder
@@ -222,12 +224,12 @@ int lcec_ph3lm2rm_enc_init(struct lcec_slave *slave, lcec_ph3lm2rm_enc_data_t *h
   }
 
   // export pins
-  if ((err = lcec_pin_newf_list(master->comp_id, hal_data, enc_pins, master->instance_name, master->name, slave->name, pfx)) != 0) {
+  if ((err = lcec_pin_newf_list(env, master->comp_id, hal_data, enc_pins, master->instance_name, master->name, slave->name, pfx)) != 0) {
     return err;
   }
 
   // export parameters
-  if ((err = lcec_param_newf_list(master->comp_id, hal_data, enc_params, master->instance_name, master->name, slave->name, pfx)) != 0) {
+  if ((err = lcec_param_newf_list(env, master->comp_id, hal_data, enc_params, master->instance_name, master->name, slave->name, pfx)) != 0) {
     return err;
   }
 
@@ -239,6 +241,7 @@ int lcec_ph3lm2rm_enc_init(struct lcec_slave *slave, lcec_ph3lm2rm_enc_data_t *h
 
 int lcec_ph3lm2rm_lm_init(struct lcec_slave *slave, ec_pdo_entry_reg_t **pdo_entry_regs, int ios, lcec_ph3lm2rm_lm_data_t *hal_data, const char *pfx) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   int err;
 
   // initialize POD entries
@@ -257,12 +260,12 @@ int lcec_ph3lm2rm_lm_init(struct lcec_slave *slave, ec_pdo_entry_reg_t **pdo_ent
   }
 
   // export pins
-  if ((err = lcec_pin_newf_list(master->comp_id, hal_data, lm_pins, master->instance_name, master->name, slave->name, pfx)) != 0) {
+  if ((err = lcec_pin_newf_list(env, master->comp_id, hal_data, lm_pins, master->instance_name, master->name, slave->name, pfx)) != 0) {
     return err;
   }
 
   // export parameters
-  if ((err = lcec_param_newf_list(master->comp_id, hal_data, lm_params, master->instance_name, master->name, slave->name, pfx)) != 0) {
+  if ((err = lcec_param_newf_list(env, master->comp_id, hal_data, lm_params, master->instance_name, master->name, slave->name, pfx)) != 0) {
     return err;
   }
 
@@ -271,6 +274,7 @@ int lcec_ph3lm2rm_lm_init(struct lcec_slave *slave, ec_pdo_entry_reg_t **pdo_ent
 
 int lcec_ph3lm2rm_rm_init(struct lcec_slave *slave, ec_pdo_entry_reg_t **pdo_entry_regs, int ios, lcec_ph3lm2rm_rm_data_t *hal_data, const char *pfx) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   int err;
 
   // initialize POD entries
@@ -289,7 +293,7 @@ int lcec_ph3lm2rm_rm_init(struct lcec_slave *slave, ec_pdo_entry_reg_t **pdo_ent
   }
 
   // export pins
-  if ((err = lcec_pin_newf_list(master->comp_id, hal_data, rm_pins, master->instance_name, master->name, slave->name, pfx)) != 0) {
+  if ((err = lcec_pin_newf_list(env, master->comp_id, hal_data, rm_pins, master->instance_name, master->name, slave->name, pfx)) != 0) {
     return err;
   }
 
@@ -298,6 +302,7 @@ int lcec_ph3lm2rm_rm_init(struct lcec_slave *slave, ec_pdo_entry_reg_t **pdo_ent
 
 void lcec_ph3lm2rm_read(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   lcec_ph3lm2rm_data_t *hal_data = (lcec_ph3lm2rm_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   int i;
@@ -343,6 +348,7 @@ void lcec_ph3lm2rm_enc_read(uint8_t *pd, lcec_ph3lm2rm_enc_data_t *ch) {
 
 void lcec_ph3lm2rm_write(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   lcec_ph3lm2rm_data_t *hal_data = (lcec_ph3lm2rm_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   int i;

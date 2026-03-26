@@ -94,15 +94,16 @@ static long long signed_mod_64(long long val, unsigned long div);
  */
 int class_enc_init(struct lcec_slave *slave, lcec_class_enc_data_t *hal_data, int raw_bits, const char *pfx) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   int err;
 
   // export pins
-  if ((err = lcec_pin_newf_list(master->comp_id, hal_data, slave_pins, master->instance_name, master->name, slave->name, pfx)) != 0) {
+  if ((err = lcec_pin_newf_list(env, master->comp_id, hal_data, slave_pins, master->instance_name, master->name, slave->name, pfx)) != 0) {
     return err;
   }
 
   // export parameters
-  if ((err = lcec_param_newf_list(master->comp_id, hal_data, slave_params, master->instance_name, master->name, slave->name, pfx)) != 0) {
+  if ((err = lcec_param_newf_list(env, master->comp_id, hal_data, slave_params, master->instance_name, master->name, slave->name, pfx)) != 0) {
     return err;
   }
 

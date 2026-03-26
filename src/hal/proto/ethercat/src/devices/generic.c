@@ -68,6 +68,8 @@ void lcec_generic_write_u32(uint8_t *pd, lcec_generic_pin_t *hal_data, gomc_hal_
  * @return 0 on success, -1 on allocation failure.
  */
 int lcec_generic_conf_init(lcec_slave_t *slave, LCEC_CONF_SLAVE_T *slave_conf, lcec_generic_conf_state_t *conf_state) {
+  const cmod_env_t *env = slave->master->env;
+
   // generic slave
   slave->vid = slave_conf->vid;
   slave->pid = slave_conf->pid;
@@ -75,30 +77,34 @@ int lcec_generic_conf_init(lcec_slave_t *slave, LCEC_CONF_SLAVE_T *slave_conf, l
   slave->proc_init = lcec_generic_init;
 
   // alloc hal memory
-  if ((slave->hal_data = hal_malloc(sizeof(lcec_generic_pin_t) * slave_conf->pdoMappingCount)) == NULL) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "hal_malloc() for slave %s.%s failed\n", slave->master->name, slave_conf->name);
+  if ((slave->hal_data = env->hal->malloc(env->hal->ctx, sizeof(lcec_generic_pin_t) * slave_conf->pdoMappingCount)) == NULL) {
+    gomc_log_errorf(env->log, slave->master->instance_name,
+        "hal_malloc() for slave %s.%s failed", slave->master->name, slave_conf->name);
     return -1;
   }
   memset(slave->hal_data, 0, sizeof(lcec_generic_pin_t) * slave_conf->pdoMappingCount);
 
   // alloc pdo entry memory
-  slave->generic.pdo_entries = rtapi_calloc(sizeof(ec_pdo_entry_info_t) * slave_conf->pdoEntryCount);
+  slave->generic.pdo_entries = env->rtapi->calloc(env->rtapi->ctx, sizeof(ec_pdo_entry_info_t) * slave_conf->pdoEntryCount);
   if (slave->generic.pdo_entries == NULL) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "Unable to allocate slave %s.%s generic pdo entry memory\n", slave->master->name, slave_conf->name);
+    gomc_log_errorf(env->log, slave->master->instance_name,
+        "Unable to allocate slave %s.%s generic pdo entry memory", slave->master->name, slave_conf->name);
     return -1;
   }
 
   // alloc pdo memory
-  slave->generic.pdos = rtapi_calloc(sizeof(ec_pdo_info_t) * slave_conf->pdoCount);
+  slave->generic.pdos = env->rtapi->calloc(env->rtapi->ctx, sizeof(ec_pdo_info_t) * slave_conf->pdoCount);
   if (slave->generic.pdos == NULL) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "Unable to allocate slave %s.%s generic pdo memory\n", slave->master->name, slave_conf->name);
+    gomc_log_errorf(env->log, slave->master->instance_name,
+        "Unable to allocate slave %s.%s generic pdo memory", slave->master->name, slave_conf->name);
     return -1;
   }
 
   // alloc sync manager memory
-  slave->generic.sync_managers = rtapi_calloc(sizeof(ec_sync_info_t) * (slave_conf->syncManagerCount + 1));
+  slave->generic.sync_managers = env->rtapi->calloc(env->rtapi->ctx, sizeof(ec_sync_info_t) * (slave_conf->syncManagerCount + 1));
   if (slave->generic.sync_managers == NULL) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "Unable to allocate slave %s.%s generic sync manager memory\n", slave->master->name, slave_conf->name);
+    gomc_log_errorf(env->log, slave->master->instance_name,
+        "Unable to allocate slave %s.%s generic sync manager memory", slave->master->name, slave_conf->name);
     return -1;
   }
   slave->generic.sync_managers->index = 0xff;
@@ -123,15 +129,15 @@ int lcec_generic_conf_init(lcec_slave_t *slave, LCEC_CONF_SLAVE_T *slave_conf, l
  *
  * @param slave  Slave instance whose generic resources are to be freed.
  */
-void lcec_generic_free_slave(lcec_slave_t *slave) {
+void lcec_generic_free_slave(const cmod_env_t *env, lcec_slave_t *slave) {
   if (slave->generic.pdo_entries != NULL) {
-    rtapi_free(slave->generic.pdo_entries);
+    env->rtapi->free(env->rtapi->ctx, slave->generic.pdo_entries);
   }
   if (slave->generic.pdos != NULL) {
-    rtapi_free(slave->generic.pdos);
+    env->rtapi->free(env->rtapi->ctx, slave->generic.pdos);
   }
   if (slave->generic.sync_managers != NULL) {
-    rtapi_free(slave->generic.sync_managers);
+    env->rtapi->free(env->rtapi->ctx, slave->generic.sync_managers);
   }
 }
 
@@ -151,13 +157,13 @@ void lcec_generic_free_slave(lcec_slave_t *slave) {
 int lcec_generic_conf_sm(lcec_generic_conf_state_t *state, LCEC_CONF_SYNCMANAGER_T *sm_conf) {
   // check for syncmanager
   if (state->sync_managers == NULL) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "Sync manager for generic device missing\n");
+    fprintf(stderr, "LCEC: Sync manager for generic device missing\n");
     return -1;
   }
 
   // check for pdos
   if (state->pdos == NULL) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "PDOs for generic device missing\n");
+    fprintf(stderr, "LCEC: PDOs for generic device missing\n");
     return -1;
   }
 
@@ -199,13 +205,13 @@ int lcec_generic_conf_sm(lcec_generic_conf_state_t *state, LCEC_CONF_SYNCMANAGER
 int lcec_generic_conf_pdo(lcec_generic_conf_state_t *state, LCEC_CONF_PDO_T *pdo_conf) {
   // check for pdos
   if (state->pdos == NULL) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "PDOs for generic device missing\n");
+    fprintf(stderr, "LCEC: PDOs for generic device missing\n");
     return -1;
   }
 
   // check for pdos entries
   if (state->pdo_entries == NULL) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "PDO entries for generic device missing\n");
+    fprintf(stderr, "LCEC: PDO entries for generic device missing\n");
     return -1;
   }
 
@@ -235,19 +241,19 @@ int lcec_generic_conf_pdo(lcec_generic_conf_state_t *state, LCEC_CONF_PDO_T *pdo
 int lcec_generic_conf_pdo_entry(lcec_generic_conf_state_t *state, LCEC_CONF_PDOENTRY_T *pe_conf) {
   // check for pdos entries
   if (state->pdo_entries == NULL) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "PDO entries for generic device missing\n");
+    fprintf(stderr, "LCEC: PDO entries for generic device missing\n");
     return -1;
   }
 
   // check for hal data
   if (state->hal_data == NULL) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "HAL data for generic device missing\n");
+    fprintf(stderr, "LCEC: HAL data for generic device missing\n");
     return -1;
   }
 
   // check for hal dir
   if (state->hal_dir == 0) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "HAL direction for generic device missing\n");
+    fprintf(stderr, "LCEC: HAL direction for generic device missing\n");
     return -1;
   }
 
@@ -295,13 +301,13 @@ int lcec_generic_conf_pdo_entry(lcec_generic_conf_state_t *state, LCEC_CONF_PDOE
 int lcec_generic_conf_complex_entry(lcec_generic_conf_state_t *state, LCEC_CONF_COMPLEXENTRY_T *ce_conf) {
   // check for pdoEntry
   if (state->pe_conf == NULL) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "pdoEntry for generic device missing\n");
+    fprintf(stderr, "LCEC: pdoEntry for generic device missing\n");
     return -1;
   }
 
   // check for hal data
   if (state->hal_data == NULL) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "HAL data for generic device missing\n");
+    fprintf(stderr, "LCEC: HAL data for generic device missing\n");
     return -1;
   }
 
@@ -341,6 +347,7 @@ int lcec_generic_conf_complex_entry(lcec_generic_conf_state_t *state, LCEC_CONF_
  */
 int lcec_generic_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t **pdo_entry_regs) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   lcec_generic_pin_t *hal_data = (lcec_generic_pin_t *) slave->hal_data;
   int i, j;
   int err;
@@ -358,14 +365,14 @@ int lcec_generic_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t 
       case GOMC_HAL_BIT:
         if (hal_data->bitLength == 1) {
           // single bit pin
-          err = lcec_pin_newf(comp_id, hal_data->type, hal_data->dir, &hal_data->pin[0], "%s.%s.%s.%s", master->instance_name, master->name, slave->name, hal_data->name);
+          err = lcec_pin_newf(env, comp_id, hal_data->type, hal_data->dir, &hal_data->pin[0], "%s.%s.%s.%s", master->instance_name, master->name, slave->name, hal_data->name);
           if (err != 0) {
             return err;
           }
         } else {
           // bit pin array
           for (j=0; j < LCEC_CONF_GENERIC_MAX_SUBPINS && j < hal_data->bitLength; j++) {
-            err = lcec_pin_newf(comp_id, hal_data->type, hal_data->dir, &hal_data->pin[j], "%s.%s.%s.%s-%d", master->instance_name, master->name, slave->name, hal_data->name, j);
+            err = lcec_pin_newf(env, comp_id, hal_data->type, hal_data->dir, &hal_data->pin[j], "%s.%s.%s.%s-%d", master->instance_name, master->name, slave->name, hal_data->name, j);
             if (err != 0) {
               return err;
             }
@@ -377,12 +384,12 @@ int lcec_generic_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t 
       case GOMC_HAL_U32:
         // check data size
         if (hal_data->bitLength > 32) {
-          rtapi_print_msg(RTAPI_MSG_WARN, LCEC_MSG_PFX "unable to export pin %s.%s.%s.%s: invalid process data bitlen!\n", master->instance_name, master->name, slave->name, hal_data->name);
+          gomc_log_warnf(env->log, master->instance_name, "unable to export pin %s.%s.%s.%s: invalid process data bitlen!", master->instance_name, master->name, slave->name, hal_data->name);
           continue;
         }
 
         // export pin
-        err = lcec_pin_newf(comp_id, hal_data->type, hal_data->dir, &hal_data->pin[0], "%s.%s.%s.%s", master->instance_name, master->name, slave->name, hal_data->name);
+        err = lcec_pin_newf(env, comp_id, hal_data->type, hal_data->dir, &hal_data->pin[0], "%s.%s.%s.%s", master->instance_name, master->name, slave->name, hal_data->name);
         if (err != 0) {
           return err;
         }
@@ -391,19 +398,19 @@ int lcec_generic_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t 
       case GOMC_HAL_FLOAT:
         // check data size
         if (hal_data->bitLength > 32) {
-          rtapi_print_msg(RTAPI_MSG_WARN, LCEC_MSG_PFX "unable to export pin %s.%s.%s.%s: invalid process data bitlen!\n", master->instance_name, master->name, slave->name, hal_data->name);
+          gomc_log_warnf(env->log, master->instance_name, "unable to export pin %s.%s.%s.%s: invalid process data bitlen!", master->instance_name, master->name, slave->name, hal_data->name);
           continue;
         }
 
         // export pin
-        err = lcec_pin_newf(comp_id, hal_data->type, hal_data->dir, &hal_data->pin[0], "%s.%s.%s.%s", master->instance_name, master->name, slave->name, hal_data->name);
+        err = lcec_pin_newf(env, comp_id, hal_data->type, hal_data->dir, &hal_data->pin[0], "%s.%s.%s.%s", master->instance_name, master->name, slave->name, hal_data->name);
         if (err != 0) {
           return err;
         }
         break;
 
       default:
-        rtapi_print_msg(RTAPI_MSG_WARN, LCEC_MSG_PFX "unsupported pin type %d!\n", hal_data->type);
+        gomc_log_warnf(env->log, master->instance_name, "unsupported pin type %d!", hal_data->type);
     }
   }
 

@@ -97,18 +97,19 @@ void lcec_ax5805_read(struct lcec_slave *slave, long period);
 
 int lcec_ax5805_preinit(struct lcec_slave *slave) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   struct lcec_slave *ax5n_slave;
 
   // try to find corresponding ax5n
   ax5n_slave = lcec_slave_by_index(master, slave->index - 1);
   if (ax5n_slave == NULL) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "%s.%s: Unable to find corresponding AX5nxx with index %d.\n", master->name, slave->name, slave->index - 1);
+    gomc_log_errorf(env->log, master->instance_name, "%s.%s: Unable to find corresponding AX5nxx with index %d.", master->name, slave->name, slave->index - 1);
     return -EINVAL;
   }
 
   // check for AX5nxx
   if (ax5n_slave->proc_preinit != lcec_ax5100_preinit && ax5n_slave->proc_preinit != lcec_ax5200_preinit) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "%s.%s: Slave with index %d is not an AX5nxx.\n", master->name, slave->name, ax5n_slave->index);
+    gomc_log_errorf(env->log, master->instance_name, "%s.%s: Slave with index %d is not an AX5nxx.", master->name, slave->name, ax5n_slave->index);
     return -EINVAL;
   }
 
@@ -118,7 +119,7 @@ int lcec_ax5805_preinit(struct lcec_slave *slave) {
   // use FSOE config from AX5nxx
   slave->fsoeConf = ax5n_slave->fsoeConf;
   if (slave->fsoeConf == NULL) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "%s.%s: Corresponding AX5nxx with index %d has no FSOE config.\n", master->name, slave->name, ax5n_slave->index);
+    gomc_log_errorf(env->log, master->instance_name, "%s.%s: Corresponding AX5nxx with index %d has no FSOE config.", master->name, slave->name, ax5n_slave->index);
     return -EINVAL;
   }
 
@@ -130,6 +131,7 @@ int lcec_ax5805_preinit(struct lcec_slave *slave) {
 
 int lcec_ax5805_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t **pdo_entry_regs) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   lcec_ax5805_data_t *hal_data;
   int err;
   const lcec_pindesc_t *slave_pins;
@@ -138,8 +140,8 @@ int lcec_ax5805_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
   slave->proc_read = lcec_ax5805_read;
 
   // alloc hal memory
-  if ((hal_data = hal_malloc(sizeof(lcec_ax5805_data_t))) == NULL) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "hal_malloc() for slave %s.%s failed\n", master->name, slave->name);
+  if ((hal_data = env->hal->malloc(env->hal->ctx, sizeof(lcec_ax5805_data_t))) == NULL) {
+    gomc_log_errorf(env->log, master->instance_name, "hal_malloc() for slave %s.%s failed", master->name, slave->name);
     return -EIO;
   }
   memset(hal_data, 0, sizeof(lcec_ax5805_data_t));
@@ -166,7 +168,7 @@ int lcec_ax5805_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
   }
 
   // export pins
-  if ((err = lcec_pin_newf_list(comp_id, hal_data, slave_pins, master->instance_name, master->name, slave->name)) != 0) {
+  if ((err = lcec_pin_newf_list(env, comp_id, hal_data, slave_pins, master->instance_name, master->name, slave->name)) != 0) {
     return err;
   }
 
@@ -175,6 +177,7 @@ int lcec_ax5805_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
 
 void lcec_ax5805_read(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   lcec_ax5805_data_t *hal_data = (lcec_ax5805_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
 

@@ -269,6 +269,7 @@ void lcec_stmds5k_write(struct lcec_slave *slave, long period);
 
 int lcec_stmds5k_preinit(struct lcec_slave *slave) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   LCEC_CONF_MODPARAM_VAL_T *pval;
 
   slave->pdo_entry_count = LCEC_STMDS5K_PDOS;
@@ -277,7 +278,7 @@ int lcec_stmds5k_preinit(struct lcec_slave *slave) {
   pval = lcec_modparam_get(slave, LCEC_STMDS5K_PARAM_EXTENC);
   if (pval != NULL) {
     if (lcec_stmds5k_get_extenc_conf(pval->u32) == NULL) {
-      rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "invalied extenc type %u for slave %s.%s\n", pval->u32, master->name, slave->name);
+      gomc_log_errorf(env->log, master->instance_name, "invalied extenc type %u for slave %s.%s", pval->u32, master->name, slave->name);
       return -EINVAL;
     }
     slave->pdo_entry_count += LCEC_STMDS5K_EXTINC_PDOS;
@@ -288,6 +289,7 @@ int lcec_stmds5k_preinit(struct lcec_slave *slave) {
 
 int lcec_stmds5k_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t **pdo_entry_regs) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   lcec_stmds5k_data_t *hal_data;
   int err;
   uint8_t sdo_buf[4];
@@ -314,8 +316,8 @@ int lcec_stmds5k_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t 
   slave->proc_write = lcec_stmds5k_write;
 
   // alloc hal memory
-  if ((hal_data = hal_malloc(sizeof(lcec_stmds5k_data_t))) == NULL) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "hal_malloc() for slave %s.%s failed\n", master->name, slave->name);
+  if ((hal_data = env->hal->malloc(env->hal->ctx, sizeof(lcec_stmds5k_data_t))) == NULL) {
+    gomc_log_errorf(env->log, master->instance_name, "hal_malloc() for slave %s.%s failed", master->name, slave->name);
     return -ENOMEM;
   }
   memset(hal_data, 0, sizeof(lcec_stmds5k_data_t));
@@ -383,12 +385,12 @@ int lcec_stmds5k_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t 
   }
 
   // export pins
-  if ((err = lcec_pin_newf_list(comp_id, hal_data, slave_pins, master->instance_name, master->name, slave->name)) != 0) {
+  if ((err = lcec_pin_newf_list(env, comp_id, hal_data, slave_pins, master->instance_name, master->name, slave->name)) != 0) {
     return err;
   }
 
   // export parameters
-  if ((err = lcec_param_newf_list(comp_id, hal_data, slave_params, master->instance_name, master->name, slave->name)) != 0) {
+  if ((err = lcec_param_newf_list(env, comp_id, hal_data, slave_params, master->instance_name, master->name, slave->name)) != 0) {
     return err;
   }
 
@@ -457,6 +459,7 @@ void lcec_stmds5k_check_scales(lcec_stmds5k_data_t *hal_data) {
 
 void lcec_stmds5k_read(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   lcec_stmds5k_data_t *hal_data = (lcec_stmds5k_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   uint8_t dev_state;
@@ -520,6 +523,7 @@ void lcec_stmds5k_read(struct lcec_slave *slave, long period) {
 
 void lcec_stmds5k_write(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   lcec_stmds5k_data_t *hal_data = (lcec_stmds5k_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   uint8_t dev_ctrl;

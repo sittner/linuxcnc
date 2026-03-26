@@ -254,11 +254,12 @@ void lcec_el7211_write(struct lcec_slave *slave, long period);
  * @return Pointer to allocated and zeroed lcec_el7211_data_t, or NULL on failure.
  */
 lcec_el7211_data_t *lcec_el7211_alloc_hal(lcec_master_t *master, struct lcec_slave *slave) {
+  const cmod_env_t *env = master->env;
   lcec_el7211_data_t *hal_data;
 
   // alloc hal memory
-  if ((hal_data = hal_malloc(sizeof(lcec_el7211_data_t))) == NULL) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "hal_malloc() for slave %s.%s failed\n", master->name, slave->name);
+  if ((hal_data = env->hal->malloc(env->hal->ctx, sizeof(lcec_el7211_data_t))) == NULL) {
+    gomc_log_errorf(env->log, master->instance_name, "hal_malloc() for slave %s.%s failed", master->name, slave->name);
     return NULL;
   }
   memset(hal_data, 0, sizeof(lcec_el7211_data_t));
@@ -280,6 +281,7 @@ lcec_el7211_data_t *lcec_el7211_alloc_hal(lcec_master_t *master, struct lcec_sla
  * @return 0 on success, negative errno on failure.
  */
 int lcec_el7211_export_pins(lcec_master_t *master, struct lcec_slave *slave, lcec_el7211_data_t *hal_data) {
+  const cmod_env_t *env = master->env;
   int err;
   uint8_t sdo_buf[4];
   uint32_t sdo_vel_resolution;
@@ -296,12 +298,12 @@ int lcec_el7211_export_pins(lcec_master_t *master, struct lcec_slave *slave, lce
   sdo_pos_resolution = EC_READ_U32(sdo_buf);
 
   // export pins
-  if ((err = lcec_pin_newf_list(master->comp_id, hal_data, slave_pins, master->instance_name, master->name, slave->name)) != 0) {
+  if ((err = lcec_pin_newf_list(env, master->comp_id, hal_data, slave_pins, master->instance_name, master->name, slave->name)) != 0) {
     return err;
   }
 
   // export parameters
-  if ((err = lcec_param_newf_list(master->comp_id, hal_data, slave_params, master->instance_name, master->name, slave->name)) != 0) {
+  if ((err = lcec_param_newf_list(env, master->comp_id, hal_data, slave_params, master->instance_name, master->name, slave->name)) != 0) {
     return err;
   }
 
@@ -345,6 +347,7 @@ int lcec_el7211_export_pins(lcec_master_t *master, struct lcec_slave *slave, lce
  */
 int lcec_el7211_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t **pdo_entry_regs) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   lcec_el7211_data_t *hal_data;
   int err;
 
@@ -390,6 +393,7 @@ int lcec_el7211_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
  */
 int lcec_el7201_9014_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t **pdo_entry_regs) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   lcec_el7211_data_t *hal_data;
   int err;
 
@@ -400,13 +404,13 @@ int lcec_el7201_9014_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_re
 
   // set info1 to inputs
   if (ecrt_slave_config_sdo8(slave->config, 0x8010, 0x39, 10) != 0) {
-    rtapi_print_msg (RTAPI_MSG_ERR, LCEC_MSG_PFX "fail to configure slave %s.%s sdo info1 select\n", master->name, slave->name);
+    gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo info1 select", master->name, slave->name);
     return -1;
   }
 
   // set info2 to errors
   if (ecrt_slave_config_sdo8(slave->config, 0x8010, 0x3a, 5) != 0) {
-    rtapi_print_msg (RTAPI_MSG_ERR, LCEC_MSG_PFX "fail to configure slave %s.%s sdo info2 select\n", master->name, slave->name);
+    gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo info2 select", master->name, slave->name);
     return -1;
   }
 
@@ -433,7 +437,7 @@ int lcec_el7201_9014_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_re
   }
 
   // export extra pins
-  if ((err = lcec_pin_newf_list(comp_id, hal_data, slave_pins_el7201_9014, master->instance_name, master->name, slave->name)) != 0) {
+  if ((err = lcec_pin_newf_list(env, comp_id, hal_data, slave_pins_el7201_9014, master->instance_name, master->name, slave->name)) != 0) {
     return err;
   }
 
@@ -479,6 +483,7 @@ void lcec_el7211_check_scales(lcec_el7211_data_t *hal_data) {
  */
 void lcec_el7211_read(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   lcec_el7211_data_t *hal_data = (lcec_el7211_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   uint16_t status;
@@ -560,6 +565,7 @@ void lcec_el7211_read(struct lcec_slave *slave, long period) {
  */
 void lcec_el7201_9014_read(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   lcec_el7211_data_t *hal_data = (lcec_el7211_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   uint16_t info1, info2;
@@ -606,6 +612,7 @@ static inline double clamp(double v, double sub, double sup) {
  */
 void lcec_el7211_write(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   lcec_el7211_data_t *hal_data = (lcec_el7211_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   uint16_t control;

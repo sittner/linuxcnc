@@ -74,22 +74,22 @@ static const lcec_pindesc_t master_pins[] = {
  *
  * @note Must be called from init context, not from a real-time thread.
  */
-lcec_master_data_t *lcec_init_master_hal(int comp_id, const char *pfx, int global) {
+lcec_master_data_t *lcec_init_master_hal(const cmod_env_t *env, int comp_id, const char *pfx, int global) {
   lcec_master_data_t *hal_data;
 
   // alloc hal data
-  if ((hal_data = hal_malloc(sizeof(lcec_master_data_t))) == NULL) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "hal_malloc() for %s failed\n", pfx);
+  if ((hal_data = env->hal->malloc(env->hal->ctx, sizeof(lcec_master_data_t))) == NULL) {
+    gomc_log_errorf(env->log, pfx, "hal_malloc() for %s failed", pfx);
     return NULL;
   }
   memset(hal_data, 0, sizeof(lcec_master_data_t));
 
   // export pins
-  if (lcec_pin_newf_list(comp_id, hal_data, master_global_pins, pfx) != 0) {
+  if (lcec_pin_newf_list(env, comp_id, hal_data, master_global_pins, pfx) != 0) {
     return NULL;
   }
   if (!global) {
-    if (lcec_pin_newf_list(comp_id, hal_data, master_pins, pfx) != 0) {
+    if (lcec_pin_newf_list(env, comp_id, hal_data, master_pins, pfx) != 0) {
       return NULL;
     }
   }
@@ -134,22 +134,24 @@ void lcec_update_master_hal(lcec_master_data_t *hal_data, ec_master_state_t *ms)
  * @return Pointer to the new master, or NULL on allocation failure or invalid
  *         configuration (e.g. @c refClockSyncCycles < 0 without PLL support).
  */
-lcec_master_t * lcec_create_master(LCEC_CONF_MASTER_T *master_conf) {
+lcec_master_t * lcec_create_master(const cmod_env_t *env, LCEC_CONF_MASTER_T *master_conf) {
   lcec_master_t *master;
 
 #ifndef GOMC_RTAPI_TASK_PLL_SUPPORT
   if (master_conf->refClockSyncCycles < 0) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "Master %d: refClockSyncCycles < 0"
-      " (sync master to ref) not available (GOMC_RTAPI_TASK_PLL_SUPPORT missing)\n",
+    gomc_log_errorf(env->log, "ethercat",
+      "Master %d: refClockSyncCycles < 0"
+      " (sync master to ref) not available (GOMC_RTAPI_TASK_PLL_SUPPORT missing)",
       master_conf->index);
     goto fail0;
   }
 #endif
 
   // alloc master memory
-  master = rtapi_calloc(sizeof(lcec_master_t));
+  master = env->rtapi->calloc(env->rtapi->ctx, sizeof(lcec_master_t));
   if (master == NULL) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "Unable to allocate master %d structure memory\n", master_conf->index);
+    gomc_log_errorf(env->log, "ethercat",
+        "Unable to allocate master %d structure memory", master_conf->index);
     goto fail0;
   }
 
@@ -191,12 +193,14 @@ fail0:
  * @return 0 on success, -1 on failure (error message sent to RTAPI log).
  */
 int lcec_startup_master(lcec_master_t *master) {
+  const cmod_env_t *env = master->rt_ctx->env;
+
   // create main transport
   master->transport = ec_transport_create(
       (ec_transport_type_t) master->transport_type, master->interface);
   if (!master->transport) {
-    rtapi_print_msg(RTAPI_MSG_ERR,
-        LCEC_MSG_PFX "failed to create transport for master %s (iface %s)\n",
+    gomc_log_errorf(env->log, master->instance_name,
+        "failed to create transport for master %s (iface %s)",
         master->name, master->interface);
     goto fail0;
   }
@@ -207,8 +211,8 @@ int lcec_startup_master(lcec_master_t *master) {
     master->backup_transport = ec_transport_create(
         (ec_transport_type_t) master->transport_type, master->backup_interface);
     if (!master->backup_transport) {
-      rtapi_print_msg(RTAPI_MSG_ERR,
-          LCEC_MSG_PFX "failed to create backup transport for master %s (iface %s)\n",
+      gomc_log_errorf(env->log, master->instance_name,
+          "failed to create backup transport for master %s (iface %s)",
           master->name, master->backup_interface);
       goto fail1;
     }
@@ -219,8 +223,8 @@ int lcec_startup_master(lcec_master_t *master) {
       master->index, master->transport, master->backup_transport,
       master->debug_level, master->run_on_cpu);
   if (!master->master) {
-    rtapi_print_msg(RTAPI_MSG_ERR,
-        LCEC_MSG_PFX "startup of master %s (index %d, iface %s) failed\n",
+    gomc_log_errorf(env->log, master->instance_name,
+        "startup of master %s (index %d, iface %s) failed",
         master->name, master->index, master->interface);
     goto fail2;
   }
@@ -299,8 +303,8 @@ static void lcec_release_lock(void *data) {
  */
 int lcec_startup_master(lcec_master_t *master) {
     if (!(master->master = ecrt_request_master(master->index))) {
-      rtapi_print_msg(RTAPI_MSG_ERR,
-          LCEC_MSG_PFX "requesting master %s (index %d) failed\n",
+      gomc_log_errorf(master->rt_ctx->env->log, master->instance_name,
+          "requesting master %s (index %d) failed",
           master->name, master->index);
       return -1;
     }
@@ -363,7 +367,8 @@ void lcec_read_master(void *arg, long period) {
   if (period != master->period_last) {
     master->period_last = period;
     if (master->app_time_period != period) {
-      rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "Invalid appTimePeriod of %u for master %s (should be %ld).\n",
+      gomc_log_errorf(master->rt_ctx->env->log, master->instance_name,
+          "Invalid appTimePeriod of %u for master %s (should be %ld).",
         master->app_time_period, master->name, period);
     }
   }

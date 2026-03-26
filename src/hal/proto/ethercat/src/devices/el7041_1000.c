@@ -319,6 +319,7 @@ void lcec_el7041_1000_write(struct lcec_slave *s, long period);
  */
 int lcec_el7041_1000_init(int comp_id, struct lcec_slave *s, ec_pdo_entry_reg_t **r) {
   lcec_master_t *m = s->master;
+  const cmod_env_t *env = m->env;
   lcec_el7041_1000_data_t *hd;
   int err;
 
@@ -327,8 +328,8 @@ int lcec_el7041_1000_init(int comp_id, struct lcec_slave *s, ec_pdo_entry_reg_t 
   s->proc_write = lcec_el7041_1000_write;
 
   // alloc hal memory
-  if ((hd = hal_malloc(sizeof(lcec_el7041_1000_data_t))) == NULL) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "hal_malloc() for slave %s.%s failed\n", m->name, s->name);
+  if ((hd = env->hal->malloc(env->hal->ctx, sizeof(lcec_el7041_1000_data_t))) == NULL) {
+    gomc_log_errorf(env->log, m->instance_name, "hal_malloc() for slave %s.%s failed", m->name, s->name);
     return -EIO;
   }
   memset(hd, 0, sizeof(lcec_el7041_1000_data_t));
@@ -381,7 +382,7 @@ int lcec_el7041_1000_init(int comp_id, struct lcec_slave *s, ec_pdo_entry_reg_t 
   LCEC_PDO_INIT(r, s->index, s->vid, s->pid, 0x6010, 0x10, &hd->dcm_tx_toggle_pdo_os,       &hd->dcm_tx_toggle_pdo_bp);
 
   // export pins
-  if ((err = lcec_pin_newf_list(comp_id, hd, slave_pins, m->instance_name, m->name, s->name)) != 0) {
+  if ((err = lcec_pin_newf_list(env, comp_id, hd, slave_pins, m->instance_name, m->name, s->name)) != 0) {
     return err;
   }
 

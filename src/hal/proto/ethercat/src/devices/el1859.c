@@ -73,6 +73,7 @@ void lcec_el1859_write(struct lcec_slave *slave, long period);
  */
 int lcec_el1859_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t **pdo_entry_regs) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   lcec_el1859_pin_t *hal_data;
   lcec_el1859_pin_t *pin;
   int i;
@@ -83,8 +84,8 @@ int lcec_el1859_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
   slave->proc_write = lcec_el1859_write;
 
   // alloc hal memory
-  if ((hal_data = hal_malloc(sizeof(lcec_el1859_pin_t) * LCEC_EL1859_PINS)) == NULL) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "hal_malloc() for slave %s.%s failed\n", master->name, slave->name);
+  if ((hal_data = env->hal->malloc(env->hal->ctx, sizeof(lcec_el1859_pin_t) * LCEC_EL1859_PINS)) == NULL) {
+    gomc_log_errorf(env->log, master->instance_name, "hal_malloc() for slave %s.%s failed", master->name, slave->name);
     return -EIO;
   }
   memset(hal_data, 0, sizeof(lcec_el1859_pin_t) * LCEC_EL1859_PINS);
@@ -97,12 +98,12 @@ int lcec_el1859_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
     LCEC_PDO_INIT(pdo_entry_regs, slave->index, slave->vid, slave->pid, 0x7080 + (i << 4), 0x01, &pin->pdo_out_os, &pin->pdo_out_bp);
 
     // export pins
-    if ((err = lcec_pin_newf_list(comp_id, pin, slave_pins, master->instance_name, master->name, slave->name, i)) != 0) {
+    if ((err = lcec_pin_newf_list(env, comp_id, pin, slave_pins, master->instance_name, master->name, slave->name, i)) != 0) {
       return err;
     }
 
     // export parameters
-    if ((err = lcec_param_newf_list(comp_id, pin, slave_params, master->instance_name, master->name, slave->name, i)) != 0) {
+    if ((err = lcec_param_newf_list(env, comp_id, pin, slave_params, master->instance_name, master->name, slave->name, i)) != 0) {
       return err;
     }
   }
@@ -112,6 +113,7 @@ int lcec_el1859_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
 
 void lcec_el1859_read(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   lcec_el1859_pin_t *hal_data = (lcec_el1859_pin_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   lcec_el1859_pin_t *pin;
@@ -132,6 +134,7 @@ void lcec_el1859_read(struct lcec_slave *slave, long period) {
 
 void lcec_el1859_write(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   lcec_el1859_pin_t *hal_data = (lcec_el1859_pin_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   lcec_el1859_pin_t *pin;

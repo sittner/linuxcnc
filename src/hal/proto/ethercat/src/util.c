@@ -58,13 +58,15 @@ int lcec_read_sdo(struct lcec_slave *slave, uint16_t index, uint8_t subindex, ui
   uint32_t abort_code;
 
   if ((err = ecrt_master_sdo_upload(master->master, slave->index, index, subindex, target, size, &result_size, &abort_code))) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "slave %s.%s: Failed to execute SDO upload (0x%04x:0x%02x, error %d, abort_code %08x)\n",
+    gomc_log_errorf(master->rt_ctx->env->log, master->instance_name,
+      "slave %s.%s: Failed to execute SDO upload (0x%04x:0x%02x, error %d, abort_code %08x)",
       master->name, slave->name, index, subindex, err, abort_code);
     return -1;
   }
 
   if (result_size != size) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "slave %s.%s: Invalid result size on SDO upload (0x%04x:0x%02x, req: %u, res: %u)\n",
+    gomc_log_errorf(master->rt_ctx->env->log, master->instance_name,
+      "slave %s.%s: Invalid result size on SDO upload (0x%04x:0x%02x, req: %u, res: %u)",
       master->name, slave->name, index, subindex, (unsigned int) size, (unsigned int) result_size);
     return -1;
   }
@@ -102,13 +104,15 @@ int lcec_read_idn(struct lcec_slave *slave, uint8_t drive_no, uint16_t idn, uint
   uint16_t error_code;
 
   if ((err = ecrt_master_read_idn(master->master, slave->index, drive_no, idn, target, size, &result_size, &error_code))) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "slave %s.%s: Failed to execute IDN read (drive %u idn %c-%u-%u, error %d, error_code %08x)\n",
+    gomc_log_errorf(master->rt_ctx->env->log, master->instance_name,
+      "slave %s.%s: Failed to execute IDN read (drive %u idn %c-%u-%u, error %d, error_code %08x)",
       master->name, slave->name, drive_no, (idn & 0x8000) ? 'P' : 'S', (idn >> 12) & 0x0007, idn & 0x0fff, err, error_code);
     return -1;
   }
 
   if (result_size != size) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "slave %s.%s: Invalid result size on IDN read (drive %u idn %c-%d-%d, req: %u, res: %u)\n",
+    gomc_log_errorf(master->rt_ctx->env->log, master->instance_name,
+      "slave %s.%s: Invalid result size on IDN read (drive %u idn %c-%d-%d, req: %u, res: %u)",
       master->name, slave->name, drive_no, (idn & 0x8000) ? 'P' : 'S', (idn >> 12) & 0x0007, idn & 0x0fff, (unsigned int) size, (unsigned int) result_size);
     return -1;
   }
@@ -133,20 +137,20 @@ int lcec_read_idn(struct lcec_slave *slave, uint8_t drive_no, uint16_t idn, uint
  * @return 0 on success, @c -ENOMEM if the formatted name exceeds
  *         @c GOMC_HAL_NAME_LEN, or the negative error code from @c hal_pin_new().
  */
-int lcec_pin_newfv(int comp_id, gomc_hal_type_t type, int dir, void **data_ptr_addr, const char *fmt, va_list ap) {
+int lcec_pin_newfv(const cmod_env_t *env, int comp_id, gomc_hal_type_t type, int dir, void **data_ptr_addr, const char *fmt, va_list ap) {
   char name[GOMC_HAL_NAME_LEN + 1];
   int sz;
   int err;
 
-  sz = rtapi_vsnprintf(name, sizeof(name), fmt, ap);
+  sz = vsnprintf(name, sizeof(name), fmt, ap);
   if(sz == -1 || sz > GOMC_HAL_NAME_LEN) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "length %d too long for name starting '%s'\n", sz, name);
+    gomc_log_errorf(env->log, "ethercat", "length %d too long for name starting '%s'", sz, name);
     return -ENOMEM;
   }
 
-  err = hal_pin_new(name, type, dir, data_ptr_addr, comp_id);
+  err = env->hal->pin_new(env->hal->ctx, name, type, dir, data_ptr_addr, comp_id);
   if (err) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "exporting pin %s failed\n", name);
+    gomc_log_errorf(env->log, "ethercat", "exporting pin %s failed", name);
     return err;
   }
 
@@ -183,12 +187,12 @@ int lcec_pin_newfv(int comp_id, gomc_hal_type_t type, int dir, void **data_ptr_a
  * @param ...            Format arguments.
  * @return 0 on success, negative error code on failure.
  */
-int lcec_pin_newf(int comp_id, gomc_hal_type_t type, int dir, void **data_ptr_addr, const char *fmt, ...) {
+int lcec_pin_newf(const cmod_env_t *env, int comp_id, gomc_hal_type_t type, int dir, void **data_ptr_addr, const char *fmt, ...) {
   va_list ap;
   int err;
 
   va_start(ap, fmt);
-  err = lcec_pin_newfv(comp_id, type, dir, data_ptr_addr, fmt, ap);
+  err = lcec_pin_newfv(env, comp_id, type, dir, data_ptr_addr, fmt, ap);
   va_end(ap);
 
   return err;
@@ -211,14 +215,14 @@ int lcec_pin_newf(int comp_id, gomc_hal_type_t type, int dir, void **data_ptr_ad
  * @return 0 on success, negative error code from lcec_pin_newfv() on the
  *         first failure (remaining descriptors are not processed).
  */
-int lcec_pin_newfv_list(int comp_id, void *base, const lcec_pindesc_t *list, va_list ap) {
+int lcec_pin_newfv_list(const cmod_env_t *env, int comp_id, void *base, const lcec_pindesc_t *list, va_list ap) {
   va_list ac;
   int err;
   const lcec_pindesc_t *p;
 
   for (p = list; p->type != GOMC_HAL_TYPE_UNSPECIFIED; p++) {
     va_copy(ac, ap);
-    err = lcec_pin_newfv(comp_id, p->type, p->dir, (void **) ((uint8_t *)base + p->offset), p->fmt, ac);
+    err = lcec_pin_newfv(env, comp_id, p->type, p->dir, (void **) ((uint8_t *)base + p->offset), p->fmt, ac);
     va_end(ac);
     if (err) {
       return err;
@@ -239,12 +243,12 @@ int lcec_pin_newfv_list(int comp_id, void *base, const lcec_pindesc_t *list, va_
  * @param ...   Format arguments consumed by each descriptor's @c fmt string.
  * @return 0 on success, negative error code on the first failure.
  */
-int lcec_pin_newf_list(int comp_id, void *base, const lcec_pindesc_t *list, ...) {
+int lcec_pin_newf_list(const cmod_env_t *env, int comp_id, void *base, const lcec_pindesc_t *list, ...) {
   va_list ap;
   int err;
 
   va_start(ap, list);
-  err = lcec_pin_newfv_list(comp_id, base, list, ap);
+  err = lcec_pin_newfv_list(env, comp_id, base, list, ap);
   va_end(ap);
 
   return err;
@@ -267,20 +271,20 @@ int lcec_pin_newf_list(int comp_id, void *base, const lcec_pindesc_t *list, ...)
  * @return 0 on success, @c -ENOMEM if the name is too long, or the
  *         negative error code from @c hal_param_new().
  */
-int lcec_param_newfv(int comp_id, gomc_hal_type_t type, int dir, void *data_addr, const char *fmt, va_list ap) {
+int lcec_param_newfv(const cmod_env_t *env, int comp_id, gomc_hal_type_t type, int dir, void *data_addr, const char *fmt, va_list ap) {
   char name[GOMC_HAL_NAME_LEN + 1];
   int sz;
   int err;
 
-  sz = rtapi_vsnprintf(name, sizeof(name), fmt, ap);
+  sz = vsnprintf(name, sizeof(name), fmt, ap);
   if(sz == -1 || sz > GOMC_HAL_NAME_LEN) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "length %d too long for name starting '%s'\n", sz, name);
+    gomc_log_errorf(env->log, "ethercat", "length %d too long for name starting '%s'", sz, name);
     return -ENOMEM;
   }
 
-  err = hal_param_new(name, type, dir, data_addr, comp_id);
+  err = env->hal->param_new(env->hal->ctx, name, type, dir, data_addr, comp_id);
   if (err) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "exporting param %s failed\n", name);
+    gomc_log_errorf(env->log, "ethercat", "exporting param %s failed", name);
     return err;
   }
 
@@ -316,12 +320,12 @@ int lcec_param_newfv(int comp_id, gomc_hal_type_t type, int dir, void *data_addr
  * @param ...        Format arguments.
  * @return 0 on success, negative error code on failure.
  */
-int lcec_param_newf(int comp_id, gomc_hal_type_t type, int dir, void *data_addr, const char *fmt, ...) {
+int lcec_param_newf(const cmod_env_t *env, int comp_id, gomc_hal_type_t type, int dir, void *data_addr, const char *fmt, ...) {
   va_list ap;
   int err;
 
   va_start(ap, fmt);
-  err = lcec_param_newfv(comp_id, type, dir, data_addr, fmt, ap);
+  err = lcec_param_newfv(env, comp_id, type, dir, data_addr, fmt, ap);
   va_end(ap);
 
   return err;
@@ -340,14 +344,14 @@ int lcec_param_newf(int comp_id, gomc_hal_type_t type, int dir, void *data_addr,
  * @return 0 on success, negative error code from lcec_param_newfv() on the
  *         first failure.
  */
-int lcec_param_newfv_list(int comp_id, void *base, const lcec_pindesc_t *list, va_list ap) {
+int lcec_param_newfv_list(const cmod_env_t *env, int comp_id, void *base, const lcec_pindesc_t *list, va_list ap) {
   va_list ac;
   int err;
   const lcec_pindesc_t *p;
 
   for (p = list; p->type != GOMC_HAL_TYPE_UNSPECIFIED; p++) {
     va_copy(ac, ap);
-    err = lcec_param_newfv(comp_id, p->type, p->dir, (void *) ((uint8_t *)base + p->offset), p->fmt, ac);
+    err = lcec_param_newfv(env, comp_id, p->type, p->dir, (void *) ((uint8_t *)base + p->offset), p->fmt, ac);
     va_end(ac);
     if (err) {
       return err;
@@ -367,12 +371,12 @@ int lcec_param_newfv_list(int comp_id, void *base, const lcec_pindesc_t *list, v
  * @param ...   Format arguments for each descriptor's @c fmt string.
  * @return 0 on success, negative error code on the first failure.
  */
-int lcec_param_newf_list(int comp_id, void *base, const lcec_pindesc_t *list, ...) {
+int lcec_param_newf_list(const cmod_env_t *env, int comp_id, void *base, const lcec_pindesc_t *list, ...) {
   va_list ap;
   int err;
 
   va_start(ap, list);
-  err = lcec_param_newfv_list(comp_id, base, list, ap);
+  err = lcec_param_newfv_list(env, comp_id, base, list, ap);
   va_end(ap);
 
   return err;
@@ -508,7 +512,7 @@ void lcec_syncs_init(lcec_syncs_t *syncs) {
  */
 void lcec_syncs_add_sync(lcec_syncs_t *syncs, ec_direction_t dir, ec_watchdog_mode_t watchdog_mode) {
   if (syncs->sync_count >= LCEC_MAX_SYNC_COUNT) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "too many syncs (max %d)\n", LCEC_MAX_SYNC_COUNT);
+    fprintf(stderr, "LCEC: too many syncs (max %d)\n", LCEC_MAX_SYNC_COUNT);
     return;
   }
   syncs->curr_sync = &syncs->syncs[syncs->sync_count];
@@ -542,7 +546,7 @@ void lcec_syncs_add_sync(lcec_syncs_t *syncs, ec_direction_t dir, ec_watchdog_mo
  */
 void lcec_syncs_add_pdo_info(lcec_syncs_t *syncs, uint16_t index) {
   if (syncs->pdo_info_count >= LCEC_MAX_PDO_INFO_COUNT) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "too many PDO infos (max %d)\n", LCEC_MAX_PDO_INFO_COUNT);
+    fprintf(stderr, "LCEC: too many PDO infos (max %d)\n", LCEC_MAX_PDO_INFO_COUNT);
     return;
   }
   syncs->curr_pdo_info = &syncs->pdo_infos[syncs->pdo_info_count];
@@ -578,7 +582,7 @@ void lcec_syncs_add_pdo_info(lcec_syncs_t *syncs, uint16_t index) {
  */
 void lcec_syncs_add_pdo_entry(lcec_syncs_t *syncs, uint16_t index, uint8_t subindex, uint8_t bit_length) {
   if (syncs->pdo_entry_count >= LCEC_MAX_PDO_ENTRY_COUNT) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "too many PDO entries (max %d)\n", LCEC_MAX_PDO_ENTRY_COUNT);
+    fprintf(stderr, "LCEC: too many PDO entries (max %d)\n", LCEC_MAX_PDO_ENTRY_COUNT);
     return;
   }
   syncs->curr_pdo_entry = &syncs->pdo_entries[syncs->pdo_entry_count];

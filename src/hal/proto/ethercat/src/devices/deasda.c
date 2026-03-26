@@ -171,6 +171,7 @@ void lcec_deasda_write(struct lcec_slave *slave, long period);
 
 int lcec_deasda_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t **pdo_entry_regs) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   lcec_deasda_data_t *hal_data;
   int err;
   uint32_t tu;
@@ -181,8 +182,8 @@ int lcec_deasda_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
   slave->proc_write = lcec_deasda_write;
 
   // alloc hal memory
-  if ((hal_data = hal_malloc(sizeof(lcec_deasda_data_t))) == NULL) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "hal_malloc() for slave %s.%s failed\n", master->name, slave->name);
+  if ((hal_data = env->hal->malloc(env->hal->ctx, sizeof(lcec_deasda_data_t))) == NULL) {
+    gomc_log_errorf(env->log, master->instance_name, "hal_malloc() for slave %s.%s failed", master->name, slave->name);
     return -EIO;
   }
   memset(hal_data, 0, sizeof(lcec_deasda_data_t));
@@ -190,7 +191,7 @@ int lcec_deasda_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
 
   // set to cyclic synchronous velocity mode
   if (ecrt_slave_config_sdo8(slave->config, 0x6060, 0x00, 9) != 0) {
-    rtapi_print_msg (RTAPI_MSG_ERR, LCEC_MSG_PFX "fail to configure slave %s.%s sdo velo mode\n", master->name, slave->name);
+    gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo velo mode", master->name, slave->name);
   }
 
   // set interpolation time period
@@ -198,10 +199,10 @@ int lcec_deasda_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
   ti = -9;
   while (tu > 0 && ((tu % 10) == 0 || tu > 255)) { tu /=  10; ti++; }
   if (ecrt_slave_config_sdo8(slave->config, 0x60C2, 0x01, (uint8_t)tu) != 0) {
-    rtapi_print_msg (RTAPI_MSG_ERR, LCEC_MSG_PFX "fail to configure slave %s.%s sdo ipol time period units\n", master->name, slave->name);
+    gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo ipol time period units", master->name, slave->name);
   }
   if (ecrt_slave_config_sdo8(slave->config, 0x60C2, 0x02, ti) != 0) {
-    rtapi_print_msg (RTAPI_MSG_ERR, LCEC_MSG_PFX "fail to configure slave %s.%s sdo ipol time period index\n", master->name, slave->name);
+    gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo ipol time period index", master->name, slave->name);
   }
 
   // initialize sync info
@@ -216,12 +217,12 @@ int lcec_deasda_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
   LCEC_PDO_INIT(pdo_entry_regs, slave->index, slave->vid, slave->pid, 0x60FF, 0x00, &hal_data->cmdvel_pdo_os, NULL);
 
   // export pins
-  if ((err = lcec_pin_newf_list(comp_id, hal_data, slave_pins, master->instance_name, master->name, slave->name)) != 0) {
+  if ((err = lcec_pin_newf_list(env, comp_id, hal_data, slave_pins, master->instance_name, master->name, slave->name)) != 0) {
     return err;
   }
 
   // export parameters
-  if ((err = lcec_param_newf_list(comp_id, hal_data, slave_params, master->instance_name, master->name, slave->name)) != 0) {
+  if ((err = lcec_param_newf_list(env, comp_id, hal_data, slave_params, master->instance_name, master->name, slave->name)) != 0) {
     return err;
   }
 
@@ -271,6 +272,7 @@ void lcec_deasda_check_scales(lcec_deasda_data_t *hal_data) {
 
 void lcec_deasda_read(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   lcec_deasda_data_t *hal_data = (lcec_deasda_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   uint16_t status;
@@ -352,6 +354,7 @@ void lcec_deasda_read(struct lcec_slave *slave, long period) {
 
 void lcec_deasda_write(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   lcec_deasda_data_t *hal_data = (lcec_deasda_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   uint16_t control;

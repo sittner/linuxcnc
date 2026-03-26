@@ -63,6 +63,7 @@ int lcec_ax5200_preinit(struct lcec_slave *slave) {
 
 int lcec_ax5200_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t **pdo_entry_regs) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   lcec_ax5200_data_t *hal_data;
   int i;
   lcec_class_ax5_chan_t *chan;
@@ -74,8 +75,8 @@ int lcec_ax5200_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
   slave->proc_write = lcec_ax5200_write;
 
   // alloc hal memory
-  if ((hal_data = hal_malloc(sizeof(lcec_ax5200_data_t))) == NULL) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "hal_malloc() for slave %s.%s failed\n", master->name, slave->name);
+  if ((hal_data = env->hal->malloc(env->hal->ctx, sizeof(lcec_ax5200_data_t))) == NULL) {
+    gomc_log_errorf(env->log, master->instance_name, "hal_malloc() for slave %s.%s failed", master->name, slave->name);
     return -EIO;
   }
   memset(hal_data, 0, sizeof(lcec_ax5200_data_t));

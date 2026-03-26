@@ -144,6 +144,7 @@ void lcec_el5002_read(struct lcec_slave *slave, long period);
  */
 int lcec_el5002_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t **pdo_entry_regs) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   lcec_slave_modparam_t *p;
   lcec_el5002_data_t *hal_data;
   int i;
@@ -157,67 +158,67 @@ int lcec_el5002_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
     switch(p->id & LCEC_EL5002_PARAM_FNK_MASK) {
       case LCEC_EL5002_PARAM_DIS_FRAME_ERR:
         if (ecrt_slave_config_sdo8(slave->config, 0x8000 + i, 0x01, p->value.bit) != 0) {
-          rtapi_print_msg (RTAPI_MSG_ERR, LCEC_MSG_PFX "fail to configure slave %s.%s sdo DisFrameErr\n", master->name, slave->name);
+          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo DisFrameErr", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL5002_PARAM_EN_PWR_FAIL_CHK:
         if (ecrt_slave_config_sdo8(slave->config, 0x8000 + i, 0x02, p->value.bit) != 0) {
-          rtapi_print_msg (RTAPI_MSG_ERR, LCEC_MSG_PFX "fail to configure slave %s.%s sdo EnPwrFailChk\n", master->name, slave->name);
+          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo EnPwrFailChk", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL5002_PARAM_EN_INHIBIT_TIME:
         if (ecrt_slave_config_sdo8(slave->config, 0x8000 + i, 0x03, p->value.bit) != 0) {
-          rtapi_print_msg (RTAPI_MSG_ERR, LCEC_MSG_PFX "fail to configure slave %s.%s sdo EnInhibitTime\n", master->name, slave->name);
+          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo EnInhibitTime", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL5002_PARAM_CODING:
         if (ecrt_slave_config_sdo8(slave->config, 0x8000 + i, 0x06, p->value.u32) != 0) {
-          rtapi_print_msg (RTAPI_MSG_ERR, LCEC_MSG_PFX "fail to configure slave %s.%s sdo Coding\n", master->name, slave->name);
+          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo Coding", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL5002_PARAM_BAUDRATE:
         if (ecrt_slave_config_sdo8(slave->config, 0x8000 + i, 0x09, p->value.u32) != 0) {
-          rtapi_print_msg (RTAPI_MSG_ERR, LCEC_MSG_PFX "fail to configure slave %s.%s sdo Baudrate\n", master->name, slave->name);
+          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo Baudrate", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL5002_PARAM_CLK_JIT_COMP:
         if (ecrt_slave_config_sdo8(slave->config, 0x8000 + i, 0x0c, p->value.u32) != 0) {
-          rtapi_print_msg (RTAPI_MSG_ERR, LCEC_MSG_PFX "fail to configure slave %s.%s sdo ClkJitComp\n", master->name, slave->name);
+          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo ClkJitComp", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL5002_PARAM_FRAME_TYPE:
         if (ecrt_slave_config_sdo8(slave->config, 0x8000 + i, 0x0f, p->value.u32) != 0) {
-          rtapi_print_msg (RTAPI_MSG_ERR, LCEC_MSG_PFX "fail to configure slave %s.%s sdo FrameType\n", master->name, slave->name);
+          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo FrameType", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL5002_PARAM_FRAME_SIZE:
         if (ecrt_slave_config_sdo16(slave->config, 0x8000 + i, 0x11, p->value.u32) != 0) {
-          rtapi_print_msg (RTAPI_MSG_ERR, LCEC_MSG_PFX "fail to configure slave %s.%s sdo FrameSize\n", master->name, slave->name);
+          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo FrameSize", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL5002_PARAM_DATA_LEN:
         if (ecrt_slave_config_sdo16(slave->config, 0x8000 + i, 0x12, p->value.u32) != 0) {
-          rtapi_print_msg (RTAPI_MSG_ERR, LCEC_MSG_PFX "fail to configure slave %s.%s sdo DataLen\n", master->name, slave->name);
+          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo DataLen", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL5002_PARAM_MIN_INHIBIT_TIME:
         if (ecrt_slave_config_sdo16(slave->config, 0x8000 + i, 0x13, p->value.u32) != 0) {
-          rtapi_print_msg (RTAPI_MSG_ERR, LCEC_MSG_PFX "fail to configure slave %s.%s sdo MinInhibitTime\n", master->name, slave->name);
+          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo MinInhibitTime", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL5002_PARAM_NO_CLK_BURSTS:
         if (ecrt_slave_config_sdo16(slave->config, 0x8000 + i, 0x14, p->value.u32) != 0) {
-          rtapi_print_msg (RTAPI_MSG_ERR, LCEC_MSG_PFX "fail to configure slave %s.%s sdo NoClkBursts\n", master->name, slave->name);
+          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo NoClkBursts", master->name, slave->name);
           return -1;
         }
         break;
@@ -228,8 +229,8 @@ int lcec_el5002_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
   slave->proc_read = lcec_el5002_read;
 
   // alloc hal memory
-  if ((hal_data = hal_malloc(sizeof(lcec_el5002_data_t))) == NULL) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "hal_malloc() for slave %s.%s failed\n", master->name, slave->name);
+  if ((hal_data = env->hal->malloc(env->hal->ctx, sizeof(lcec_el5002_data_t))) == NULL) {
+    gomc_log_errorf(env->log, master->instance_name, "hal_malloc() for slave %s.%s failed", master->name, slave->name);
     return -EIO;
   }
   memset(hal_data, 0, sizeof(lcec_el5002_data_t));
@@ -255,7 +256,7 @@ int lcec_el5002_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
     LCEC_PDO_INIT(pdo_entry_regs, slave->index, slave->vid, slave->pid, 0x6000 + (i << 4), 0x11, &chan->count_pdo_os, NULL);
 
     // export pins
-    if ((err = lcec_pin_newf_list(comp_id, chan, slave_pins, master->instance_name, master->name, slave->name, i)) != 0) {
+    if ((err = lcec_pin_newf_list(env, comp_id, chan, slave_pins, master->instance_name, master->name, slave->name, i)) != 0) {
       return err;
     }
 
@@ -287,6 +288,7 @@ int lcec_el5002_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
  */
 void lcec_el5002_read(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   lcec_el5002_data_t *hal_data = (lcec_el5002_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   int i;

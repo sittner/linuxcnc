@@ -103,7 +103,7 @@ int lcec_generic_conf_init(lcec_slave_t *slave, LCEC_CONF_SLAVE_T *slave_conf, l
  *
  * @param slave Pointer to the EtherCAT slave descriptor.
  */
-void lcec_generic_free_slave(lcec_slave_t *slave);
+void lcec_generic_free_slave(const cmod_env_t *env, lcec_slave_t *slave);
 
 /**
  * @brief Append a sync manager to the configuration state.

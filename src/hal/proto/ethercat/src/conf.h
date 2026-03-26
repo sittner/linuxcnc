@@ -29,7 +29,6 @@
 
 #include "launcher/pkg/cmodule/gomc_hal.h"
 
-#include "hal.h"
 #include "ecrt.h"
 
 /** @brief Legacy module name constant.

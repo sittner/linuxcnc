@@ -59,9 +59,6 @@
 #include <ctype.h>
 #include <expat.h>
 
-#include "rtapi.h"
-#include "hal.h"
-
 #include "conf.h"
 #include "conf_priv.h"
 
@@ -490,7 +487,7 @@ static void lcec_conf_destroy(cmod_t *self) {
   lcec_rt_cleanup(&m->rt_ctx);
 
   if (m->hal_comp_id >= 0) {
-    hal_exit(m->hal_comp_id);
+    m->env->hal->exit(m->env->hal->ctx, m->hal_comp_id);
   }
   free(m);
 }
@@ -547,25 +544,25 @@ int New(const cmod_env_t *env, const char *name,
   }
 
   // initialize component
-  m->hal_comp_id = hal_init_ex(name, env->dl_handle, GOMC_HAL_COMP_REALTIME);
+  m->hal_comp_id = env->hal->init(env->hal->ctx, name, env->dl_handle, GOMC_HAL_COMP_REALTIME);
   if (m->hal_comp_id < 1) {
     LOG_ERR(m, "hal_init_ex failed");
     goto fail0;
   }
 
   // allocate hal memory
-  m->conf_hal_data = hal_malloc(sizeof(LCEC_CONF_HAL_T));
+  m->conf_hal_data = env->hal->malloc(env->hal->ctx, sizeof(LCEC_CONF_HAL_T));
   if (m->conf_hal_data == NULL) {
     LOG_ERR(m, "unable to allocate HAL shared memory");
     goto fail1;
   }
 
   // register pins
-  if (hal_pin_u32_newf(GOMC_HAL_OUT, &(m->conf_hal_data->master_count), m->hal_comp_id, "%s.conf.master-count", name) != 0) {
+  if (gomc_hal_pin_u32_newf(env->hal, GOMC_HAL_OUT, &(m->conf_hal_data->master_count), m->hal_comp_id, "%s.conf.master-count", name) != 0) {
     LOG_ERR(m, "unable to register pin %s.conf.master-count", name);
     goto fail1;
   }
-  if (hal_pin_u32_newf(GOMC_HAL_OUT, &(m->conf_hal_data->slave_count), m->hal_comp_id, "%s.conf.slave-count", name) != 0) {
+  if (gomc_hal_pin_u32_newf(env->hal, GOMC_HAL_OUT, &(m->conf_hal_data->slave_count), m->hal_comp_id, "%s.conf.slave-count", name) != 0) {
     LOG_ERR(m, "unable to register pin %s.conf.slave-count", name);
     goto fail1;
   }
@@ -617,6 +614,7 @@ int New(const cmod_env_t *env, const char *name,
   end->confType = lcecConfTypeNone;
 
   // initialize RT context
+  m->rt_ctx.env = env;
   m->rt_ctx.comp_id = m->hal_comp_id;
   m->rt_ctx.instance_name = name;
   m->rt_ctx.ipc_socket = ipc_socket;
@@ -632,7 +630,7 @@ int New(const cmod_env_t *env, const char *name,
   }
 
   // everything is fine
-  hal_ready(m->hal_comp_id);
+  env->hal->ready(env->hal->ctx, m->hal_comp_id);
 
   // setup cmod lifecycle
   m->base.Start = lcec_conf_start;
@@ -653,7 +651,7 @@ fail3:
 fail2:
   fclose(file);
 fail1:
-  hal_exit(m->hal_comp_id);
+  m->env->hal->exit(m->env->hal->ctx, m->hal_comp_id);
   m->hal_comp_id = -1;
 fail0:
   free(m);

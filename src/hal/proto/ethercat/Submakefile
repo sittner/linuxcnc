@@ -72,9 +72,9 @@ LCEC_ALL_SRCS := $(LCEC_RT_SRCS) $(LCEC_CONF_SRCS)
 
 USERSRCS += $(LCEC_ALL_SRCS)
 $(call TOOBJSDEPS, $(LCEC_ALL_SRCS)): EXTRAFLAGS += \
-    -fPIC -DULAPI -URTAPI -I$(BASEPWD)/$(LCEC_DIR) -I$(BASEPWD) $(ETHERCAT_CFLAGS)
+    -fPIC -DULAPI -URTAPI -I$(BASEPWD)/$(LCEC_DIR) -I$(BASEPWD) -lm $(ETHERCAT_CFLAGS)
 
-../cmod/ethercat.so: $(call TOOBJS, $(LCEC_ALL_SRCS)) ../lib/liblinuxcnchal.so.0
+../cmod/ethercat.so: $(call TOOBJS, $(LCEC_ALL_SRCS))
 	$(ECHO) Linking $(notdir $@)
 	@mkdir -p ../cmod
 	$(Q)$(CC) -shared -o $@ $^ $(LDFLAGS) -lexpat $(ETHERCAT_LIBS)

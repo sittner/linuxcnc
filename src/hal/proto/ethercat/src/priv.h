@@ -71,20 +71,20 @@ typedef struct {
 extern const lcec_typelist_t typelist[]; /**< Global slave-type registry, terminated by an entry with type @c lcecSlaveTypeInvalid. */
 
 /** @brief Create and initialise an @c lcec_master_t. @see master.c */
-lcec_master_t * lcec_create_master(LCEC_CONF_MASTER_T *master_conf);
+lcec_master_t * lcec_create_master(const cmod_env_t *env, LCEC_CONF_MASTER_T *master_conf);
 /** @brief Open the EtherCAT master (userspace or kernel build). @see master.c */
 int lcec_startup_master(lcec_master_t *master);
 /** @brief Release the EtherCAT master and free transport resources. @see master.c */
 void lcec_shutdown_master(lcec_master_t *master);
 /** @brief Allocate and export HAL pins for a master. @see master.c */
-lcec_master_data_t *lcec_init_master_hal(int comp_id, const char *pfx, int global);
+lcec_master_data_t *lcec_init_master_hal(const cmod_env_t *env, int comp_id, const char *pfx, int global);
 /** @brief Update master HAL output pins from the current EtherCAT master state. @see master.c */
 void lcec_update_master_hal(lcec_master_data_t *hal_data, ec_master_state_t *ms);
 
 /** @brief Create and initialise an @c lcec_slave_t from its configuration. @see slave.c */
 lcec_slave_t *lcec_create_slave(lcec_master_t *master, LCEC_CONF_SLAVE_T *slave_conf, lcec_slave_conf_state_t *conf_state);
 /** @brief Free all memory associated with a slave. @see slave.c */
-void lcec_free_slave(lcec_slave_t *slave);
+void lcec_free_slave(const cmod_env_t *env, lcec_slave_t *slave);
 /** @brief Apply a distributed clock configuration to a slave. @see slave.c */
 int lcec_slave_conf_dc(lcec_slave_t *slave, LCEC_CONF_DC_T *dc_conf);
 /** @brief Apply a watchdog configuration to a slave. @see slave.c */
@@ -96,7 +96,7 @@ void lcec_slave_conf_idn(lcec_slave_conf_state_t *state, LCEC_CONF_IDNCONF_T *id
 /** @brief Append a module parameter entry to the slave's modparam array. @see slave.c */
 void lcec_slave_conf_modparam(lcec_slave_conf_state_t *state, LCEC_CONF_MODPARAM_T *modparam_conf);
 /** @brief Allocate and export HAL state pins for a slave. @see slave.c */
-lcec_slave_state_t *lcec_init_slave_state_hal(int comp_id, const char *instance_name, char *master_name, char *slave_name);
+lcec_slave_state_t *lcec_init_slave_state_hal(const cmod_env_t *env, int comp_id, const char *instance_name, char *master_name, char *slave_name);
 /** @brief Update slave HAL state pins from the current EtherCAT slave config state. @see slave.c */
 void lcec_update_slave_state_hal(lcec_slave_state_t *hal_data, ec_slave_config_state_t *ss);
 
@@ -110,13 +110,13 @@ void lcec_update_slave_state_hal(lcec_slave_state_t *hal_data, ec_slave_config_s
  * @param ap             Argument list for @p fmt.
  * @return 0 on success, non-zero on failure.
  */
-int lcec_pin_newfv(int comp_id, gomc_hal_type_t type, int dir, void **data_ptr_addr, const char *fmt, va_list ap);
+int lcec_pin_newfv(const cmod_env_t *env, int comp_id, gomc_hal_type_t type, int dir, void **data_ptr_addr, const char *fmt, va_list ap);
 
-int lcec_pin_newfv_list(int comp_id, void *base, const lcec_pindesc_t *list, va_list ap);
+int lcec_pin_newfv_list(const cmod_env_t *env, int comp_id, void *base, const lcec_pindesc_t *list, va_list ap);
 
-int lcec_param_newfv(int comp_id, gomc_hal_type_t type, int dir, void *data_addr, const char *fmt, va_list ap);
+int lcec_param_newfv(const cmod_env_t *env, int comp_id, gomc_hal_type_t type, int dir, void *data_addr, const char *fmt, va_list ap);
 
-int lcec_param_newfv_list(int comp_id, void *base, const lcec_pindesc_t *list, va_list ap);
+int lcec_param_newfv_list(const cmod_env_t *env, int comp_id, void *base, const lcec_pindesc_t *list, va_list ap);
 
 /**
  * @brief Initialise DC synchronisation callbacks for ref-clock → master mode.
@@ -148,6 +148,7 @@ void lcec_dc_init_m2r(struct lcec_master *master);
  * in main.c, enabling multi-instance support.
  */
 typedef struct lcec_rt_context {
+  const cmod_env_t *env;              /**< Launcher-provided environment (log, ini, hal, rtapi callbacks). */
   int comp_id;                        /**< HAL component ID from hal_init_ex(). */
   const char *instance_name;          /**< Instance name from cmod New(). */
   const char *ipc_socket;             /**< IPC socket path (EC_USPACE_MASTER), or NULL. */

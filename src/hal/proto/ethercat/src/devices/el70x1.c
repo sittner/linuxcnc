@@ -286,6 +286,7 @@ int lcec_el7041_0052_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_re
  */
 int lcec_el70x1_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t **pdo_entry_regs) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   lcec_slave_modparam_t *p;
   lcec_el70x1_data_t *hal_data;
   int err;
@@ -296,7 +297,7 @@ int lcec_el70x1_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
 
   // set to position mode
   if (ecrt_slave_config_sdo8(slave->config, 0x8012, 0x01, 3) != 0) {
-    rtapi_print_msg (RTAPI_MSG_ERR, LCEC_MSG_PFX "fail to configure slave %s.%s sdo position mode\n", master->name, slave->name);
+    gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo position mode", master->name, slave->name);
     return -1;
   }
 
@@ -305,31 +306,31 @@ int lcec_el70x1_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
     switch(p->id) {
       case LCEC_EL70x1_PARAM_MAX_CURR:
         if (ecrt_slave_config_sdo16(slave->config, 0x8010, 0x01, p->value.u32) != 0) {
-          rtapi_print_msg (RTAPI_MSG_ERR, LCEC_MSG_PFX "fail to configure slave %s.%s sdo maxCurrent\n", master->name, slave->name);
+          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo maxCurrent", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL70x1_PARAM_RED_CURR:
         if (ecrt_slave_config_sdo16(slave->config, 0x8010, 0x02, p->value.u32) != 0) {
-          rtapi_print_msg (RTAPI_MSG_ERR, LCEC_MSG_PFX "fail to configure slave %s.%s sdo redCurrent\n", master->name, slave->name);
+          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo redCurrent", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL70x1_PARAM_NOM_VOLT:
         if (ecrt_slave_config_sdo16(slave->config, 0x8010, 0x03, p->value.u32) != 0) {
-          rtapi_print_msg (RTAPI_MSG_ERR, LCEC_MSG_PFX "fail to configure slave %s.%s sdo nomVoltage\n", master->name, slave->name);
+          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo nomVoltage", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL70x1_PARAM_COIL_RES:
         if (ecrt_slave_config_sdo16(slave->config, 0x8010, 0x04, p->value.u32) != 0) {
-          rtapi_print_msg (RTAPI_MSG_ERR, LCEC_MSG_PFX "fail to configure slave %s.%s sdo coilRes\n", master->name, slave->name);
+          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo coilRes", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL70x1_PARAM_MOTOR_EMF:
         if (ecrt_slave_config_sdo16(slave->config, 0x8010, 0x05, p->value.u32) != 0) {
-          rtapi_print_msg (RTAPI_MSG_ERR, LCEC_MSG_PFX "fail to configure slave %s.%s sdo motorEMF\n", master->name, slave->name);
+          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo motorEMF", master->name, slave->name);
           return -1;
         }
         break;
@@ -337,8 +338,8 @@ int lcec_el70x1_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
   }
 
   // alloc hal memory
-  if ((hal_data = hal_malloc(sizeof(lcec_el70x1_data_t))) == NULL) {
-    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "hal_malloc() for slave %s.%s failed\n", master->name, slave->name);
+  if ((hal_data = env->hal->malloc(env->hal->ctx, sizeof(lcec_el70x1_data_t))) == NULL) {
+    gomc_log_errorf(env->log, master->instance_name, "hal_malloc() for slave %s.%s failed", master->name, slave->name);
     return -EIO;
   }
   memset(hal_data, 0, sizeof(lcec_el70x1_data_t));
@@ -364,12 +365,12 @@ int lcec_el70x1_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
   LCEC_PDO_INIT(pdo_entry_regs, slave->index, slave->vid, slave->pid, 0x7010, 0x11, &hal_data->stm_pos_raw_pdo_os, NULL);
 
   // export pins
-  if ((err = lcec_pin_newf_list(comp_id, hal_data, slave_pins, master->instance_name, master->name, slave->name)) != 0) {
+  if ((err = lcec_pin_newf_list(env, comp_id, hal_data, slave_pins, master->instance_name, master->name, slave->name)) != 0) {
     return err;
   }
 
   // export pins
-  if ((err = lcec_param_newf_list(comp_id, hal_data, slave_params, master->instance_name, master->name, slave->name)) != 0) {
+  if ((err = lcec_param_newf_list(env, comp_id, hal_data, slave_params, master->instance_name, master->name, slave->name)) != 0) {
     return err;
   }
 
@@ -391,6 +392,7 @@ int lcec_el70x1_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
  */
 void lcec_el70x1_read(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   lcec_el70x1_data_t *hal_data = (lcec_el70x1_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
 
@@ -420,6 +422,7 @@ void lcec_el70x1_read(struct lcec_slave *slave, long period) {
  */
 void lcec_el70x1_write(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
   lcec_el70x1_data_t *hal_data = (lcec_el70x1_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   bool enabled, reduce_tourque;
