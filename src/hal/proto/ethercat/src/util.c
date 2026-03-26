@@ -138,7 +138,7 @@ int lcec_pin_newfv(int comp_id, gomc_hal_type_t type, int dir, void **data_ptr_a
   int sz;
   int err;
 
-  sz = vsnprintf(name, sizeof(name), fmt, ap);
+  sz = rtapi_vsnprintf(name, sizeof(name), fmt, ap);
   if(sz == -1 || sz > GOMC_HAL_NAME_LEN) {
     rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "length %d too long for name starting '%s'\n", sz, name);
     return -ENOMEM;
@@ -272,7 +272,7 @@ int lcec_param_newfv(int comp_id, gomc_hal_type_t type, int dir, void *data_addr
   int sz;
   int err;
 
-  sz = vsnprintf(name, sizeof(name), fmt, ap);
+  sz = rtapi_vsnprintf(name, sizeof(name), fmt, ap);
   if(sz == -1 || sz > GOMC_HAL_NAME_LEN) {
     rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "length %d too long for name starting '%s'\n", sz, name);
     return -ENOMEM;
