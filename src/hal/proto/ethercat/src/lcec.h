@@ -49,6 +49,24 @@
 #include "conf.h"
 
 /**
+ * @defgroup lcec_log Logging wrapper macros
+ *
+ * Convenience macros that forward to gomc_log_*f() using the cached
+ * @c log / @c comp_name pointers on @c lcec_master_t.  Every macro
+ * expects a pointer to the master as its first argument.
+ * @{
+ */
+#define LCEC_ERR(master, fmt, ...) \
+  gomc_log_errorf((master)->log, (master)->comp_name, fmt, ##__VA_ARGS__)
+#define LCEC_WARN(master, fmt, ...) \
+  gomc_log_warnf((master)->log, (master)->comp_name, fmt, ##__VA_ARGS__)
+#define LCEC_INFO(master, fmt, ...) \
+  gomc_log_infof((master)->log, (master)->comp_name, fmt, ##__VA_ARGS__)
+#define LCEC_DBG(master, fmt, ...) \
+  gomc_log_debugf((master)->log, (master)->comp_name, fmt, ##__VA_ARGS__)
+/** @} */ // lcec_log
+
+/**
  * @defgroup lcec_list Linked-list helpers
  * @{
  */
@@ -337,6 +355,8 @@ typedef struct lcec_master {
   char instance_name[LCEC_CONF_STR_MAXLEN]; /**< Instance name from cmod New(); used as HAL pin name prefix. */
   struct lcec_rt_context *rt_ctx; /**< Back-pointer to the owning RT context (for per-instance state). */
   const cmod_env_t *env;         /**< Convenience copy of rt_ctx->env for device/class code. */
+  const gomc_log_t *log;         /**< Convenience copy of env->log for logging macros. */
+  const char *comp_name;         /**< Component name for log messages (points to instance_name). */
 #ifdef EC_USPACE_MASTER
   int transport_type;                          /**< Transport layer type identifier (userspace build only). */
   char interface[LCEC_CONF_STR_MAXLEN];        /**< Primary network interface name (e.g. "eth0"). */
@@ -534,6 +554,9 @@ typedef struct {
  * @c LCEC_MAX_PDO_INFO_COUNT, and @c LCEC_MAX_PDO_ENTRY_COUNT.
  */
 typedef struct {
+  const gomc_log_t *log;           /**< Cached log handle for overflow diagnostics. */
+  const char       *comp_name;     /**< Component name for log messages. */
+
   int              sync_count;    /**< Number of sync managers added so far. */
   ec_sync_info_t  *curr_sync;     /**< Pointer to the sync manager currently being populated. */
   ec_sync_info_t   syncs[LCEC_MAX_SYNC_COUNT + 1]; /**< Sync-manager array; last slot holds the EC_END sentinel. */
@@ -659,7 +682,7 @@ void copy_fsoe_data(struct lcec_slave *slave, unsigned int slave_offset, unsigne
  *
  * @param syncs  Builder structure to initialise.
  */
-void lcec_syncs_init(lcec_syncs_t *syncs);
+void lcec_syncs_init(lcec_syncs_t *syncs, struct lcec_master *master);
 
 /**
  * @brief Append a new sync manager entry to the syncs builder.

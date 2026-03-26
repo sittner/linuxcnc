@@ -44,24 +44,23 @@
  */
 int lcec_el7411_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t **pdo_entry_regs) {
   lcec_master_t *master = slave->master;
-  const cmod_env_t *env = master->env;
   lcec_slave_modparam_t *p;
 
   // set to velo mode
   if (ecrt_slave_config_sdo8(slave->config, 0x7010, 0x03, 9) != 0) {
-    gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo velo mode", master->name, slave->name);
+    LCEC_ERR(master, "fail to configure slave %s.%s sdo velo mode", master->name, slave->name);
     return -1;
   }
 
   // set commutation type to hall sensord
   if (ecrt_slave_config_sdo8(slave->config, 0x8010, 0x64, 2) != 0) {
-    gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo commutation type", master->name, slave->name);
+    LCEC_ERR(master, "fail to configure slave %s.%s sdo commutation type", master->name, slave->name);
     return -1;
   }
 
   // enable hall power supply sensord
   if (ecrt_slave_config_sdo8(slave->config, 0x800A, 0x02, 1) != 0) {
-    gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo hall enable supply", master->name, slave->name);
+    LCEC_ERR(master, "fail to configure slave %s.%s sdo hall enable supply", master->name, slave->name);
     return -1;
   }
 
@@ -70,103 +69,103 @@ int lcec_el7411_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
     switch(p->id) {
       case LCEC_EL7411_PARAM_DCLINK_NOM:
         if (ecrt_slave_config_sdo32(slave->config, 0x8010, 0x19, p->value.u32) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo dcLinkNominal", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo dcLinkNominal", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL7411_PARAM_DCLINK_MIN:
         if (ecrt_slave_config_sdo32(slave->config, 0x8010, 0x1A, p->value.u32) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo dcLinkMin", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo dcLinkMin", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL7411_PARAM_DCLINK_MAX:
         if (ecrt_slave_config_sdo32(slave->config, 0x8010, 0x1B, p->value.u32) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo dcLinkMax", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo dcLinkMax", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL7411_PARAM_MAX_CURR:
         if (ecrt_slave_config_sdo32(slave->config, 0x8011, 0x11, p->value.u32) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo maxCurrent", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo maxCurrent", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL7411_PARAM_RATED_CURR:
         if (ecrt_slave_config_sdo32(slave->config, 0x8011, 0x12, p->value.u32) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo ratedCurrent", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo ratedCurrent", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL7411_PARAM_RATED_VOLT:
         if (ecrt_slave_config_sdo32(slave->config, 0x8011, 0x2F, p->value.u32) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo ratedVoltage", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo ratedVoltage", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL7411_PARAM_POLE_PAIRS:
         if (ecrt_slave_config_sdo8(slave->config, 0x8011, 0x13, p->value.u32) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo polePairs", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo polePairs", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL7411_PARAM_RESISTANCE:
         if (ecrt_slave_config_sdo32(slave->config, 0x8011, 0x30, p->value.u32) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo coilRes", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo coilRes", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL7411_PARAM_INDUCTANCE:
         if (ecrt_slave_config_sdo16(slave->config, 0x8011, 0x19, p->value.u32) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo coilInd", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo coilInd", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL7411_PARAM_TOURQUE_CONST:
         if (ecrt_slave_config_sdo32(slave->config, 0x8011, 0x16, p->value.u32) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo torqueConst", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo torqueConst", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL7411_PARAM_VOLTAGE_CONST:
         if (ecrt_slave_config_sdo32(slave->config, 0x8011, 0x31, p->value.u32) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo voltageConst", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo voltageConst", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL7411_PARAM_ROTOR_INERTIA:
         if (ecrt_slave_config_sdo32(slave->config, 0x8011, 0x18, p->value.u32) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo rotorInertia", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo rotorInertia", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL7411_PARAM_MAX_SPEED:
         if (ecrt_slave_config_sdo32(slave->config, 0x8011, 0x1B, p->value.u32) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo maxSpeed", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo maxSpeed", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL7411_PARAM_RATED_SPEED:
         if (ecrt_slave_config_sdo32(slave->config, 0x8011, 0x2E, p->value.u32) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo ratedSpeed", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo ratedSpeed", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL7411_PARAM_TH_TIME_CONST:
         if (ecrt_slave_config_sdo16(slave->config, 0x8011, 0x2D, p->value.u32) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo ratedSpeed", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo ratedSpeed", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL7411_PARAM_HALL_VOLT:
         if (ecrt_slave_config_sdo32(slave->config, 0x800A, 0x11, p->value.u32) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo hallVoltage", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo hallVoltage", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL7411_PARAM_HALL_ADJUST:
         if (ecrt_slave_config_sdo8(slave->config, 0x800A, 0x13, p->value.s32) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo hallAdjust", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo hallAdjust", master->name, slave->name);
           return -1;
         }
         break;

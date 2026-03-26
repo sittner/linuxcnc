@@ -485,8 +485,10 @@ void copy_fsoe_data(struct lcec_slave *slave, unsigned int slave_offset, unsigne
  *
  * @param syncs  Builder state to initialise.
  */
-void lcec_syncs_init(lcec_syncs_t *syncs) {
+void lcec_syncs_init(lcec_syncs_t *syncs, struct lcec_master *master) {
   memset(syncs, 0, sizeof(lcec_syncs_t));
+  syncs->log = master->log;
+  syncs->comp_name = master->comp_name;
 }
 
 /**
@@ -512,7 +514,7 @@ void lcec_syncs_init(lcec_syncs_t *syncs) {
  */
 void lcec_syncs_add_sync(lcec_syncs_t *syncs, ec_direction_t dir, ec_watchdog_mode_t watchdog_mode) {
   if (syncs->sync_count >= LCEC_MAX_SYNC_COUNT) {
-    fprintf(stderr, "LCEC: too many syncs (max %d)\n", LCEC_MAX_SYNC_COUNT);
+    gomc_log_errorf(syncs->log, syncs->comp_name, "too many syncs (max %d)", LCEC_MAX_SYNC_COUNT);
     return;
   }
   syncs->curr_sync = &syncs->syncs[syncs->sync_count];
@@ -546,7 +548,7 @@ void lcec_syncs_add_sync(lcec_syncs_t *syncs, ec_direction_t dir, ec_watchdog_mo
  */
 void lcec_syncs_add_pdo_info(lcec_syncs_t *syncs, uint16_t index) {
   if (syncs->pdo_info_count >= LCEC_MAX_PDO_INFO_COUNT) {
-    fprintf(stderr, "LCEC: too many PDO infos (max %d)\n", LCEC_MAX_PDO_INFO_COUNT);
+    gomc_log_errorf(syncs->log, syncs->comp_name, "too many PDO infos (max %d)", LCEC_MAX_PDO_INFO_COUNT);
     return;
   }
   syncs->curr_pdo_info = &syncs->pdo_infos[syncs->pdo_info_count];
@@ -582,7 +584,7 @@ void lcec_syncs_add_pdo_info(lcec_syncs_t *syncs, uint16_t index) {
  */
 void lcec_syncs_add_pdo_entry(lcec_syncs_t *syncs, uint16_t index, uint8_t subindex, uint8_t bit_length) {
   if (syncs->pdo_entry_count >= LCEC_MAX_PDO_ENTRY_COUNT) {
-    fprintf(stderr, "LCEC: too many PDO entries (max %d)\n", LCEC_MAX_PDO_ENTRY_COUNT);
+    gomc_log_errorf(syncs->log, syncs->comp_name, "too many PDO entries (max %d)", LCEC_MAX_PDO_ENTRY_COUNT);
     return;
   }
   syncs->curr_pdo_entry = &syncs->pdo_entries[syncs->pdo_entry_count];

@@ -193,14 +193,12 @@ fail0:
  * @return 0 on success, -1 on failure (error message sent to RTAPI log).
  */
 int lcec_startup_master(lcec_master_t *master) {
-  const cmod_env_t *env = master->rt_ctx->env;
 
   // create main transport
   master->transport = ec_transport_create(
       (ec_transport_type_t) master->transport_type, master->interface);
   if (!master->transport) {
-    gomc_log_errorf(env->log, master->instance_name,
-        "failed to create transport for master %s (iface %s)",
+    LCEC_ERR(master, "failed to create transport for master %s (iface %s)",
         master->name, master->interface);
     goto fail0;
   }
@@ -211,8 +209,7 @@ int lcec_startup_master(lcec_master_t *master) {
     master->backup_transport = ec_transport_create(
         (ec_transport_type_t) master->transport_type, master->backup_interface);
     if (!master->backup_transport) {
-      gomc_log_errorf(env->log, master->instance_name,
-          "failed to create backup transport for master %s (iface %s)",
+      LCEC_ERR(master, "failed to create backup transport for master %s (iface %s)",
           master->name, master->backup_interface);
       goto fail1;
     }
@@ -223,8 +220,7 @@ int lcec_startup_master(lcec_master_t *master) {
       master->index, master->transport, master->backup_transport,
       master->debug_level, master->run_on_cpu);
   if (!master->master) {
-    gomc_log_errorf(env->log, master->instance_name,
-        "startup of master %s (index %d, iface %s) failed",
+    LCEC_ERR(master, "startup of master %s (index %d, iface %s) failed",
         master->name, master->index, master->interface);
     goto fail2;
   }
@@ -303,8 +299,7 @@ static void lcec_release_lock(void *data) {
  */
 int lcec_startup_master(lcec_master_t *master) {
     if (!(master->master = ecrt_request_master(master->index))) {
-      gomc_log_errorf(master->rt_ctx->env->log, master->instance_name,
-          "requesting master %s (index %d) failed",
+      LCEC_ERR(master, "requesting master %s (index %d) failed",
           master->name, master->index);
       return -1;
     }
@@ -367,8 +362,7 @@ void lcec_read_master(void *arg, long period) {
   if (period != master->period_last) {
     master->period_last = period;
     if (master->app_time_period != period) {
-      gomc_log_errorf(master->rt_ctx->env->log, master->instance_name,
-          "Invalid appTimePeriod of %u for master %s (should be %ld).",
+      LCEC_ERR(master, "Invalid appTimePeriod of %u for master %s (should be %ld).",
         master->app_time_period, master->name, period);
     }
   }

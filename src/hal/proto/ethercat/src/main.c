@@ -129,8 +129,7 @@ int lcec_rt_init(lcec_rt_context_t *ctx, LCEC_CONF_OUTBUF_T *buf) {
 #ifdef EC_USPACE_MASTER
   // initialize userspace ethercat master library
   if (ecrt_lib_init(lcec_ec_log_callback, ctx->ipc_socket) < 0) {
-    gomc_log_errorf(env->log, ctx->instance_name,
-        "ecrt_lib_init() failed (ipc_socket=%s)",
+    LCEC_CTX_ERR(ctx, "ecrt_lib_init() failed (ipc_socket=%s)",
         ctx->ipc_socket ? ctx->ipc_socket : "NULL");
     goto fail1;
   }
@@ -144,6 +143,8 @@ int lcec_rt_init(lcec_rt_context_t *ctx, LCEC_CONF_OUTBUF_T *buf) {
     master->instance_name[LCEC_CONF_STR_MAXLEN - 1] = '\0';
     master->rt_ctx = ctx;
     master->env = ctx->env;
+    master->log = ctx->env->log;
+    master->comp_name = master->instance_name;
 
     // startup master
     if (lcec_startup_master(master)) {
@@ -152,8 +153,7 @@ int lcec_rt_init(lcec_rt_context_t *ctx, LCEC_CONF_OUTBUF_T *buf) {
 
     // create domain
     if (!(master->domain = ecrt_master_create_domain(master->master))) {
-      gomc_log_errorf(env->log, ctx->instance_name,
-          "master %s domain creation failed", master->name);
+      LCEC_CTX_ERR(ctx, "master %s domain creation failed", master->name);
       goto fail1;
     }
 
@@ -162,8 +162,7 @@ int lcec_rt_init(lcec_rt_context_t *ctx, LCEC_CONF_OUTBUF_T *buf) {
     for (slave = master->first_slave; slave != NULL; slave = slave->next) {
       // read slave config
       if (!(slave->config = ecrt_master_slave_config(master->master, 0, slave->index, slave->vid, slave->pid))) {
-        gomc_log_errorf(env->log, ctx->instance_name,
-            "fail to read slave %s.%s configuration", master->name, slave->name);
+        LCEC_CTX_ERR(ctx, "fail to read slave %s.%s configuration", master->name, slave->name);
         goto fail1;
       }
 
@@ -172,13 +171,11 @@ int lcec_rt_init(lcec_rt_context_t *ctx, LCEC_CONF_OUTBUF_T *buf) {
         for (sdo_config = slave->sdo_config; sdo_config->index != 0xffff; sdo_config = (lcec_slave_sdoconf_t *) &sdo_config->data[sdo_config->length]) {
           if (sdo_config->subindex == LCEC_CONF_SDO_COMPLETE_SUBIDX) {
             if (ecrt_slave_config_complete_sdo(slave->config, sdo_config->index, &sdo_config->data[0], sdo_config->length) != 0) {
-              gomc_log_errorf(env->log, ctx->instance_name,
-                  "fail to configure slave %s.%s sdo %04x (complete)", master->name, slave->name, sdo_config->index);
+              LCEC_CTX_ERR(ctx, "fail to configure slave %s.%s sdo %04x (complete)", master->name, slave->name, sdo_config->index);
             }
           } else {
             if (ecrt_slave_config_sdo(slave->config, sdo_config->index, sdo_config->subindex, &sdo_config->data[0], sdo_config->length) != 0) {
-              gomc_log_errorf(env->log, ctx->instance_name,
-                  "fail to configure slave %s.%s sdo %04x:%02x", master->name, slave->name, sdo_config->index, sdo_config->subindex);
+              LCEC_CTX_ERR(ctx, "fail to configure slave %s.%s sdo %04x:%02x", master->name, slave->name, sdo_config->index, sdo_config->subindex);
             }
           }
         }
@@ -188,7 +185,7 @@ int lcec_rt_init(lcec_rt_context_t *ctx, LCEC_CONF_OUTBUF_T *buf) {
       if (slave->idn_config != NULL) {
         for (idn_config = slave->idn_config; idn_config->state != 0; idn_config = (lcec_slave_idnconf_t *) &idn_config->data[idn_config->length]) {
           if (ecrt_slave_config_idn(slave->config, idn_config->drive, idn_config->idn, idn_config->state, &idn_config->data[0], idn_config->length) != 0) {
-            gomc_log_errorf(env->log, ctx->instance_name,
+            LCEC_CTX_ERR(ctx,
                 "fail to configure slave %s.%s drive %d idn %c-%d-%d (state %d, length %u)", master->name, slave->name, idn_config->drive,
               (idn_config->idn & 0x8000) ? 'P' : 'S', (idn_config->idn >> 12) & 0x0007, idn_config->idn & 0x0fff, idn_config->state, (unsigned int) idn_config->length);
           }
@@ -202,7 +199,7 @@ int lcec_rt_init(lcec_rt_context_t *ctx, LCEC_CONF_OUTBUF_T *buf) {
           goto fail1;
         }
         if (pdo_entry_regs != (checkpoint + slave->pdo_entry_count)) {
-          gomc_log_errorf(env->log, ctx->instance_name,
+          LCEC_CTX_ERR(ctx,
               "Slave %s.%s configured wrong count of PDOs: required %d, configured %d",
             master->name, slave->name, slave->pdo_entry_count, (int) (pdo_entry_regs - checkpoint));
           goto fail1;
@@ -214,7 +211,7 @@ int lcec_rt_init(lcec_rt_context_t *ctx, LCEC_CONF_OUTBUF_T *buf) {
         ecrt_slave_config_dc(slave->config, slave->dc_conf->assignActivate,
           slave->dc_conf->sync0Cycle, slave->dc_conf->sync0Shift,
           slave->dc_conf->sync1Cycle, slave->dc_conf->sync1Shift);
-        gomc_log_debugf(env->log, ctx->instance_name,
+        LCEC_CTX_DBG(ctx,
             "configuring DC for slave %s.%s: assignActivate=x%x sync0Cycle=%d sync0Shift=%d sync1Cycle=%d sync1Shift=%d",
           master->name, slave->name, slave->dc_conf->assignActivate,
           slave->dc_conf->sync0Cycle, slave->dc_conf->sync0Shift,
@@ -229,8 +226,7 @@ int lcec_rt_init(lcec_rt_context_t *ctx, LCEC_CONF_OUTBUF_T *buf) {
       // configure slave
       if (slave->sync_info != NULL) {
         if (ecrt_slave_config_pdos(slave->config, EC_END, slave->sync_info)) {
-          gomc_log_errorf(env->log, ctx->instance_name,
-              "fail to configure slave %s.%s", master->name, slave->name);
+          LCEC_CTX_ERR(ctx, "fail to configure slave %s.%s", master->name, slave->name);
           goto fail1;
         }
       }
@@ -246,8 +242,7 @@ int lcec_rt_init(lcec_rt_context_t *ctx, LCEC_CONF_OUTBUF_T *buf) {
 
     // register PDO entries
     if (ecrt_domain_reg_pdo_entry_list(master->domain, master->pdo_entry_regs)) {
-      gomc_log_errorf(env->log, ctx->instance_name,
-          "master %s PDO entry registration failed", master->name);
+      LCEC_CTX_ERR(ctx, "master %s PDO entry registration failed", master->name);
       goto fail1;
     }
 
@@ -260,15 +255,13 @@ int lcec_rt_init(lcec_rt_context_t *ctx, LCEC_CONF_OUTBUF_T *buf) {
     // export read function
     snprintf(name, GOMC_HAL_NAME_LEN, "%s.%s.read", ctx->instance_name, master->name);
     if (env->hal->export_funct(env->hal->ctx, name, lcec_read_master, master, 0, 0, ctx->comp_id) != 0) {
-      gomc_log_errorf(env->log, ctx->instance_name,
-          "master %s read funct export failed", master->name);
+      LCEC_CTX_ERR(ctx, "master %s read funct export failed", master->name);
       goto fail1;
     }
     // export write function
     snprintf(name, GOMC_HAL_NAME_LEN, "%s.%s.write", ctx->instance_name, master->name);
     if (env->hal->export_funct(env->hal->ctx, name, lcec_write_master, master, 0, 0, ctx->comp_id) != 0) {
-      gomc_log_errorf(env->log, ctx->instance_name,
-          "master %s write funct export failed", master->name);
+      LCEC_CTX_ERR(ctx, "master %s write funct export failed", master->name);
       goto fail1;
     }
   }
@@ -276,17 +269,17 @@ int lcec_rt_init(lcec_rt_context_t *ctx, LCEC_CONF_OUTBUF_T *buf) {
   // export read-all function
   snprintf(name, GOMC_HAL_NAME_LEN, "%s.read-all", ctx->instance_name);
   if (env->hal->export_funct(env->hal->ctx, name, lcec_read_all, ctx, 0, 0, ctx->comp_id) != 0) {
-    gomc_log_errorf(env->log, ctx->instance_name, "read-all funct export failed");
+    LCEC_CTX_ERR(ctx, "read-all funct export failed");
     goto fail1;
   }
   // export write-all function
   snprintf(name, GOMC_HAL_NAME_LEN, "%s.write-all", ctx->instance_name);
   if (env->hal->export_funct(env->hal->ctx, name, lcec_write_all, ctx, 0, 0, ctx->comp_id) != 0) {
-    gomc_log_errorf(env->log, ctx->instance_name, "write-all funct export failed");
+    LCEC_CTX_ERR(ctx, "write-all funct export failed");
     goto fail1;
   }
 
-  gomc_log_infof(env->log, ctx->instance_name, "installed driver for %d slaves", slave_count);
+  LCEC_CTX_INFO(ctx, "installed driver for %d slaves", slave_count);
   return 0;
 
 fail1:
@@ -317,7 +310,6 @@ void lcec_rt_cleanup(lcec_rt_context_t *ctx) {
 
 int lcec_rt_start(lcec_rt_context_t *ctx)  {
   lcec_master_t *master;
-  const cmod_env_t *env = ctx->env;
 
   // activate all masters
   for (master = ctx->first_master; master != NULL; master = master->next) {
@@ -332,7 +324,7 @@ int lcec_rt_start(lcec_rt_context_t *ctx)  {
 #ifdef GOMC_RTAPI_TASK_PLL_SUPPORT
       lcec_dc_init_m2r(master);
 #else
-      gomc_log_errorf(env->log, ctx->instance_name,
+      LCEC_CTX_ERR(ctx,
           "master %s: M2R DC sync mode not available"
           " (GOMC_RTAPI_TASK_PLL_SUPPORT missing).", master->name);
       return -EINVAL;
@@ -343,13 +335,13 @@ int lcec_rt_start(lcec_rt_context_t *ctx)  {
     if (master->ref_clock_slave_idx >= 0) {
       lcec_slave_t *ref_slave = lcec_slave_by_index(master, master->ref_clock_slave_idx);
       if (ref_slave == NULL) {
-        gomc_log_errorf(env->log, ctx->instance_name,
+        LCEC_CTX_ERR(ctx,
             "master %s: refClockSlaveIdx %d not found",
             master->name, master->ref_clock_slave_idx);
         return -EINVAL;
       }
       if (ref_slave->config == NULL) {
-        gomc_log_errorf(env->log, ctx->instance_name,
+        LCEC_CTX_ERR(ctx,
             "master %s: refClockSlaveIdx %d has no EtherCAT config",
             master->name, master->ref_clock_slave_idx);
         return -EINVAL;
@@ -359,8 +351,7 @@ int lcec_rt_start(lcec_rt_context_t *ctx)  {
 
     // activating master
     if (ecrt_master_activate(master->master)) {
-      gomc_log_errorf(env->log, ctx->instance_name,
-          "failed to activate master %s", master->name);
+      LCEC_CTX_ERR(ctx, "failed to activate master %s", master->name);
       return -EINVAL;
     }
 
@@ -431,6 +422,8 @@ static int lcec_parse_config(lcec_rt_context_t *ctx, LCEC_CONF_OUTBUF_T *buf) {
         }
         master->rt_ctx = ctx;
         master->env = ctx->env;
+        master->log = ctx->env->log;
+        master->comp_name = master->instance_name;
         LCEC_LIST_APPEND(ctx->first_master, ctx->last_master, master);
         break;
 
@@ -492,7 +485,7 @@ static int lcec_parse_config(lcec_rt_context_t *ctx, LCEC_CONF_OUTBUF_T *buf) {
         break;
 
       default:
-        gomc_log_errorf(env->log, ctx->instance_name, "Unknown config item type");
+        LCEC_CTX_ERR(ctx, "Unknown config item type");
         goto fail;
     }
   }
@@ -525,7 +518,7 @@ static int lcec_parse_config(lcec_rt_context_t *ctx, LCEC_CONF_OUTBUF_T *buf) {
     // alloc mem for pdo mappings
     pdo_entry_regs = env->rtapi->calloc(env->rtapi->ctx, sizeof(ec_pdo_entry_reg_t) * (master->pdo_entry_count + 1));
     if (pdo_entry_regs == NULL) {
-      gomc_log_errorf(env->log, ctx->instance_name, "Unable to allocate master %s PDO entry memory", master->name);
+      LCEC_CTX_ERR(ctx, "Unable to allocate master %s PDO entry memory", master->name);
       goto fail;
     }
     master->pdo_entry_regs = pdo_entry_regs;

@@ -72,6 +72,8 @@ typedef struct {
  * consumed so that subsequent calls append to the correct array positions.
  */
 typedef struct {
+  const gomc_log_t *log;            /**< Cached log handle (set from master->log). */
+  const char       *comp_name;      /**< Component name for log messages (set from master->comp_name). */
   ec_pdo_entry_info_t *pdo_entries; /**< Next free slot in the PDO entry array. */
   ec_pdo_info_t *pdos;              /**< Next free slot in the PDO array. */
   ec_sync_info_t *sync_managers;    /**< Next free slot in the sync manager array. */

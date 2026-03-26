@@ -198,7 +198,7 @@ int lcec_dems300_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t 
 
   // alloc hal memory
   if ((hal_data = env->hal->malloc(env->hal->ctx, sizeof(lcec_dems300_data_t))) == NULL) {
-    gomc_log_errorf(env->log, master->instance_name, "hal_malloc() for slave %s.%s failed", master->name, slave->name);
+    LCEC_ERR(master, "hal_malloc() for slave %s.%s failed", master->name, slave->name);
     return -EIO;
   }
   memset(hal_data, 0, sizeof(lcec_dems300_data_t));
@@ -277,7 +277,6 @@ void lcec_dems300_check_scales(lcec_dems300_data_t *hal_data) {
  */
 void lcec_dems300_read(struct lcec_slave *slave, long period) {
   lcec_master_t *master = slave->master;
-  const cmod_env_t *env = master->env;
   lcec_dems300_data_t *hal_data = (lcec_dems300_data_t *) slave->hal_data;
   uint8_t *pd = master->process_data;
   uint16_t status,error;
@@ -332,7 +331,7 @@ void lcec_dems300_read(struct lcec_slave *slave, long period) {
   // set fault if op mode is wrong
   if (opmode_in != 2) {
     hal_data->internal_fault  = 1;
-    gomc_log_errorf(env->log, master->instance_name, "MS300 slave %s.%s not sending velo mode", master->name, slave->name);
+    LCEC_ERR(master, "MS300 slave %s.%s not sending velo mode", master->name, slave->name);
   }
 
   // update fault output

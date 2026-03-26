@@ -71,7 +71,7 @@ int lcec_el2xxx_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
 
   // alloc hal memory
   if ((hal_data = env->hal->malloc(env->hal->ctx, sizeof(lcec_el2xxx_pin_t) * slave->pdo_entry_count)) == NULL) {
-    gomc_log_errorf(env->log, master->instance_name, "hal_malloc() for slave %s.%s failed", master->name, slave->name);
+    LCEC_ERR(master, "hal_malloc() for slave %s.%s failed", master->name, slave->name);
     return -EIO;
   }
   memset(hal_data, 0, sizeof(lcec_el2xxx_pin_t) * slave->pdo_entry_count);

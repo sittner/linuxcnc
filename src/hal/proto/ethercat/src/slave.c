@@ -63,16 +63,10 @@ static const lcec_pindesc_t slave_pins[] = {
 lcec_slave_t *lcec_create_slave(lcec_master_t *master, LCEC_CONF_SLAVE_T *slave_conf, lcec_slave_conf_state_t *conf_state) {
   lcec_slave_t *slave;
   const lcec_typelist_t *type;
-  const cmod_env_t *env = master->rt_ctx->env;
+  const cmod_env_t *env = master->env;
 
   // reset config state
   memset(conf_state, 0, sizeof(lcec_slave_conf_state_t));
-
-  // check for master
-  if (master == NULL) {
-    gomc_log_errorf(env->log, "ethercat", "Master node for slave missing");
-    goto fail0;
-  }
 
   // check for valid slave type
   if (slave_conf->type == lcecSlaveTypeGeneric) {
@@ -80,7 +74,7 @@ lcec_slave_t *lcec_create_slave(lcec_master_t *master, LCEC_CONF_SLAVE_T *slave_
   } else {
     for (type = typelist; type->type != slave_conf->type && type->type != lcecSlaveTypeInvalid; type++);
     if (type->type == lcecSlaveTypeInvalid) {
-      gomc_log_errorf(env->log, master->instance_name, "Invalid slave type %d", slave_conf->type);
+      LCEC_ERR(master, "Invalid slave type %d", slave_conf->type);
       goto fail0;
     }
   }
@@ -88,7 +82,7 @@ lcec_slave_t *lcec_create_slave(lcec_master_t *master, LCEC_CONF_SLAVE_T *slave_
   // create new slave
   slave = env->rtapi->calloc(env->rtapi->ctx, sizeof(lcec_slave_t));
   if (slave == NULL) {
-    gomc_log_errorf(env->log, master->instance_name,
+    LCEC_ERR(master,
         "Unable to allocate slave %s.%s structure memory", master->name, slave_conf->name);
     goto fail0;
   }
@@ -117,7 +111,7 @@ lcec_slave_t *lcec_create_slave(lcec_master_t *master, LCEC_CONF_SLAVE_T *slave_
   if (slave_conf->sdoConfigLength > 0) {
     slave->sdo_config = env->rtapi->calloc(env->rtapi->ctx, slave_conf->sdoConfigLength + sizeof(lcec_slave_sdoconf_t));
     if (slave->sdo_config == NULL) {
-      gomc_log_errorf(env->log, master->instance_name,
+      LCEC_ERR(master,
           "Unable to allocate slave %s.%s sdo entry memory", master->name, slave_conf->name);
       goto fail1;
     }
@@ -127,7 +121,7 @@ lcec_slave_t *lcec_create_slave(lcec_master_t *master, LCEC_CONF_SLAVE_T *slave_
   if (slave_conf->idnConfigLength > 0) {
     slave->idn_config = env->rtapi->calloc(env->rtapi->ctx, slave_conf->idnConfigLength + sizeof(lcec_slave_idnconf_t));
     if (slave->idn_config == NULL) {
-      gomc_log_errorf(env->log, master->instance_name,
+      LCEC_ERR(master,
           "Unable to allocate slave %s.%s idn entry memory", master->name, slave_conf->name);
       goto fail1;
     }
@@ -137,7 +131,7 @@ lcec_slave_t *lcec_create_slave(lcec_master_t *master, LCEC_CONF_SLAVE_T *slave_
   if (slave_conf->modParamCount > 0) {
     slave->modparams = env->rtapi->calloc(env->rtapi->ctx, sizeof(lcec_slave_modparam_t) * (slave_conf->modParamCount + 1));
     if (slave->modparams == NULL) {
-      gomc_log_errorf(env->log, master->instance_name,
+      LCEC_ERR(master,
           "Unable to allocate slave %s.%s modparam memory", master->name, slave_conf->name);
       goto fail1;
     }
@@ -205,26 +199,19 @@ void lcec_free_slave(const cmod_env_t *env, lcec_slave_t *slave) {
  */
 int lcec_slave_conf_dc(lcec_slave_t *slave, LCEC_CONF_DC_T *dc_conf) {
   lcec_slave_dc_t *dc;
-  const cmod_env_t *env = slave->master->rt_ctx->env;
-
-  // check for slave
-  if (slave == NULL) {
-    gomc_log_errorf(env->log, "ethercat", "Slave node for dc config missing");
-    return -1;
-  }
+  lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
 
   // check for double dc config
   if (slave->dc_conf != NULL) {
-    gomc_log_warnf(env->log, slave->master->instance_name,
-        "Double dc config for slave %s.%s", slave->master->name, slave->name);
+    LCEC_WARN(master, "Double dc config for slave %s.%s", master->name, slave->name);
     return -1;
   }
 
   // create new dc config
   dc = env->rtapi->calloc(env->rtapi->ctx, sizeof(lcec_slave_dc_t));
   if (dc == NULL) {
-    gomc_log_errorf(env->log, slave->master->instance_name,
-        "Unable to allocate slave %s.%s dc config memory", slave->master->name, slave->name);
+    LCEC_ERR(master, "Unable to allocate slave %s.%s dc config memory", master->name, slave->name);
     return -1;
   }
 
@@ -254,26 +241,19 @@ int lcec_slave_conf_dc(lcec_slave_t *slave, LCEC_CONF_DC_T *dc_conf) {
  */
 int lcec_slave_conf_wd(lcec_slave_t *slave, LCEC_CONF_WATCHDOG_T *wd_conf) {
   lcec_slave_watchdog_t *wd;
-  const cmod_env_t *env = slave->master->rt_ctx->env;
-
-  // check for slave
-  if (slave == NULL) {
-    gomc_log_errorf(env->log, "ethercat", "Slave node for watchdog config missing");
-    return -1;
-  }
+  lcec_master_t *master = slave->master;
+  const cmod_env_t *env = master->env;
 
   // check for double wd config
   if (slave->wd_conf != NULL) {
-    gomc_log_errorf(env->log, slave->master->instance_name,
-        "Double watchdog config for slave %s.%s", slave->master->name, slave->name);
+    LCEC_ERR(master, "Double watchdog config for slave %s.%s", master->name, slave->name);
     return -1;
   }
 
   // create new wd config
   wd = env->rtapi->calloc(env->rtapi->ctx, sizeof(lcec_slave_watchdog_t));
   if (wd == NULL) {
-    gomc_log_errorf(env->log, slave->master->instance_name,
-        "Unable to allocate slave %s.%s watchdog config memory", slave->master->name, slave->name);
+    LCEC_ERR(master, "Unable to allocate slave %s.%s watchdog config memory", master->name, slave->name);
     return -1;
   }
 

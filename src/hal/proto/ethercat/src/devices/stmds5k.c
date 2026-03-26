@@ -269,7 +269,6 @@ void lcec_stmds5k_write(struct lcec_slave *slave, long period);
 
 int lcec_stmds5k_preinit(struct lcec_slave *slave) {
   lcec_master_t *master = slave->master;
-  const cmod_env_t *env = master->env;
   LCEC_CONF_MODPARAM_VAL_T *pval;
 
   slave->pdo_entry_count = LCEC_STMDS5K_PDOS;
@@ -278,7 +277,7 @@ int lcec_stmds5k_preinit(struct lcec_slave *slave) {
   pval = lcec_modparam_get(slave, LCEC_STMDS5K_PARAM_EXTENC);
   if (pval != NULL) {
     if (lcec_stmds5k_get_extenc_conf(pval->u32) == NULL) {
-      gomc_log_errorf(env->log, master->instance_name, "invalied extenc type %u for slave %s.%s", pval->u32, master->name, slave->name);
+      LCEC_ERR(master, "invalied extenc type %u for slave %s.%s", pval->u32, master->name, slave->name);
       return -EINVAL;
     }
     slave->pdo_entry_count += LCEC_STMDS5K_EXTINC_PDOS;
@@ -317,7 +316,7 @@ int lcec_stmds5k_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t 
 
   // alloc hal memory
   if ((hal_data = env->hal->malloc(env->hal->ctx, sizeof(lcec_stmds5k_data_t))) == NULL) {
-    gomc_log_errorf(env->log, master->instance_name, "hal_malloc() for slave %s.%s failed", master->name, slave->name);
+    LCEC_ERR(master, "hal_malloc() for slave %s.%s failed", master->name, slave->name);
     return -ENOMEM;
   }
   memset(hal_data, 0, sizeof(lcec_stmds5k_data_t));

@@ -31,6 +31,22 @@
 
 #include "devices/generic.h"
 
+/**
+ * @defgroup lcec_ctx_log Context-level logging macros
+ *
+ * Convenience macros for core files (main, master, slave, util) that have
+ * an @c lcec_rt_context_t pointer rather than a master pointer.
+ * @{
+ */
+#define LCEC_CTX_ERR(ctx, fmt, ...) \
+  gomc_log_errorf((ctx)->env->log, (ctx)->instance_name, fmt, ##__VA_ARGS__)
+#define LCEC_CTX_WARN(ctx, fmt, ...) \
+  gomc_log_warnf((ctx)->env->log, (ctx)->instance_name, fmt, ##__VA_ARGS__)
+#define LCEC_CTX_INFO(ctx, fmt, ...) \
+  gomc_log_infof((ctx)->env->log, (ctx)->instance_name, fmt, ##__VA_ARGS__)
+#define LCEC_CTX_DBG(ctx, fmt, ...) \
+  gomc_log_debugf((ctx)->env->log, (ctx)->instance_name, fmt, ##__VA_ARGS__)
+/** @} */
 
 /** @brief Forward declaration for the config output buffer (defined in conf_priv.h). */
 struct lcec_conf_outbuf;

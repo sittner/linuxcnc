@@ -329,7 +329,7 @@ int lcec_el7041_1000_init(int comp_id, struct lcec_slave *s, ec_pdo_entry_reg_t 
 
   // alloc hal memory
   if ((hd = env->hal->malloc(env->hal->ctx, sizeof(lcec_el7041_1000_data_t))) == NULL) {
-    gomc_log_errorf(env->log, m->instance_name, "hal_malloc() for slave %s.%s failed", m->name, s->name);
+    LCEC_ERR(m, "hal_malloc() for slave %s.%s failed", m->name, s->name);
     return -EIO;
   }
   memset(hd, 0, sizeof(lcec_el7041_1000_data_t));

@@ -97,19 +97,18 @@ void lcec_ax5805_read(struct lcec_slave *slave, long period);
 
 int lcec_ax5805_preinit(struct lcec_slave *slave) {
   lcec_master_t *master = slave->master;
-  const cmod_env_t *env = master->env;
   struct lcec_slave *ax5n_slave;
 
   // try to find corresponding ax5n
   ax5n_slave = lcec_slave_by_index(master, slave->index - 1);
   if (ax5n_slave == NULL) {
-    gomc_log_errorf(env->log, master->instance_name, "%s.%s: Unable to find corresponding AX5nxx with index %d.", master->name, slave->name, slave->index - 1);
+    LCEC_ERR(master, "%s.%s: Unable to find corresponding AX5nxx with index %d.", master->name, slave->name, slave->index - 1);
     return -EINVAL;
   }
 
   // check for AX5nxx
   if (ax5n_slave->proc_preinit != lcec_ax5100_preinit && ax5n_slave->proc_preinit != lcec_ax5200_preinit) {
-    gomc_log_errorf(env->log, master->instance_name, "%s.%s: Slave with index %d is not an AX5nxx.", master->name, slave->name, ax5n_slave->index);
+    LCEC_ERR(master, "%s.%s: Slave with index %d is not an AX5nxx.", master->name, slave->name, ax5n_slave->index);
     return -EINVAL;
   }
 
@@ -119,7 +118,7 @@ int lcec_ax5805_preinit(struct lcec_slave *slave) {
   // use FSOE config from AX5nxx
   slave->fsoeConf = ax5n_slave->fsoeConf;
   if (slave->fsoeConf == NULL) {
-    gomc_log_errorf(env->log, master->instance_name, "%s.%s: Corresponding AX5nxx with index %d has no FSOE config.", master->name, slave->name, ax5n_slave->index);
+    LCEC_ERR(master, "%s.%s: Corresponding AX5nxx with index %d has no FSOE config.", master->name, slave->name, ax5n_slave->index);
     return -EINVAL;
   }
 
@@ -141,7 +140,7 @@ int lcec_ax5805_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
 
   // alloc hal memory
   if ((hal_data = env->hal->malloc(env->hal->ctx, sizeof(lcec_ax5805_data_t))) == NULL) {
-    gomc_log_errorf(env->log, master->instance_name, "hal_malloc() for slave %s.%s failed", master->name, slave->name);
+    LCEC_ERR(master, "hal_malloc() for slave %s.%s failed", master->name, slave->name);
     return -EIO;
   }
   memset(hal_data, 0, sizeof(lcec_ax5805_data_t));

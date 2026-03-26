@@ -158,67 +158,67 @@ int lcec_el5002_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
     switch(p->id & LCEC_EL5002_PARAM_FNK_MASK) {
       case LCEC_EL5002_PARAM_DIS_FRAME_ERR:
         if (ecrt_slave_config_sdo8(slave->config, 0x8000 + i, 0x01, p->value.bit) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo DisFrameErr", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo DisFrameErr", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL5002_PARAM_EN_PWR_FAIL_CHK:
         if (ecrt_slave_config_sdo8(slave->config, 0x8000 + i, 0x02, p->value.bit) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo EnPwrFailChk", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo EnPwrFailChk", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL5002_PARAM_EN_INHIBIT_TIME:
         if (ecrt_slave_config_sdo8(slave->config, 0x8000 + i, 0x03, p->value.bit) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo EnInhibitTime", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo EnInhibitTime", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL5002_PARAM_CODING:
         if (ecrt_slave_config_sdo8(slave->config, 0x8000 + i, 0x06, p->value.u32) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo Coding", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo Coding", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL5002_PARAM_BAUDRATE:
         if (ecrt_slave_config_sdo8(slave->config, 0x8000 + i, 0x09, p->value.u32) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo Baudrate", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo Baudrate", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL5002_PARAM_CLK_JIT_COMP:
         if (ecrt_slave_config_sdo8(slave->config, 0x8000 + i, 0x0c, p->value.u32) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo ClkJitComp", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo ClkJitComp", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL5002_PARAM_FRAME_TYPE:
         if (ecrt_slave_config_sdo8(slave->config, 0x8000 + i, 0x0f, p->value.u32) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo FrameType", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo FrameType", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL5002_PARAM_FRAME_SIZE:
         if (ecrt_slave_config_sdo16(slave->config, 0x8000 + i, 0x11, p->value.u32) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo FrameSize", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo FrameSize", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL5002_PARAM_DATA_LEN:
         if (ecrt_slave_config_sdo16(slave->config, 0x8000 + i, 0x12, p->value.u32) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo DataLen", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo DataLen", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL5002_PARAM_MIN_INHIBIT_TIME:
         if (ecrt_slave_config_sdo16(slave->config, 0x8000 + i, 0x13, p->value.u32) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo MinInhibitTime", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo MinInhibitTime", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL5002_PARAM_NO_CLK_BURSTS:
         if (ecrt_slave_config_sdo16(slave->config, 0x8000 + i, 0x14, p->value.u32) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo NoClkBursts", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo NoClkBursts", master->name, slave->name);
           return -1;
         }
         break;
@@ -230,7 +230,7 @@ int lcec_el5002_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
 
   // alloc hal memory
   if ((hal_data = env->hal->malloc(env->hal->ctx, sizeof(lcec_el5002_data_t))) == NULL) {
-    gomc_log_errorf(env->log, master->instance_name, "hal_malloc() for slave %s.%s failed", master->name, slave->name);
+    LCEC_ERR(master, "hal_malloc() for slave %s.%s failed", master->name, slave->name);
     return -EIO;
   }
   memset(hal_data, 0, sizeof(lcec_el5002_data_t));

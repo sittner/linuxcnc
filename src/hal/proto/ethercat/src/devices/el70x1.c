@@ -297,7 +297,7 @@ int lcec_el70x1_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
 
   // set to position mode
   if (ecrt_slave_config_sdo8(slave->config, 0x8012, 0x01, 3) != 0) {
-    gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo position mode", master->name, slave->name);
+    LCEC_ERR(master, "fail to configure slave %s.%s sdo position mode", master->name, slave->name);
     return -1;
   }
 
@@ -306,31 +306,31 @@ int lcec_el70x1_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
     switch(p->id) {
       case LCEC_EL70x1_PARAM_MAX_CURR:
         if (ecrt_slave_config_sdo16(slave->config, 0x8010, 0x01, p->value.u32) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo maxCurrent", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo maxCurrent", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL70x1_PARAM_RED_CURR:
         if (ecrt_slave_config_sdo16(slave->config, 0x8010, 0x02, p->value.u32) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo redCurrent", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo redCurrent", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL70x1_PARAM_NOM_VOLT:
         if (ecrt_slave_config_sdo16(slave->config, 0x8010, 0x03, p->value.u32) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo nomVoltage", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo nomVoltage", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL70x1_PARAM_COIL_RES:
         if (ecrt_slave_config_sdo16(slave->config, 0x8010, 0x04, p->value.u32) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo coilRes", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo coilRes", master->name, slave->name);
           return -1;
         }
         break;
       case LCEC_EL70x1_PARAM_MOTOR_EMF:
         if (ecrt_slave_config_sdo16(slave->config, 0x8010, 0x05, p->value.u32) != 0) {
-          gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo motorEMF", master->name, slave->name);
+          LCEC_ERR(master, "fail to configure slave %s.%s sdo motorEMF", master->name, slave->name);
           return -1;
         }
         break;
@@ -339,7 +339,7 @@ int lcec_el70x1_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t *
 
   // alloc hal memory
   if ((hal_data = env->hal->malloc(env->hal->ctx, sizeof(lcec_el70x1_data_t))) == NULL) {
-    gomc_log_errorf(env->log, master->instance_name, "hal_malloc() for slave %s.%s failed", master->name, slave->name);
+    LCEC_ERR(master, "hal_malloc() for slave %s.%s failed", master->name, slave->name);
     return -EIO;
   }
   memset(hal_data, 0, sizeof(lcec_el70x1_data_t));

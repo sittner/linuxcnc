@@ -133,7 +133,6 @@ static int export_std_pins(struct lcec_slave *slave, ec_pdo_entry_reg_t **pdo_en
 
 int lcec_el1918_logic_preinit(struct lcec_slave *slave) {
   lcec_master_t *master = slave->master;
-  const cmod_env_t *env = master->env;
   lcec_slave_modparam_t *p;
   int index, stdin_count, stdout_count;
   struct lcec_slave *fsoe_slave;
@@ -150,13 +149,13 @@ int lcec_el1918_logic_preinit(struct lcec_slave *slave) {
         index = p->value.u32;
         fsoe_slave = lcec_slave_by_index(master, index);
         if (fsoe_slave == NULL) {
-          gomc_log_errorf(env->log, master->instance_name, "%s.%s: slave index %d not found", master->name, slave->name, index);
+          LCEC_ERR(master, "%s.%s: slave index %d not found", master->name, slave->name, index);
           return -EINVAL;
         }
 
         fsoeConf = fsoe_slave->fsoeConf;
         if (fsoeConf == NULL) {
-          gomc_log_errorf(env->log, master->instance_name, "%s.%s: slave index %d is not a fsoe slave", master->name, slave->name, index);
+          LCEC_ERR(master, "%s.%s: slave index %d is not a fsoe slave", master->name, slave->name, index);
           return -EINVAL;
         }
 
@@ -166,7 +165,7 @@ int lcec_el1918_logic_preinit(struct lcec_slave *slave) {
       case LCEC_EL1918_LOGIC_PARAM_STDIN_NAME:
         stdin_count++;
         if (stdin_count > LCEC_EL1918_LOGIC_DIO_MAX_COUNT) {
-          gomc_log_errorf(env->log, master->instance_name, "%s.%s: maximum stdin count exceeded.", master->name, slave->name);
+          LCEC_ERR(master, "%s.%s: maximum stdin count exceeded.", master->name, slave->name);
           return -EINVAL;
         }
 
@@ -175,7 +174,7 @@ int lcec_el1918_logic_preinit(struct lcec_slave *slave) {
       case LCEC_EL1918_LOGIC_PARAM_STDOUT_NAME:
         stdout_count++;
         if (stdout_count > LCEC_EL1918_LOGIC_DIO_MAX_COUNT) {
-          gomc_log_errorf(env->log, master->instance_name, "%s.%s: maximum stdout count exceeded.", master->name, slave->name);
+          LCEC_ERR(master, "%s.%s: maximum stdout count exceeded.", master->name, slave->name);
           return -EINVAL;
         }
 
@@ -217,7 +216,7 @@ int lcec_el1918_logic_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_r
 
   // alloc hal memory
   if ((hal_data = env->hal->malloc(env->hal->ctx, sizeof(lcec_el1918_logic_data_t) + fsoe_idx * sizeof(lcec_el1918_logic_fsoe_t))) == NULL) {
-    gomc_log_errorf(env->log, master->instance_name, "hal_malloc() for slave %s.%s failed", master->name, slave->name);
+    LCEC_ERR(master, "hal_malloc() for slave %s.%s failed", master->name, slave->name);
     return -EIO;
   }
   memset(hal_data, 0, sizeof(lcec_el1918_logic_data_t));
@@ -257,7 +256,7 @@ int lcec_el1918_logic_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_r
       index = p->value.u32;
       fsoe_slave = lcec_slave_by_index(master, index);
       if (fsoe_slave == NULL) {
-        gomc_log_errorf(env->log, master->instance_name, "%s.%s: slave index %d not found", master->name, slave->name, index);
+        LCEC_ERR(master, "%s.%s: slave index %d not found", master->name, slave->name, index);
         return -EINVAL;
       }
       fsoe_data->fsoe_slave = fsoe_slave;
@@ -267,7 +266,7 @@ int lcec_el1918_logic_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_r
 
       // alloc crc hal memory
       if ((fsoe_data->fsoe_crc = env->hal->malloc(env->hal->ctx, fsoeConf->data_channels * sizeof(lcec_el1918_logic_fsoe_crc_t))) == NULL) {
-        gomc_log_errorf(env->log, master->instance_name, "hal_malloc() for fsoe_slave %s.%s crc data failed", master->name, fsoe_slave->name);
+        LCEC_ERR(master, "hal_malloc() for fsoe_slave %s.%s crc data failed", master->name, fsoe_slave->name);
         return -EIO;
       }
       memset(fsoe_data->fsoe_crc, 0, fsoeConf->data_channels * sizeof(lcec_el1918_logic_fsoe_crc_t));

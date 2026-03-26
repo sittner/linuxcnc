@@ -257,7 +257,7 @@ lcec_el7211_data_t *lcec_el7211_alloc_hal(lcec_master_t *master, struct lcec_sla
 
   // alloc hal memory
   if ((hal_data = env->hal->malloc(env->hal->ctx, sizeof(lcec_el7211_data_t))) == NULL) {
-    gomc_log_errorf(env->log, master->instance_name, "hal_malloc() for slave %s.%s failed", master->name, slave->name);
+    LCEC_ERR(master, "hal_malloc() for slave %s.%s failed", master->name, slave->name);
     return NULL;
   }
   memset(hal_data, 0, sizeof(lcec_el7211_data_t));
@@ -401,13 +401,13 @@ int lcec_el7201_9014_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_re
 
   // set info1 to inputs
   if (ecrt_slave_config_sdo8(slave->config, 0x8010, 0x39, 10) != 0) {
-    gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo info1 select", master->name, slave->name);
+    LCEC_ERR(master, "fail to configure slave %s.%s sdo info1 select", master->name, slave->name);
     return -1;
   }
 
   // set info2 to errors
   if (ecrt_slave_config_sdo8(slave->config, 0x8010, 0x3a, 5) != 0) {
-    gomc_log_errorf(env->log, master->instance_name, "fail to configure slave %s.%s sdo info2 select", master->name, slave->name);
+    LCEC_ERR(master, "fail to configure slave %s.%s sdo info2 select", master->name, slave->name);
     return -1;
   }
 

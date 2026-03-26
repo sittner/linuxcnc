@@ -78,7 +78,7 @@ int lcec_generic_conf_init(lcec_slave_t *slave, LCEC_CONF_SLAVE_T *slave_conf, l
 
   // alloc hal memory
   if ((slave->hal_data = env->hal->malloc(env->hal->ctx, sizeof(lcec_generic_pin_t) * slave_conf->pdoMappingCount)) == NULL) {
-    gomc_log_errorf(env->log, slave->master->instance_name,
+    LCEC_ERR(slave->master,
         "hal_malloc() for slave %s.%s failed", slave->master->name, slave_conf->name);
     return -1;
   }
@@ -87,7 +87,7 @@ int lcec_generic_conf_init(lcec_slave_t *slave, LCEC_CONF_SLAVE_T *slave_conf, l
   // alloc pdo entry memory
   slave->generic.pdo_entries = env->rtapi->calloc(env->rtapi->ctx, sizeof(ec_pdo_entry_info_t) * slave_conf->pdoEntryCount);
   if (slave->generic.pdo_entries == NULL) {
-    gomc_log_errorf(env->log, slave->master->instance_name,
+    LCEC_ERR(slave->master,
         "Unable to allocate slave %s.%s generic pdo entry memory", slave->master->name, slave_conf->name);
     return -1;
   }
@@ -95,7 +95,7 @@ int lcec_generic_conf_init(lcec_slave_t *slave, LCEC_CONF_SLAVE_T *slave_conf, l
   // alloc pdo memory
   slave->generic.pdos = env->rtapi->calloc(env->rtapi->ctx, sizeof(ec_pdo_info_t) * slave_conf->pdoCount);
   if (slave->generic.pdos == NULL) {
-    gomc_log_errorf(env->log, slave->master->instance_name,
+    LCEC_ERR(slave->master,
         "Unable to allocate slave %s.%s generic pdo memory", slave->master->name, slave_conf->name);
     return -1;
   }
@@ -103,7 +103,7 @@ int lcec_generic_conf_init(lcec_slave_t *slave, LCEC_CONF_SLAVE_T *slave_conf, l
   // alloc sync manager memory
   slave->generic.sync_managers = env->rtapi->calloc(env->rtapi->ctx, sizeof(ec_sync_info_t) * (slave_conf->syncManagerCount + 1));
   if (slave->generic.sync_managers == NULL) {
-    gomc_log_errorf(env->log, slave->master->instance_name,
+    LCEC_ERR(slave->master,
         "Unable to allocate slave %s.%s generic sync manager memory", slave->master->name, slave_conf->name);
     return -1;
   }
@@ -114,6 +114,8 @@ int lcec_generic_conf_init(lcec_slave_t *slave, LCEC_CONF_SLAVE_T *slave_conf, l
   }
 
   // init config state
+  conf_state->log = slave->master->log;
+  conf_state->comp_name = slave->master->comp_name;
   conf_state->pdo_entries = slave->generic.pdo_entries;
   conf_state->pdos = slave->generic.pdos;
   conf_state->sync_managers = slave->generic.sync_managers;
@@ -157,13 +159,13 @@ void lcec_generic_free_slave(const cmod_env_t *env, lcec_slave_t *slave) {
 int lcec_generic_conf_sm(lcec_generic_conf_state_t *state, LCEC_CONF_SYNCMANAGER_T *sm_conf) {
   // check for syncmanager
   if (state->sync_managers == NULL) {
-    fprintf(stderr, "LCEC: Sync manager for generic device missing\n");
+    gomc_log_errorf(state->log, state->comp_name, "Sync manager for generic device missing");
     return -1;
   }
 
   // check for pdos
   if (state->pdos == NULL) {
-    fprintf(stderr, "LCEC: PDOs for generic device missing\n");
+    gomc_log_errorf(state->log, state->comp_name, "PDOs for generic device missing");
     return -1;
   }
 
@@ -205,13 +207,13 @@ int lcec_generic_conf_sm(lcec_generic_conf_state_t *state, LCEC_CONF_SYNCMANAGER
 int lcec_generic_conf_pdo(lcec_generic_conf_state_t *state, LCEC_CONF_PDO_T *pdo_conf) {
   // check for pdos
   if (state->pdos == NULL) {
-    fprintf(stderr, "LCEC: PDOs for generic device missing\n");
+    gomc_log_errorf(state->log, state->comp_name, "PDOs for generic device missing");
     return -1;
   }
 
   // check for pdos entries
   if (state->pdo_entries == NULL) {
-    fprintf(stderr, "LCEC: PDO entries for generic device missing\n");
+    gomc_log_errorf(state->log, state->comp_name, "PDO entries for generic device missing");
     return -1;
   }
 
@@ -241,19 +243,19 @@ int lcec_generic_conf_pdo(lcec_generic_conf_state_t *state, LCEC_CONF_PDO_T *pdo
 int lcec_generic_conf_pdo_entry(lcec_generic_conf_state_t *state, LCEC_CONF_PDOENTRY_T *pe_conf) {
   // check for pdos entries
   if (state->pdo_entries == NULL) {
-    fprintf(stderr, "LCEC: PDO entries for generic device missing\n");
+    gomc_log_errorf(state->log, state->comp_name, "PDO entries for generic device missing");
     return -1;
   }
 
   // check for hal data
   if (state->hal_data == NULL) {
-    fprintf(stderr, "LCEC: HAL data for generic device missing\n");
+    gomc_log_errorf(state->log, state->comp_name, "HAL data for generic device missing");
     return -1;
   }
 
   // check for hal dir
   if (state->hal_dir == 0) {
-    fprintf(stderr, "LCEC: HAL direction for generic device missing\n");
+    gomc_log_errorf(state->log, state->comp_name, "HAL direction for generic device missing");
     return -1;
   }
 
@@ -301,13 +303,13 @@ int lcec_generic_conf_pdo_entry(lcec_generic_conf_state_t *state, LCEC_CONF_PDOE
 int lcec_generic_conf_complex_entry(lcec_generic_conf_state_t *state, LCEC_CONF_COMPLEXENTRY_T *ce_conf) {
   // check for pdoEntry
   if (state->pe_conf == NULL) {
-    fprintf(stderr, "LCEC: pdoEntry for generic device missing\n");
+    gomc_log_errorf(state->log, state->comp_name, "pdoEntry for generic device missing");
     return -1;
   }
 
   // check for hal data
   if (state->hal_data == NULL) {
-    fprintf(stderr, "LCEC: HAL data for generic device missing\n");
+    gomc_log_errorf(state->log, state->comp_name, "HAL data for generic device missing");
     return -1;
   }
 
@@ -384,7 +386,7 @@ int lcec_generic_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t 
       case GOMC_HAL_U32:
         // check data size
         if (hal_data->bitLength > 32) {
-          gomc_log_warnf(env->log, master->instance_name, "unable to export pin %s.%s.%s.%s: invalid process data bitlen!", master->instance_name, master->name, slave->name, hal_data->name);
+          LCEC_WARN(master, "unable to export pin %s.%s.%s.%s: invalid process data bitlen!", master->instance_name, master->name, slave->name, hal_data->name);
           continue;
         }
 
@@ -398,7 +400,7 @@ int lcec_generic_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t 
       case GOMC_HAL_FLOAT:
         // check data size
         if (hal_data->bitLength > 32) {
-          gomc_log_warnf(env->log, master->instance_name, "unable to export pin %s.%s.%s.%s: invalid process data bitlen!", master->instance_name, master->name, slave->name, hal_data->name);
+          LCEC_WARN(master, "unable to export pin %s.%s.%s.%s: invalid process data bitlen!", master->instance_name, master->name, slave->name, hal_data->name);
           continue;
         }
 
@@ -410,7 +412,7 @@ int lcec_generic_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_reg_t 
         break;
 
       default:
-        gomc_log_warnf(env->log, master->instance_name, "unsupported pin type %d!", hal_data->type);
+        LCEC_WARN(master, "unsupported pin type %d!", hal_data->type);
     }
   }
 
