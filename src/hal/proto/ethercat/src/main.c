@@ -54,7 +54,24 @@ static void lcec_ec_log_callback(int level, const char *fmt, va_list ap) {
     buf[--len] = '\0';
   }
 
-  gomc_log_infof(lcec_log_g, lcec_name_g, "%s", buf);
+  // map syslog levels to gomc log levels
+  switch (level) {
+  case 0: // LOG_EMERG
+  case 1: // LOG_ALERT
+  case 2: // LOG_CRIT
+  case 3: // LOG_ERR
+    gomc_log_errorf(lcec_log_g, lcec_name_g, "%s", buf);
+    break;
+  case 4: // LOG_WARNING
+    gomc_log_warnf(lcec_log_g, lcec_name_g, "%s", buf);
+    break;
+  case 7: // LOG_DEBUG
+    gomc_log_debugf(lcec_log_g, lcec_name_g, "%s", buf);
+    break;
+  default: // LOG_NOTICE, LOG_INFO
+    gomc_log_infof(lcec_log_g, lcec_name_g, "%s", buf);
+    break;
+  }
 }
 #endif
 
