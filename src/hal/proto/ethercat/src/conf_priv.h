@@ -123,7 +123,7 @@ typedef struct {
 struct lcec_conf_module {
   cmod_t base;                     /**< cmod lifecycle vtable; must be first. */
   const cmod_env_t *env;           /**< Launcher-provided environment. */
-  char name[GOMC_RTAPI_NAME_LEN];  /**< Instance name (used as HAL component name). */
+  char name[GOMC_RTAPI_NAME_LEN + 1];  /**< Instance name (used as HAL component name). */
 
   int hal_comp_id;                 /**< HAL component ID from hal_init_ex(). */
   LCEC_CONF_HAL_T *conf_hal_data;  /**< HAL pin data block. */
