@@ -52,7 +52,7 @@ typedef enum {
 
 typedef enum {
     GOMC_HAL_RO = 64,
-    GOMC_HAL_RW = (64 | 32),
+    GOMC_HAL_RW = (64 | 128),
 } gomc_hal_param_dir_t;
 
 typedef enum {
