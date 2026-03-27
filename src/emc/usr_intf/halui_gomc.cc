@@ -2446,9 +2446,6 @@ extern "C" int New(const cmod_env_t *env, const char *name,
     // set print destination to stdout, for console apps
     set_rcs_print_destination(RCS_PRINT_TO_STDOUT);
 
-    // populate emc_inifile for backward compatibility
-    rtapi_strxcpy(emc_inifile, env->ini->source_file(env->ini->ctx));
-
     // get configuration information
     if (0 != iniLoad(env->ini)) {
 	gomc_log_errorf(the_log, "halui", "iniLoad error");
