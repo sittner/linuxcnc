@@ -39,3 +39,18 @@ TARGETS += ../bin/linuxcnclcd
 	$(ECHO) Linking $(notdir $@)
 	$(Q)$(CXX) $(CXXFLAGS) -o $@ $(ULFLAGS) $^ $(LDFLAGS)
 TARGETS += ../bin/halui
+
+# halui.so — cmod plugin variant (uses gomc API, no liblinuxcnchal)
+HALUI_GOMC_SRCS := emc/usr_intf/halui_gomc.cc
+
+USERSRCS += $(HALUI_GOMC_SRCS)
+
+$(call TOOBJSDEPS, $(HALUI_GOMC_SRCS)): EXTRAFLAGS += -fPIC
+
+../cmod/halui.so: $(call TOOBJS, $(HALUI_GOMC_SRCS)) \
+                  ../lib/liblinuxcnc.a ../lib/liblinuxcncini.so.0 \
+                  ../lib/libnml.so.0 ../lib/libtooldata.so.0
+	$(ECHO) Linking $(notdir $@)
+	@mkdir -p ../cmod
+	@$(CXX) -shared -o $@ $^ $(LDFLAGS)
+TARGETS += ../cmod/halui.so
