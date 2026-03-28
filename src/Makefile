@@ -902,8 +902,6 @@ RTMODULES += streamer.o
 streamer-objs := hal/components/streamer.o $(MATHSTUB)
 RTMODULES += sampler.o
 sampler-objs := hal/components/sampler.o $(MATHSTUB)
-RTMODULES += retain.o
-retain-objs := hal/components/retain.o $(MATHSTUB)
 
 # Subdirectory: hal/drivers
 RTMODULES += hal_parport.o
