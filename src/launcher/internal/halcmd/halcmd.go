@@ -5,6 +5,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"unsafe"
 
 	hal "github.com/sittner/linuxcnc/src/launcher/pkg/hal"
 )
@@ -44,6 +45,17 @@ func ListComponents() ([]string, error) {
 // Equivalent to "halcmd unload all".
 func UnloadAll(exceptCompID int) error {
 	return halUnloadAll(exceptCompID)
+}
+
+// LockDLHandle locks the PT_LOAD segments of a single dlopen handle
+// into memory, preventing page faults during RT execution.
+func LockDLHandle(handle unsafe.Pointer) {
+	halLockDLHandle(handle)
+}
+
+// UnlockDLHandle unlocks the PT_LOAD segments of a single dlopen handle.
+func UnlockDLHandle(handle unsafe.Pointer) {
+	halUnlockDLHandle(handle)
 }
 
 // NewInst creates a new instance of a HAL component type.

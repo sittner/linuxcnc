@@ -54,6 +54,7 @@
 */
 
 #include "rtapi.h"		/* RTAPI realtime OS API */
+#include "rtapi_task.h"		/* struct rtapi_task (for task_exit flag) */
 #include "hal.h"		/* HAL public API decls */
 #include "hal_priv.h"		/* HAL private decls */
 
@@ -149,6 +150,17 @@ static int ref_cnt = 0;
 #include <stdio.h>
 int hal_init(const char *name)
 {
+    component_type_t type;
+    if (rtapi_pid == getpid()) {
+        type = COMPONENT_TYPE_REALTIME;
+    } else {
+        type = COMPONENT_TYPE_USER;
+    }
+    return hal_init_ex(name, NULL, type);
+}
+
+int hal_init_ex(const char *name, void *dl_handle, component_type_t type)
+{
     int comp_id;
     int retval;
     void *mem;
@@ -239,11 +251,11 @@ int hal_init(const char *name)
     }
     /* initialize the structure */
     comp->comp_id = comp_id;
+    comp->type = type;
+    comp->dl_handle = dl_handle;
     if (rtapi_pid == getpid()) {
-        comp->type = COMPONENT_TYPE_REALTIME;
         comp->pid = 0;
     } else {
-        comp->type = COMPONENT_TYPE_USER;
         comp->pid = getpid();
     }
     comp->ready = 0;
@@ -1805,7 +1817,7 @@ int hal_export_funct(const char *name, void (*funct) (void *, long),
 	    "HAL: ERROR: component %d not found\n", comp_id);
 	return -EINVAL;
     }
-    if (comp->type == COMPONENT_TYPE_USER) {
+    if (comp->pid != 0) {
 	/* not a realtime component */
 	rtapi_mutex_give(&(hal_data->mutex));
 	rtapi_print_msg(RTAPI_MSG_ERR,
@@ -1954,6 +1966,7 @@ int hal_create_thread(const char *name, unsigned long period_nsec, int uses_fp)
     }
     /* initialize the structure */
     new->uses_fp = uses_fp;
+    new->idle = 1;  /* idle until threads_running is set */
     rtapi_snprintf(new->name, sizeof(new->name), "%s", name);
     /* have to create and start a task to run the thread */
     if (hal_data->thread_list_ptr == 0) {
@@ -2359,7 +2372,8 @@ int hal_start_threads(void)
 
 int hal_stop_threads(void)
 {
-    /* wow, two in a row! */
+    int next, retries;
+
     if (hal_data == 0) {
 	rtapi_print_msg(RTAPI_MSG_ERR,
 	    "HAL: ERROR: stop_threads called before init\n");
@@ -2372,7 +2386,39 @@ int hal_stop_threads(void)
 	return -EPERM;
     }
 
+    /* Clear the running flag and ensure visibility to RT threads */
     hal_data->threads_running = 0;
+    __sync_synchronize();
+
+    /* Wait for all threads to complete their current cycle and go idle.
+       Poll up to 200 times at 1ms intervals (200ms max). At a typical
+       1kHz servo rate this gives ~200 periods for the thread to see the
+       flag and finish its current function list. */
+    for (retries = 200; retries > 0; retries--) {
+	int all_idle = 1;
+	rtapi_mutex_get(&(hal_data->mutex));
+	next = hal_data->thread_list_ptr;
+	while (next != 0) {
+	    hal_thread_t *t = SHMPTR(next);
+	    if (!t->idle) {
+		all_idle = 0;
+		break;
+	    }
+	    next = t->next_ptr;
+	}
+	rtapi_mutex_give(&(hal_data->mutex));
+	if (all_idle) break;
+	{
+	    struct timespec ts = {0, 1000000}; /* 1ms */
+	    nanosleep(&ts, NULL);
+	}
+    }
+
+    if (retries == 0) {
+	rtapi_print_msg(RTAPI_MSG_WARN,
+	    "HAL: WARNING: stop_threads timed out waiting for threads to go idle\n");
+    }
+
     rtapi_print_msg(RTAPI_MSG_DBG, "HAL: threads stopped\n");
     return 0;
 }
@@ -2810,10 +2856,18 @@ static void thread_task(void *arg)
     hal_funct_entry_t *funct_root, *funct_entry;
     long long int start_time, end_time;
     long long int thread_start_time;
+    struct rtapi_task *self;
 
     thread = arg;
-    while (1) {
+
+    /* Get our own rtapi_task so we can check the cooperative exit flag.
+       The task_key is set by task_wrapper() before calling us. */
+    self = rtapi_task_self_ptr();
+
+    while (self == NULL || !self->task_exit) {
 	if (hal_data->threads_running > 0) {
+	    thread->idle = 0;
+	    __sync_synchronize();
 	    /* point at first function on function list */
 	    funct_root = (hal_funct_entry_t *) & (thread->funct_list);
 	    funct_entry = SHMPTR(funct_root->links.next);
@@ -2847,10 +2901,16 @@ static void thread_task(void *arg)
 	    if ( *(thread->runtime) > thread->maxtime) {
 	        thread->maxtime = *(thread->runtime);
 	    }
+	} else {
+	    thread->idle = 1;
+	    __sync_synchronize();
 	}
 	/* wait until next period */
 	rtapi_wait();
     }
+    /* cooperative exit: mark idle and return naturally */
+    thread->idle = 1;
+    __sync_synchronize();
 }
 
 /* see the declarations of these functions (near top of file) for
@@ -3002,6 +3062,7 @@ hal_comp_t *halpr_alloc_comp_struct(void)
 	p->comp_id = 0;
 	p->mem_id = 0;
 	p->type = COMPONENT_TYPE_USER;
+	p->dl_handle = 0;
 	p->shmem_base = 0;
 	p->name[0] = '\0';
     }
@@ -3260,6 +3321,7 @@ static void free_comp_struct(hal_comp_t * comp)
     comp->comp_id = 0;
     comp->mem_id = 0;
     comp->type = COMPONENT_TYPE_USER;
+    comp->dl_handle = 0;
     comp->shmem_base = 0;
     comp->name[0] = '\0';
     /* add it to free list */
@@ -3475,8 +3537,8 @@ static void free_thread_struct(hal_thread_t * thread)
 
     /* if we're deleting a thread, we need to stop all threads */
     hal_data->threads_running = 0;
-    /* and stop the task associated with this thread */
-    rtapi_task_pause(thread->task_id);
+    __sync_synchronize();
+    /* and delete the task associated with this thread (cooperative exit) */
     rtapi_task_delete(thread->task_id);
     /* clear contents of struct */
     thread->uses_fp = 0;

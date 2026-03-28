@@ -370,7 +370,7 @@ static int hal_shim_unload_all(int except_id) {
     next = hal_data->comp_list_ptr;
     while (next != 0) {
         comp = (hal_comp_t *)SHMPTR(next);
-        if (comp->type == COMPONENT_TYPE_USER && comp->pid != ourpid) {
+        if (comp->pid != 0 && comp->pid != ourpid) {
             if (comp->comp_id != except_id) {
                 kill(abs(comp->pid), SIGTERM);
             }
@@ -389,7 +389,7 @@ static int hal_shim_unload_all(int except_id) {
         next = hal_data->comp_list_ptr;
         while (next != 0) {
             comp = (hal_comp_t *)SHMPTR(next);
-            if (comp->type == COMPONENT_TYPE_REALTIME) {
+            if (comp->pid == 0) {
                 if (comp->comp_id != except_id && n < HAL_SHIM_MAX_COMPS) {
                     if (strstr(comp->name, HAL_PSEUDO_COMP_PREFIX) != comp->name) {
                         snprintf(comps[n], sizeof(comps[n]), "%s", comp->name);
@@ -414,6 +414,16 @@ static int hal_shim_unload_all(int except_id) {
     }
 
     return 0;
+}
+
+// hal_shim_lock_dl_handle locks the PT_LOAD segments of a single dlopen handle.
+static void hal_shim_lock_dl_handle(void *handle) {
+    rtapi_lock_dl_handle(handle);
+}
+
+// hal_shim_unlock_dl_handle unlocks the PT_LOAD segments of a single dlopen handle.
+static void hal_shim_unlock_dl_handle(void *handle) {
+    rtapi_unlock_dl_handle(handle);
 }
 
 // ===== 1a. Simple wrapper shims =====
@@ -507,6 +517,15 @@ static int hal_shim_write_value(hal_type_t type, void *d_ptr, const char *value)
         ulval = strtoul(value, &cp, 0);
         if (*cp != '\0' && !isspace((unsigned char)*cp)) return -EINVAL;
         *(hal_u32_t *)d_ptr = (hal_u32_t)ulval;
+        break;
+    case HAL_PORT:
+        cp = (char *)value;
+        ulval = strtoul(value, &cp, 0);
+        if (*cp != '\0' && !isspace((unsigned char)*cp)) return -EINVAL;
+        if ((*((hal_port_t *)d_ptr) != 0) && (hal_port_buffer_size(*((hal_port_t *)d_ptr)) > 0)) {
+            return -EINVAL;
+        }
+        *((hal_port_t *)d_ptr) = hal_port_alloc(ulval);
         break;
     default:
         return -EINVAL;
@@ -1600,7 +1619,7 @@ static int hal_shim_save(const char *type, char *buf, int buf_size) {
         next = hal_data->comp_list_ptr;
         while (next != 0) {
             hal_comp_t *comp = (hal_comp_t *)SHMPTR(next);
-            if (comp->type == COMPONENT_TYPE_REALTIME) {
+            if (comp->pid == 0) {
                 if (comp->insmod_args == 0) {
                     SAVE_LINE("#loadrt %s  (not loaded by loadrt, no args saved)",
                               comp->name);
@@ -1854,6 +1873,17 @@ func halListComponents() ([]string, error) {
 func halUnloadAll(exceptID int) error {
 	ret := C.hal_shim_unload_all(C.int(exceptID))
 	return halError(int(ret), "hal_shim_unload_all")
+}
+
+// halLockDLHandle locks the PT_LOAD segments of a single dlopen handle
+// into memory, preventing page faults during RT execution.
+func halLockDLHandle(handle unsafe.Pointer) {
+	C.hal_shim_lock_dl_handle(handle)
+}
+
+// halUnlockDLHandle unlocks the PT_LOAD segments of a single dlopen handle.
+func halUnlockDLHandle(handle unsafe.Pointer) {
+	C.hal_shim_unlock_dl_handle(handle)
 }
 
 // ===== Go wrappers for 1a simple shims =====

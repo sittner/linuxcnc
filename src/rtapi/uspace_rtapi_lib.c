@@ -322,6 +322,10 @@ static int dl_munlock_callback(struct dl_phdr_info *info, size_t size, void *dat
     return 1;
 }
 
+/* Forward declarations — defined below rtapi_dlclose */
+void rtapi_lock_dl_handle(void *handle);
+void rtapi_unlock_dl_handle(void *handle);
+
 void *rtapi_dlopen(const char *path, int flags) {
     void *handle = dlopen(path, flags);
     if (!handle) {
@@ -330,25 +334,33 @@ void *rtapi_dlopen(const char *path, int flags) {
         return NULL;
     }
 
-    // Lock all segments of the loaded library
-    const char *resolved = dl_resolve_name(handle);
-    if (resolved) {
-        dl_iterate_phdr(dl_mlock_callback, (void *)resolved);
-    }
+    rtapi_lock_dl_handle(handle);
 
     return handle;
 }
 
 int rtapi_dlclose(void *handle) {
-    // Unlock all segments of the loaded library
     if (handle) {
-        const char *resolved = dl_resolve_name(handle);
-        if (resolved) {
-            dl_iterate_phdr(dl_munlock_callback, (void *)resolved);
-        }
+        rtapi_unlock_dl_handle(handle);
     }
 
     return dlclose(handle);
+}
+
+void rtapi_lock_dl_handle(void *handle) {
+    if (!handle) return;
+    const char *resolved = dl_resolve_name(handle);
+    if (resolved) {
+        dl_iterate_phdr(dl_mlock_callback, (void *)resolved);
+    }
+}
+
+void rtapi_unlock_dl_handle(void *handle) {
+    if (!handle) return;
+    const char *resolved = dl_resolve_name(handle);
+    if (resolved) {
+        dl_iterate_phdr(dl_munlock_callback, (void *)resolved);
+    }
 }
 
 static void configure_memory(void)
@@ -771,7 +783,7 @@ static void *task_wrapper(void *arg)
     rtapi_unlock_mem(stack_lockaddr, stack_locksize);
 #endif
 
-    rtapi_print("ERROR: reached end of wrapper for task %d\n", task->id);
+    rtapi_print_msg(RTAPI_MSG_DBG, "task %d exited cleanly\n", task->id);
     return NULL;
 }
 
@@ -780,7 +792,11 @@ static int task_delete(int id)
     struct posix_task *task = (struct posix_task*)get_task(id);
     if(!task) return -EINVAL;
 
-    pthread_cancel(task->thr);
+    /* Request cooperative exit and wait for the thread to return
+       naturally instead of using pthread_cancel, which can crash
+       during clock_nanosleep unwind (SIGSEGV in _Unwind_ForcedUnwind). */
+    task->task.task_exit = 1;
+    __sync_synchronize();
     pthread_join(task->thr, 0);
     task->task.magic = 0;
     task_array[id] = 0;
@@ -853,10 +869,15 @@ static int task_self(void) {
 static void task_wait(void) {
     if(do_thread_lock)
         pthread_mutex_unlock(&thread_lock);
-    pthread_testcancel();
     struct rtapi_task *task = (struct rtapi_task*)pthread_getspecific(task_key);
     if(!task) {
         rtapi_print_msg(RTAPI_MSG_ERR, "rtapi_wait called from non-task thread\n");
+        if(do_thread_lock)
+            pthread_mutex_lock(&thread_lock);
+        return;
+    }
+    /* Check cooperative exit flag before sleeping */
+    if(task->task_exit) {
         if(do_thread_lock)
             pthread_mutex_lock(&thread_lock);
         return;
@@ -979,6 +1000,12 @@ int rtapi_task_resume(int task_id)
 int rtapi_task_self(void)
 {
     return task_self();
+}
+
+struct rtapi_task *rtapi_task_self_ptr(void)
+{
+    pthread_once(&key_once, init_task_key);
+    return (struct rtapi_task*)pthread_getspecific(task_key);
 }
 
 long long rtapi_task_pll_get_reference(void)

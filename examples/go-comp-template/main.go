@@ -23,39 +23,11 @@ import (
 // to an output float pin.  Replace this with your own logic.
 type passthroughModule struct {
 	logger  *slog.Logger
+	name    string
 	args    []string
 	comp    *hal.Component
 	inputF  *hal.Pin[float64] // in  float64
 	outputF *hal.Pin[float64] // out float64
-}
-
-// Init creates the HAL component and its pins.
-// This is called after the plugin is loaded and before HAL file wiring,
-// so the pins created here can be connected via net/setp/addf in the HAL file.
-func (m *passthroughModule) Init() error {
-	m.logger.Info("passthroughModule Init()", "args", m.args)
-
-	comp, err := hal.NewComponent("go-passthrough")
-	if err != nil {
-		return fmt.Errorf("hal.NewComponent: %w", err)
-	}
-	m.comp = comp
-
-	m.inputF, err = hal.NewPin[float64](comp, "in-f", hal.In)
-	if err != nil {
-		return fmt.Errorf("NewPin[float64] in-f: %w", err)
-	}
-
-	m.outputF, err = hal.NewPin[float64](comp, "out-f", hal.Out)
-	if err != nil {
-		return fmt.Errorf("NewPin[float64] out-f: %w", err)
-	}
-
-	if err := comp.Ready(); err != nil {
-		return fmt.Errorf("hal.Ready: %w", err)
-	}
-
-	return nil
 }
 
 // Start begins operation.  Called after HAL threads are started.
@@ -67,11 +39,16 @@ func (m *passthroughModule) Start() error {
 }
 
 // Stop shuts down the module gracefully.  Called during launcher cleanup.
-// Note: the plugin code is never actually unloaded from memory (plugin.Open
-// has no Close), but all goroutines should be stopped here.
+// Stop background goroutines and close connections here.
+// Destroy releases remaining resources (HAL component).
 func (m *passthroughModule) Stop() {
 	m.logger.Info("passthroughModule Stop()")
 	// TODO: stop background goroutines, close connections, etc.
+}
+
+// Destroy releases all resources. Called after all modules have been stopped.
+func (m *passthroughModule) Destroy() {
+	m.logger.Info("passthroughModule Destroy()")
 	if m.comp != nil {
 		if err := m.comp.Exit(); err != nil {
 			m.logger.Warn("HAL component exit error", "error", err)
@@ -82,11 +59,15 @@ func (m *passthroughModule) Stop() {
 // New is the plugin entry point.  The launcher looks up this symbol by name
 // and calls it to create the module instance.
 //
-// The signature must match gomodule.Factory exactly:
+// The factory creates and fully initializes the module (including HAL
+// component and pin creation) before returning.
 //
-//	func(ini *inifile.IniFile, logger *slog.Logger, args []string) (gomodule.Module, error)
+// name is the instance name — use it as the HAL component name.
+// For single-instance loading it defaults to the module's base filename.
+// For multi-instance loading via [name1,name2,...] each instance gets a distinct name.
 //
-// args contains the individual arguments after the module path on the "load" line, e.g.:
+// args contains the individual arguments after the module path (and optional name list)
+// on the "load" line, e.g.:
 //
 //	load /path/to/mygomodule.so config=/path/to/config.ini key=value
 //
@@ -95,9 +76,34 @@ func (m *passthroughModule) Stop() {
 // The variable is exported by name: the launcher calls plugin.Lookup("New")
 // at runtime to find it.  It must be declared as a package-level var (not a
 // function) so that its address is stable and the linker exports it correctly.
-var New gomodule.Factory = func(ini *inifile.IniFile, logger *slog.Logger, args []string) (gomodule.Module, error) {
-	return &passthroughModule{
-		logger: logger.With("plugin", "go-passthrough"),
+var New gomodule.Factory = func(ini *inifile.IniFile, logger *slog.Logger, name string, args []string) (gomodule.Module, error) {
+	m := &passthroughModule{
+		logger: logger.With("plugin", name),
+		name:   name,
 		args:   args,
-	}, nil
+	}
+
+	m.logger.Info("passthroughModule New()", "name", m.name, "args", m.args)
+
+	comp, err := hal.NewComponent(m.name)
+	if err != nil {
+		return nil, fmt.Errorf("hal.NewComponent: %w", err)
+	}
+	m.comp = comp
+
+	m.inputF, err = hal.NewPin[float64](comp, "in-f", hal.In)
+	if err != nil {
+		return nil, fmt.Errorf("NewPin[float64] in-f: %w", err)
+	}
+
+	m.outputF, err = hal.NewPin[float64](comp, "out-f", hal.Out)
+	if err != nil {
+		return nil, fmt.Errorf("NewPin[float64] out-f: %w", err)
+	}
+
+	if err := comp.Ready(); err != nil {
+		return nil, fmt.Errorf("hal.Ready: %w", err)
+	}
+
+	return m, nil
 }

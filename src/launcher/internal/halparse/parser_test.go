@@ -281,6 +281,9 @@ func TestParseLoad(t *testing.T) {
 		if len(lt.Args) != 0 {
 			t.Errorf("Args = %v, want []", lt.Args)
 		}
+		if lt.Names != nil {
+			t.Errorf("Names = %v, want nil", lt.Names)
+		}
 	})
 
 	t.Run("path with single arg", func(t *testing.T) {
@@ -312,6 +315,65 @@ func TestParseLoad(t *testing.T) {
 		_, err := parseLoad([]string{}, loc)
 		if err == nil {
 			t.Error("expected error for missing path, got nil")
+		}
+	})
+
+	t.Run("with single instance name", func(t *testing.T) {
+		tok, err := parseLoad([]string{"/tmp/foo.so", "[myinst]", "a=1"}, loc)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		lt := tok.Data.(*LoadToken)
+		if lt.Path != "/tmp/foo.so" {
+			t.Errorf("Path = %q, want %q", lt.Path, "/tmp/foo.so")
+		}
+		if len(lt.Names) != 1 || lt.Names[0] != "myinst" {
+			t.Errorf("Names = %v, want [myinst]", lt.Names)
+		}
+		if len(lt.Args) != 1 || lt.Args[0] != "a=1" {
+			t.Errorf("Args = %v, want [a=1]", lt.Args)
+		}
+	})
+
+	t.Run("with multiple instance names", func(t *testing.T) {
+		tok, err := parseLoad([]string{"mymod", "[inst1,inst2,inst3]", "x=1"}, loc)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		lt := tok.Data.(*LoadToken)
+		if len(lt.Names) != 3 {
+			t.Fatalf("Names len = %d, want 3", len(lt.Names))
+		}
+		if lt.Names[0] != "inst1" || lt.Names[1] != "inst2" || lt.Names[2] != "inst3" {
+			t.Errorf("Names = %v, want [inst1 inst2 inst3]", lt.Names)
+		}
+	})
+
+	t.Run("names only no args", func(t *testing.T) {
+		tok, err := parseLoad([]string{"mymod", "[inst1]"}, loc)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		lt := tok.Data.(*LoadToken)
+		if len(lt.Names) != 1 || lt.Names[0] != "inst1" {
+			t.Errorf("Names = %v, want [inst1]", lt.Names)
+		}
+		if len(lt.Args) != 0 {
+			t.Errorf("Args = %v, want []", lt.Args)
+		}
+	})
+
+	t.Run("empty name list error", func(t *testing.T) {
+		_, err := parseLoad([]string{"mymod", "[]"}, loc)
+		if err == nil {
+			t.Error("expected error for empty name list, got nil")
+		}
+	})
+
+	t.Run("empty name in list error", func(t *testing.T) {
+		_, err := parseLoad([]string{"mymod", "[a,,b]"}, loc)
+		if err == nil {
+			t.Error("expected error for empty name in list, got nil")
 		}
 	})
 }
@@ -1681,4 +1743,84 @@ func TestCollectLoadRTToken(t *testing.T) {
 			t.Errorf("expected names=pid.0,pid.1 in %v", cmds[0])
 		}
 	})
+}
+
+// TestSingleFileParser_TemplateRendering verifies that NewSingleFileParser
+// builds templateData from INI so that Go templates in HAL files are rendered
+// before parsing.
+func TestSingleFileParser_TemplateRendering(t *testing.T) {
+	ini := &mockINI{data: map[string]map[string]string{
+		"GALV": {"POOL_COUNT": "2", "MIXERS_PER_POOL": "3"},
+	}}
+	sp := NewSingleFileParser(ini, nil)
+
+	content := `{{- $n := atoi (ini "GALV" "POOL_COUNT") -}}
+{{- range $i := count $n}}
+setp pool.{{$i}}.enable 1
+{{- end}}
+`
+	result, err := sp.ParseContent("test.hal", content)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// count 2 → indices 0, 1 → two setp commands
+	if len(result.HALCmd) != 2 {
+		t.Fatalf("expected 2 HALCmd tokens, got %d", len(result.HALCmd))
+	}
+	for i, tok := range result.HALCmd {
+		st, ok := tok.Data.(*SetPToken)
+		if !ok {
+			t.Fatalf("token %d: expected *SetPToken, got %T", i, tok.Data)
+		}
+		want := fmt.Sprintf("pool.%d.enable", i)
+		if st.Name != want {
+			t.Errorf("token %d: Name = %q, want %q", i, st.Name, want)
+		}
+	}
+}
+
+// TestSingleFileParser_TemplateDisabledWithoutINI verifies that when no INI
+// is provided, template directives pass through (no panic / no rendering).
+func TestSingleFileParser_TemplateDisabledWithoutINI(t *testing.T) {
+	sp := NewSingleFileParser(nil, nil)
+	content := "{{range count 2}}setp x.{{.}} 1\n{{end}}"
+	// Without INI the template should NOT be rendered; the "{{range" token
+	// will be seen as an unknown command, producing a parse error.
+	_, err := sp.ParseContent("test.hal", content)
+	if err == nil {
+		t.Fatal("expected parse error when templates are used without INI, got nil")
+	}
+}
+
+// TestMultiFileParser_TemplateRendering verifies that NewMultiFileParser
+// propagates templateData so templates work across multiple files.
+func TestMultiFileParser_TemplateRendering(t *testing.T) {
+	ini := &mockINI{data: map[string]map[string]string{
+		"TEST": {"COUNT": "2"},
+	}}
+	mp := NewMultiFileParser(ini, nil)
+
+	// Write a temp HAL file with a template
+	tmp, err := os.CreateTemp("", "hal-tmpl-*.hal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmp.Name())
+	content := `{{- $n := atoi (ini "TEST" "COUNT") -}}
+{{- range $i := count $n}}
+setp axis.{{$i}}.scale 100
+{{- end}}
+`
+	if _, err := tmp.WriteString(content); err != nil {
+		t.Fatal(err)
+	}
+	tmp.Close()
+
+	result, err := mp.Parse([]string{tmp.Name()})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.HALCmd) != 2 {
+		t.Fatalf("expected 2 HALCmd tokens, got %d", len(result.HALCmd))
+	}
 }

@@ -538,6 +538,7 @@ if test "xyes" = "x$RUN_IN_PLACE"; then
     EMC2_HELP_DIR=$EMC2_HOME/docs/help
     EMC2_RTLIB_DIR=$EMC2_HOME/rtlib
     EMC2_GOMOD_DIR=$EMC2_HOME/gomod
+    EMC2_CMOD_DIR=$EMC2_HOME/cmod
     LINUXCNC_CONFIG_PATH="~/linuxcnc/configs:$EMC2_HOME/configs"
     EMC2_NCFILES_DIR=$EMC2_HOME/nc_files
     EMC2_IMAGE_DIR=$EMC2_HOME
@@ -560,6 +561,7 @@ else
 	*) EMC2_RTLIB_DIR=$MODULE_DIR/linuxcnc
     esac
     EMC2_GOMOD_DIR=${prefix}/lib/linuxcnc/gomod
+    EMC2_CMOD_DIR=${prefix}/lib/linuxcnc/cmod
     LINUXCNC_CONFIG_PATH="~/linuxcnc/configs:/usr/local/etc/linuxcnc/configs:"$(eval echo $EMC2_HELP_DIR)"/examples/sample-configs"
     EMC2_NCFILES_DIR=${prefix}/share/linuxcnc/ncfiles
     EMC2_IMAGE_DIR=$(fe "$datadir")/linuxcnc
@@ -572,6 +574,7 @@ AC_DEFINE_UNQUOTED([EMC2_TCL_DIR], "$EMC2_TCL_DIR", [Directory for tcl scripts])
 AC_DEFINE_UNQUOTED([EMC2_HELP_DIR], "$EMC2_HELP_DIR", [Directory for help files])
 AC_DEFINE_UNQUOTED([EMC2_RTLIB_DIR], "$EMC2_RTLIB_DIR", [Directory of realtime system])
 AC_DEFINE_UNQUOTED([EMC2_GOMOD_DIR], "$EMC2_GOMOD_DIR", [Directory for Go plugin modules])
+AC_DEFINE_UNQUOTED([EMC2_CMOD_DIR], "$EMC2_CMOD_DIR", [Directory for C plugin modules])
 AC_DEFINE_UNQUOTED([EMC2_LANG_DIR], "$EMC2_LANG_DIR", [Directory for tcl translation files])
 AC_DEFINE_UNQUOTED([EMC2_PO_DIR], "$EMC2_PO_DIR", [Directory for po/mo translation files])
 AC_DEFINE_UNQUOTED([EMC2_NCFILES_DIR], "$EMC2_NCFILES_DIR", [Directory for nc files])
@@ -583,6 +586,7 @@ AC_SUBST([EMC2_TCL_LIB_DIR])
 AC_SUBST([EMC2_HELP_DIR])
 AC_SUBST([EMC2_RTLIB_DIR])
 AC_SUBST([EMC2_GOMOD_DIR])
+AC_SUBST([EMC2_CMOD_DIR])
 AC_SUBST([EMC2_LANG_DIR])
 AC_SUBST([LINUXCNC_CONFIG_PATH])
 AC_SUBST([EMC2_NCFILES_DIR])
@@ -1513,6 +1517,83 @@ fi
 AC_SUBST([GO])
 AC_SUBST([HAVE_GOLANG])
 
+# Check for IgH EtherCAT master library and libexpat (optional, for lcec driver)
+AC_ARG_ENABLE([ethercat],
+    AS_HELP_STRING([--enable-ethercat], [Build EtherCAT HAL driver (requires IgH EtherCAT master and libexpat)]),
+    [enable_ethercat=$enableval],
+    [enable_ethercat=auto])
+
+ETHERCAT_CFLAGS=
+ETHERCAT_LIBS=
+
+if test "x$enable_ethercat" != "xno"; then
+    AC_MSG_CHECKING([for IgH EtherCAT master library])
+    have_libethercat=no
+
+    # 1) Try pkg-config (default paths)
+    if pkg-config libethercat >/dev/null 2>&1; then
+        ETHERCAT_CFLAGS=`pkg-config libethercat --cflags`
+        ETHERCAT_LIBS=`pkg-config libethercat --libs`
+        have_libethercat=yes
+    fi
+
+    # 2) Try pkg-config with /usr/local/lib/pkgconfig
+    if test "x$have_libethercat" != "xyes"; then
+        _ec_pkg="/usr/local/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+        if PKG_CONFIG_PATH="$_ec_pkg" pkg-config libethercat >/dev/null 2>&1; then
+            ETHERCAT_CFLAGS=`PKG_CONFIG_PATH="$_ec_pkg" pkg-config libethercat --cflags`
+            ETHERCAT_LIBS=`PKG_CONFIG_PATH="$_ec_pkg" pkg-config libethercat --libs`
+            have_libethercat=yes
+        fi
+    fi
+
+    # 3) Direct file detection (no .pc file at all)
+    if test "x$have_libethercat" != "xyes"; then
+        for _ec_pfx in /usr /usr/local; do
+            if test -f "$_ec_pfx/include/ecrt.h"; then
+                _ec_cflags=""
+                _ec_libs="-lethercat"
+                if test "$_ec_pfx" != "/usr"; then
+                    _ec_cflags="-I$_ec_pfx/include"
+                    _ec_libs="-L$_ec_pfx/lib -Wl,-rpath,$_ec_pfx/lib -lethercat"
+                fi
+                ETHERCAT_CFLAGS="$_ec_cflags"
+                ETHERCAT_LIBS="$_ec_libs"
+                have_libethercat=yes
+                break
+            fi
+        done
+    fi
+
+    if test "x$have_libethercat" = "xyes"; then
+        AC_MSG_RESULT([yes])
+    else
+        AC_MSG_RESULT([no])
+    fi
+
+    AC_CHECK_HEADER([expat.h], [have_expat_h=yes], [have_expat_h=no])
+    save_LIBS="$LIBS"
+    AC_CHECK_LIB([expat], [XML_ParserCreate], [have_libexpat=yes], [have_libexpat=no])
+    LIBS="$save_LIBS"
+
+    if test "x$have_libethercat" = "xyes" \
+       && test "x$have_expat_h" = "xyes" && test "x$have_libexpat" = "xyes"; then
+        HAVE_ETHERCAT=yes
+    else
+        HAVE_ETHERCAT=no
+    fi
+else
+    HAVE_ETHERCAT=no
+fi
+
+if test "x$enable_ethercat" = "xyes" && test "x$HAVE_ETHERCAT" != "xyes"; then
+    AC_MSG_ERROR([EtherCAT support requested but IgH EtherCAT master library or libexpat not found])
+fi
+
+AC_SUBST([HAVE_ETHERCAT])
+AC_SUBST([ETHERCAT_CFLAGS])
+AC_SUBST([ETHERCAT_LIBS])
+
 ##############################################################################
 # files that get created by ./configure                                      #
 ##############################################################################
@@ -1565,6 +1646,7 @@ echo "#              Configuration Summary                                 #"
 echo "######################################################################"
 echo ""
 echo "  Build Golang HAL components: $HAVE_GOLANG"
+echo "  Build EtherCAT HAL driver:    $HAVE_ETHERCAT"
 echo ""
 echo "######################################################################"
 echo "#                LinuxCNC - Enhanced Machine Controller              #"

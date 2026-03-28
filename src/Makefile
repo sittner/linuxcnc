@@ -173,6 +173,7 @@ SUBDIRS := \
     hal/user_comps/huanyang-vfd \
 	hal/user_comps/xhc-whb04b-6 \
 	hal/hal-ads-server \
+	hal/proto/ethercat \
 	launcher \
     \
     emc/usr_intf/axis emc/usr_intf/touchy emc/usr_intf/stepconf emc/usr_intf/pncconf \
@@ -248,7 +249,7 @@ INCLUDE += $(LIBTIRPC_CFLAGS)
 INTEGER_OVERFLOW_FLAGS := -fwrapv
 OPT := -Os $(INTEGER_OVERFLOW_FLAGS)
 DEBUG := $(DEBUG) -g -Wall -D_FORTIFY_SOURCE=2
-CFLAGS := $(INCLUDE) $(OPT) $(DEBUG) $(EXTRA_DEBUG) -std=gnu11 -Werror=implicit-function-declaration $(CFLAGS) $(CPPFLAGS)
+CFLAGS := $(INCLUDE) $(OPT) $(DEBUG) $(EXTRA_DEBUG) -D_GNU_SOURCE -std=gnu11 -Werror=implicit-function-declaration $(CFLAGS) $(CPPFLAGS)
 CXXFLAGS := $(INCLUDE) $(EXTRA_DEBUG) $(DEBUG) $(OPT) -Werror=overloaded-virtual $(CXXFLAGS) $(CPPFLAGS)
 CXXFLAGS += -std=gnu++17
 # In Debian 11, any inclusion of <boost/python.hpp> leads to several
@@ -340,12 +341,6 @@ build-software: $(INFILES)
 # in ../include is used when building external components of linuxcnc.
 SRCHEADERS := \
     emc/linuxcnc.h \
-    emc/ini/emcIniFile.hh \
-    emc/ini/iniaxis.hh \
-    emc/ini/inijoint.hh \
-    emc/ini/inispindle.hh \
-    emc/ini/initraj.hh \
-    emc/ini/inihal.hh \
     emc/kinematics/cubic.h \
     emc/kinematics/kinematics.h \
     emc/kinematics/switchkins.h \

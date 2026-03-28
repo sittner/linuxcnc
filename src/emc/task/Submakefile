@@ -5,38 +5,44 @@ USERSRCS += $(EMCSVRLIB_SRCS)
 
 $(call TOOBJSDEPS, $(EMCSVRLIB_SRCS)): EXTRAFLAGS += -fPIC
 
-../lib/libemcsvr.so: $(call TOOBJS, $(EMCSVRLIB_SRCS)) ../lib/liblinuxcnc.a ../lib/libnml.so.0 ../lib/liblinuxcncini.so.0
+../cmod/emcsvr.so: $(call TOOBJS, $(EMCSVRLIB_SRCS)) ../lib/liblinuxcnc.a ../lib/libnml.so.0 ../lib/liblinuxcncini.so.0
 	$(ECHO) Linking $(notdir $@)
-	$(Q)$(CXX) -shared -o $@ $^ $(LDFLAGS)
-TARGETS += ../lib/libemcsvr.so
+	@mkdir -p ../cmod
+	@$(CXX) -shared -o $@ $^ $(LDFLAGS)
+TARGETS += ../cmod/emcsvr.so
 
-# disabled:	emc/task/iotaskintf.cc
-MILLTASKSRCS := \
+$(call TOOBJSDEPS, emc/task/taskmodule.cc): EXTRAFLAGS += $(SILENCE_BOOST_INTERNAL_DIAGNOSTICS_FLAGS)
+
+# milltask.so — cmod plugin variant (uses gomc API, no liblinuxcnchal)
+MILLTASK_GOMC_SRCS := \
 	emc/motion/emcmotglb.c \
 	emc/task/emctask.cc \
 	emc/task/emccanon.cc \
-	emc/task/emctaskmain.cc \
+	emc/task/emctaskmain_gomc.cc \
 	emc/motion/usrmotintf.cc \
 	emc/motion/emcmotutil.c \
-	emc/task/taskintf.cc \
+	emc/task/taskintf_gomc.cc \
 	emc/motion/dbuf.c \
 	emc/motion/stashf.c \
 	emc/task/taskmodule.cc \
 	emc/task/taskclass.cc \
 	emc/task/backtrace.cc \
+	emc/task/inihal_gomc.cc \
+	emc/task/initraj_gomc.cc \
+	emc/task/inijoint_gomc.cc \
+	emc/task/iniaxis_gomc.cc \
+	emc/task/inispindle_gomc.cc \
 
-$(call TOOBJSDEPS, emc/task/taskmodule.cc): EXTRAFLAGS += $(SILENCE_BOOST_INTERNAL_DIAGNOSTICS_FLAGS)
+USERSRCS += $(MILLTASK_GOMC_SRCS)
 
-USERSRCS += $(MILLTASKSRCS)
+$(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): EXTRAFLAGS += -fPIC
 
-#LDFLAGS +=
-
-../bin/milltask: $(call TOOBJS, $(MILLTASKSRCS)) ../lib/librs274.so.0 ../lib/liblinuxcnc.a \
-                 ../lib/libnml.so.0 ../lib/liblinuxcncini.so.0 ../lib/libposemath.so.0 \
-                 ../lib/liblinuxcnchal.so.0 ../lib/libpyplugin.so.0 \
-                 ../lib/libtooldata.so.0
-
-
+../cmod/milltask.so: $(call TOOBJS, $(MILLTASK_GOMC_SRCS)) \
+                     ../lib/librs274.so.0 ../lib/liblinuxcnc.a \
+                     ../lib/libnml.so.0 ../lib/liblinuxcncini.so.0 \
+                     ../lib/libposemath.so.0 ../lib/libpyplugin.so.0 \
+                     ../lib/libtooldata.so.0
 	$(ECHO) Linking $(notdir $@)
-	$(CXX) -o $@ $^ $(LDFLAGS) $(PYTHON_EXTRA_LDFLAGS) $(BOOST_PYTHON_LIB) $(PYTHON_LIBS) $(PYTHON_EXTRA_LIBS)
-TARGETS += ../bin/milltask
+	@mkdir -p ../cmod
+	@$(CXX) -shared -o $@ $^ $(LDFLAGS) $(PYTHON_EXTRA_LDFLAGS) $(BOOST_PYTHON_LIB) $(PYTHON_LIBS) $(PYTHON_EXTRA_LIBS)
+TARGETS += ../cmod/milltask.so

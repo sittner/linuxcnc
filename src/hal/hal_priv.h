@@ -276,15 +276,8 @@ typedef struct hal_data_t {
     unsigned char lock;         /* hal locking, can be one of the HAL_LOCK_* types */
 } hal_data_t;
 
-/** HAL 'component' type.
-    Assigned according to RTAPI and ULAPI definitions.
- */
-typedef enum {
-    COMPONENT_TYPE_UNKNOWN = -1,
-    COMPONENT_TYPE_USER,
-    COMPONENT_TYPE_REALTIME,
-    COMPONENT_TYPE_OTHER
-} component_type_t;
+/* component_type_t is defined in hal.h */
+#include "hal.h"
 
 /** HAL 'component' data structure.
     This structure contains information that is unique to a HAL component.
@@ -299,6 +292,7 @@ struct hal_comp_t {
     int ready;                  /* nonzero if ready, 0 if not */
     int pid;			/* PID of component (user components only) */
     void *shmem_base;		/* base of shmem for this component */
+    void *dl_handle;		/* dlopen handle (process-local, only valid in loader) */
     char name[HAL_NAME_LEN + 1];	/* component name */
     constructor make;
     SHMFIELD(char) insmod_args;		/* args passed to insmod when loaded */
@@ -412,6 +406,7 @@ struct hal_thread_t {
     hal_list_t funct_list;	/* list of functions to run */
     char name[HAL_NAME_LEN + 1];	/* thread name */
     int comp_id;
+    volatile int idle;		/* set by thread_task when not executing functions */
 };
 
 /***********************************************************************

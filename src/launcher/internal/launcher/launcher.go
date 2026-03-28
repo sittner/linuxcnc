@@ -19,16 +19,15 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"unsafe"
 
 	hal "github.com/sittner/linuxcnc/src/launcher/pkg/hal"
 
 	halcmd "github.com/sittner/linuxcnc/src/launcher/internal/halcmd"
 
 	"github.com/sittner/linuxcnc/src/launcher/internal/config"
-	"github.com/sittner/linuxcnc/src/launcher/internal/emcsvr"
 	"github.com/sittner/linuxcnc/src/launcher/internal/halfile"
 	"github.com/sittner/linuxcnc/src/launcher/internal/lockfile"
-	"github.com/sittner/linuxcnc/src/launcher/internal/protocols"
 	"github.com/sittner/linuxcnc/src/launcher/internal/realtime"
 	"github.com/sittner/linuxcnc/src/launcher/pkg/gomodule"
 	"github.com/sittner/linuxcnc/src/launcher/pkg/inifile"
@@ -61,14 +60,15 @@ type Launcher struct {
 	opts         Options
 	ini          *inifile.IniFile
 	logger       *slog.Logger
-	lock         *lockfile.LockFile   // flock-based instance lock
-	rtMgr        *realtime.Manager    // realtime environment manager
-	cleanupOnce  sync.Once            // ensures cleanup runs exactly once
-	serverDone   chan struct{}        // closed when emcsvr goroutine returns
-	appProcesses []*exec.Cmd          // [APPLICATIONS]APP background processes
-	halComp      *hal.Component       // launcher's HAL component (like halcmd's hal_init)
-	protocols    []protocols.Protocol // active protocol instances (ADS, etc.)
-	goModules    []gomodule.Module    // Go plugin modules loaded via "load" command
+	lock         *lockfile.LockFile // flock-based instance lock
+	rtMgr        *realtime.Manager  // realtime environment manager
+	cleanupOnce  sync.Once          // ensures cleanup runs exactly once
+	appProcesses []*exec.Cmd        // [APPLICATIONS]APP background processes
+	halComp      *hal.Component     // launcher's HAL component (like halcmd's hal_init)
+	goModules    []gomodule.Module  // Go plugin modules loaded via "load" command
+	cModules     []*cModule         // C plugin modules loaded via "load" command
+	cModArena    []unsafe.Pointer   // arena-tracked C strings freed in destroyCModules
+	logRing      *gomcLogRing       // shared log ring buffer for C module FIFO logging
 }
 
 // New creates a new Launcher with the given options and logger.
@@ -80,6 +80,16 @@ func New(opts Options, logger *slog.Logger) *Launcher {
 	return &Launcher{opts: opts, logger: logger}
 }
 
+// ensureLogRing creates the shared log ring buffer and starts the drain
+// goroutine if not already running.  Called lazily on the first loadCPlugin.
+func (l *Launcher) ensureLogRing() {
+	if l.logRing != nil {
+		return
+	}
+	l.logRing = newGomcLogRing()
+	l.logRing.startDrain(l.logger)
+}
+
 // Run executes the full LinuxCNC startup sequence.
 //
 // Implemented milestones M1–M7:
@@ -88,7 +98,7 @@ func New(opts Options, logger *slog.Logger) *Launcher {
 //  2. Acquires the lock file.
 //  3. Parses the INI file.
 //  4. Validates cross-section INI dependencies (validateDependencies).
-//  5. Starts in-process NML server (emcsvr goroutine) — only if [TASK]TASK is configured (M5).
+//  5. Starts NML server (emcsvr cmod plugin) — only if [TASK]TASK is configured (M5).
 //  6. Starts the realtime environment (M4).
 //     6.5. Loads threads HAL component (creates servo-thread, optionally base-thread).
 //  7. Starts iocontrol via halcmd loadusr -Wn — only if [TASK]TASK is configured (M5).
@@ -117,7 +127,7 @@ func New(opts Options, logger *slog.Logger) *Launcher {
 // Note: POSTGUI_HALFILE loading is intentionally omitted here; it is the
 // responsibility of the display GUI (AXIS, QtVCP, gmoccapy, etc.) to load
 // its own post-GUI HAL files after creating its HAL pins.
-func (l *Launcher) Run() error {
+func (l *Launcher) Run() (runErr error) {
 	l.setupEnvironment()
 
 	// Export INI file path and config directory so that child processes
@@ -133,7 +143,12 @@ func (l *Launcher) Run() error {
 	// M7: Single deferred cleanup replaces individual defers.
 	// cleanup() is idempotent (sync.Once) so it is also safe to call from
 	// the signal handler goroutine below.
-	defer l.cleanup()
+	defer func() {
+		if runErr != nil {
+			l.logger.Error("startup failed", "error", runErr)
+		}
+		l.cleanup()
+	}()
 
 	// M7: Trap SIGINT and SIGTERM so that Ctrl-C triggers an ordered shutdown
 	// instead of an abrupt process exit that leaves HAL loaded.
@@ -289,10 +304,10 @@ func (l *Launcher) Run() error {
 		return fmt.Errorf("loading threads: %w", err)
 	}
 
-	// Start iocontrol via halcmd loadusr -Wn iocontrol — only when the task
-	// controller is running.  iocontrol is a HAL userspace component that
-	// communicates with the task controller via NML; HAL manages its lifecycle
-	// and will terminate it when halcmd exits or HAL is shut down.
+	// Load the iocontrol C module plugin — only when the task controller
+	// is running.  iocontrol is a HAL userspace component that communicates
+	// with the task controller via NML.  Its Start() (which spawns
+	// the NML processing thread) is called later in startCModules().
 	// validateDependencies() ensures [EMCIO]EMCIO is not set without [TASK]TASK.
 	if hasTask {
 		if err := l.startIOControl(); err != nil {
@@ -322,30 +337,35 @@ func (l *Launcher) Run() error {
 		return fmt.Errorf("HAL file parsing failed: %w", err)
 	}
 
-	// Phase 1: Load components (loadusr + loadrt).
-	if err := halResult.Load(); err != nil {
+	// Load components in dependency order:
+	//  1. loadusr — userspace components (e.g. halui)
+	//  2. load   — plugin modules that prepare shared state for RT modules
+	//  3. loadrt — realtime components (merged via twopass)
+	if err := halResult.ExecLoadUSR(); err != nil {
 		if !l.opts.ContinueOnError {
-			return fmt.Errorf("HAL component loading failed: %w", err)
+			return fmt.Errorf("HAL loadusr failed: %w", err)
 		}
-		l.logger.Warn("HAL component loading error (continuing)", "error", err)
+		l.logger.Warn("HAL loadusr error (continuing)", "error", err)
 	}
 
-	// Phase 1.3: Load Go plugin modules from "load" commands.
-	// The "load" command is exclusively for Go plugins; bare module names
-	// are resolved against EMC2_GOMOD_DIR (same pattern as loadrt/EMC2_RTLIB_DIR).
-	if err := halResult.IterLoads(func(path string, args []string) error {
-		return l.loadGoPlugin(resolveGoModulePath(path), args)
+	if err := halResult.IterLoads(func(path string, name string, args []string) error {
+		cmodPath := resolveCModulePath(path)
+		if cModuleExists(cmodPath) {
+			return l.loadCPlugin(cmodPath, name, args)
+		}
+		return l.loadGoPlugin(resolveGoModulePath(path), name, args)
 	}); err != nil {
 		if !l.opts.ContinueOnError {
-			return fmt.Errorf("module loading (load command) failed: %w", err)
+			return fmt.Errorf("plugin module loading failed: %w", err)
 		}
-		l.logger.Warn("module loading error (continuing)", "error", err)
+		l.logger.Warn("plugin module loading error (continuing)", "error", err)
 	}
 
-	// Phase 1.5: Initialize protocols (ADS, etc.) — creates HAL pins that
-	// can be wired by net/addf/setp in the HAL files.
-	if err := l.initProtocols(); err != nil {
-		return fmt.Errorf("protocol initialization failed: %w", err)
+	if err := halResult.ExecLoadRT(); err != nil {
+		if !l.opts.ContinueOnError {
+			return fmt.Errorf("HAL loadrt failed: %w", err)
+		}
+		l.logger.Warn("HAL loadrt error (continuing)", "error", err)
 	}
 
 	// Phase 2: Execute HAL wiring commands (net, addf, setp, etc.).
@@ -358,10 +378,9 @@ func (l *Launcher) Run() error {
 
 	// --- M6: Task + Display Launch ---
 
-	// 6a. Fire-and-forget task controller — only if [TASK]TASK is configured
-	// (step 4.3.7). The task controller is started without waiting for the
-	// "inihal" component to register; HAL threads (step 6d) must be running
-	// before milltask can complete its motion initialization.
+	// 6a. Load task controller as cmod plugin — only if [TASK]TASK is
+	// configured.  New() reads INI config; Start() is deferred to
+	// startCModules() (step 6d.4) which runs after startHalThreads().
 	if hasTask {
 		if err := l.startTask(); err != nil {
 			return fmt.Errorf("starting task: %w", err)
@@ -385,7 +404,8 @@ func (l *Launcher) Run() error {
 		l.logger.Warn("retain load error (continuing)", "error", err)
 	}
 
-	// 6d. Start HAL threads (step 4.3.10).
+	// 6d. Lock C plugin memory and start HAL threads (step 4.3.10).
+	l.lockCModules()
 	if err := l.startHalThreads(); err != nil {
 		return fmt.Errorf("hal start threads: %w", err)
 	}
@@ -395,9 +415,9 @@ func (l *Launcher) Run() error {
 		return fmt.Errorf("Go module start failed: %w", err)
 	}
 
-	// 6d.5. Start protocol network listeners (ADS TCP, etc.).
-	if err := l.startProtocols(); err != nil {
-		return fmt.Errorf("protocol start failed: %w", err)
+	// 6d.4. Start C plugin modules.
+	if err := l.startCModules(); err != nil {
+		return fmt.Errorf("C module start failed: %w", err)
 	}
 
 	// 6e. Launch application entries ([APPLICATIONS]APP) in background (step 4.3.11).
@@ -425,65 +445,68 @@ func (l *Launcher) Run() error {
 	return nil
 }
 
-// startServer initializes and starts the NML server as an in-process goroutine.
+// startServer loads and starts the NML server as a cmod plugin.
 //
-// This mirrors scripts/linuxcnc.in lines 817–825:
+// The NML server creates shared memory buffers that realtime components and
+// NML clients (iocontrol, task) depend on, so it must be started before
+// realtime init.  It is loaded via the standard cmod mechanism (dlopen +
+// New/Start) and its Stop/Destroy are handled by the normal cmod teardown.
 //
-//	export INI_FILE_NAME="$INIFILE"
-//	$EMCSERVER -ini "$INIFILE"
-//
-// After init, a brief 100 ms window is given to let NML channels become ready.
-// The server runs in a goroutine; serverDone is closed when it returns.
+// After Start(), a brief 100 ms window is given to let NML channels initialize.
 func (l *Launcher) startServer() error {
-	l.logger.Info("initializing NML server (in-process)")
-	if err := emcsvr.Init(l.opts.IniFile); err != nil {
-		return fmt.Errorf("emcsvr init: %w", err)
+	l.logger.Info("loading NML server (cmod plugin)")
+
+	path := resolveCModulePath("emcsvr")
+	if !cModuleExists(path) {
+		return fmt.Errorf("NML server C module not found: %s", path)
 	}
 
-	l.serverDone = make(chan struct{})
-	go func() {
-		defer close(l.serverDone)
-		if err := emcsvr.Run(); err != nil {
-			l.logger.Error("NML server error", "error", err)
-		}
-	}()
+	if err := l.loadCPlugin(path, "emcsvr", nil); err != nil {
+		return fmt.Errorf("loading NML server cmod: %w", err)
+	}
+
+	if err := l.startCModuleByName("emcsvr"); err != nil {
+		return fmt.Errorf("starting NML server cmod: %w", err)
+	}
 
 	// Brief startup window to let NML channels initialize.
 	time.Sleep(100 * time.Millisecond)
-	l.logger.Info("NML server running (in-process thread)")
+	l.logger.Info("NML server running (cmod plugin)")
 	return nil
 }
 
-// stopServer stops the in-process NML server goroutine gracefully.
+// resolveNmlFile determines the NML configuration file path.
 //
-// It signals the server to stop and waits up to 2 seconds for it to return.
-func (l *Launcher) stopServer() {
-	if l.serverDone == nil {
-		return
+// Resolution order:
+//  1. [LINUXCNC]NML_FILE (preferred, new canonical section)
+//  2. [EMC]NML_FILE (legacy fallback)
+//  3. config.DefaultNmlFile (build-time default)
+//
+// Relative paths are resolved against the INI file's directory.
+func (l *Launcher) resolveNmlFile() string {
+	nmlFile := l.ini.Get("LINUXCNC", "NML_FILE")
+	if nmlFile == "" {
+		nmlFile = l.ini.Get("EMC", "NML_FILE")
 	}
-	l.logger.Info("stopping NML server")
-	emcsvr.Stop()
-
-	// Wait for emcsvr_run() goroutine to finish (kill_all_servers completes)
-	select {
-	case <-l.serverDone:
-		l.logger.Debug("NML server stopped")
-	case <-time.After(2 * time.Second):
-		l.logger.Warn("NML server did not stop in time")
-		<-l.serverDone // MUST wait — cannot call Cleanup() concurrently
+	if nmlFile == "" {
+		return config.DefaultNmlFile
 	}
-
-	// Now safe to delete channels — server threads are fully stopped
-	emcsvr.Cleanup()
+	return l.resolveRelativePath(nmlFile)
 }
 
-// startIOControl starts the IO controller process via hal.LoadUSR.
-//
-// This mirrors scripts/linuxcnc.in lines 839–850:
-//
-//	$HALCMD loadusr -Wn iocontrol $EMCIO -ini "$INIFILE"
+// resolveRelativePath resolves path against the INI file's directory when it
+// is relative.  Absolute paths are returned unchanged.
+func (l *Launcher) resolveRelativePath(path string) string {
+	if filepath.IsAbs(path) || l.opts.IniFile == "" {
+		return path
+	}
+	return filepath.Join(filepath.Dir(l.opts.IniFile), path)
+}
+
+// startIOControl loads and initialises the IO controller as a C module plugin.
 //
 // EMCIO resolution: [IO]IO → [EMCIO]EMCIO → default "io".
+// The resolved name is looked up in EMC2_CMOD_DIR as a .so file.
 func (l *Launcher) startIOControl() error {
 	emcio := l.ini.Get("IO", "IO")
 	if emcio == "" {
@@ -493,22 +516,19 @@ func (l *Launcher) startIOControl() error {
 		emcio = "io"
 	}
 
-	l.logger.Info("starting IO controller", "program", emcio)
-
-	if err := halcmd.LoadUSR(&halcmd.LoadUSROptions{WaitReady: true, WaitName: "iocontrol"}, emcio, "-ini", l.opts.IniFile); err != nil {
-		return fmt.Errorf("loadusr iocontrol %s: %w", emcio, err)
+	path := resolveCModulePath(emcio)
+	if !cModuleExists(path) {
+		return fmt.Errorf("IO controller C module not found: %s", path)
 	}
 
-	return nil
+	return l.loadCPlugin(path, "iocontrol", nil)
 }
 
-// startHalUI starts the halui process via hal.LoadUSR, if configured.
-//
-// This mirrors scripts/linuxcnc.in lines 852–861:
-//
-//	$HALCMD loadusr -Wn halui $HALUI -ini "$INIFILE"
+// startHalUI loads the halui HAL user-interface as a C module plugin,
+// if configured.
 //
 // If [HAL]HALUI is not set, this is a no-op.
+// The resolved name is looked up in EMC2_CMOD_DIR as a .so file.
 func (l *Launcher) startHalUI() error {
 	halui := l.ini.Get("HAL", "HALUI")
 	if halui == "" {
@@ -518,11 +538,12 @@ func (l *Launcher) startHalUI() error {
 
 	l.logger.Info("starting HAL user interface", "program", halui)
 
-	if err := halcmd.LoadUSR(&halcmd.LoadUSROptions{WaitReady: true, WaitName: "halui"}, halui, "-ini", l.opts.IniFile); err != nil {
-		return fmt.Errorf("loadusr halui %s: %w", halui, err)
+	path := resolveCModulePath("halui")
+	if !cModuleExists(path) {
+		return fmt.Errorf("halui C module not found: %s", path)
 	}
 
-	return nil
+	return l.loadCPlugin(path, "halui", nil)
 }
 
 // setConfigEnv exports INI_FILE_NAME and CONFIG_DIR to the process environment
@@ -686,44 +707,38 @@ func (l *Launcher) preloadMotionModules() error {
 //  4. servo-thread won't run until startHalThreads() is called
 //  5. startHalThreads() can't run because startTask() hasn't returned
 //
-// INI resolution: [TASK]TASK is required; legacy rename "emctask" → "linuxcnctask".
+// INI resolution: [TASK]TASK is required; legacy rename "emctask"/"linuxcnctask" → "milltask".
 // If [TASK]TASK is not set, startTask is a no-op (Run() skips calling it anyway).
+//
+// milltask is loaded as a cmod plugin (in-process).  New() reads INI config
+// and sets up data structures; Start() is deferred to startCModules() which
+// runs after startHalThreads(), avoiding the deadlock that the old
+// fire-and-forget subprocess approach had to work around.
 func (l *Launcher) startTask() error {
 	emctask := l.ini.Get("TASK", "TASK")
 	if emctask == "" {
 		l.logger.Debug("TASK not configured, skipping task controller")
 		return nil
 	}
-	// Legacy rename: "emctask" was renamed to "linuxcnctask" in 2.9.
-	if emctask == "emctask" {
-		emctask = "linuxcnctask"
+	// Legacy rename: "emctask" was renamed to "linuxcnctask" in 2.9,
+	// and the cmod plugin is named "milltask".
+	if emctask == "emctask" || emctask == "linuxcnctask" {
+		emctask = "milltask"
 	}
 
-	l.logger.Info("starting task controller", "program", emctask)
+	l.logger.Info("loading task controller (cmod plugin)", "module", emctask)
 
-	// Fire-and-forget: do NOT wait for inihal to register as ready.
-	// HAL threads (servo-thread) must be running before milltask can finish
-	// motion initialization. Threads are started in step 6d, after this call.
-	if err := halcmd.LoadUSR(&halcmd.LoadUSROptions{}, emctask, "-ini", l.opts.IniFile); err != nil {
-		return fmt.Errorf("loadusr %s: %w", emctask, err)
+	path := resolveCModulePath(emctask)
+	if !cModuleExists(path) {
+		return fmt.Errorf("task controller C module not found: %s", path)
 	}
 
-	return nil
+	return l.loadCPlugin(path, "milltask", nil)
 }
 
-// stopTask sends SIGTERM to the task controller (identified by the "inihal"
-// HAL component) and waits for it to unregister from HAL.
-func (l *Launcher) stopTask() {
-	l.logger.Info("stopping task controller")
-	if err := halcmd.UnloadUSR("inihal"); err != nil {
-		l.logger.Debug("unload inihal returned error (may already be gone)", "error", err)
-		return
-	}
-	// Wait up to 2 seconds for the component to unregister.
-	if err := halcmd.WaitUSR("inihal"); err != nil {
-		l.logger.Debug("wait for inihal to unregister returned error", "error", err)
-	}
-}
+// stopTask is a no-op — milltask is now a cmod plugin whose Stop() and
+// Destroy() are called by the normal stopCModules()/destroyCModules() path.
+func (l *Launcher) stopTask() {}
 
 // startHalThreads starts all HAL realtime threads via the hal-go API.
 //

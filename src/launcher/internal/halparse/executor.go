@@ -100,7 +100,7 @@ func executeToken(tok Token) error {
 	case *PrintToken:
 		return nil
 	case *LoadToken:
-		// The "load" command is exclusively for Go plugins.  It is handled
+		// The "load" command is for C and Go plugin modules.  It is handled
 		// by the launcher via IterLoads, never by executeToken directly.
 		return &ExecutionError{
 			Loc: tok.Location,
@@ -118,26 +118,22 @@ func executeToken(tok Token) error {
 	return nil
 }
 
-// Load executes only the component loading phases:
-//   - Phase 1: loadusr commands (with -W/-Wn flags)
-//   - Phase 2: merged loadrt commands (via TwopassCollector)
-//
-// After Load returns, all RT and USR components are loaded and ready,
-// but no wiring (net, addf, setp, etc.) has been performed yet.
-// Call Execute() afterwards to run the remaining HAL commands.
-//
-// Note: Loads tokens (from the "load" command) are NOT processed
-// here. The launcher iterates ParseResult.Loads directly after calling Load()
-// to load Go plugins via resolveGoModulePath + plugin.Open.
-func (r *ParseResult) Load() error {
-	// Phase 1: execute loadusr tokens
+// ExecLoadUSR executes the loadusr phase: all "loadusr" commands with their
+// -W/-Wn wait flags.  Call this before loading plugin modules and before
+// ExecLoadRT.
+func (r *ParseResult) ExecLoadUSR() error {
 	for _, tok := range r.LoadUSR {
 		if err := executeToken(tok); err != nil {
 			return err
 		}
 	}
+	return nil
+}
 
-	// Phase 2: merge and execute loadrt tokens
+// ExecLoadRT executes the loadrt phase: all "loadrt" commands are merged via
+// TwopassCollector and then loaded.  Call this after ExecLoadUSR and after any
+// plugin modules have been loaded.
+func (r *ParseResult) ExecLoadRT() error {
 	collector := NewTwopassCollector()
 	for _, tok := range r.LoadRT {
 		if d, ok := tok.Data.(*LoadRTToken); ok {
@@ -161,7 +157,6 @@ func (r *ParseResult) Load() error {
 			return &ExecutionError{Loc: loc, Err: err}
 		}
 	}
-
 	return nil
 }
 
@@ -177,23 +172,33 @@ func (r *ParseResult) Execute() error {
 	return nil
 }
 
-// IterLoads calls fn once for each "load" command token in ParseResult.Loads,
-// passing the module path and its argument slice.
+// IterLoads calls fn once for each instance described by "load" command tokens
+// in ParseResult.Loads, passing the module path, instance name, and argument
+// slice.
 //
-// The "load" command is exclusively for Go plugins.  The launcher resolves
-// bare module names against EMC2_GOMOD_DIR and loads them via plugin.Open.
-//
-//	err := result.IterLoads(func(path string, args []string) error {
-//	    return loadGoPlugin(resolveGoModulePath(path), args)
-//	})
-func (r *ParseResult) IterLoads(fn func(path string, args []string) error) error {
+// When a LoadToken has no explicit Names, a single call is made with the default
+// name derived from the module path (basename without .so).  When Names are set
+// (via the [name1,name2,...] syntax), fn is called once per name.
+func (r *ParseResult) IterLoads(fn func(path string, name string, args []string) error) error {
 	for _, tok := range r.Loads {
 		d, ok := tok.Data.(*LoadToken)
 		if !ok {
 			continue
 		}
-		if err := fn(d.Path, d.Args); err != nil {
-			return &ExecutionError{Loc: tok.Location, Err: err}
+		names := d.Names
+		if len(names) == 0 {
+			// Default: basename without .so extension.
+			base := d.Path
+			if i := strings.LastIndex(base, "/"); i >= 0 {
+				base = base[i+1:]
+			}
+			base = strings.TrimSuffix(base, ".so")
+			names = []string{base}
+		}
+		for _, name := range names {
+			if err := fn(d.Path, name, d.Args); err != nil {
+				return &ExecutionError{Loc: tok.Location, Err: err}
+			}
 		}
 	}
 	return nil
@@ -201,7 +206,7 @@ func (r *ParseResult) IterLoads(fn func(path string, args []string) error) error
 
 // buildLoadRTArgs reconstructs the string args from a LoadRTToken for LoadRT().
 // This is used only by executeToken() for direct single-token dispatch (e.g.
-// interactive halcmd calls). ParseResult.Load() does NOT use this function;
+// interactive halcmd calls). ParseResult.LoadRT() does NOT use this function;
 // it feeds LoadRTTokens through TwopassCollector.CollectLoadRTToken() →
 // MergedLoadRTCommands() instead.
 func buildLoadRTArgs(d *LoadRTToken) []string {
