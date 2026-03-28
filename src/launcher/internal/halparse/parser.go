@@ -433,6 +433,20 @@ func parseDelSig(tokens []string, loc SourceLoc) (Token, *ParseError) {
 	return Token{Location: loc, Data: &DelSigToken{Name: tokens[0]}}, nil
 }
 
+func parseRetain(tokens []string, loc SourceLoc) (Token, *ParseError) {
+	if len(tokens) != 1 {
+		return Token{}, &ParseError{Loc: loc, Msg: fmt.Sprintf("retain: expected 1 argument, got %d", len(tokens))}
+	}
+	return Token{Location: loc, Data: &RetainToken{Name: tokens[0]}}, nil
+}
+
+func parseUnretain(tokens []string, loc SourceLoc) (Token, *ParseError) {
+	if len(tokens) != 1 {
+		return Token{}, &ParseError{Loc: loc, Msg: fmt.Sprintf("unretain: expected 1 argument, got %d", len(tokens))}
+	}
+	return Token{Location: loc, Data: &UnretainToken{Name: tokens[0]}}, nil
+}
+
 func parseLinkPS(tokens []string, loc SourceLoc) (Token, *ParseError) {
 	if len(tokens) != 2 {
 		return Token{}, &ParseError{Loc: loc, Msg: fmt.Sprintf("linkps: expected 2 arguments, got %d", len(tokens))}
@@ -703,6 +717,10 @@ func parseLine(tokens []string, loc SourceLoc) (Token, *ParseError) {
 		return parseNewSig(args, loc)
 	case "delsig":
 		return parseDelSig(args, loc)
+	case "retain":
+		return parseRetain(args, loc)
+	case "unretain":
+		return parseUnretain(args, loc)
 	case "linkps":
 		return parseLinkPS(args, loc)
 	case "linksp":

@@ -26,6 +26,8 @@ func halUnlockDLHandle(_ unsafe.Pointer)   {}
 
 func halNewSig(_ string, _ hal.PinType) error { return ErrNoCGO }
 func halDelSig(_ string) error                { return ErrNoCGO }
+func halRetain(_ string) error                { return ErrNoCGO }
+func halUnretain(_ string) error              { return ErrNoCGO }
 func halSetS(_, _ string) error               { return ErrNoCGO }
 func halGetS(_ string) (string, error)        { return "", ErrNoCGO }
 func halSType(_ string) (hal.PinType, error)  { return 0, ErrNoCGO }

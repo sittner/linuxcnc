@@ -47,6 +47,10 @@ func executeToken(tok Token) error {
 		err = halcmd.NewSig(d.Name, d.SigType)
 	case *DelSigToken:
 		err = halcmd.DelSig(d.Name)
+	case *RetainToken:
+		err = halcmd.Retain(d.Name)
+	case *UnretainToken:
+		err = halcmd.Unretain(d.Name)
 	case *LinkPSToken:
 		err = halcmd.LinkPS(d.Pin, d.Sig)
 	case *LinkSPToken:

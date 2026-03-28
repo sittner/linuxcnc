@@ -173,6 +173,16 @@ type DelSigToken struct{ Name string }
 
 func (*DelSigToken) tokenData() {}
 
+// RetainToken represents a "retain" command.
+type RetainToken struct{ Name string }
+
+func (*RetainToken) tokenData() {}
+
+// UnretainToken represents an "unretain" command.
+type UnretainToken struct{ Name string }
+
+func (*UnretainToken) tokenData() {}
+
 // LinkPSToken represents a "linkps" command (pin-first argument order).
 type LinkPSToken struct{ Pin, Sig string }
 

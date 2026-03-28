@@ -438,6 +438,40 @@ static int hal_shim_delsig(const char *name) {
     return hal_signal_delete(name);
 }
 
+// hal_shim_retain sets HAL_SIGFLAG_RETAIN on a signal.
+static int hal_shim_retain(const char *name) {
+    hal_sig_t *sig;
+    if (hal_data == NULL) return -EINVAL;
+    rtapi_mutex_get(&(hal_data->mutex));
+    sig = halpr_find_sig_by_name(name);
+    if (sig == NULL) {
+        rtapi_mutex_give(&(hal_data->mutex));
+        return -EINVAL;
+    }
+    if (sig->writers > 0) {
+        rtapi_mutex_give(&(hal_data->mutex));
+        return -EINVAL;
+    }
+    sig->flags |= HAL_SIGFLAG_RETAIN;
+    rtapi_mutex_give(&(hal_data->mutex));
+    return 0;
+}
+
+// hal_shim_unretain clears HAL_SIGFLAG_RETAIN on a signal.
+static int hal_shim_unretain(const char *name) {
+    hal_sig_t *sig;
+    if (hal_data == NULL) return -EINVAL;
+    rtapi_mutex_get(&(hal_data->mutex));
+    sig = halpr_find_sig_by_name(name);
+    if (sig == NULL) {
+        rtapi_mutex_give(&(hal_data->mutex));
+        return -EINVAL;
+    }
+    sig->flags &= ~HAL_SIGFLAG_RETAIN;
+    rtapi_mutex_give(&(hal_data->mutex));
+    return 0;
+}
+
 // hal_shim_linkps wraps hal_link(pin, sig)
 static int hal_shim_linkps(const char *pin, const char *sig) {
     return hal_link(pin, sig);
@@ -1902,6 +1936,22 @@ func halDelSig(name string) error {
 	defer C.free(unsafe.Pointer(cName))
 	ret := C.hal_shim_delsig(cName)
 	return halError(int(ret), "hal_shim_delsig")
+}
+
+// halRetain sets the HAL_SIGFLAG_RETAIN flag on a signal.
+func halRetain(name string) error {
+	cName := C.CString(name)
+	defer C.free(unsafe.Pointer(cName))
+	ret := C.hal_shim_retain(cName)
+	return halError(int(ret), "hal_shim_retain")
+}
+
+// halUnretain clears the HAL_SIGFLAG_RETAIN flag on a signal.
+func halUnretain(name string) error {
+	cName := C.CString(name)
+	defer C.free(unsafe.Pointer(cName))
+	ret := C.hal_shim_unretain(cName)
+	return halError(int(ret), "hal_shim_unretain")
 }
 
 // halLinkPS wraps hal_shim_linkps() to link a pin to a signal.

@@ -105,6 +105,19 @@ func DelSig(name string) error {
 	return halDelSig(name)
 }
 
+// Retain sets the HAL_SIGFLAG_RETAIN flag on a signal.
+// The signal must not have any output writers.
+// Equivalent to "halcmd retain <name>".
+func Retain(name string) error {
+	return halRetain(name)
+}
+
+// Unretain clears the HAL_SIGFLAG_RETAIN flag on a signal.
+// Equivalent to "halcmd unretain <name>".
+func Unretain(name string) error {
+	return halUnretain(name)
+}
+
 // SetS sets the value of a HAL signal by name.
 // The value is provided as a string and parsed according to the signal's type.
 // Equivalent to "halcmd sets <name> <value>".
