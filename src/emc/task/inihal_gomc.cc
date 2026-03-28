@@ -1,4 +1,3 @@
-
 /*----------------------------------------------------------------------
 This work derived from alex joni's halui.cc
 Copyright: 2013,2014
@@ -17,20 +16,25 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+----------------------------------------------------------------------
+gomc variant: uses gomc HAL/log API instead of hal.h / rtapi.h.
 ----------------------------------------------------------------------*/
 #include "rcs_print.hh"
 #include "emc.hh"
 #include "emcglb.h"
 #include <stdio.h>
-#include "hal.h"
-#include "rtapi.h"
-#include "inihal.hh"
-#include "iniaxis.hh"
-#include "inispindle.hh"
+
+#include "launcher/pkg/cmodule/gomc_hal.h"
+#include "launcher/pkg/cmodule/gomc_log.h"
+#include "inihal_gomc.hh"
 
 static int debug=0;
 static int comp_id;
+static const gomc_hal_t *the_hal;   // set in ini_hal_init, used in ini_hal_exit
+static const gomc_log_t *the_log;   // set in ini_hal_init, for error reporting
 extern value_inihal_data old_inihal_data;
+extern double ext_offset_a_or_v_ratio[];
 
 static ptr_inihal_data *the_inihal_data;
 
@@ -81,41 +85,44 @@ static ptr_inihal_data *the_inihal_data;
 #define SHOW_CHANGE_IDX_INT(NAME,IDX) \
     fprintf(stderr,"Changed: "#NAME"[%d] %d-->%d\n",IDX,old_inihal_data.NAME[IDX], \
                                                         new_inihal_data.NAME[IDX]);
+
+// --- Pin creation macros using gomc HAL API ---
+
 #define MAKE_BIT_PIN(NAME,DIR) \
 do { \
-     retval = hal_pin_bit_newf(DIR,&(the_inihal_data->NAME),comp_id,PREFIX#NAME); \
+     retval = gomc_hal_pin_bit_newf(hal,DIR,&(the_inihal_data->NAME),comp_id,PREFIX#NAME); \
      if (retval < 0) return retval; \
    } while (0)
 
 #define MAKE_S32_PIN(NAME,DIR) \
 do { \
-     retval = hal_pin_s32_newf(DIR,&(the_inihal_data->NAME),comp_id,PREFIX#NAME); \
+     retval = gomc_hal_pin_s32_newf(hal,DIR,&(the_inihal_data->NAME),comp_id,PREFIX#NAME); \
      if (retval < 0) return retval; \
    } while (0)
 
 #define MAKE_S32_PIN_IDX(NAME,HALPIN_NAME,DIR,IDX) \
 do { \
-     retval = hal_pin_s32_newf(DIR,&(the_inihal_data->NAME[IDX]),\
+     retval = gomc_hal_pin_s32_newf(hal,DIR,&(the_inihal_data->NAME[IDX]),\
                                comp_id,PREFIX"%d."#HALPIN_NAME,IDX); \
      if (retval < 0) return retval; \
    } while (0)
 
 #define MAKE_FLOAT_PIN(NAME,DIR) \
 do { \
-     retval = hal_pin_float_newf(DIR,&(the_inihal_data->NAME),comp_id,PREFIX#NAME); \
+     retval = gomc_hal_pin_float_newf(hal,DIR,&(the_inihal_data->NAME),comp_id,PREFIX#NAME); \
      if (retval < 0) return retval; \
    } while (0)
 
 #define MAKE_FLOAT_PIN_IDX(NAME,HALPIN_NAME,DIR,IDX) \
 do {                        \
-     retval = hal_pin_float_newf(DIR,&(the_inihal_data->NAME[IDX]),\
+     retval = gomc_hal_pin_float_newf(hal,DIR,&(the_inihal_data->NAME[IDX]),\
                                  comp_id,PREFIX"%d."#HALPIN_NAME,IDX); \
      if (retval < 0) return retval; \
    } while (0)
 
 #define MAKE_FLOAT_PIN_LETTER(NAME,HALPIN_NAME,DIR,IDX,LETTER) \
 do {                        \
-     retval = hal_pin_float_newf(DIR,&(the_inihal_data->NAME[IDX]),\
+     retval = gomc_hal_pin_float_newf(hal,DIR,&(the_inihal_data->NAME[IDX]),\
                                  comp_id,PREFIX"%c."#HALPIN_NAME,LETTER); \
      if (retval < 0) return retval; \
    } while (0)
@@ -124,63 +131,66 @@ do {                        \
 
 int ini_hal_exit(void)
 {
-    hal_exit(comp_id);
+    if (the_hal && comp_id >= 0) {
+        the_hal->exit(the_hal->ctx, comp_id);
+    }
     comp_id = -1;
     return 0;
 }
 
-int ini_hal_init(int numjoints)
+int ini_hal_init(const gomc_hal_t *hal, const gomc_log_t *log, int numjoints)
 {
     int retval;
 
-    comp_id = hal_init("inihal");
+    the_hal = hal;
+    the_log = log;
+
+    comp_id = hal->init(hal->ctx, "inihal", NULL, GOMC_HAL_COMP_USER);
     if (comp_id < 0) {
-    rtapi_print_msg(RTAPI_MSG_ERR,
-            "ini_hal_init: ERROR: hal_init() failed\n");
-    return -1;
+        gomc_log_errorf(log, "inihal", "ini_hal_init: ERROR: hal_init() failed");
+        return -1;
     }
 
-    the_inihal_data = (ptr_inihal_data *) hal_malloc(sizeof(ptr_inihal_data));
+    the_inihal_data = (ptr_inihal_data *) hal->malloc(hal->ctx, sizeof(ptr_inihal_data));
     if (the_inihal_data == 0) {
-        rtapi_print_msg(RTAPI_MSG_ERR,
-                       "ini_hal_init: ERROR: hal_malloc() failed\n");
-        hal_exit(comp_id);
+        gomc_log_errorf(log, "inihal", "ini_hal_init: ERROR: hal_malloc() failed");
+        hal->exit(hal->ctx, comp_id);
         return -1;
     }
 
     for (int idx = 0; idx < numjoints; idx++) {
-        MAKE_FLOAT_PIN_IDX(joint_backlash,backlash,HAL_IN,idx);
-        MAKE_FLOAT_PIN_IDX(joint_ferror,ferror,HAL_IN,idx);
-        MAKE_FLOAT_PIN_IDX(joint_min_ferror,min_ferror,HAL_IN,idx);
-        MAKE_FLOAT_PIN_IDX(joint_min_limit,min_limit,HAL_IN,idx);
-        MAKE_FLOAT_PIN_IDX(joint_max_limit,max_limit,HAL_IN,idx);
-        MAKE_FLOAT_PIN_IDX(joint_max_velocity,max_velocity,HAL_IN,idx);
-        MAKE_FLOAT_PIN_IDX(joint_max_acceleration,max_acceleration,HAL_IN,idx);
-        MAKE_FLOAT_PIN_IDX(joint_home,home,HAL_IN,idx);
-        MAKE_FLOAT_PIN_IDX(joint_home_offset,home_offset,HAL_IN,idx);
-        MAKE_S32_PIN_IDX(  joint_home_sequence,home_sequence,HAL_IN,idx);
+        MAKE_FLOAT_PIN_IDX(joint_backlash,backlash,GOMC_HAL_IN,idx);
+        MAKE_FLOAT_PIN_IDX(joint_ferror,ferror,GOMC_HAL_IN,idx);
+        MAKE_FLOAT_PIN_IDX(joint_min_ferror,min_ferror,GOMC_HAL_IN,idx);
+        MAKE_FLOAT_PIN_IDX(joint_min_limit,min_limit,GOMC_HAL_IN,idx);
+        MAKE_FLOAT_PIN_IDX(joint_max_limit,max_limit,GOMC_HAL_IN,idx);
+        MAKE_FLOAT_PIN_IDX(joint_max_velocity,max_velocity,GOMC_HAL_IN,idx);
+        MAKE_FLOAT_PIN_IDX(joint_max_acceleration,max_acceleration,GOMC_HAL_IN,idx);
+        MAKE_FLOAT_PIN_IDX(joint_home,home,GOMC_HAL_IN,idx);
+        MAKE_FLOAT_PIN_IDX(joint_home_offset,home_offset,GOMC_HAL_IN,idx);
+        MAKE_S32_PIN_IDX(  joint_home_sequence,home_sequence,GOMC_HAL_IN,idx);
     }
     for (int idx = 0; idx < EMCMOT_MAX_AXIS; idx++) {
         char letter = "xyzabcuvw"[idx];
-        MAKE_FLOAT_PIN_LETTER(axis_min_limit,min_limit,HAL_IN,idx,letter);
-        MAKE_FLOAT_PIN_LETTER(axis_max_limit,max_limit,HAL_IN,idx,letter);
-        MAKE_FLOAT_PIN_LETTER(axis_max_velocity,max_velocity,HAL_IN,idx,letter);
-        MAKE_FLOAT_PIN_LETTER(axis_max_acceleration,max_acceleration,HAL_IN,idx,letter);
+        MAKE_FLOAT_PIN_LETTER(axis_min_limit,min_limit,GOMC_HAL_IN,idx,letter);
+        MAKE_FLOAT_PIN_LETTER(axis_max_limit,max_limit,GOMC_HAL_IN,idx,letter);
+        MAKE_FLOAT_PIN_LETTER(axis_max_velocity,max_velocity,GOMC_HAL_IN,idx,letter);
+        MAKE_FLOAT_PIN_LETTER(axis_max_acceleration,max_acceleration,GOMC_HAL_IN,idx,letter);
     }
 
-    MAKE_FLOAT_PIN(traj_default_velocity,HAL_IN);
-    MAKE_FLOAT_PIN(traj_max_velocity,HAL_IN);
-    MAKE_FLOAT_PIN(traj_default_acceleration,HAL_IN);
-    MAKE_FLOAT_PIN(traj_max_acceleration,HAL_IN);
+    MAKE_FLOAT_PIN(traj_default_velocity,GOMC_HAL_IN);
+    MAKE_FLOAT_PIN(traj_max_velocity,GOMC_HAL_IN);
+    MAKE_FLOAT_PIN(traj_default_acceleration,GOMC_HAL_IN);
+    MAKE_FLOAT_PIN(traj_max_acceleration,GOMC_HAL_IN);
 
-    MAKE_BIT_PIN(traj_arc_blend_enable,HAL_IN);
-    MAKE_BIT_PIN(traj_arc_blend_fallback_enable,HAL_IN);
-    MAKE_S32_PIN(traj_arc_blend_optimization_depth,HAL_IN);
-    MAKE_FLOAT_PIN(traj_arc_blend_gap_cycles,HAL_IN);
-    MAKE_FLOAT_PIN(traj_arc_blend_ramp_freq,HAL_IN);
-    MAKE_FLOAT_PIN(traj_arc_blend_tangent_kink_ratio,HAL_IN);
+    MAKE_BIT_PIN(traj_arc_blend_enable,GOMC_HAL_IN);
+    MAKE_BIT_PIN(traj_arc_blend_fallback_enable,GOMC_HAL_IN);
+    MAKE_S32_PIN(traj_arc_blend_optimization_depth,GOMC_HAL_IN);
+    MAKE_FLOAT_PIN(traj_arc_blend_gap_cycles,GOMC_HAL_IN);
+    MAKE_FLOAT_PIN(traj_arc_blend_ramp_freq,GOMC_HAL_IN);
+    MAKE_FLOAT_PIN(traj_arc_blend_tangent_kink_ratio,GOMC_HAL_IN);
 
-    hal_ready(comp_id);
+    hal->ready(hal->ctx, comp_id);
     return 0;
 } // ini_hal_init()
 

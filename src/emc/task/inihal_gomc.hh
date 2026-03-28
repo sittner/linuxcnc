@@ -16,14 +16,19 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+----------------------------------------------------------------------
+gomc variant: uses gomc_hal.h types instead of hal.h.
 ----------------------------------------------------------------------*/
 #ifndef INIHAL_H
 #define INIHAL_H
-#include "hal.h"
+
+#include "launcher/pkg/cmodule/gomc_hal.h"
+#include "launcher/pkg/cmodule/gomc_log.h"
 #include "emcmotcfg.h"
 
 int check_ini_hal_items(int numjoints);
-int ini_hal_init(int numjoints);
+int ini_hal_init(const gomc_hal_t *hal, const gomc_log_t *log, int numjoints);
 int ini_hal_exit(void);
 int ini_hal_init_pins(int numjoints);
 
@@ -48,33 +53,33 @@ int ini_hal_init_pins(int numjoints);
 [JOINT_n]COMP
 */
 #define HAL_FIELDS \
-    FIELD(hal_float_t,traj_default_velocity) \
-    FIELD(hal_float_t,traj_max_velocity) \
-    FIELD(hal_float_t,traj_default_acceleration) \
-    FIELD(hal_float_t,traj_max_acceleration) \
+    FIELD(gomc_hal_float_t,traj_default_velocity) \
+    FIELD(gomc_hal_float_t,traj_max_velocity) \
+    FIELD(gomc_hal_float_t,traj_default_acceleration) \
+    FIELD(gomc_hal_float_t,traj_max_acceleration) \
 \
-    FIELD(hal_bit_t,traj_arc_blend_enable) \
-    FIELD(hal_bit_t,traj_arc_blend_fallback_enable) \
-    FIELD(hal_s32_t,traj_arc_blend_optimization_depth) \
-    FIELD(hal_float_t,traj_arc_blend_gap_cycles) \
-    FIELD(hal_float_t,traj_arc_blend_ramp_freq) \
-    FIELD(hal_float_t,traj_arc_blend_tangent_kink_ratio) \
+    FIELD(gomc_hal_bit_t,traj_arc_blend_enable) \
+    FIELD(gomc_hal_bit_t,traj_arc_blend_fallback_enable) \
+    FIELD(gomc_hal_s32_t,traj_arc_blend_optimization_depth) \
+    FIELD(gomc_hal_float_t,traj_arc_blend_gap_cycles) \
+    FIELD(gomc_hal_float_t,traj_arc_blend_ramp_freq) \
+    FIELD(gomc_hal_float_t,traj_arc_blend_tangent_kink_ratio) \
 \
-    ARRAY(hal_float_t,joint_backlash,EMCMOT_MAX_JOINTS) \
-    ARRAY(hal_float_t,joint_ferror,EMCMOT_MAX_JOINTS) \
-    ARRAY(hal_float_t,joint_min_ferror,EMCMOT_MAX_JOINTS) \
-    ARRAY(hal_float_t,joint_min_limit,EMCMOT_MAX_JOINTS) \
-    ARRAY(hal_float_t,joint_max_limit,EMCMOT_MAX_JOINTS) \
-    ARRAY(hal_float_t,joint_max_velocity,EMCMOT_MAX_JOINTS) \
-    ARRAY(hal_float_t,joint_max_acceleration,EMCMOT_MAX_JOINTS) \
-    ARRAY(hal_float_t,joint_home,EMCMOT_MAX_JOINTS) \
-    ARRAY(hal_float_t,joint_home_offset,EMCMOT_MAX_JOINTS) \
-    ARRAY(hal_s32_t,  joint_home_sequence,EMCMOT_MAX_JOINTS) \
+    ARRAY(gomc_hal_float_t,joint_backlash,EMCMOT_MAX_JOINTS) \
+    ARRAY(gomc_hal_float_t,joint_ferror,EMCMOT_MAX_JOINTS) \
+    ARRAY(gomc_hal_float_t,joint_min_ferror,EMCMOT_MAX_JOINTS) \
+    ARRAY(gomc_hal_float_t,joint_min_limit,EMCMOT_MAX_JOINTS) \
+    ARRAY(gomc_hal_float_t,joint_max_limit,EMCMOT_MAX_JOINTS) \
+    ARRAY(gomc_hal_float_t,joint_max_velocity,EMCMOT_MAX_JOINTS) \
+    ARRAY(gomc_hal_float_t,joint_max_acceleration,EMCMOT_MAX_JOINTS) \
+    ARRAY(gomc_hal_float_t,joint_home,EMCMOT_MAX_JOINTS) \
+    ARRAY(gomc_hal_float_t,joint_home_offset,EMCMOT_MAX_JOINTS) \
+    ARRAY(gomc_hal_s32_t,  joint_home_sequence,EMCMOT_MAX_JOINTS) \
 \
-    ARRAY(hal_float_t,axis_min_limit,EMCMOT_MAX_AXIS) \
-    ARRAY(hal_float_t,axis_max_limit,EMCMOT_MAX_AXIS) \
-    ARRAY(hal_float_t,axis_max_velocity,EMCMOT_MAX_AXIS) \
-    ARRAY(hal_float_t,axis_max_acceleration,EMCMOT_MAX_AXIS) \
+    ARRAY(gomc_hal_float_t,axis_min_limit,EMCMOT_MAX_AXIS) \
+    ARRAY(gomc_hal_float_t,axis_max_limit,EMCMOT_MAX_AXIS) \
+    ARRAY(gomc_hal_float_t,axis_max_velocity,EMCMOT_MAX_AXIS) \
+    ARRAY(gomc_hal_float_t,axis_max_acceleration,EMCMOT_MAX_AXIS) \
 
 struct PTR {
     template<class T>
@@ -86,10 +91,12 @@ struct PTR {
 #pragma GCC diagnostic ignored "-Wignored-attributes"
 #endif
 template<class T> struct NATIVE {};
-template<> struct NATIVE<hal_bit_t> { typedef bool type; };
-template<> struct NATIVE<hal_s32_t> { typedef rtapi_s32 type; };
-template<> struct NATIVE<hal_u32_t> { typedef rtapi_u32 type; };
-template<> struct NATIVE<hal_float_t> { typedef double type; };
+// Note: gomc_hal_bit_t == gomc_hal_u32_t == volatile unsigned int,
+// so we cannot specialise both.  Only bit_t and s32_t/float_t are
+// used in HAL_FIELDS; the u32_t specialisation is omitted.
+template<> struct NATIVE<gomc_hal_bit_t> { typedef bool type; };
+template<> struct NATIVE<gomc_hal_s32_t> { typedef int32_t type; };
+template<> struct NATIVE<gomc_hal_float_t> { typedef double type; };
 struct VALUE {
     template<class T> struct field { typedef typename NATIVE<T>::type type; };
 };

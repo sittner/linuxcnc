@@ -73,7 +73,6 @@ fpu_control_t __fpu_control = _FPU_IEEE & ~(_FPU_MASK_IM | _FPU_MASK_ZM | _FPU_M
 #include "emc.hh"		// EMC NML
 #include "emc_nml.hh"
 #include "canon.hh"		// CANON_TOOL_TABLE stuff
-#include "inifile.hh"		// INIFILE
 #include "interpl.hh"		// NML_INTERP_LIST, interp_list
 #include "emcglb.h"		// EMC_INIFILE,NMLFILE, EMC_TASK_CYCLE_TIME
 #include "interp_return.hh"	// public interpreter return values
@@ -84,7 +83,17 @@ fpu_control_t __fpu_control = _FPU_IEEE & ~(_FPU_MASK_IM | _FPU_MASK_ZM | _FPU_M
 #include "task.hh"		// emcTaskCommand etc
 #include "taskclass.hh"
 #include "motion.h"             // EMCMOT_ORIENT_*
-#include "inihal.hh"
+#include "inihal_gomc.hh"
+
+#include "launcher/pkg/cmodule/gomc_env.h"
+#include "launcher/pkg/cmodule/gomc_ini.h"
+#include "launcher/pkg/cmodule/gomc_hal.h"
+#include "launcher/pkg/cmodule/gomc_log.h"
+
+// from taskintf_gomc.cc
+extern void taskintf_gomc_init(const gomc_ini_t *ini,
+                              const gomc_hal_t *hal,
+                              const gomc_log_t *log);
 
 static emcmot_config_t emcmotConfig;
 
@@ -3157,35 +3166,22 @@ static int emctask_shutdown(void)
     return 0;
 }
 
-static int iniLoad(const char *filename)
+static int iniLoad(const gomc_ini_t *ini)
 {
-    IniFile inifile;
     const char *inistring;
     char version[LINELEN], machine[LINELEN];
     double saveDouble;
     int saveInt;
 
-    // open it
-    if (inifile.Open(filename) == false) {
-	return -1;
-    }
+    emc_debug = gomc_ini_get_int(ini, "EMC", "DEBUG", 0);
 
-    if (NULL != (inistring = inifile.Find("DEBUG", "EMC"))) {
-	// copy to global
-	if (1 != sscanf(inistring, "%i", &emc_debug)) {
-	    emc_debug = 0;
-	}
-    } else {
-	// not found, use default
-	emc_debug = 0;
-    }
     if (emc_debug & EMC_DEBUG_RCS) {
 	// set_rcs_print_flag(PRINT_EVERYTHING);
 	max_rcs_errors_to_print = -1;
     }
 
     if (emc_debug & EMC_DEBUG_VERSIONS) {
-	if (NULL != (inistring = inifile.Find("VERSION", "EMC"))) {
+	if (NULL != (inistring = ini->get(ini->ctx, "EMC", "VERSION"))) {
 	    if(sscanf(inistring, "$Revision: %s", version) != 1) {
 		rtapi_strlcpy(version, "unknown", LINELEN-1);
 	    }
@@ -3193,7 +3189,7 @@ static int iniLoad(const char *filename)
 	    rtapi_strlcpy(version, "unknown", LINELEN-1);
 	}
 
-	if (NULL != (inistring = inifile.Find("MACHINE", "EMC"))) {
+	if (NULL != (inistring = ini->get(ini->ctx, "EMC", "MACHINE"))) {
 	    rtapi_strlcpy(machine, inistring, LINELEN-1);
 	} else {
 	    rtapi_strlcpy(machine, "unknown", LINELEN-1);
@@ -3201,183 +3197,70 @@ static int iniLoad(const char *filename)
 	rcs_print("task: machine: '%s'  version '%s'\n", machine, version);
     }
 
-    if (NULL != (inistring = inifile.Find("NML_FILE", "EMC"))) {
-	// copy to global
+    if (NULL != (inistring = ini->get(ini->ctx, "EMC", "NML_FILE"))) {
 	rtapi_strxcpy(emc_nmlfile, inistring);
-    } else {
-	// not found, use default
     }
 
-    saveInt = emc_task_interp_max_len; //remember default or previously set value
-    if (NULL != (inistring = inifile.Find("INTERP_MAX_LEN", "TASK"))) {
-	if (1 == sscanf(inistring, "%d", &emc_task_interp_max_len)) {
-	    if (emc_task_interp_max_len <= 0) {
-	    	emc_task_interp_max_len = saveInt;
-	    }
-	} else {
-	    emc_task_interp_max_len = saveInt;
-	}
+    saveInt = emc_task_interp_max_len;
+    emc_task_interp_max_len = gomc_ini_get_int(ini, "TASK", "INTERP_MAX_LEN", saveInt);
+    if (emc_task_interp_max_len <= 0) {
+	emc_task_interp_max_len = saveInt;
     }
 
-    if (NULL != (inistring = inifile.Find("RS274NGC_STARTUP_CODE", "RS274NGC"))) {
-	// copy to global
+    if (NULL != (inistring = ini->get(ini->ctx, "RS274NGC", "RS274NGC_STARTUP_CODE"))) {
 	rtapi_strxcpy(rs274ngc_startup_code, inistring);
-    } else {
-	//FIXME-AJ: this is the old (unpreferred) location. just for compatibility purposes
-	//it will be dropped in v2.4
-	if (NULL != (inistring = inifile.Find("RS274NGC_STARTUP_CODE", "EMC"))) {
-	    // copy to global
-	    rtapi_strxcpy(rs274ngc_startup_code, inistring);
-	} else {
-	// not found, use default
-	}
+    } else if (NULL != (inistring = ini->get(ini->ctx, "EMC", "RS274NGC_STARTUP_CODE"))) {
+	rtapi_strxcpy(rs274ngc_startup_code, inistring);
     }
+
     saveDouble = emc_task_cycle_time;
     EMC_TASK_CYCLE_TIME_ORIG = emc_task_cycle_time;
     emcTaskNoDelay = 0;
-    if (NULL != (inistring = inifile.Find("CYCLE_TIME", "TASK"))) {
-	if (1 == sscanf(inistring, "%lf", &emc_task_cycle_time)) {
-	    // found it
-	    // if it's <= 0.0, then flag that we don't want to
-	    // wait at all, which will set the EMC_TASK_CYCLE_TIME
-	    // global to the actual time deltas
-	    if (emc_task_cycle_time <= 0.0) {
-		emcTaskNoDelay = 1;
-	    }
-	} else {
-	    // found, but invalid
-	    emc_task_cycle_time = saveDouble;
-	    rcs_print
-		("invalid [TASK] CYCLE_TIME in %s (%s); using default %f\n",
-		 filename, inistring, emc_task_cycle_time);
-	}
-    } else {
-	// not found, using default
-	rcs_print("[TASK] CYCLE_TIME not found in %s; using default %f\n",
-		  filename, emc_task_cycle_time);
+    emc_task_cycle_time = gomc_ini_get_double(ini, "TASK", "CYCLE_TIME", saveDouble);
+    if (emc_task_cycle_time <= 0.0) {
+	emcTaskNoDelay = 1;
     }
 
+    no_force_homing = gomc_ini_get_int(ini, "TRAJ", "NO_FORCE_HOMING", 0);
+    if (no_force_homing < 0) no_force_homing = 0;
 
-    if (NULL != (inistring = inifile.Find("NO_FORCE_HOMING", "TRAJ"))) {
-	if (1 == sscanf(inistring, "%d", &no_force_homing)) {
-	    // found it
-	    // if it's <= 0.0, then set it 0 so that homing is required before MDI or Auto
-	    if (no_force_homing <= 0) {
-		no_force_homing = 0;
-	    }
-	} else {
-	    // found, but invalid
-	    no_force_homing = 0;
-	    rcs_print
-		("invalid [TRAJ] NO_FORCE_HOMING in %s (%s); using default %d\n",
-		 filename, inistring, no_force_homing);
-	}
-    } else {
-	// not found, using default
-	no_force_homing = 0;
-    }
-
-    // configurable template for iocontrol reason display
-    if (NULL != (inistring = inifile.Find("IO_ERROR", "TASK"))) {
+    if (NULL != (inistring = ini->get(ini->ctx, "TASK", "IO_ERROR"))) {
 	io_error = strdup(inistring);
     }
 
-    // max number of queued MDI commands
-    if (NULL != (inistring = inifile.Find("MDI_QUEUED_COMMANDS", "TASK"))) {
-	max_mdi_queued_commands = atoi(inistring);
-    }
-
-    // close it
-    inifile.Close();
+    max_mdi_queued_commands = gomc_ini_get_int(ini, "TASK", "MDI_QUEUED_COMMANDS",
+                                               max_mdi_queued_commands);
 
     return 0;
 }
 
-/*
-  syntax: a.out {-d -ini <INI file>} {-nml <nml file>} {-shm <key>}
-  */
-int main(int argc, char *argv[])
+// --------------- cmod plugin lifecycle ---------------
+
+#include <pthread.h>
+#include <atomic>
+
+struct milltask_module {
+    cmod_t base;
+    const cmod_env_t *env;
+    pthread_t loop_thread;
+    std::atomic<int> thread_started;
+};
+
+static milltask_module *the_module;  // singleton, accessed by emctask_quit
+
+static void *milltask_loop(void *arg)
 {
+    milltask_module *m = (milltask_module *)arg;
+    (void)m;
+
     int taskPlanError = 0;
     int taskExecuteError = 0;
     double startTime, endTime, deltaTime;
     double first_start_time;
     int num_latency_warnings = 0;
-    int latency_excursion_factor = 10;  // if latency is worse than (factor * expected), it's an excursion
+    int latency_excursion_factor = 10;
     double minTime, maxTime;
 
-    bindtextdomain("linuxcnc", EMC2_PO_DIR);
-    setlocale(LC_MESSAGES,"");
-    setlocale(LC_CTYPE,"");
-    textdomain("linuxcnc");
-
-    // loop until done
-    done = 0;
-    // trap ^C
-    signal(SIGINT, emctask_quit);
-    // and SIGTERM (used by runscript to shut down)
-    signal(SIGTERM, emctask_quit);
-
-    // create a backtrace on stderr
-    signal(SIGSEGV, backtrace);
-    signal(SIGFPE, backtrace);
-    signal(SIGUSR1, backtrace);
-
-    // set print destination to stdout, for console apps
-    set_rcs_print_destination(RCS_PRINT_TO_STDOUT);
-    // process command line args
-    if (0 != emcGetArgs(argc, argv)) {
-	rcs_print_error("error in argument list\n");
-	exit(1);
-    }
-
-    if (done) {
-	emctask_shutdown();
-	exit(1);
-    }
-
-    if (done) {
-	emctask_shutdown();
-	exit(1);
-    }
-    // get configuration information
-    iniLoad(emc_inifile);
-
-    if (done) {
-	emctask_shutdown();
-	exit(1);
-    }
-
-    // get our status data structure
-    // moved up from emc_startup so we can expose it in Python right away
-    emcStatus = new EMC_STAT;
-
-#ifdef TOOL_NML //{
-    tool_nml_register( (CANON_TOOL_TABLE*)&emcStatus->io.tool.toolTable);
-#else //}{
-    tool_mmap_user();
-    // initialize database tool finder:
-#endif //}
-    // get the Python plugin going
-
-    // inistantiate task methods object, too
-    emcTaskOnce(emc_inifile);
-    rtapi_strxcpy(emcStatus->task.ini_filename, emc_inifile);
-    if (task_methods == NULL) {
-	set_rcs_print_destination(RCS_PRINT_TO_STDOUT);	// restore diag
-	rcs_print_error("can't initialize Task methods\n");
-	emctask_shutdown();
-	exit(1);
-    }
-
-    // this is the place to run any post-HAL-creation halcmd files
-    emcRunHalFiles(emc_inifile);
-
-    // initialize everything
-    if (0 != emctask_startup()) {
-	emctask_shutdown();
-	exit(1);
-    }
     // set the default startup modes
     emcMotionAbort();
     for (int s = 0; s < emcStatus->motion.traj.spindles; s++) emcSpindleAbort(s);
@@ -3395,12 +3278,11 @@ int main(int argc, char *argv[])
     // reflect the initial value of EMC_DEBUG in emcStatus->debug
     emcStatus->debug = emc_debug;
 
-    startTime = etime();	// set start time before entering loop;
+    startTime = etime();
     first_start_time = startTime;
     endTime = startTime;
-    // it will be set at end of loop from now on
-    minTime = DBL_MAX;		// set to value that can never be exceeded
-    maxTime = 0.0;		// set to value that can never be underset
+    minTime = DBL_MAX;
+    maxTime = 0.0;
 
     if (0 != usrmotReadEmcmotConfig(&emcmotConfig)) {
         rcs_print("%s failed usrmotReadEmcmotconfig()\n",__FILE__);
@@ -3410,7 +3292,6 @@ int main(int argc, char *argv[])
         check_ini_hal_items(emcStatus->motion.traj.joints);
 	// read command
 	if (0 != emcCommandBuffer->read()) {
-	    // got a new command, so clear out errors
 	    taskPlanError = 0;
 	    taskExecuteError = 0;
 	}
@@ -3422,7 +3303,6 @@ int main(int argc, char *argv[])
 	    taskExecuteError = 1;
 	}
 	// update subordinate status
-
 	emcIoUpdate(&emcStatus->io);
 	emcMotionUpdate(&emcStatus->motion);
 	// synchronize subordinate states
@@ -3432,7 +3312,7 @@ int main(int argc, char *argv[])
 		emcTaskAbort();
         emcIoAbort(EMC_ABORT_AUX_ESTOP);
         for (int s = 0; s < emcStatus->motion.traj.spindles; s++) emcSpindleAbort(s);
-        emcJointUnhome(-2); // only those joints which are volatile_home
+        emcJointUnhome(-2);
 		mdi_execute_abort();
 		emcAbortCleanup(EMC_ABORT_AUX_ESTOP);
 		emcTaskPlanSynch();
@@ -3463,13 +3343,11 @@ int main(int argc, char *argv[])
 			      emcStatus->io.fault, emcStatus->io.reason);
 		    reported = emcStatus->io.fault;
 		}
-		emcStatus->io.status = RCS_DONE; // let program continue
+		emcStatus->io.status = RCS_DONE;
 	    } else {
 		rcs_print("M6: toolchanger hard fault, reason=%d\n",
 			  emcStatus->io.reason);
-		// abort since io.status is RCS_ERROR
 	    }
-
 	}
 
         if (!emcStatus->motion.on_soft_limit) {gave_soft_limit_message = 0;}
@@ -3479,8 +3357,6 @@ int main(int argc, char *argv[])
             && emcStatus->motion.on_soft_limit) { 
            if (!gave_soft_limit_message) {
                 emcOperatorError(0, "On Soft Limit");
-                // if gui does not provide a means to switch to joint mode
-                // the  machine may be stuck (a misconfiguration)
                 if (emcmotConfig.kinType == KINEMATICS_IDENTITY) {
                     emcOperatorError(0,"Identity kinematics are MISCONFIGURED");
                 }
@@ -3489,12 +3365,8 @@ int main(int argc, char *argv[])
         } else if (emcStatus->motion.status == RCS_ERROR ||
 	    ((emcStatus->io.status == RCS_ERROR) &&
 	     (emcStatus->io.reason <= 0))) {
-	    /*! \todo FIXME-- duplicate code for abort,
-	      also in emcTaskExecute()
-	      and in emcTaskIssueCommand() */
 
 	    if (emcStatus->io.status == RCS_ERROR) {
-		// this is an aborted M6.
 		if (emc_debug & EMC_DEBUG_RCS ) {
 		    rcs_print("io.status=RCS_ERROR, fault=%d reason=%d\n",
 			      emcStatus->io.fault, emcStatus->io.reason);
@@ -3503,59 +3375,41 @@ int main(int argc, char *argv[])
 		    emcOperatorError(0, io_error, emcStatus->io.reason);
 		}
 	    }
-	    // motion already should have reported this condition (and set RCS_ERROR?)
-	    // an M19 orient failed to complete within timeout
-	    // if ((emcStatus->motion.status == RCS_ERROR) && 
-	    // 	(emcStatus->motion.spindle.orient_state == EMCMOT_ORIENT_FAULTED) &&
-	    // 	(emcStatus->motion.spindle.orient_fault != 0)) {
-	    // 	emcOperatorError(0, "wait for orient complete timed out");
-	    // }
 
-            // abort everything
             emcTaskAbort();
             emcIoAbort(EMC_ABORT_MOTION_OR_IO_RCS_ERROR);
         for (int s = 0; s < emcStatus->motion.traj.spindles; s++) emcSpindleAbort(s);;
 	    mdi_execute_abort();
-	    // without emcTaskPlanClose(), a new run command resumes at
-	    // aborted line-- feature that may be considered later
 	    {
 		int was_open = taskplanopen;
 		emcTaskPlanClose();
-                emcTaskPlanReset();  // Flush any unflushed segments
+                emcTaskPlanReset();
 		if (emc_debug & EMC_DEBUG_INTERP && was_open) {
 		    rcs_print("emcTaskPlanClose() called at %s:%d\n",
 			      __FILE__, __LINE__);
 		}
 	    }
 
-	    // clear out the pending command
 	    emcTaskCommand = 0;
 	    interp_list.clear();
 	    emcStatus->task.currentLine = 0;
 
 	    emcAbortCleanup(EMC_ABORT_MOTION_OR_IO_RCS_ERROR);
 
-	    // clear out the interpreter state
 	    emcStatus->task.interpState = EMC_TASK_INTERP_IDLE;
 	    emcStatus->task.execState = EMC_TASK_EXEC_DONE;
 	    stepping = 0;
 	    steppingWait = 0;
 
-	    // now queue up command to resynch interpreter
 	    emcTaskQueueCommand(&taskPlanSynchCmd);
 	}
 
 	// update task-specific status
 	emcTaskUpdate(&emcStatus->task);
 
-	// handle RCS_STAT_MSG base class members explicitly, since this
-	// is not an NML_MODULE and they won't be set automatically
-
-	// do task
 	emcStatus->task.command_type = emcCommand->type;
 	emcStatus->task.echo_serial_number = emcCommand->serial_number;
 
-	// do top level
 	emcStatus->command_type = emcCommand->type;
 	emcStatus->echo_serial_number = emcCommand->serial_number;
 
@@ -3580,16 +3434,8 @@ int main(int argc, char *argv[])
 	    emcStatus->task.status = RCS_EXEC;
 	}
 
-	// write it
-	// since emcStatus was passed to the WM init functions, it
-	// will be updated in the _update() functions above. There's
-	// no need to call the individual functions on all WM items.
 	emcStatusBuffer->write(emcStatus);
 
-	// wait on timer cycle, if specified, or calculate actual
-	// interval if INI file says to run full out via
-	// [TASK] CYCLE_TIME <= 0.0d
-	// emcTaskEager = 0;
         endTime = etime();
         deltaTime = endTime - startTime;
         if (deltaTime < minTime)
@@ -3625,9 +3471,108 @@ int main(int argc, char *argv[])
         emc_task_cycle_time
     );
 
-    // clean up everything
-    emctask_shutdown();
+    return NULL;
+}
 
-    // and leave
-    exit(0);
+static int milltask_start(cmod_t *self)
+{
+    milltask_module *m = (milltask_module *)self->priv;
+
+    // initialize all subsystems (NML channels, IO, motion, interpreter)
+    if (0 != emctask_startup()) {
+	return -1;
+    }
+
+    // spawn the main loop thread
+    done = 0;
+    m->thread_started = 1;
+    if (pthread_create(&m->loop_thread, NULL, milltask_loop, m) != 0) {
+	rcs_print_error("milltask: failed to create loop thread\n");
+	m->thread_started = 0;
+	return -1;
+    }
+    return 0;
+}
+
+static void milltask_stop(cmod_t *self)
+{
+    milltask_module *m = (milltask_module *)self->priv;
+    done = 1;
+    // exchange(0) ensures shutdown runs exactly once even if Stop()
+    // is called multiple times.
+    if (m->thread_started.exchange(0)) {
+	pthread_join(m->loop_thread, NULL);
+	// Shut down subsystems (NML, motion, IO) while HAL threads are
+	// still running — emcMotionHalt() needs servo-thread to relay
+	// commands to motmod.
+	emctask_shutdown();
+    }
+}
+
+static void milltask_destroy(cmod_t *self)
+{
+    milltask_module *m = (milltask_module *)self->priv;
+    delete m;
+    the_module = NULL;
+}
+
+extern "C" int New(const cmod_env_t *env, const char *name,
+                   int argc, const char **argv, cmod_t **out)
+{
+    milltask_module *m = new milltask_module();
+    m->env = env;
+    m->thread_started = 0;
+    the_module = m;
+
+    bindtextdomain("linuxcnc", EMC2_PO_DIR);
+    setlocale(LC_MESSAGES,"");
+    setlocale(LC_CTYPE,"");
+    textdomain("linuxcnc");
+
+    // set print destination to stdout, for console apps
+    set_rcs_print_destination(RCS_PRINT_TO_STDOUT);
+
+    // signal handlers (SIGINT/SIGTERM handled by launcher, but keep backtrace)
+    signal(SIGSEGV, backtrace);
+    signal(SIGFPE, backtrace);
+    signal(SIGUSR1, backtrace);
+
+    // populate emc_inifile for backward compatibility with usrmotIniLoad etc.
+    rtapi_strxcpy(emc_inifile, env->ini->source_file(env->ini->ctx));
+
+    // wire gomc APIs into taskintf
+    taskintf_gomc_init(env->ini, env->hal, env->log);
+
+    // load INI configuration values
+    iniLoad(env->ini);
+
+    // create the global status structure early so Python/preview can use it
+    emcStatus = new EMC_STAT;
+
+#ifdef TOOL_NML //{
+    tool_nml_register( (CANON_TOOL_TABLE*)&emcStatus->io.tool.toolTable);
+#else //}{
+    tool_mmap_user();
+#endif //}
+
+    // instantiate task methods (Python plugin, remap etc.)
+    emcTaskOnce(emc_inifile);
+    rtapi_strxcpy(emcStatus->task.ini_filename, emc_inifile);
+    if (task_methods == NULL) {
+	rcs_print_error("can't initialize Task methods\n");
+	delete m;
+	return -1;
+    }
+
+    // NOTE: emcRunHalFiles() is NOT called here — the launcher already
+    // executes all HAL files before loading cmod plugins.
+
+    // wire up cmod vtable
+    m->base.Start   = milltask_start;
+    m->base.Stop    = milltask_stop;
+    m->base.Destroy = milltask_destroy;
+    m->base.priv    = m;
+
+    *out = &m->base;
+    return 0;
 }

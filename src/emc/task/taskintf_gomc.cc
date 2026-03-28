@@ -27,14 +27,31 @@
 #include "emc_nml.hh"
 #include "rcs_print.hh"
 #include "timer.hh"
-#include "inifile.hh"
-#include "iniaxis.hh"
-#include "inijoint.hh"
-#include "inispindle.hh"
-#include "initraj.hh"
-#include "inihal.hh"
+#include "launcher/pkg/cmodule/gomc_ini.h"
+#include "launcher/pkg/cmodule/gomc_hal.h"
+#include "launcher/pkg/cmodule/gomc_log.h"
+#include "iniaxis_gomc.hh"
+#include "inijoint_gomc.hh"
+#include "inispindle_gomc.hh"
+#include "initraj_gomc.hh"
+#include "inihal_gomc.hh"
 
 value_inihal_data old_inihal_data;
+
+// gomc API pointers — set by taskintf_gomc_init(), used by the
+// iniXxx() and ini_hal_init() calls throughout this file.
+static const gomc_ini_t *the_ini;
+static const gomc_hal_t *the_hal;
+static const gomc_log_t *the_log;
+
+void taskintf_gomc_init(const gomc_ini_t *ini,
+                       const gomc_hal_t *hal,
+                       const gomc_log_t *log)
+{
+    the_ini = ini;
+    the_hal = hal;
+    the_log = log;
+}
 
 /* define this to catch isnan errors, for rtlinux FPU register 
    problem testing */
@@ -619,7 +636,7 @@ int emcJointInit(int joint)
 	}
     }
     JointConfig[joint].Inited = 1;
-    if (0 != iniJoint(joint, emc_inifile)) {
+    if (0 != iniJoint(joint, the_ini)) {
 	retval = -1;
     }
     return retval;
@@ -640,7 +657,7 @@ int emcAxisInit(int axis)
 	}
     }
     AxisConfig[axis].Inited = 1;
-    if (0 != iniAxis(axis, emc_inifile)) {
+    if (0 != iniAxis(axis, the_ini)) {
 	retval = -1;
     }
     return retval;
@@ -661,7 +678,7 @@ int emcSpindleInit(int spindle)
 	}
     }
     SpindleConfig[spindle].Inited = 1;
-    if (0 != iniSpindle(spindle, emc_inifile)) {
+    if (0 != iniSpindle(spindle, the_ini)) {
 	retval = -1;
     }
     return retval;
@@ -1298,7 +1315,7 @@ int emcTrajInit()
     }
     TrajConfig.Inited = 1;
     // initialize parameters from INI file
-    if (0 != iniTraj(emc_inifile)) {
+    if (0 != iniTraj(the_ini)) {
 	retval = -1;
     }
     return retval;
@@ -1656,7 +1673,7 @@ int setup_inihal(void) {
         return -1;
     }
 
-    if (ini_hal_init(TrajConfig.Joints)) {
+    if (ini_hal_init(the_hal, the_log, TrajConfig.Joints)) {
         rcs_print_error("%s: ini_hal_init(%d) failed\n", __FUNCTION__, TrajConfig.Joints);
         return -1;
     }
@@ -1672,10 +1689,7 @@ int setup_inihal(void) {
 
 int emcPositionLoad() {
     double positions[EMCMOT_MAX_JOINTS];
-    IniFile ini;
-    ini.Open(emc_inifile);
-    const char *posfile = ini.Find("POSITION_FILE", "TRAJ");
-    ini.Close();
+    const char *posfile = the_ini->get(the_ini->ctx, "TRAJ", "POSITION_FILE");
     if(!posfile || !posfile[0]) return 0;
     FILE *f = fopen(posfile, "r");
     if(!f) return 0;
@@ -1700,17 +1714,7 @@ int emcPositionLoad() {
 
 
 int emcPositionSave() {
-    IniFile ini;
-    const char *posfile;
-
-    ini.Open(emc_inifile);
-    try {
-        posfile = ini.Find("POSITION_FILE", "TRAJ");
-    } catch (IniFile::Exception e) {
-        ini.Close();
-        return -1;
-    }
-    ini.Close();
+    const char *posfile = the_ini->get(the_ini->ctx, "TRAJ", "POSITION_FILE");
 
     if(!posfile || !posfile[0]) return 0;
     // like the var file, make sure the posfile is recreated according to umask
