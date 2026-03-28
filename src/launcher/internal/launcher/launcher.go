@@ -69,6 +69,7 @@ type Launcher struct {
 	cModules     []*cModule         // C plugin modules loaded via "load" command
 	cModArena    []unsafe.Pointer   // arena-tracked C strings freed in destroyCModules
 	logRing      *gomcLogRing       // shared log ring buffer for C module FIFO logging
+	retain       *retainInstance    // integrated retain subsystem (nil if unused)
 }
 
 // New creates a new Launcher with the given options and logger.
@@ -757,74 +758,6 @@ func (l *Launcher) startHalThreads() error {
 func isExecutable(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir() && info.Mode()&0o111 != 0
-}
-
-// loadRetain checks for retained HAL signals and, if any are found, loads the
-// retain component and the retain_usr userspace process.
-//
-// This mirrors scripts/linuxcnc.in lines 975–996 (step 4.3.9):
-//
-//	if $HALCMD list retain | grep -q '.'; then
-//	    $HALCMD loadrt retain
-//	    $HALCMD addf retain.sync <SYNC_THREAD>
-//	    $HALCMD loadusr -W retain_usr <VAR_FILE> <POLL_PERIOD>
-//	fi
-//
-// Note: the bash script has a bug where it checks the wrong variable before
-// setting RETAIN_SYNC_THREAD; the Go implementation checks the correct one.
-func (l *Launcher) loadRetain() error {
-	// Check whether any retained signals exist.
-	signals, err := halcmd.List("retain")
-	if err != nil {
-		// halcmd.List errors when no retain component is loaded — treat as no signals.
-		l.logger.Debug("hal list retain returned error (no retain signals)", "error", err)
-		return nil
-	}
-	if len(signals) == 0 {
-		l.logger.Debug("no retained signals found, skipping retain load")
-		return nil
-	}
-
-	l.logger.Info("Loading retain")
-
-	// Load the realtime retain component.
-	if err := halcmd.LoadRT("retain"); err != nil {
-		return fmt.Errorf("loadrt retain: %w", err)
-	}
-
-	// Determine the sync thread.
-	syncThread := l.ini.Get("RETAIN", "SYNC_THREAD")
-	if syncThread == "" {
-		syncThread = "servo-thread"
-	}
-	if err := halcmd.AddF("retain.sync", syncThread, 0); err != nil {
-		return fmt.Errorf("addf retain.sync %s: %w", syncThread, err)
-	}
-
-	// Determine the variable file path.
-	varFile := l.ini.Get("RETAIN", "VAR_FILE")
-	if varFile == "" {
-		varFile = "retain.var"
-	}
-	// Resolve relative paths against the INI directory.
-	if !filepath.IsAbs(varFile) {
-		varFile = filepath.Join(filepath.Dir(l.opts.IniFile), varFile)
-	}
-
-	// Determine the poll period (may be empty — retain_usr handles a missing arg).
-	pollPeriod := l.ini.Get("RETAIN", "POLL_PERIOD")
-
-	// Start retain_usr, passing varFile and (optionally) pollPeriod as separate
-	// arguments so that paths containing spaces are handled correctly.
-	usrArgs := []string{varFile}
-	if pollPeriod != "" {
-		usrArgs = append(usrArgs, pollPeriod)
-	}
-	if err := halcmd.LoadUSR(&halcmd.LoadUSROptions{WaitReady: true}, "retain_usr", usrArgs...); err != nil {
-		return fmt.Errorf("loadusr retain_usr: %w", err)
-	}
-
-	return nil
 }
 
 // runApplications launches [APPLICATIONS]APP entries from the INI file in the

@@ -72,6 +72,10 @@ func (l *Launcher) doCleanup() {
 	l.logger.Debug("stopping Go plugin modules")
 	l.stopGoModules()
 
+	// Step 2c — Stop retain goroutine (final sync runs while RT is still active).
+	l.logger.Debug("stopping retain")
+	l.stopRetain()
+
 	// Steps 3–12 require the RTAPI/HAL environment to have been initialized
 	// (RtapiAppInit + hal.NewComponent succeeded).  When startup fails before
 	// that point (e.g. INI file not found), these would crash by accessing
@@ -88,6 +92,10 @@ func (l *Launcher) doCleanup() {
 		}
 
 		// ── RT barrier: all threads are idle past this point ──
+
+		// Step 3b — Destroy retain component (safe — threads are idle).
+		l.logger.Debug("destroying retain component")
+		l.destroyRetain()
 
 		// Step 6 — Run [HAL]SHUTDOWN script if configured.
 		if l.ini != nil {
