@@ -371,7 +371,7 @@ func (l *Launcher) loadRetain() error {
 	if syncThread == "" {
 		syncThread = "servo-thread"
 	}
-	if err := halcmd.AddF("retain.sync", syncThread, 0); err != nil {
+	if err := halcmd.AddF("retain.sync", syncThread, -1); err != nil {
 		C.hal_exit(C.int(compID))
 		C.retain_state_destroy(state)
 		return fmt.Errorf("retain: addf retain.sync %s: %w", syncThread, err)
