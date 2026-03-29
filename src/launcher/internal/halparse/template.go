@@ -162,6 +162,18 @@ func halTemplateFuncs(data *HalTemplateData) template.FuncMap {
 			}
 			return ""
 		},
+		// iniGT0 returns true if the INI value is a positive integer (> 0).
+		// Returns false for missing, empty, non-numeric, zero, or negative values.
+		"iniGT0": func(section, key string) bool {
+			if s, ok := data.INI[section]; ok {
+				if v, ok := s[key]; ok {
+					if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+						return n > 0
+					}
+				}
+			}
+			return false
+		},
 
 		// Environment access
 		"env": os.Getenv,
