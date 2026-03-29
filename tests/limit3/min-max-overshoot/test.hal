@@ -23,7 +23,7 @@ net out => vel.in
 net vel <= vel.out => sampler.0.pin.2 => acc.in
 net acc <= acc.out => sampler.0.pin.3
 
-loadrt threads name1=t period1=1000000
+newthread t 1000000
 
 addf siggen.0.update t
 addf limit3.0 t

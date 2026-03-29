@@ -3,6 +3,7 @@ package launcher
 
 import (
 	"os"
+	"strings"
 	"time"
 
 	halcmd "github.com/sittner/linuxcnc/src/launcher/internal/halcmd"
@@ -27,7 +28,7 @@ func (l *Launcher) cleanup() {
 // Startup order (from Run()):
 //  1. RtapiAppInit
 //  2. hal.NewComponent (launcher)
-//  3. loadThreads (hal_create_thread)
+//  3. createThreads (hal_create_thread_cpu)
 //  4. load modules (cmod New, loadrt, loadusr)
 //  5. wire HAL (addf, net, setp)
 //  6. startTask
@@ -37,19 +38,18 @@ func (l *Launcher) cleanup() {
 //
 // Shutdown order (strict reverse):
 //  1. stopApplications            (reverse of 9)
-//  2. stopTask                    (reverse of 6)
+//  2. stopCModules, stopGoModules (reverse of 8)
 //  3. StopThreads — SYNCHRONOUS   (reverse of 7, waits for all RT idle)
 //     ── barrier: no RT function executes past this point ──
-//  4. stopCModules                (reverse of 8, safe — threads are idle)
-//  5. stopGoModules               (reverse of 8)
-//  6. SHUTDOWN halfile
-//  7. destroyCModules             (reverse of 4, frees EC masters etc.)
-//  8. destroyGoModules            (reverse of 4)
-//  9. UnloadAll                   (reverse of 4, unloads loadrt components)
-//  10. wait for unload
-//  11. halComp.Exit                (reverse of 2)
-//  12. RtapiAppCleanup             (reverse of 1)
-//  13. Release lock file
+//  4. SHUTDOWN halfile
+//  5. destroyCModules             (reverse of 4, frees EC masters etc.)
+//  6. destroyGoModules            (reverse of 4)
+//  7. UnloadAll                   (reverse of 4, unloads loadrt components)
+//  8. wait for unload             (userspace processes may still be exiting)
+//  9. halComp.Exit                (reverse of 2)
+//
+// 10. RtapiAppCleanup             (reverse of 1)
+// 11. Release lock file
 //
 // All errors are logged but not returned so that every step runs even if a
 // prior step fails.
@@ -121,8 +121,26 @@ func (l *Launcher) doCleanup() {
 			l.logger.Debug("hal unload all returned error", "error", err)
 		}
 
-		// Step 10 — Wait for HAL components to unload.
-		// Polls up to 10 times (200 ms apart) until only 1 component remains.
+		// Step 9b — Delete HAL threads.
+		// Threads created by newthread in HAL files have __<name>
+		// pseudo-components that UnloadAll does not remove.  Delete them
+		// now so the wait loop below does not stall on them.
+		if comps, err := halcmd.ListComponents(); err == nil {
+			for _, name := range comps {
+				if strings.HasPrefix(name, "__") {
+					threadName := name[2:]
+					l.logger.Debug("deleting HAL thread", "name", threadName)
+					if err := halcmd.ThreadDelete(threadName); err != nil {
+						l.logger.Debug("hal thread delete returned error", "name", threadName, "error", err)
+					}
+				}
+			}
+		}
+
+		// Step 10 — Wait for remaining HAL components to unload.
+		// After UnloadAll, only the launcher component should remain.
+		// Userspace processes (e.g. hal_manualtoolchange) may still be
+		// exiting after SIGTERM.
 		l.logger.Debug("waiting for HAL components to unload")
 		for i := 0; i < 10; i++ {
 			comps, err := halcmd.ListComponents()
@@ -132,10 +150,11 @@ func (l *Launcher) doCleanup() {
 			if len(comps) <= 1 {
 				break
 			}
+			l.logger.Debug("still waiting for HAL components", "remaining", comps)
 			time.Sleep(200 * time.Millisecond)
 		}
 
-		// Step 11 — Exit the launcher's own HAL component.
+		// Step 12 — Exit the launcher's own HAL component.
 		// Must happen while HAL shared memory is still valid, i.e. before
 		// RtapiAppCleanup() tears it down.
 		if err := l.halComp.Exit(); err != nil {

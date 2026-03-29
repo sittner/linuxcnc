@@ -17,7 +17,6 @@ import "fmt"
 // Rules (when [TASK]TASK is set):
 //   - [KINS]KINEMATICS is required.
 //   - [TRAJ]COORDINATES is required.
-//   - [EMCMOT]SERVO_PERIOD is required.
 //   - [RS274NGC]PARAMETER_FILE is required.
 func (l *Launcher) validateDependencies() error {
 	hasTask := l.ini.Get("TASK", "TASK") != ""
@@ -47,9 +46,6 @@ func (l *Launcher) validateDependencies() error {
 		}
 		if l.ini.Get("TRAJ", "COORDINATES") == "" {
 			return fmt.Errorf("[TASK]TASK is set but [TRAJ]COORDINATES is missing")
-		}
-		if l.ini.Get("EMCMOT", "SERVO_PERIOD") == "" {
-			return fmt.Errorf("[TASK]TASK is set but [EMCMOT]SERVO_PERIOD is missing")
 		}
 		if l.ini.Get("RS274NGC", "PARAMETER_FILE") == "" {
 			return fmt.Errorf("[TASK]TASK is set but [RS274NGC]PARAMETER_FILE is missing")

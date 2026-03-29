@@ -290,3 +290,21 @@ func (ini *IniFile) Substitute(input string) string {
 		return val
 	})
 }
+
+// ParseString parses INI content from a string.  This is a convenience
+// function primarily intended for tests.  #INCLUDE directives are not
+// supported when parsing from a string.
+func ParseString(content string) (*IniFile, error) {
+	f, err := os.CreateTemp("", "ini-*.ini")
+	if err != nil {
+		return nil, fmt.Errorf("inifile: creating temp file: %w", err)
+	}
+	name := f.Name()
+	defer os.Remove(name)
+	if _, err := f.WriteString(content); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("inifile: writing temp file: %w", err)
+	}
+	f.Close()
+	return Parse(name)
+}

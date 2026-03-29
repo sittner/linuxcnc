@@ -433,6 +433,44 @@ func parseDelSig(tokens []string, loc SourceLoc) (Token, *ParseError) {
 	return Token{Location: loc, Data: &DelSigToken{Name: tokens[0]}}, nil
 }
 
+// parseNewThread parses: newthread NAME PERIOD [fp|nofp] [cpu=N]
+func parseNewThread(tokens []string, loc SourceLoc) (Token, *ParseError) {
+	if len(tokens) < 2 {
+		return Token{}, &ParseError{Loc: loc, Msg: "newthread: requires at least NAME and PERIOD"}
+	}
+	period, err := strconv.ParseInt(tokens[1], 10, 64)
+	if err != nil || period <= 0 {
+		return Token{}, &ParseError{Loc: loc, Msg: fmt.Sprintf("newthread: invalid period %q", tokens[1])}
+	}
+	tok := &NewThreadToken{Name: tokens[0], Period: period, FP: 1, CPU: -1}
+	for _, arg := range tokens[2:] {
+		switch strings.ToLower(arg) {
+		case "fp":
+			tok.FP = 1
+		case "nofp":
+			tok.FP = 0
+		default:
+			if strings.HasPrefix(strings.ToLower(arg), "cpu=") {
+				v, err := strconv.Atoi(arg[4:])
+				if err != nil {
+					return Token{}, &ParseError{Loc: loc, Msg: fmt.Sprintf("newthread: invalid cpu value %q", arg[4:])}
+				}
+				tok.CPU = v
+			} else {
+				return Token{}, &ParseError{Loc: loc, Msg: fmt.Sprintf("newthread: unknown option %q", arg)}
+			}
+		}
+	}
+	return Token{Location: loc, Data: tok}, nil
+}
+
+func parseDelThread(tokens []string, loc SourceLoc) (Token, *ParseError) {
+	if len(tokens) != 1 {
+		return Token{}, &ParseError{Loc: loc, Msg: fmt.Sprintf("delthread: expected 1 argument, got %d", len(tokens))}
+	}
+	return Token{Location: loc, Data: &DelThreadToken{Name: tokens[0]}}, nil
+}
+
 func parseRetain(tokens []string, loc SourceLoc) (Token, *ParseError) {
 	if len(tokens) != 1 {
 		return Token{}, &ParseError{Loc: loc, Msg: fmt.Sprintf("retain: expected 1 argument, got %d", len(tokens))}
@@ -717,6 +755,10 @@ func parseLine(tokens []string, loc SourceLoc) (Token, *ParseError) {
 		return parseNewSig(args, loc)
 	case "delsig":
 		return parseDelSig(args, loc)
+	case "newthread":
+		return parseNewThread(args, loc)
+	case "delthread":
+		return parseDelThread(args, loc)
 	case "retain":
 		return parseRetain(args, loc)
 	case "unretain":

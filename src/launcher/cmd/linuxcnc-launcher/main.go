@@ -27,11 +27,24 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/sittner/linuxcnc/src/launcher/internal/launcher"
 
 	halcmd "github.com/sittner/linuxcnc/src/launcher/internal/halcmd"
 )
+
+func init() {
+	// Pin the main goroutine to a single OS thread for the lifetime of the
+	// process.  Several C libraries loaded via cmod plugins (most notably
+	// milltask → Boost.Python → libpython) store per-thread state during
+	// their New() phase and later reference it during Start().  Go's
+	// scheduler is free to migrate a goroutine between OS threads between
+	// CGo calls; without the lock the Start() CGo call may land on a
+	// different thread, leaving Python without a valid thread-state and
+	// causing a SIGSEGV in PyUnicode_New.
+	runtime.LockOSThread()
+}
 
 // multiFlag is a flag.Value that accumulates repeated string flags (e.g. -H).
 type multiFlag []string
@@ -83,14 +96,14 @@ Options:
 	}
 
 	var (
-		debug          = fs.Bool("d", false, `Turn on "debug" mode`)
-		verbose        = fs.Bool("v", false, `Turn on "verbose" mode`)
-		noRedirect     = fs.Bool("r", false, "Disable redirection of stdout/stderr to log files (use for tests)")
-		useLast        = fs.Bool("l", false, "Use the last-used INI file")
-		continueOnErr  = fs.Bool("k", false, "Continue in the presence of errors in HAL files")
-		tpMod          = fs.String("t", "", `Custom trajectory planning module name (overrides [TRAJ]TPMOD)`)
-		homeMod        = fs.String("m", "", `Custom homing module name (overrides [EMCMOT]HOMEMOD)`)
-		halLibDirs     multiFlag
+		debug         = fs.Bool("d", false, `Turn on "debug" mode`)
+		verbose       = fs.Bool("v", false, `Turn on "verbose" mode`)
+		noRedirect    = fs.Bool("r", false, "Disable redirection of stdout/stderr to log files (use for tests)")
+		useLast       = fs.Bool("l", false, "Use the last-used INI file")
+		continueOnErr = fs.Bool("k", false, "Continue in the presence of errors in HAL files")
+		tpMod         = fs.String("t", "", `Custom trajectory planning module name (overrides [TRAJ]TPMOD)`)
+		homeMod       = fs.String("m", "", `Custom homing module name (overrides [EMCMOT]HOMEMOD)`)
+		halLibDirs    multiFlag
 	)
 	fs.Var(&halLibDirs, "H", "Prepend `dir` to HALLIB_PATH (may be specified multiple times)")
 

@@ -526,12 +526,9 @@ proc reset_data {} {
 } ;# reset_data
 
 proc start_collection {} {
-  set i 1; set args ""
   foreach thd $::LH(threads) {
-    set args "$args name$i=t_$thd period$i=$::LH($thd,period,ns)"
-    incr i
+    hal newthread t_$thd $::LH($thd,period,ns)
   }
-  eval hal loadrt threads "$args"
 
   set names ""; set ct 0
   foreach thd $::LH(threads) {

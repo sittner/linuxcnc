@@ -751,6 +751,15 @@ extern int hal_export_funct(const char *name, void (*funct) (void *, long),
 extern int hal_create_thread(const char *name, unsigned long period_nsec,
     int uses_fp);
 
+/** hal_create_thread_cpu() is like hal_create_thread() but also sets
+    the CPU affinity for the thread's realtime task.
+    'cpu' is the CPU core to pin the thread to, or -1 for no affinity.
+    All other parameters and return values are identical to
+    hal_create_thread().
+*/
+extern int hal_create_thread_cpu(const char *name, unsigned long period_nsec,
+    int uses_fp, int cpu);
+
 /** hal_thread_delete() deletes a realtime thread.
     'name' is the name of the thread, which must have been created
     by 'hal_create_thread()'.
