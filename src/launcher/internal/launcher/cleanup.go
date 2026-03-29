@@ -44,8 +44,8 @@ func (l *Launcher) cleanup() {
 //  5. destroyCModules             (reverse of 4, frees EC masters etc.)
 //  6. destroyGoModules            (reverse of 4)
 //  7. UnloadAll                   (reverse of 4, unloads loadrt components)
-//  8. wait for unload
-//  9. deleteThreads               (reverse of 3, hal_thread_delete)
+// 10. deleteThreads               (reverse of 3, hal_thread_delete)
+// 11. wait for unload             (userspace processes may still be exiting)
 //  10. halComp.Exit                (reverse of 2)
 //  11. RtapiAppCleanup             (reverse of 1)
 //  12. Release lock file
@@ -120,8 +120,16 @@ func (l *Launcher) doCleanup() {
 			l.logger.Debug("hal unload all returned error", "error", err)
 		}
 
-		// Step 10 — Wait for HAL components to unload.
-		// Polls up to 10 times (200 ms apart) until only 1 component remains.
+		// Step 10 — Delete HAL threads (reverse of createThreads).
+		// Threads are already stopped (StopThreads above).  Deleting them
+		// also removes the __<name> pseudo-components.
+		l.logger.Debug("deleting HAL threads")
+		l.deleteThreads()
+
+		// Step 11 — Wait for remaining HAL components to unload.
+		// After UnloadAll + deleteThreads, only the launcher component
+		// should remain.  Userspace processes (e.g. hal_manualtoolchange)
+		// may still be exiting after SIGTERM.
 		l.logger.Debug("waiting for HAL components to unload")
 		for i := 0; i < 10; i++ {
 			comps, err := halcmd.ListComponents()
@@ -131,15 +139,11 @@ func (l *Launcher) doCleanup() {
 			if len(comps) <= 1 {
 				break
 			}
+			l.logger.Debug("still waiting for HAL components", "remaining", comps)
 			time.Sleep(200 * time.Millisecond)
 		}
 
-		// Step 10b — Delete HAL threads (reverse of createThreads).
-		// Must happen after UnloadAll so no component references the threads.
-		l.logger.Debug("deleting HAL threads")
-		l.deleteThreads()
-
-		// Step 11 — Exit the launcher's own HAL component.
+		// Step 12 — Exit the launcher's own HAL component.
 		// Must happen while HAL shared memory is still valid, i.e. before
 		// RtapiAppCleanup() tears it down.
 		if err := l.halComp.Exit(); err != nil {
