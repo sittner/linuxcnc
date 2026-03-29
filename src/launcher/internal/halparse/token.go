@@ -173,6 +173,21 @@ type DelSigToken struct{ Name string }
 
 func (*DelSigToken) tokenData() {}
 
+// NewThreadToken represents a "newthread" command.
+type NewThreadToken struct {
+	Name   string
+	Period int64
+	FP     int // 1 = uses FP (default), 0 = no FP
+	CPU    int // -1 = no affinity (default)
+}
+
+func (*NewThreadToken) tokenData() {}
+
+// DelThreadToken represents a "delthread" command.
+type DelThreadToken struct{ Name string }
+
+func (*DelThreadToken) tokenData() {}
+
 // RetainToken represents a "retain" command.
 type RetainToken struct{ Name string }
 
