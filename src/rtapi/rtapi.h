@@ -361,6 +361,14 @@ RTAPI_BEGIN_DECLS
 */
     extern int rtapi_task_delete(int task_id);
 
+/** 'rtapi_task_set_cpu()' sets the CPU affinity for a task before it
+    is started.  'task_id' is a task ID from rtapi_task_new().
+    'cpu_number' is the CPU core to pin the task to, or -1 for no
+    affinity.  Must be called between rtapi_task_new() and
+    rtapi_task_start().  Returns 0 on success, negative errno on error.
+*/
+    extern int rtapi_task_set_cpu(int task_id, int cpu_number);
+
 /** 'rtapi_task_start()' starts a task in periodic mode.  'task_id' is
     a task ID from a call to rtapi_task_new().  The task must be in
     the "paused" state, or it will return -EINVAL.

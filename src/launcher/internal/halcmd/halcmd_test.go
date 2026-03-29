@@ -24,6 +24,22 @@ func TestStopThreadsSignature(t *testing.T) {
 	}
 }
 
+// TestCreateThreadCPUSignature verifies that CreateThreadCPU has the correct signature.
+func TestCreateThreadCPUSignature(t *testing.T) {
+	var fn func(string, int64, int, int) error = halcmd.CreateThreadCPU
+	if fn == nil {
+		t.Fatal("CreateThreadCPU must not be nil")
+	}
+}
+
+// TestThreadDeleteSignature verifies that ThreadDelete has the correct signature.
+func TestThreadDeleteSignature(t *testing.T) {
+	var fn func(string) error = halcmd.ThreadDelete
+	if fn == nil {
+		t.Fatal("ThreadDelete must not be nil")
+	}
+}
+
 // TestListComponentsSignature verifies that ListComponents has the correct signature.
 func TestListComponentsSignature(t *testing.T) {
 	var fn func() ([]string, error) = halcmd.ListComponents

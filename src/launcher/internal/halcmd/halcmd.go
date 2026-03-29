@@ -34,6 +34,20 @@ func StopThreads() error {
 	return halStopThreads()
 }
 
+// CreateThreadCPU creates a single HAL realtime thread with explicit CPU affinity.
+// cpu=-1 means no affinity (OS schedules freely).
+// Threads must be created fastest-first (ascending period) for rate monotonic
+// priority scheduling.  Returns nil on success.
+func CreateThreadCPU(name string, periodNs int64, usesFP int, cpu int) error {
+	return halCreateThreadCPU(name, periodNs, usesFP, cpu)
+}
+
+// ThreadDelete deletes a HAL realtime thread by name.
+// The thread must have been stopped (via StopThreads) before deletion.
+func ThreadDelete(name string) error {
+	return halThreadDelete(name)
+}
+
 // ListComponents returns the names of all currently loaded HAL components.
 // Equivalent to "halcmd list comp".
 func ListComponents() ([]string, error) {

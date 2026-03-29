@@ -14,6 +14,7 @@ struct rtapi_task {
     int uses_fp;
     size_t stacksize;
     int prio;
+    int cpu_number;  /* CPU to pin this task to; -1 = no affinity */
     long period;
     struct timespec nextstart;
     unsigned ratio;

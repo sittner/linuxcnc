@@ -17,12 +17,14 @@ var ErrNoCGO = errors.New("halcmd: CGO is required but not available")
 // in cgo.go (which is excluded from non-CGO builds). They allow the halcmd
 // package to compile with CGO_ENABLED=0.
 
-func halStartThreads() error               { return ErrNoCGO }
-func halStopThreads() error                { return ErrNoCGO }
-func halListComponents() ([]string, error) { return nil, ErrNoCGO }
-func halUnloadAll(_ int) error             { return ErrNoCGO }
-func halLockDLHandle(_ unsafe.Pointer)     {}
-func halUnlockDLHandle(_ unsafe.Pointer)   {}
+func halStartThreads() error                                   { return ErrNoCGO }
+func halStopThreads() error                                    { return ErrNoCGO }
+func halCreateThreadCPU(_ string, _ int64, _ int, _ int) error { return ErrNoCGO }
+func halThreadDelete(_ string) error                           { return ErrNoCGO }
+func halListComponents() ([]string, error)                     { return nil, ErrNoCGO }
+func halUnloadAll(_ int) error                                 { return ErrNoCGO }
+func halLockDLHandle(_ unsafe.Pointer)                         {}
+func halUnlockDLHandle(_ unsafe.Pointer)                       {}
 
 func halNewSig(_ string, _ hal.PinType) error { return ErrNoCGO }
 func halDelSig(_ string) error                { return ErrNoCGO }

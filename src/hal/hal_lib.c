@@ -1908,6 +1908,12 @@ int hal_export_funct(const char *name, void (*funct) (void *, long),
 
 int hal_create_thread(const char *name, unsigned long period_nsec, int uses_fp)
 {
+    return hal_create_thread_cpu(name, period_nsec, uses_fp, -1);
+}
+
+int hal_create_thread_cpu(const char *name, unsigned long period_nsec,
+    int uses_fp, int cpu)
+{
     int next, cmp, prev_priority;
     int retval, n;
     hal_thread_t *new, *tptr;
@@ -2036,6 +2042,10 @@ int hal_create_thread(const char *name, unsigned long period_nsec, int uses_fp)
 	return -EINVAL;
     }
     new->task_id = retval;
+    /* set CPU affinity if requested */
+    if (cpu >= 0) {
+	rtapi_task_set_cpu(new->task_id, cpu);
+    }
     /* start task */
     retval = rtapi_task_start(new->task_id, new->period);
     if (retval < 0) {

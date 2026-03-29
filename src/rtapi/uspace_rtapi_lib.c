@@ -702,24 +702,16 @@ static int task_start(int task_id, unsigned long int period_nsec)
         return -ret;
     if((ret = pthread_attr_setinheritsched(&attr, PTHREAD_EXPLICIT_SCHED)) != 0)
         return -ret;
-    if(nprocs > 1) {
-        static int rt_cpu_number = -2;  /* -2 means uninitialized, call find_rt_cpu_number() */
-        int cpu_num;
-        if(rt_cpu_number == -2) {
-            rt_cpu_number = find_rt_cpu_number();
-        }
-        cpu_num = rt_cpu_number;
-        if(cpu_num != -1) {
+    if(nprocs > 1 && task->task.cpu_number >= 0) {
 #ifdef __FreeBSD__
-            cpuset_t cpuset;
+        cpuset_t cpuset;
 #else
-            cpu_set_t cpuset;
+        cpu_set_t cpuset;
 #endif
-            CPU_ZERO(&cpuset);
-            CPU_SET(cpu_num, &cpuset);
-            if((ret = pthread_attr_setaffinity_np(&attr, sizeof(cpuset), &cpuset)) != 0)
-                return -ret;
-        }
+        CPU_ZERO(&cpuset);
+        CPU_SET(task->task.cpu_number, &cpuset);
+        if((ret = pthread_attr_setaffinity_np(&attr, sizeof(cpuset), &cpuset)) != 0)
+            return -ret;
     }
     if((ret = pthread_create(&task->thr, &attr, &task_wrapper, (void*)task)) != 0)
         return -ret;
@@ -829,6 +821,7 @@ static int task_new(void (*taskcode)(void*), void *arg,
     task->task.stacksize = stacksize;
     task->task.taskcode = taskcode;
     task->task.prio = prio;
+    task->task.cpu_number = -1;  /* no affinity by default */
     task->task.magic = TASK_MAGIC;
     task_array[n] = &task->task;
 
@@ -975,6 +968,13 @@ int rtapi_task_new(void (*taskcode)(void*), void *arg,
 
 int rtapi_task_delete(int id) {
     return task_delete(id);
+}
+
+int rtapi_task_set_cpu(int task_id, int cpu_number) {
+    struct rtapi_task *task = get_task(task_id);
+    if(!task) return -EINVAL;
+    task->cpu_number = cpu_number;
+    return 0;
 }
 
 int rtapi_task_start(int task_id, unsigned long period_nsec)

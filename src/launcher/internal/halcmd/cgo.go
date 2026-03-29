@@ -1854,6 +1854,27 @@ func halError(code int, op string) error {
 	return &hal.Error{Code: code, Message: message, Op: op}
 }
 
+// halCreateThreadCPU wraps hal_create_thread_cpu() to create a single HAL
+// realtime thread with explicit CPU affinity.
+// cpu=-1 means no affinity.
+func halCreateThreadCPU(name string, periodNs int64, usesFP int, cpu int) error {
+	cName := C.CString(name)
+	defer C.free(unsafe.Pointer(cName))
+	ret := C.hal_create_thread_cpu(cName, C.ulong(periodNs), C.int(usesFP), C.int(cpu))
+	if int(ret) < 0 {
+		return halError(int(ret), "hal_create_thread_cpu")
+	}
+	return nil
+}
+
+// halThreadDelete wraps hal_thread_delete() to delete a HAL realtime thread by name.
+func halThreadDelete(name string) error {
+	cName := C.CString(name)
+	defer C.free(unsafe.Pointer(cName))
+	ret := C.hal_thread_delete(cName)
+	return halError(int(ret), "hal_thread_delete")
+}
+
 // halStartThreads wraps hal_start_threads() to start all HAL realtime threads.
 func halStartThreads() error {
 	ret := C.hal_start_threads()

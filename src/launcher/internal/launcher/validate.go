@@ -9,6 +9,7 @@ import "fmt"
 //
 // Rules (checked for all modes):
 //   - At least one [HAL]HALFILE is required.
+//   - At least one [THREAD-*] section is required.
 //
 // Rules (cross-section dependencies):
 //   - [HAL]HALUI without [TASK]TASK → error (halui communicates via NML).
@@ -17,7 +18,6 @@ import "fmt"
 // Rules (when [TASK]TASK is set):
 //   - [KINS]KINEMATICS is required.
 //   - [TRAJ]COORDINATES is required.
-//   - [EMCMOT]SERVO_PERIOD is required.
 //   - [RS274NGC]PARAMETER_FILE is required.
 func (l *Launcher) validateDependencies() error {
 	hasTask := l.ini.Get("TASK", "TASK") != ""
@@ -28,6 +28,18 @@ func (l *Launcher) validateDependencies() error {
 	// At least one [HAL]HALFILE is required in all modes.
 	if len(halFiles) == 0 {
 		return fmt.Errorf("at least one [HAL]HALFILE is required")
+	}
+
+	// At least one [THREAD-*] section is required.
+	hasThread := false
+	for _, sec := range l.ini.Sections {
+		if len(sec.Name) > 7 && sec.Name[:7] == "THREAD-" {
+			hasThread = true
+			break
+		}
+	}
+	if !hasThread {
+		return fmt.Errorf("at least one [THREAD-*] section is required (e.g. [THREAD-SERVO])")
 	}
 
 	// [HAL]HALUI requires [TASK]TASK (halui communicates with the task controller via NML).
@@ -47,9 +59,6 @@ func (l *Launcher) validateDependencies() error {
 		}
 		if l.ini.Get("TRAJ", "COORDINATES") == "" {
 			return fmt.Errorf("[TASK]TASK is set but [TRAJ]COORDINATES is missing")
-		}
-		if l.ini.Get("EMCMOT", "SERVO_PERIOD") == "" {
-			return fmt.Errorf("[TASK]TASK is set but [EMCMOT]SERVO_PERIOD is missing")
 		}
 		if l.ini.Get("RS274NGC", "PARAMETER_FILE") == "" {
 			return fmt.Errorf("[TASK]TASK is set but [RS274NGC]PARAMETER_FILE is missing")

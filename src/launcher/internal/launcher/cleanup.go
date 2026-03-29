@@ -27,7 +27,7 @@ func (l *Launcher) cleanup() {
 // Startup order (from Run()):
 //  1. RtapiAppInit
 //  2. hal.NewComponent (launcher)
-//  3. loadThreads (hal_create_thread)
+//  3. createThreads (hal_create_thread_cpu)
 //  4. load modules (cmod New, loadrt, loadusr)
 //  5. wire HAL (addf, net, setp)
 //  6. startTask
@@ -37,19 +37,18 @@ func (l *Launcher) cleanup() {
 //
 // Shutdown order (strict reverse):
 //  1. stopApplications            (reverse of 9)
-//  2. stopTask                    (reverse of 6)
+//  2. stopCModules, stopGoModules (reverse of 8)
 //  3. StopThreads — SYNCHRONOUS   (reverse of 7, waits for all RT idle)
 //     ── barrier: no RT function executes past this point ──
-//  4. stopCModules                (reverse of 8, safe — threads are idle)
-//  5. stopGoModules               (reverse of 8)
-//  6. SHUTDOWN halfile
-//  7. destroyCModules             (reverse of 4, frees EC masters etc.)
-//  8. destroyGoModules            (reverse of 4)
-//  9. UnloadAll                   (reverse of 4, unloads loadrt components)
-//  10. wait for unload
-//  11. halComp.Exit                (reverse of 2)
-//  12. RtapiAppCleanup             (reverse of 1)
-//  13. Release lock file
+//  4. SHUTDOWN halfile
+//  5. destroyCModules             (reverse of 4, frees EC masters etc.)
+//  6. destroyGoModules            (reverse of 4)
+//  7. UnloadAll                   (reverse of 4, unloads loadrt components)
+//  8. wait for unload
+//  9. deleteThreads               (reverse of 3, hal_thread_delete)
+//  10. halComp.Exit                (reverse of 2)
+//  11. RtapiAppCleanup             (reverse of 1)
+//  12. Release lock file
 //
 // All errors are logged but not returned so that every step runs even if a
 // prior step fails.
@@ -134,6 +133,11 @@ func (l *Launcher) doCleanup() {
 			}
 			time.Sleep(200 * time.Millisecond)
 		}
+
+		// Step 10b — Delete HAL threads (reverse of createThreads).
+		// Must happen after UnloadAll so no component references the threads.
+		l.logger.Debug("deleting HAL threads")
+		l.deleteThreads()
 
 		// Step 11 — Exit the launcher's own HAL component.
 		// Must happen while HAL shared memory is still valid, i.e. before

@@ -29,6 +29,7 @@ import (
 	"github.com/sittner/linuxcnc/src/launcher/internal/halfile"
 	"github.com/sittner/linuxcnc/src/launcher/internal/lockfile"
 	"github.com/sittner/linuxcnc/src/launcher/internal/realtime"
+	"github.com/sittner/linuxcnc/src/launcher/internal/threadcfg"
 	"github.com/sittner/linuxcnc/src/launcher/pkg/gomodule"
 	"github.com/sittner/linuxcnc/src/launcher/pkg/inifile"
 )
@@ -70,6 +71,7 @@ type Launcher struct {
 	cModArena    []unsafe.Pointer   // arena-tracked C strings freed in destroyCModules
 	logRing      *gomcLogRing       // shared log ring buffer for C module FIFO logging
 	retain       *retainInstance    // integrated retain subsystem (nil if unused)
+	threadNames  []string           // HAL thread names created by createThreads (for cleanup)
 }
 
 // New creates a new Launcher with the given options and logger.
@@ -295,14 +297,14 @@ func (l *Launcher) Run() (runErr error) {
 		return fmt.Errorf("hal ready: %w", err)
 	}
 
-	// Load the threads HAL component to create RT threads (servo-thread,
-	// optionally base-thread). Thread creation has been decoupled from
-	// motmod — the launcher now loads the threads component which runs
-	// in-process via dlopen with proper RT scheduling.
-	// This must happen before motmod, HAL files, or any component that
+	// Create HAL realtime threads from [THREAD-*] INI sections.
+	// Threads are created directly via hal_create_thread_cpu() — the threads.c
+	// component is no longer used.  CPU affinity is computed by the launcher
+	// based on isolated core topology and per-thread [THREAD-*]CPU settings.
+	// Threads must exist before motmod, HAL files, or any component that
 	// uses addf to attach functions to threads.
-	if err := l.loadThreads(); err != nil {
-		return fmt.Errorf("loading threads: %w", err)
+	if err := l.createThreads(); err != nil {
+		return fmt.Errorf("creating threads: %w", err)
 	}
 
 	// Load the iocontrol C module plugin — only when the task controller
@@ -599,54 +601,54 @@ func (l *Launcher) logConfiguration() {
 	l.logger.Debug("INI configuration loaded", fields...)
 }
 
-// loadThreads loads the threads HAL component to create RT threads.
+// createThreads parses [THREAD-*] INI sections, validates ordering,
+// computes CPU affinity, and creates HAL realtime threads directly via
+// hal_create_thread_cpu().
 //
-// Thread creation has been decoupled from motmod — motmod now only exports
-// functions, so the threads must exist before motmod or HAL files run.
+// Threads are created fastest-first (ascending period) as required by
+// HAL's rate monotonic priority scheduling.  CPU affinity is resolved
+// from isolated cores and per-thread CPU settings in the INI file.
 //
-// The threads component is loaded in-process via hal.LoadRT() which
-// dlopen()s threads.so and calls hal_create_thread(), ensuring the RT
-// pthreads get proper RT scheduling.
-//
-// Logic (reads [EMCMOT]SERVO_PERIOD and [EMCMOT]BASE_PERIOD from INI):
-//   - If [EMCMOT]BASE_PERIOD is set and > 0:
-//     loadrt threads name1=base-thread period1=<BASE_PERIOD> name2=servo-thread period2=<SERVO_PERIOD>
-//   - Otherwise (no BASE_PERIOD or BASE_PERIOD=0):
-//     loadrt threads name1=servo-thread period1=<SERVO_PERIOD>
-//
-// Threads are created fastest-first (base-thread before servo-thread) for
-// proper rate monotonic priority scheduling.
-func (l *Launcher) loadThreads() error {
-	servoPeriodStr := l.ini.Get("EMCMOT", "SERVO_PERIOD")
-	if servoPeriodStr == "" {
-		return fmt.Errorf("[EMCMOT]SERVO_PERIOD is required but not set")
+// Created thread names are stored in l.threadNames for cleanup
+// (deleteThreads).
+func (l *Launcher) createThreads() error {
+	threads, err := threadcfg.ParseThreads(l.ini)
+	if err != nil {
+		return err
 	}
 
-	basePeriodStr := l.ini.Get("EMCMOT", "BASE_PERIOD")
-
-	var args []string
-	if basePeriodStr != "" && basePeriodStr != "0" {
-		// Two threads: base-thread (fast, no FP) + servo-thread (slow, FP)
-		l.logger.Info("loading threads component",
-			"base_period", basePeriodStr, "servo_period", servoPeriodStr)
-		args = []string{
-			"name1=base-thread", "period1=" + basePeriodStr,
-			"name2=servo-thread", "period2=" + servoPeriodStr,
-		}
-	} else {
-		// One thread: servo-thread only
-		l.logger.Info("loading threads component",
-			"servo_period", servoPeriodStr)
-		args = []string{
-			"name1=servo-thread", "period1=" + servoPeriodStr,
-		}
+	if err := threadcfg.ValidateOrder(threads); err != nil {
+		return err
 	}
 
-	if err := halcmd.LoadRT("threads", args...); err != nil {
-		return fmt.Errorf("loadrt threads: %w", err)
+	threads, err = threadcfg.AssignCPUs(threads)
+	if err != nil {
+		return err
+	}
+
+	for _, th := range threads {
+		l.logger.Info("creating HAL thread",
+			"name", th.Name, "period", th.Period, "fp", th.FP, "cpu", th.CPU)
+		if err := halcmd.CreateThreadCPU(th.Name, th.Period, th.FP, th.CPU); err != nil {
+			return fmt.Errorf("creating thread %q: %w", th.Name, err)
+		}
+		l.threadNames = append(l.threadNames, th.Name)
 	}
 
 	return nil
+}
+
+// deleteThreads deletes all HAL threads created by createThreads, in reverse
+// order.  Must be called after StopThreads and after all components are
+// unloaded.
+func (l *Launcher) deleteThreads() {
+	for i := len(l.threadNames) - 1; i >= 0; i-- {
+		name := l.threadNames[i]
+		l.logger.Debug("deleting HAL thread", "name", name)
+		if err := halcmd.ThreadDelete(name); err != nil {
+			l.logger.Debug("hal thread delete returned error", "name", name, "error", err)
+		}
+	}
 }
 
 // preloadMotionModules loads the trajectory planner and homing modules via
