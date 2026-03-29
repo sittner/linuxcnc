@@ -182,7 +182,7 @@ If you're not familiar with Linux place the file in your home directory.
 
 [source,{hal}]
 ----
-loadrt threads period1=1000000 name1=thread
+newthread thread 1000000
 loadrt siggen
 loadrt lowpass
 loadrt limit2
@@ -256,7 +256,8 @@ In the following example we have created a simple GladeVCP panel with one steppe
 loadusr -Wn winder gladevcp -c winder -u handler.py winder.glade
 
 # load realtime components
-loadrt threads name1=fast period1=50000 fp1=0 name2=slow period2=1000000
+newthread fast 50000 nofp
+newthread slow 1000000
 loadrt stepgen step_type=0 ctrl_type=v
 loadrt hal_parport cfg="0x378 out"
 

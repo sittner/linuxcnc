@@ -159,6 +159,7 @@ struct halcmd_command halcmd_commands[] = {
     {"lock",    FUNCT(do_lock_cmd),    A_ONE | A_OPTIONAL },
     {"net",     FUNCT(do_net_cmd),     A_ONE | A_PLUS | A_REMOVE_ARROWS },
     {"newsig",  FUNCT(do_newsig_cmd),  A_TWO },
+    {"newthread",FUNCT(do_newthread_cmd),A_TWO | A_PLUS },
     {"retain",  FUNCT(do_retain_cmd),  A_ONE },
     {"save",    FUNCT(do_save_cmd),    A_TWO | A_OPTIONAL | A_TILDE },
     {"setexact_for_test_suite_only", FUNCT(do_setexact_cmd), A_ZERO },
@@ -177,6 +178,7 @@ struct halcmd_command halcmd_commands[] = {
     {"unloadusr", FUNCT(do_unloadusr_cmd), A_ONE },
     {"unlock",  FUNCT(do_unlock_cmd),  A_ONE | A_OPTIONAL },
     {"unretain", FUNCT(do_unretain_cmd), A_ONE },
+    {"delthread",FUNCT(do_delthread_cmd),A_ONE },
     {"waitusr", FUNCT(do_waitusr_cmd), A_ONE },
 };
 int halcmd_ncommands = (sizeof(halcmd_commands) / sizeof(halcmd_commands[0]));

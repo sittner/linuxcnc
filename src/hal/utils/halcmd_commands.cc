@@ -91,6 +91,7 @@ static void save_links(FILE *dst, int arrows);
 static void save_nets(FILE *dst, int arrows);
 static void save_params(FILE *dst);
 static void save_unconnected_input_pin_values(FILE *dst);
+static void save_newthreads(FILE *dst);
 static void save_threads(FILE *dst);
 static void print_help_commands(void);
 
@@ -303,6 +304,53 @@ int do_stop_cmd(void) {
     if (retval == 0) {
         /* print success message */
         halcmd_info("Realtime threads stopped\n");
+    }
+    return retval;
+}
+
+int do_newthread_cmd(char *name, char *args[]) {
+    long period;
+    int uses_fp = 1;
+    int cpu = -1;
+    char *cp;
+
+    if (!name || !args || !args[0]) {
+        halcmd_error("newthread requires at least a name and period\n");
+        return -EINVAL;
+    }
+    period = strtol(args[0], &cp, 10);
+    if ((*cp != '\0') || (period <= 0)) {
+        halcmd_error("value '%s' invalid for period\n", args[0]);
+        return -EINVAL;
+    }
+    /* parse optional keyword arguments: fp/nofp, cpu=N */
+    for (int i = 1; args[i] != NULL; i++) {
+        if (strcasecmp(args[i], "fp") == 0) {
+            uses_fp = 1;
+        } else if (strcasecmp(args[i], "nofp") == 0) {
+            uses_fp = 0;
+        } else if (strncasecmp(args[i], "cpu=", 4) == 0) {
+            cpu = strtol(args[i] + 4, &cp, 10);
+            if (*cp != '\0' || cpu < -1) {
+                halcmd_error("value '%s' invalid for cpu\n", args[i] + 4);
+                return -EINVAL;
+            }
+        } else {
+            halcmd_error("unknown option '%s' for newthread\n", args[i]);
+            return -EINVAL;
+        }
+    }
+    int retval = hal_create_thread_cpu(name, period, uses_fp, cpu);
+    if (retval != 0) {
+        halcmd_error("newthread %s failed\n", name);
+    }
+    return retval;
+}
+
+int do_delthread_cmd(char *name) {
+    int retval = hal_thread_delete(name);
+    if (retval != 0) {
+        halcmd_error("delthread %s failed\n", name);
     }
     return retval;
 }
@@ -2309,6 +2357,7 @@ int do_save_cmd(const char *type, char *filename)
 	|| (strcmp(type, "allu") == 0) ) {
 	/* save everything */
 	save_comps(dst);
+	save_newthreads(dst);
 	save_aliases(dst);
 	save_signals(dst, 1);
 	save_nets(dst, 3);
@@ -2390,6 +2439,10 @@ static void save_comps(FILE *dst)
     for(i=ncomps; i--;)
     {
         comp = comps[i];
+        /* skip thread pseudo-components (saved via save_newthreads) */
+        if (strstr(comp->name, HAL_PSEUDO_COMP_PREFIX) == comp->name) {
+            continue;
+        }
         /* only print realtime components */
         if ( comp->insmod_args == 0 ) {
             fprintf(dst, "#loadrt %s  (not loaded by loadrt, no args saved)\n", comp->name);
@@ -2591,6 +2644,24 @@ static void save_params(FILE *dst)
 		data_value((int) param->type, SHMPTR(param->data_ptr)));
 	}
 	next = param->next_ptr;
+    }
+    rtapi_mutex_give(&(hal_data->mutex));
+}
+
+static void save_newthreads(FILE *dst)
+{
+    SHMFIELD(hal_thread_t) next_thread;
+    hal_thread_t *tptr;
+
+    rtapi_mutex_get(&(hal_data->mutex));
+    next_thread = hal_data->thread_list_ptr;
+    while (next_thread != 0) {
+	tptr = SHMPTR(next_thread);
+	fprintf(dst, "newthread %s %lu", tptr->name, tptr->period);
+	if (!tptr->uses_fp)
+	    fprintf(dst, " nofp");
+	fprintf(dst, "\n");
+	next_thread = tptr->next_ptr;
     }
     rtapi_mutex_give(&(hal_data->mutex));
 }
