@@ -44,6 +44,7 @@ func (l *Launcher) cleanup() {
 //  5. destroyCModules             (reverse of 4, frees EC masters etc.)
 //  6. destroyGoModules            (reverse of 4)
 //  7. UnloadAll                   (reverse of 4, unloads loadrt components)
+//
 // 10. deleteThreads               (reverse of 3, hal_thread_delete)
 // 11. wait for unload             (userspace processes may still be exiting)
 //  10. halComp.Exit                (reverse of 2)
