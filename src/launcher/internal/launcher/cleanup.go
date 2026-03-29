@@ -3,6 +3,7 @@ package launcher
 
 import (
 	"os"
+	"strings"
 	"time"
 
 	halcmd "github.com/sittner/linuxcnc/src/launcher/internal/halcmd"
@@ -118,6 +119,22 @@ func (l *Launcher) doCleanup() {
 		l.logger.Debug("unloading HAL components")
 		if err := halcmd.UnloadAll(0); err != nil {
 			l.logger.Debug("hal unload all returned error", "error", err)
+		}
+
+		// Step 9b — Delete HAL threads.
+		// Threads created by newthread in HAL files have __<name>
+		// pseudo-components that UnloadAll does not remove.  Delete them
+		// now so the wait loop below does not stall on them.
+		if comps, err := halcmd.ListComponents(); err == nil {
+			for _, name := range comps {
+				if strings.HasPrefix(name, "__") {
+					threadName := name[2:]
+					l.logger.Debug("deleting HAL thread", "name", threadName)
+					if err := halcmd.ThreadDelete(threadName); err != nil {
+						l.logger.Debug("hal thread delete returned error", "name", threadName, "error", err)
+					}
+				}
+			}
 		}
 
 		// Step 10 — Wait for remaining HAL components to unload.
