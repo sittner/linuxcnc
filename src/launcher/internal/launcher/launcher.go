@@ -29,7 +29,6 @@ import (
 	"github.com/sittner/linuxcnc/src/launcher/internal/halfile"
 	"github.com/sittner/linuxcnc/src/launcher/internal/lockfile"
 	"github.com/sittner/linuxcnc/src/launcher/internal/realtime"
-	"github.com/sittner/linuxcnc/src/launcher/internal/threadcfg"
 	"github.com/sittner/linuxcnc/src/launcher/pkg/gomodule"
 	"github.com/sittner/linuxcnc/src/launcher/pkg/inifile"
 )
@@ -71,7 +70,6 @@ type Launcher struct {
 	cModArena    []unsafe.Pointer   // arena-tracked C strings freed in destroyCModules
 	logRing      *gomcLogRing       // shared log ring buffer for C module FIFO logging
 	retain       *retainInstance    // integrated retain subsystem (nil if unused)
-	threadNames  []string           // HAL thread names created by createThreads (for cleanup)
 }
 
 // New creates a new Launcher with the given options and logger.
@@ -103,7 +101,6 @@ func (l *Launcher) ensureLogRing() {
 //  4. Validates cross-section INI dependencies (validateDependencies).
 //  5. Starts NML server (emcsvr cmod plugin) — only if [TASK]TASK is configured (M5).
 //  6. Starts the realtime environment (M4).
-//     6.5. Loads threads HAL component (creates servo-thread, optionally base-thread).
 //  7. Starts iocontrol via halcmd loadusr -Wn — only if [TASK]TASK is configured (M5).
 //  8. Starts halui via halcmd loadusr -Wn — only if [HAL]HALUI is configured (M5).
 //  9. Preloads tpmod/homemod — only if [TASK]TASK is configured (M4).
@@ -297,14 +294,11 @@ func (l *Launcher) Run() (runErr error) {
 		return fmt.Errorf("hal ready: %w", err)
 	}
 
-	// Create HAL realtime threads from [THREAD-*] INI sections.
-	// Threads are created directly via hal_create_thread_cpu() — the threads.c
-	// component is no longer used.  CPU affinity is computed by the launcher
-	// based on isolated core topology and per-thread [THREAD-*]CPU settings.
-	// Threads must exist before motmod, HAL files, or any component that
-	// uses addf to attach functions to threads.
-	if err := l.createThreads(); err != nil {
-		return fmt.Errorf("creating threads: %w", err)
+	// Initialize the CPU affinity pool for HAL thread creation.
+	// Detects isolated physical cores for automatic assignment by the
+	// newthread HAL command (executed from HAL files below).
+	if err := halcmd.InitCPUPool(l.logger); err != nil {
+		return fmt.Errorf("initializing CPU pool: %w", err)
 	}
 
 	// Load the iocontrol C module plugin — only when the task controller
@@ -599,56 +593,6 @@ func (l *Launcher) logConfiguration() {
 		"task", l.ini.Get("TASK", "TASK"),
 	}
 	l.logger.Debug("INI configuration loaded", fields...)
-}
-
-// createThreads parses [THREAD-*] INI sections, validates ordering,
-// computes CPU affinity, and creates HAL realtime threads directly via
-// hal_create_thread_cpu().
-//
-// Threads are created fastest-first (ascending period) as required by
-// HAL's rate monotonic priority scheduling.  CPU affinity is resolved
-// from isolated cores and per-thread CPU settings in the INI file.
-//
-// Created thread names are stored in l.threadNames for cleanup
-// (deleteThreads).
-func (l *Launcher) createThreads() error {
-	threads, err := threadcfg.ParseThreads(l.ini)
-	if err != nil {
-		return err
-	}
-
-	if err := threadcfg.ValidateOrder(threads); err != nil {
-		return err
-	}
-
-	threads, err = threadcfg.AssignCPUs(threads)
-	if err != nil {
-		return err
-	}
-
-	for _, th := range threads {
-		l.logger.Info("creating HAL thread",
-			"name", th.Name, "period", th.Period, "fp", th.FP, "cpu", th.CPU)
-		if err := halcmd.CreateThreadCPU(th.Name, th.Period, th.FP, th.CPU); err != nil {
-			return fmt.Errorf("creating thread %q: %w", th.Name, err)
-		}
-		l.threadNames = append(l.threadNames, th.Name)
-	}
-
-	return nil
-}
-
-// deleteThreads deletes all HAL threads created by createThreads, in reverse
-// order.  Must be called after StopThreads and after all components are
-// unloaded.
-func (l *Launcher) deleteThreads() {
-	for i := len(l.threadNames) - 1; i >= 0; i-- {
-		name := l.threadNames[i]
-		l.logger.Debug("deleting HAL thread", "name", name)
-		if err := halcmd.ThreadDelete(name); err != nil {
-			l.logger.Debug("hal thread delete returned error", "name", name, "error", err)
-		}
-	}
 }
 
 // preloadMotionModules loads the trajectory planner and homing modules via

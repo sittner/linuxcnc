@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sittner/linuxcnc/src/launcher/internal/threadcfg"
 	"github.com/sittner/linuxcnc/src/launcher/pkg/inifile"
 )
 
@@ -271,112 +270,6 @@ SERVO_PERIOD = 1000000
 	wantSub := "loadrt motmod servo_period_nsec=1000000"
 	if got := ini.Substitute(input); got != wantSub {
 		t.Errorf("Substitute:\n got  %q\n want %q", got, wantSub)
-	}
-}
-
-// --------------------------------------------------------------------------
-// Tests for createThreads INI parsing via threadcfg
-// --------------------------------------------------------------------------
-
-// TestCreateThreadsConfig_ServoOnly verifies that a single [THREAD-SERVO]
-// section produces the correct thread config.
-func TestCreateThreadsConfig_ServoOnly(t *testing.T) {
-	dir := t.TempDir()
-	f := writeIni(t, dir, "test.ini", `
-[THREAD-SERVO]
-PERIOD = 1000000
-`)
-	ini, err := inifile.Parse(f)
-	if err != nil {
-		t.Fatalf("Parse: %v", err)
-	}
-	threads, err := threadcfg.ParseThreads(ini)
-	if err != nil {
-		t.Fatalf("ParseThreads: %v", err)
-	}
-	if len(threads) != 1 {
-		t.Fatalf("got %d threads, want 1", len(threads))
-	}
-	if threads[0].Name != "servo-thread" {
-		t.Errorf("Name = %q, want %q", threads[0].Name, "servo-thread")
-	}
-	if threads[0].Period != 1000000 {
-		t.Errorf("Period = %d, want 1000000", threads[0].Period)
-	}
-}
-
-// TestCreateThreadsConfig_BaseAndServo verifies two threads in correct order.
-func TestCreateThreadsConfig_BaseAndServo(t *testing.T) {
-	dir := t.TempDir()
-	f := writeIni(t, dir, "test.ini", `
-[THREAD-BASE]
-PERIOD = 50000
-FP = 0
-
-[THREAD-SERVO]
-PERIOD = 1000000
-`)
-	ini, err := inifile.Parse(f)
-	if err != nil {
-		t.Fatalf("Parse: %v", err)
-	}
-	threads, err := threadcfg.ParseThreads(ini)
-	if err != nil {
-		t.Fatalf("ParseThreads: %v", err)
-	}
-	if len(threads) != 2 {
-		t.Fatalf("got %d threads, want 2", len(threads))
-	}
-	if threads[0].Name != "base-thread" || threads[0].Period != 50000 || threads[0].FP != 0 {
-		t.Errorf("threads[0] = {%q, %d, FP=%d}, want {base-thread, 50000, FP=0}",
-			threads[0].Name, threads[0].Period, threads[0].FP)
-	}
-	if threads[1].Name != "servo-thread" || threads[1].Period != 1000000 {
-		t.Errorf("threads[1] = {%q, %d}, want {servo-thread, 1000000}",
-			threads[1].Name, threads[1].Period)
-	}
-	if err := threadcfg.ValidateOrder(threads); err != nil {
-		t.Errorf("ValidateOrder: %v", err)
-	}
-}
-
-// TestCreateThreadsConfig_WrongOrder verifies that reversed thread order fails.
-func TestCreateThreadsConfig_WrongOrder(t *testing.T) {
-	dir := t.TempDir()
-	f := writeIni(t, dir, "test.ini", `
-[THREAD-SERVO]
-PERIOD = 1000000
-
-[THREAD-BASE]
-PERIOD = 50000
-`)
-	ini, err := inifile.Parse(f)
-	if err != nil {
-		t.Fatalf("Parse: %v", err)
-	}
-	threads, err := threadcfg.ParseThreads(ini)
-	if err != nil {
-		t.Fatalf("ParseThreads: %v", err)
-	}
-	if err := threadcfg.ValidateOrder(threads); err == nil {
-		t.Error("expected error for wrong thread order, got nil")
-	}
-}
-
-// TestCreateThreadsConfig_MissingSections verifies missing threads is an error.
-func TestCreateThreadsConfig_MissingSections(t *testing.T) {
-	dir := t.TempDir()
-	f := writeIni(t, dir, "test.ini", `
-[EMC]
-MACHINE = Test
-`)
-	ini, err := inifile.Parse(f)
-	if err != nil {
-		t.Fatalf("Parse: %v", err)
-	}
-	_, err = threadcfg.ParseThreads(ini)
-	if err == nil {
-		t.Error("expected error for missing THREAD sections, got nil")
 	}
 }
 
@@ -993,8 +886,6 @@ MACHINE = TestMachine
 HALFILE = my-hardware.hal
 HALFILE = my-logic.hal
 
-[THREAD-SERVO]
-PERIOD = 1000000
 `)
 	if err := l.validateDependencies(); err != nil {
 		t.Errorf("HAL-only config should be valid, got error: %v", err)
@@ -1028,8 +919,6 @@ MACHINE = TestMachine
 HALFILE = hardware.hal
 HALUI = halui
 
-[THREAD-SERVO]
-PERIOD = 1000000
 
 # No [TASK]TASK
 `)
@@ -1052,8 +941,6 @@ MACHINE = TestMachine
 [HAL]
 HALFILE = hardware.hal
 
-[THREAD-SERVO]
-PERIOD = 1000000
 
 [EMCIO]
 EMCIO = io
@@ -1079,8 +966,6 @@ MACHINE = TestMachine
 [HAL]
 HALFILE = hardware.hal
 
-[THREAD-SERVO]
-PERIOD = 1000000
 
 [IO]
 IO = custom_io
@@ -1106,8 +991,6 @@ MACHINE = TestMachine
 [HAL]
 HALFILE = hardware.hal
 
-[THREAD-SERVO]
-PERIOD = 1000000
 
 [TASK]
 TASK = milltask
@@ -1143,8 +1026,6 @@ MACHINE = TestMachine
 [HAL]
 HALFILE = hardware.hal
 
-[THREAD-SERVO]
-PERIOD = 1000000
 
 [TASK]
 TASK = milltask
@@ -1181,8 +1062,6 @@ MACHINE = TestMachine
 [HAL]
 HALFILE = hardware.hal
 
-[THREAD-SERVO]
-PERIOD = 1000000
 
 [TASK]
 TASK = milltask
@@ -1219,8 +1098,6 @@ MACHINE = TestMachine
 [HAL]
 HALFILE = hardware.hal
 
-[THREAD-SERVO]
-PERIOD = 1000000
 
 [TASK]
 TASK = milltask
@@ -1258,8 +1135,6 @@ MACHINE = TestMachine
 HALFILE = hardware.hal
 HALUI = halui
 
-[THREAD-SERVO]
-PERIOD = 1000000
 
 [TASK]
 TASK = milltask

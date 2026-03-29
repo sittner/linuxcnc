@@ -9,7 +9,6 @@ import "fmt"
 //
 // Rules (checked for all modes):
 //   - At least one [HAL]HALFILE is required.
-//   - At least one [THREAD-*] section is required.
 //
 // Rules (cross-section dependencies):
 //   - [HAL]HALUI without [TASK]TASK → error (halui communicates via NML).
@@ -28,18 +27,6 @@ func (l *Launcher) validateDependencies() error {
 	// At least one [HAL]HALFILE is required in all modes.
 	if len(halFiles) == 0 {
 		return fmt.Errorf("at least one [HAL]HALFILE is required")
-	}
-
-	// At least one [THREAD-*] section is required.
-	hasThread := false
-	for _, sec := range l.ini.Sections {
-		if len(sec.Name) > 7 && sec.Name[:7] == "THREAD-" {
-			hasThread = true
-			break
-		}
-	}
-	if !hasThread {
-		return fmt.Errorf("at least one [THREAD-*] section is required (e.g. [THREAD-SERVO])")
 	}
 
 	// [HAL]HALUI requires [TASK]TASK (halui communicates with the task controller via NML).

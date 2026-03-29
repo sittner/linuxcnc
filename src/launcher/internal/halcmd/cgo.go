@@ -2695,3 +2695,9 @@ func halSetDebug(level int) error {
 	ret := C.hal_shim_debug(C.int(level))
 	return halError(int(ret), "hal_shim_debug")
 }
+
+// rtapiIsRealtime wraps rtapi_is_realtime(). Returns true if the process is
+// running with POSIX realtime scheduling (SCHED_FIFO).
+func rtapiIsRealtime() bool {
+	return C.rtapi_is_realtime() != 0
+}

@@ -81,3 +81,4 @@ func halShowThreads(_ string) ([]ThreadInfo, error) { return nil, ErrNoCGO }
 func halStatus() (*StatusInfo, error)    { return nil, ErrNoCGO }
 func halSave(_ string) ([]string, error) { return nil, ErrNoCGO }
 func halSetDebug(_ int) error            { return ErrNoCGO }
+func rtapiIsRealtime() bool              { return false }

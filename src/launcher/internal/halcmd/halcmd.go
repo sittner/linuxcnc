@@ -34,12 +34,23 @@ func StopThreads() error {
 	return halStopThreads()
 }
 
-// CreateThreadCPU creates a single HAL realtime thread with explicit CPU affinity.
-// cpu=-1 means no affinity (OS schedules freely).
+// CreateThreadCPU creates a single HAL realtime thread with CPU affinity.
+//
+// When cpu=-1, the next available isolated CPU is automatically assigned from
+// the pool initialized by InitCPUPool().  If the pool is exhausted the thread
+// runs without affinity (a warning is logged in POSIX RT mode).
+//
+// When cpu>=0, the value is validated against the pool of isolated physical
+// cores. An error is returned if the CPU is not available.
+//
 // Threads must be created fastest-first (ascending period) for rate monotonic
-// priority scheduling.  Returns nil on success.
+// priority scheduling.
 func CreateThreadCPU(name string, periodNs int64, usesFP int, cpu int) error {
-	return halCreateThreadCPU(name, periodNs, usesFP, cpu)
+	assigned, err := acquireCPU(name, cpu)
+	if err != nil {
+		return err
+	}
+	return halCreateThreadCPU(name, periodNs, usesFP, assigned)
 }
 
 // ThreadDelete deletes a HAL realtime thread by name.
