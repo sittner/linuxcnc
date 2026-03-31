@@ -1,6 +1,6 @@
 # Jog Pendant
 loadrt encoder num_chan=1
-loadrt mux4 count=1
+load mux4 [mux4.0]
 addf encoder.update-counters servo-thread
 addf mux4.0 servo-thread
 

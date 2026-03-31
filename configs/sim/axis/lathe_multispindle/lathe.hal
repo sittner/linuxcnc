@@ -64,8 +64,8 @@ net spindle-index-enable spindle.1.index-enable <=> encoder_0.index-enable
 net spindle.1.pos encoder_1.position => spindle.1.revs
 
 # for spindle velocity estimate
-loadrt lowpass names=lowpass_velocity.0,lowpass_velocity.1
-loadrt scale names=scale_to_rpm.0,scale_to_rpm.1
+load lowpass [lowpass_velocity.0,lowpass_velocity.1]
+load scale [scale_to_rpm.0,scale_to_rpm.1]
 net spindle-rps-raw.0 encoder_0.velocity lowpass_velocity.0.in
 net spindle-rps-filtered.0 lowpass_velocity.0.out scale_to_rpm.0.in spindle.0.speed-in
 net spindle-rpm-filtered.0 scale_to_rpm.0.out

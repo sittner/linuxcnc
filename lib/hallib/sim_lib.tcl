@@ -171,7 +171,7 @@ proc core_sim {axes
   set pid_names [string trimleft $pid_names ,]
   set mux_names [string trimleft $mux_names ,]
   loadrt pid  names=$pid_names
-  loadrt mux2 names=$mux_names
+  load mux2 [$mux_names]
 
   # pid components
   # The pid comp is used as a pass-thru device (FF0=1,all other gains=0)
@@ -233,7 +233,7 @@ proc make_ddts {number_of_joints} {
     set ddt_names "${ddt_names},J${jno}_vel,J${jno}_accel"
   }
   set ddt_names [string trimleft $ddt_names ,]
-  loadrt ddt names=$ddt_names
+  load ddt [$ddt_names]
   foreach cname [split $ddt_names ,] {
     addf $cname servo-thread
   }
@@ -302,7 +302,7 @@ proc simulated_home {number_of_joints} {
     set switch_names "${switch_names},J${jno}_switch"
   }
   set switch_names [string trimleft $switch_names ,]
-  loadrt sim_home_switch names=$switch_names
+  load sim_home_switch [$switch_names]
   foreach cname [split $switch_names ,] {
     addf $cname servo-thread
   }
@@ -356,9 +356,9 @@ proc sim_spindle {} {
   do_setp sim_spindle.scale 0.01666667
 
   loadrt limit2  names=limit_speed
-  loadrt lowpass names=spindle_mass
+  load lowpass [spindle_mass]
   loadrt near    names=near_speed
-  loadrt scale names=rpm_rps
+  load scale [rpm_rps]
 
   setp rpm_rps.gain .0167
 

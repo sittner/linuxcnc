@@ -4,7 +4,7 @@
 # This file will not be overwritten when you run stepconf again
 
 # External E-Stop pyVCP button for external use a normally closed contact
-loadrt not count=1
+load not [not.0]
 addf not.0 servo-thread
 
 # The not changes the normally open pyVCP button to normally closed

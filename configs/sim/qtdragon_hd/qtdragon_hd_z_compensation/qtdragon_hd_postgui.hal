@@ -1,11 +1,11 @@
 # load components
 ########################################################################
 
-loadrt logic names=logic-and personality=0x102
+load logic [logic-and] personality=0x102
 addf logic-and servo-thread
 
 # load a summing component for adding spindle lift and Z compensation
-loadrt scaled_s32_sums
+load scaled_s32_sums [scaled_s32_sums.0]
 addf scaled-s32-sums.0 servo-thread
 
 loadusr -Wn z_level_compensation z_level_compensation

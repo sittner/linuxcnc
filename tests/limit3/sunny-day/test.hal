@@ -15,7 +15,7 @@ setp siggen.0.amplitude 50
 setp siggen.0.offset -50
 
 
-loadrt ddt names=ddt.in-accel,ddt.in-vel,ddt.out-accel,ddt.out-vel
+load ddt [ddt.in-accel,ddt.in-vel,ddt.out-accel,ddt.out-vel]
 
 
 loadrt sampler depth=2000 cfg=ffffff

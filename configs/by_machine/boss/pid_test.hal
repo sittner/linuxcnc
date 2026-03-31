@@ -22,10 +22,10 @@ loadrt boss_plc
 loadrt debounce cfg="6"
 
 # Load muxes for motion feedback and PID command.
-loadrt mux2 count=8
+load mux2 [mux2.0,mux2.1,mux2.2,mux2.3,mux2.4,mux2.5,mux2.6,mux2.7]
 
 # Load differentiators for debug.
-loadrt ddt count=3
+load ddt [ddt.0,ddt.1,ddt.2]
 
 # Load the signal generator module for tuning.
 loadrt siggen

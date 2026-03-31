@@ -9,7 +9,7 @@ loadrt {{ini "KINS" "KINEMATICS"}}
 loadrt {{ini "EMCMOT" "EMCMOT"}} base_period_nsec={{ini "EMCMOT" "BASE_PERIOD"}} servo_period_nsec={{ini "EMCMOT" "SERVO_PERIOD"}} num_joints={{.Joints}} num_spindles={{ini "TRAJ" "SPINDLES"}}
 loadrt  plasmac
 {{- range $jNum := count .Joints}}
-loadrt sim_home_switch names=sim-joint.{{$jNum}}.home-switch
+load sim_home_switch [sim-joint.{{$jNum}}.home-switch]
 {{- end}}
 loadrt stepgen step_type={{range $jNum := count .Joints}}{{if gt $jNum 0}},{{end}}0{{end}}
 
@@ -39,7 +39,7 @@ net sim:joint{{$jNum}}.homesw  sim-joint.{{$jNum}}.home-switch.home-sw => joint.
 {{- end}}
 
 # ---INPUT DEBOUNCE---
-loadrt dbounce names=db_breakaway,db_float,db_ohmic,db_arc-ok
+load dbounce [db_breakaway,db_float,db_ohmic,db_arc-ok]
 addf db_float     servo-thread
 addf db_ohmic     servo-thread
 addf db_breakaway servo-thread
@@ -54,8 +54,8 @@ net sim:tool-change-loopback  iocontrol.tool-change  => iocontrol.tool-changed
 net sim:tool-prepare-loopback iocontrol.tool-prepare => iocontrol.tool-prepared
 
 # ---ESTOP HANDLING---
-loadrt or2 names=estop_or
-loadrt not names=estop_not,estop_not_1
+load or2 [estop_or]
+load not [estop_not,estop_not_1]
 addf estop_or    servo-thread
 addf estop_not   servo-thread
 addf estop_not_1 servo-thread

@@ -3,8 +3,8 @@ loadrt [EMCMOT]EMCMOT base_period_nsec=[EMCMOT]BASE_PERIOD servo_period_nsec=[EM
 loadrt hal_parport cfg=0x378
 setp parport.0.reset-time 4000
 loadrt stepgen step_type=0,0,0,0
-loadrt charge_pump
-loadrt match8 count=1
+load charge_pump [charge_pump.0]
+load match8 [match8.0]
 
 loadrt pwmgen output_type=1
 setp pwmgen.0.pwm-freq 5.0
