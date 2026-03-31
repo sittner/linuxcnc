@@ -121,7 +121,7 @@ static void retain_sync(void *arg, long period) {
 // retain_init creates the "retain" pseudo-component, exports the RT function,
 // and returns the component ID.  The caller must call hal_ready() after addf.
 static int retain_init(retain_state_t *st) {
-    int comp_id = hal_init("retain");
+    int comp_id = hal_init_ex("retain", NULL, COMPONENT_TYPE_REALTIME);
     if (comp_id < 0) {
         return comp_id;
     }

@@ -35,15 +35,15 @@ import (
 	"unsafe"
 )
 
-// halInit wraps hal_init() to create a new HAL component.
+// halInit wraps hal_init_ex() to create a new HAL userspace component.
 // Returns the component ID on success, or an error on failure.
 func halInit(name string) (int, error) {
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
 
-	compID := C.hal_init(cName)
+	compID := C.hal_init_ex(cName, nil, C.COMPONENT_TYPE_USER)
 	if compID < 0 {
-		return 0, halError(int(compID), "hal_init")
+		return 0, halError(int(compID), "hal_init_ex")
 	}
 
 	return int(compID), nil
