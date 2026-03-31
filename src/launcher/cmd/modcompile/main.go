@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/sittner/linuxcnc/src/launcher/internal/modcompile/cgen"
 	"github.com/sittner/linuxcnc/src/launcher/internal/modcompile/comp"
 )
 
@@ -56,7 +57,12 @@ func main() {
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
 			enc.Encode(pkg)
-		case "--preprocess", "--compile", "--install":
+		case "--preprocess":
+			if err := cgen.Generate(os.Stdout, pkg); err != nil {
+				fmt.Fprintf(os.Stderr, "modcompile: %v\n", err)
+				os.Exit(1)
+			}
+		case "--compile", "--install":
 			fmt.Fprintf(os.Stderr, "modcompile: %s not yet implemented\n", mode)
 			os.Exit(1)
 		default:
