@@ -279,40 +279,60 @@ func (g *generator) emitHeader() {
 	g.printf("\n")
 }
 
+func (g *generator) needsHALStruct() bool {
+	return len(g.comp.Pins) > 0 || len(g.comp.Params) > 0
+}
+
 func (g *generator) emitInstanceStruct() {
 	g.printf("/* ---------------------------------------------------------------------------\n")
 	g.printf(" * Instance data\n")
 	g.printf(" * ------------------------------------------------------------------------- */\n\n")
+
+	// inst_hal_t lives in HAL shared memory (allocated via hal_malloc).
+	// Pin pointers and param values MUST reside in shmem for hal_pin_new /
+	// hal_param_new to accept the data_ptr_addr.
+	if g.needsHALStruct() {
+		g.printf("typedef struct {\n")
+
+		// Pins — pointers to HAL shared memory.
+		for _, pin := range g.comp.Pins {
+			cName := toC(pin.Name)
+			cType := pin.Type.CType()
+			if pin.ArraySize > 0 {
+				g.printf("    %s *%s[%d];\n", cType, cName, pin.ArraySize)
+			} else {
+				g.printf("    %s *%s;\n", cType, cName)
+			}
+		}
+
+		// Params — value storage.
+		for _, param := range g.comp.Params {
+			cName := toC(param.Name)
+			cType := param.Type.CType()
+			if param.ArraySize > 0 {
+				g.printf("    %s %s[%d];\n", cType, cName, param.ArraySize)
+			} else {
+				g.printf("    %s %s;\n", cType, cName)
+			}
+		}
+
+		g.printf("} inst_hal_t;\n\n")
+	}
+
+	// inst_t lives on the regular heap (calloc).  It holds the cmod
+	// lifecycle vtable, env pointer, and a pointer to the shmem portion.
 	g.printf("typedef struct {\n")
 	g.printf("    cmod_t base;\n")
 	g.printf("    const cmod_env_t *env;\n")
 	g.printf("    int comp_id;\n")
 	g.printf("    char name[GOMC_HAL_NAME_LEN + 1];\n")
 
+	if g.needsHALStruct() {
+		g.printf("    inst_hal_t *hal;  /* HAL shared memory portion */\n")
+	}
+
 	if g.hasPersonality() {
 		g.printf("    int _personality;\n")
-	}
-
-	// Pins — pointers to HAL shared memory.
-	for _, pin := range g.comp.Pins {
-		cName := toC(pin.Name)
-		cType := pin.Type.CType()
-		if pin.ArraySize > 0 {
-			g.printf("    %s *%s[%d];\n", cType, cName, pin.ArraySize)
-		} else {
-			g.printf("    %s *%s;\n", cType, cName)
-		}
-	}
-
-	// Params — value storage.
-	for _, param := range g.comp.Params {
-		cName := toC(param.Name)
-		cType := param.Type.CType()
-		if param.ArraySize > 0 {
-			g.printf("    %s %s[%d];\n", cType, cName, param.ArraySize)
-		} else {
-			g.printf("    %s %s;\n", cType, cName)
-		}
 	}
 
 	// Variables.
@@ -367,24 +387,24 @@ func (g *generator) emitConvenienceDefines() {
 	// fperiod convenience.
 	g.printf("#define fperiod (period * 1e-9)\n\n")
 
-	// Pin convenience: scalar → dereference pointer.
+	// Pin convenience: scalar → dereference pointer.  Pins live in inst_hal_t.
 	// Array pin → function-like macro with index.
 	for _, pin := range g.comp.Pins {
 		cName := toC(pin.Name)
 		if pin.ArraySize > 0 {
-			g.printf("#define %s(i) (*(__comp_inst->%s[i]))\n", cName, cName)
+			g.printf("#define %s(i) (*(__comp_inst->hal->%s[i]))\n", cName, cName)
 		} else {
-			g.printf("#define %s (*(__comp_inst->%s))\n", cName, cName)
+			g.printf("#define %s (*(__comp_inst->hal->%s))\n", cName, cName)
 		}
 	}
 
-	// Param convenience: direct access (not pointer).
+	// Param convenience: direct access (not pointer).  Params live in inst_hal_t.
 	for _, param := range g.comp.Params {
 		cName := toC(param.Name)
 		if param.ArraySize > 0 {
-			g.printf("#define %s(i) (__comp_inst->%s[i])\n", cName, cName)
+			g.printf("#define %s(i) (__comp_inst->hal->%s[i])\n", cName, cName)
 		} else {
-			g.printf("#define %s (__comp_inst->%s)\n", cName, cName)
+			g.printf("#define %s (__comp_inst->hal->%s)\n", cName, cName)
 		}
 	}
 
@@ -504,7 +524,7 @@ func (g *generator) emitStartStopDestroy() {
 	}
 	g.printf("    if (inst->comp_id > 0)\n")
 	g.printf("        inst->env->hal->exit(inst->env->hal->ctx, inst->comp_id);\n")
-	g.printf("    free(inst);\n")
+	g.printf("    inst->env->rtapi->free(inst->env->rtapi->ctx, inst);\n")
 	g.printf("}\n\n")
 }
 
@@ -521,8 +541,9 @@ func (g *generator) emitNew() {
 	}
 	g.printf("\n")
 
-	// Allocate instance.
-	g.printf("    inst_t *inst = (inst_t *)calloc(1, sizeof(inst_t));\n")
+	// Allocate instance (rtapi_calloc: mlock'd, page-faulted).
+	g.printf("    inst_t *inst = (inst_t *)env->rtapi->calloc(env->rtapi->ctx,\n")
+	g.printf("                        sizeof(inst_t));\n")
 	g.printf("    if (!inst) return -1;\n\n")
 
 	// Wire vtable.
@@ -562,7 +583,15 @@ func (g *generator) emitNew() {
 	// HAL init.
 	g.printf("    inst->comp_id = env->hal->init(env->hal->ctx, name,\n")
 	g.printf("                                   env->dl_handle, %s);\n", g.compType())
-	g.printf("    if (inst->comp_id < 0) { free(inst); return -1; }\n\n")
+	g.printf("    if (inst->comp_id < 0) { env->rtapi->free(env->rtapi->ctx, inst); return -1; }\n\n")
+
+	// Allocate HAL shared memory portion for pins and params.
+	if g.needsHALStruct() {
+		g.printf("    inst->hal = (inst_hal_t *)env->hal->malloc(env->hal->ctx,\n")
+		g.printf("                    sizeof(inst_hal_t));\n")
+		g.printf("    if (!inst->hal) goto err;\n")
+		g.printf("    memset(inst->hal, 0, sizeof(inst_hal_t));\n\n")
+	}
 
 	// Extra setup (runs before pins, can modify personality).
 	if g.hasExtraSetup() {
@@ -610,7 +639,7 @@ func (g *generator) emitNew() {
 
 	g.printf("err:\n")
 	g.printf("    env->hal->exit(env->hal->ctx, inst->comp_id);\n")
-	g.printf("    free(inst);\n")
+	g.printf("    env->rtapi->free(env->rtapi->ctx, inst);\n")
 	g.printf("    return -1;\n")
 	g.printf("}\n")
 }
@@ -652,11 +681,11 @@ func (g *generator) emitPinCreation(pin ast.Pin) {
 			g.printf("    for (j = 0; j < %d; j++) {\n", pin.ArraySize)
 		}
 		g.printf("        r = %s(env->hal, %s,\n", newf, dir)
-		g.printf("                &inst->%s[j], inst->comp_id,\n", cName)
+		g.printf("                &inst->hal->%s[j], inst->comp_id,\n", cName)
 		g.printf("                \"%%s.%s\", name, j);\n", halFmt)
 		g.printf("        if (r != 0) goto err;\n")
 		if pin.Default != "" {
-			g.printf("        *(inst->%s[j]) = %s;\n", cName, pin.Default)
+			g.printf("        *(inst->hal->%s[j]) = %s;\n", cName, pin.Default)
 		}
 		g.printf("    }\n")
 		if pin.Personality != "" {
@@ -668,11 +697,11 @@ func (g *generator) emitPinCreation(pin ast.Pin) {
 			g.printf("%s", openCond)
 		}
 		g.printf("    r = %s(env->hal, %s,\n", newf, dir)
-		g.printf("            &inst->%s, inst->comp_id,\n", cName)
+		g.printf("            &inst->hal->%s, inst->comp_id,\n", cName)
 		g.printf("            \"%%s.%s\", name);\n", halFmt)
 		g.printf("    if (r != 0) goto err;\n")
 		if pin.Default != "" {
-			g.printf("    *(inst->%s) = %s;\n", cName, pin.Default)
+			g.printf("    *(inst->hal->%s) = %s;\n", cName, pin.Default)
 		}
 		if pin.Personality != "" {
 			g.printf("%s", closeCond)
@@ -704,7 +733,7 @@ func (g *generator) emitParamCreation(param ast.Param) {
 		if param.Personality != "" {
 			g.printf("%s", openCond)
 		}
-		g.printf("    inst->%s = %s;\n", cName, param.Default)
+		g.printf("    inst->hal->%s = %s;\n", cName, param.Default)
 		if param.Personality != "" {
 			g.printf("%s", closeCond)
 		}
@@ -727,7 +756,7 @@ func (g *generator) emitParamCreation(param ast.Param) {
 			g.printf("    for (j = 0; j < %d; j++) {\n", param.ArraySize)
 		}
 		g.printf("        r = %s(env->hal, %s,\n", newf, dir)
-		g.printf("                &inst->%s[j], inst->comp_id,\n", cName)
+		g.printf("                &inst->hal->%s[j], inst->comp_id,\n", cName)
 		g.printf("                \"%%s.%s\", name, j);\n", halFmt)
 		g.printf("        if (r != 0) goto err;\n")
 		g.printf("    }\n")
@@ -739,7 +768,7 @@ func (g *generator) emitParamCreation(param ast.Param) {
 			g.printf("%s", openCond)
 		}
 		g.printf("    r = %s(env->hal, %s,\n", newf, dir)
-		g.printf("            &inst->%s, inst->comp_id,\n", cName)
+		g.printf("            &inst->hal->%s, inst->comp_id,\n", cName)
 		g.printf("            \"%%s.%s\", name);\n", halFmt)
 		g.printf("    if (r != 0) goto err;\n")
 		if param.Personality != "" {
