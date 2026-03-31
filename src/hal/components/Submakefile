@@ -3,8 +3,30 @@ CONVERTERS :=  \
     conv_bit_s32.comp conv_bit_u32.comp conv_bit_float.comp \
     conv_s32_float.comp conv_s32_bit.comp conv_s32_u32.comp \
     conv_u32_float.comp conv_u32_bit.comp conv_u32_s32.comp
-COMPS := $(filter-out hal/components/tpcomp.comp, $(sort $(wildcard hal/components/*.comp) $(addprefix hal/components/, $(CONVERTERS))))
-COMP_MANPAGES := $(patsubst hal/components/%.comp, ../docs/man/man9/%.9, $(COMPS)) ../docs/man/man9/tpcomp.9
+
+# ---------------------------------------------------------------------------
+# Components built via modcompile (cmod API, output to ../cmod/)
+# ---------------------------------------------------------------------------
+CMOD_COMP_NAMES := \
+    abs and2 axistest bin2gray bitslice bitwise blend \
+    charge_pump clarke2 clarke3 comp constant corexy_by_hal \
+    dbounce ddt deadzone demux differential edge feedcomp \
+    gantry gray2bin integ limit1 lincurve logic lowpass lut5 \
+    match8 minmax mult2 multiclick mux16 mux2 mux4 mux8 \
+    not offset or2 sample_hold scale scaled_s32_sums \
+    sim_axis_hardware sim_home_switch sim_parport \
+    steptest sum2 threadtest toggle2nist tristate_bit \
+    tristate_float wcomp xor2
+
+CMOD_COMPS := $(addprefix hal/components/, $(addsuffix .comp, $(CMOD_COMP_NAMES)))
+CMOD_TARGETS := $(addprefix ../cmod/, $(addsuffix .so, $(CMOD_COMP_NAMES)))
+
+# Everything else stays with halcompile (legacy RT API)
+COMPS := $(filter-out $(CMOD_COMPS), \
+    $(filter-out hal/components/tpcomp.comp, \
+        $(sort $(wildcard hal/components/*.comp) \
+               $(addprefix hal/components/, $(CONVERTERS)))))
+COMP_MANPAGES := $(patsubst hal/components/%.comp, ../docs/man/man9/%.9, $(COMPS) $(CMOD_COMPS)) ../docs/man/man9/tpcomp.9
 COMP_DRIVERS += hal/drivers/serport.comp
 COMP_DRIVERS += hal/drivers/mesa_7i65.comp
 COMP_DRIVERS += hal/drivers/mesa_uart.comp
@@ -116,3 +138,35 @@ hal/components/conv_u32_bit.comp: hal/components/conv.comp.in hal/components/mkc
 hal/components/conv_u32_s32.comp: hal/components/conv.comp.in hal/components/mkconv.sh hal/components/Submakefile
 	$(ECHO) converting conv for $(notdir $@)
 	$(Q)sh hal/components/mkconv.sh u32 s32 "" -1 2147483647 < $< > $@
+
+# ---------------------------------------------------------------------------
+# cmod build rules: .comp → modcompile → .c → gcc -shared → ../cmod/*.so
+# ---------------------------------------------------------------------------
+
+ifeq ($(BUILD_GOLANG),yes)
+
+CMOD_INCLUDE := launcher/pkg/cmodule
+CMOD_CFLAGS  := -fPIC -Os -Wall -shared -o
+
+# Step 1: .comp → .c via modcompile
+objects/cmod/%.c: hal/components/%.comp ../bin/modcompile
+	$(ECHO) "Preprocessing cmod $(notdir $<)"
+	@mkdir -p $(dir $@)
+	$(Q)../bin/modcompile --preprocess $< > $@
+
+# Step 2: .c → .so via gcc -shared
+../cmod/%.so: objects/cmod/%.c
+	$(ECHO) "Compiling cmod $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -o $@ $< -lm
+
+TARGETS += $(CMOD_TARGETS)
+modules: $(CMOD_TARGETS)
+
+clean: cmod-comp-clean
+.PHONY: cmod-comp-clean
+cmod-comp-clean:
+	rm -f $(CMOD_TARGETS)
+	rm -rf objects/cmod/
+
+endif # BUILD_GOLANG

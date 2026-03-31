@@ -144,6 +144,17 @@ HAL_GO_EXAMPLES := ../bin/passthrough ../bin/str-sender ../bin/str-receiver
 
 TARGETS += ../bin/linuxcnc-launcher ../bin/ads-xml-gen ../gomod/ads-server.so $(LAUNCHER_PKG_FILES) $(HAL_GO_EXAMPLES)
 
+# ---------------------------------------------------------------------------
+# modcompile — .comp → cmod C code generator
+# ---------------------------------------------------------------------------
+
+../bin/modcompile: $(LAUNCHER_SRC)
+	$(ECHO) Building modcompile
+	@rm -f $@
+	$(Q)cd launcher && $(GO) build -o $(TOP)/bin/modcompile ./cmd/modcompile
+
+TARGETS += ../bin/modcompile
+
 # Test target
 .PHONY: test-launcher
 test-launcher:
@@ -154,6 +165,7 @@ clean: launcher-clean
 .PHONY: launcher-clean
 launcher-clean:
 	rm -f ../bin/linuxcnc-launcher ../bin/ads-xml-gen ../gomod/ads-server.so
+	rm -f ../bin/modcompile
 	rm -f $(HAL_GO_EXAMPLES)
 	rm -f $(LAUNCHER_PKG_FILES)
 
