@@ -956,7 +956,7 @@ static int hal_shim_loadrt(const char *mod, const char *const args[], int nargs)
     snprintf(what, sizeof(what), "%s/%s.so", EMC2_RTLIB_DIR, mod);
     void *module = rtapi_dlopen(what, RTLD_GLOBAL | RTLD_NOW);
     if (!module) {
-        rtapi_print_msg(RTAPI_MSG_ERR, "%s: rtapi_dlopen: %s\n", mod, dlerror());
+        // Note: rtapi_dlopen already logs the dlerror() message.
         return -ENOENT;
     }
 
