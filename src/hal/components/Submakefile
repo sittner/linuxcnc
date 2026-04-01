@@ -8,7 +8,7 @@ CONVERTERS :=  \
 # Components built via modcompile (cmod API, output to ../cmod/)
 # ---------------------------------------------------------------------------
 CMOD_COMP_NAMES := \
-    abs abs_s32 and2 axistest bin2gray bitslice bitwise blend \
+    abs abs_s32 and2 axistest bin2gray bitslice bitwise bldc blend \
     charge_pump clarke2 clarke3 clarkeinv comp constant \
     conv_bit_float conv_bit_s32 conv_bit_u32 \
     conv_float_s32 conv_float_u32 \

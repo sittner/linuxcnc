@@ -74,7 +74,7 @@ net tool-change-loop iocontrol.tool-change iocontrol.tool-changed
 net tool-prepare-loopback iocontrol.tool-prepare iocontrol.tool-prepared
 
 ### q = encoder, h=hall sensors, i=index
-loadrt bldc cfg=qh
+load bldc [bldc.0] cfg=qh
 setp bldc.0.rev 1
 setp hm2_5i20.0.encoder.00.scale 2880
 net Spos hm2_5i20.0.encoder.00.position spindle.0.revs

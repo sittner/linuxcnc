@@ -259,6 +259,16 @@ func (g *generator) isUserspace() bool {
 	return g.comp.Options["userspace"] != ""
 }
 
+func (g *generator) stringModparams() []ast.Modparam {
+	var result []ast.Modparam
+	for _, mp := range g.comp.Modparams {
+		if mp.Type == "string" {
+			result = append(result, mp)
+		}
+	}
+	return result
+}
+
 func (g *generator) hasExtraSetup() bool {
 	return g.comp.Options["extra_setup"] != ""
 }
@@ -356,6 +366,11 @@ func (g *generator) emitInstanceStruct() {
 
 	if g.hasPersonality() {
 		g.printf("    int _personality;\n")
+	}
+
+	// String modparams (stored in inst_t for access in extra_setup).
+	for _, mp := range g.stringModparams() {
+		g.printf("    const char *_mp_%s;\n", mp.Name)
 	}
 
 	// Variables.
@@ -471,6 +486,11 @@ func (g *generator) emitConvenienceDefines() {
 		g.printf("#define data (*(%s*)(__comp_inst->_data))\n", dataType)
 	}
 
+	// String modparam convenience.
+	for _, mp := range g.stringModparams() {
+		g.printf("#define %s (__comp_inst->_mp_%s)\n", mp.Name, mp.Name)
+	}
+
 	// EXTRA_SETUP macro.
 	if g.hasExtraSetup() {
 		g.printf("\n#undef EXTRA_SETUP\n")
@@ -555,6 +575,9 @@ func (g *generator) emitUndefConvenience() {
 	}
 	if _, ok := g.comp.Options["data"]; ok {
 		g.printf("#undef data\n")
+	}
+	for _, mp := range g.stringModparams() {
+		g.printf("#undef %s\n", mp.Name)
 	}
 	if g.hasExtraSetup() {
 		g.printf("#undef EXTRA_SETUP\n")
@@ -668,16 +691,26 @@ func (g *generator) emitNew() {
 			continue
 		}
 		g.printf("    /* modparam: %s */\n", mp.Name)
-		if mp.Default != "" {
-			g.printf("    int mp_%s = %s;\n", mp.Name, mp.Default)
+		if mp.Type == "string" {
+			// String modparam: store pointer to argv (arena-managed).
+			g.printf("    inst->_mp_%s = \"\";\n", mp.Name)
+			g.printf("    for (int i = 0; i < argc; i++) {\n")
+			g.printf("        if (strncmp(argv[i], \"%s=\", %d) == 0)\n", mp.Name, len(mp.Name)+1)
+			g.printf("            inst->_mp_%s = argv[i] + %d;\n", mp.Name, len(mp.Name)+1)
+			g.printf("    }\n\n")
 		} else {
-			g.printf("    int mp_%s = 0;\n", mp.Name)
+			// Integer modparam.
+			if mp.Default != "" {
+				g.printf("    int mp_%s = %s;\n", mp.Name, mp.Default)
+			} else {
+				g.printf("    int mp_%s = 0;\n", mp.Name)
+			}
+			g.printf("    for (int i = 0; i < argc; i++) {\n")
+			g.printf("        if (strncmp(argv[i], \"%s=\", %d) == 0)\n", mp.Name, len(mp.Name)+1)
+			g.printf("            mp_%s = atoi(argv[i] + %d);\n", mp.Name, len(mp.Name)+1)
+			g.printf("    }\n")
+			g.printf("    (void)mp_%s;\n\n", mp.Name)
 		}
-		g.printf("    for (int i = 0; i < argc; i++) {\n")
-		g.printf("        if (strncmp(argv[i], \"%s=\", %d) == 0)\n", mp.Name, len(mp.Name)+1)
-		g.printf("            mp_%s = atoi(argv[i] + %d);\n", mp.Name, len(mp.Name)+1)
-		g.printf("    }\n")
-		g.printf("    (void)mp_%s;\n\n", mp.Name)
 	}
 
 	// HAL init.
