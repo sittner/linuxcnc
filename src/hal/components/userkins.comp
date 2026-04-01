@@ -67,7 +67,7 @@ license "GPL";
 author "Dewey Garrett";
 ;;
 
-#include "rtapi_math.h"
+#include <math.h>
 #include "kinematics.h"
 
 static struct haldata {

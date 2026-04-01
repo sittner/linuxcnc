@@ -8,21 +8,24 @@ CONVERTERS :=  \
 # Components built via modcompile (cmod API, output to ../cmod/)
 # ---------------------------------------------------------------------------
 CMOD_COMP_NAMES := \
-    abs abs_s32 and2 axistest bin2gray bitslice bitwise bldc blend \
+    abs abs_s32 and2 anglejog axistest bin2gray biquad bitslice bitwise bldc blend \
     charge_pump clarke2 clarke3 clarkeinv comp constant \
     conv_bit_float conv_bit_s32 conv_bit_u32 \
     conv_float_s32 conv_float_u32 \
     conv_s32_bit conv_s32_float conv_s32_u32 \
     conv_u32_bit conv_u32_float conv_u32_s32 \
     corexy_by_hal \
-    dbounce ddt deadzone demux differential div2 edge feedcomp \
-    flipflop gantry gray2bin hypot integ invert \
-    knob2float limit1 limit2 lincurve logic lowpass lut5 \
-    maj3 match8 minmax mult2 multiclick mux16 mux2 mux4 mux8 \
-    near not offset or2 plasmac sample_hold scale scaled_s32_sums \
-    select8 sim_axis_hardware sim_home_switch sim_parport sphereprobe \
-    steptest sum2 threadtest tof toggle toggle2nist ton tp tristate_bit \
-    tristate_float updown wcomp xor2
+    dbounce ddt deadzone demux differential div2 edge eoffset_per_angle estop_latch \
+    feedcomp filter_kalman flipflop gantry gearchange gray2bin histobins hypot \
+    ilowpass integ invert joyhandle \
+    knob2float latencybins limit1 limit2 limit3 limit_axis lincurve logic lowpass lut5 \
+    maj3 match8 max31855 minmax moveoff mult2 multiclick mux16 mux2 mux4 mux8 \
+    near not offset ohmic oneshot or2 orient plasmac \
+    sample_hold scale scaled_s32_sums select8 \
+    sim_axis_hardware sim_home_switch sim_matrix_kb sim_parport sim_spindle simple_tp \
+    sphereprobe spindle_monitor steptest sum2 \
+    threadtest time timedelay timedelta tof toggle toggle2nist ton tp \
+    tristate_bit tristate_float updown wcomp xhc_hb04_util xor2
 
 CMOD_COMPS := $(addprefix hal/components/, $(addsuffix .comp, $(CMOD_COMP_NAMES)))
 CMOD_TARGETS := $(addprefix ../cmod/, $(addsuffix .so, $(CMOD_COMP_NAMES)))

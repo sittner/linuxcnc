@@ -32,9 +32,9 @@ func (g *generator) generate() error {
 	g.emitHeader()
 	g.emitInstanceStruct()
 	g.emitFunctionForwards()
-	g.emitUserIncludes()         // Extract and emit #include lines first
+	g.emitUserIncludes() // Extract and emit #include lines first
 	g.emitConvenienceDefines()
-	g.emitUserCodeBody()         // Emit rest of user code (without includes)
+	g.emitUserCodeBody() // Emit rest of user code (without includes)
 	g.emitUndefConvenience()
 	g.emitStartStopDestroy()
 	g.emitNew()
@@ -297,6 +297,7 @@ func (g *generator) emitHeader() {
 		g.printf("#include <pthread.h>\n")
 	}
 	g.printf("#include <stdlib.h>\n")
+	g.printf("#include <stdint.h>\n")
 	g.printf("#include <string.h>\n")
 	g.printf("#include <stdbool.h>\n")
 	g.printf("\n#ifndef TRUE\n#define TRUE 1\n#endif\n")
@@ -520,7 +521,11 @@ func (g *generator) emitConvenienceDefines() {
 	g.printf("#define GOMC_LOG_ERR(fmt, ...) gomc_log_errorf(__comp_inst->env->log, __comp_inst->name, fmt, ##__VA_ARGS__)\n")
 	g.printf("#define GOMC_LOG_WARN(fmt, ...) gomc_log_warnf(__comp_inst->env->log, __comp_inst->name, fmt, ##__VA_ARGS__)\n")
 	g.printf("#define GOMC_LOG_INFO(fmt, ...) gomc_log_infof(__comp_inst->env->log, __comp_inst->name, fmt, ##__VA_ARGS__)\n")
-	g.printf("#define GOMC_LOG_DBG(fmt, ...) gomc_log_dbgf(__comp_inst->env->log, __comp_inst->name, fmt, ##__VA_ARGS__)\n")
+	g.printf("#define GOMC_LOG_DBG(fmt, ...) gomc_log_debugf(__comp_inst->env->log, __comp_inst->name, fmt, ##__VA_ARGS__)\n")
+
+	// RTAPI compatibility macros.
+	g.printf("\n/* RTAPI compatibility macros */\n")
+	g.printf("#define rtapi_get_time() (__comp_inst->env->rtapi->get_time(__comp_inst->env->rtapi->ctx))\n")
 
 	g.printf("\n")
 }
