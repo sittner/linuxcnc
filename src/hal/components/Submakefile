@@ -173,6 +173,22 @@ TARGETS += $(CMOD_TARGETS)
 modules: $(CMOD_TARGETS)
 
 # ---------------------------------------------------------------------------
+# cmod native C components (hand-written .c files, not from .comp)
+# ---------------------------------------------------------------------------
+
+CMOD_C_SRCS := spindle
+CMOD_C_TARGETS := $(addprefix ../cmod/, $(addsuffix .so, $(CMOD_C_SRCS)))
+
+# spindle.c → spindle.so
+../cmod/spindle.so: hal/components/spindle.c
+	$(ECHO) "Compiling cmod $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -o $@ $< -lm
+
+TARGETS += $(CMOD_C_TARGETS)
+modules: $(CMOD_C_TARGETS)
+
+# ---------------------------------------------------------------------------
 # cmod userspace components (from hal/user_comps/)
 # ---------------------------------------------------------------------------
 
@@ -230,7 +246,7 @@ modules: $(CMOD_USER_TARGETS)
 clean: cmod-comp-clean
 .PHONY: cmod-comp-clean
 cmod-comp-clean:
-	rm -f $(CMOD_TARGETS) $(CMOD_USER_TARGETS)
+	rm -f $(CMOD_TARGETS) $(CMOD_C_TARGETS) $(CMOD_USER_TARGETS)
 	rm -rf objects/cmod/
 
 endif # BUILD_GOLANG
