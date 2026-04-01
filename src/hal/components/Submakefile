@@ -9,7 +9,12 @@ CONVERTERS :=  \
 # ---------------------------------------------------------------------------
 CMOD_COMP_NAMES := \
     abs and2 axistest bin2gray bitslice bitwise blend \
-    charge_pump clarke2 clarke3 comp constant corexy_by_hal \
+    charge_pump clarke2 clarke3 comp constant \
+    conv_bit_float conv_bit_s32 conv_bit_u32 \
+    conv_float_s32 conv_float_u32 \
+    conv_s32_bit conv_s32_float conv_s32_u32 \
+    conv_u32_bit conv_u32_float conv_u32_s32 \
+    corexy_by_hal \
     dbounce ddt deadzone demux differential edge feedcomp \
     gantry gray2bin integ limit1 lincurve logic lowpass lut5 \
     match8 minmax mult2 multiclick mux16 mux2 mux4 mux8 \
@@ -163,10 +168,32 @@ objects/cmod/%.c: hal/components/%.comp ../bin/modcompile
 TARGETS += $(CMOD_TARGETS)
 modules: $(CMOD_TARGETS)
 
+# ---------------------------------------------------------------------------
+# cmod userspace components (from hal/user_comps/)
+# ---------------------------------------------------------------------------
+
+CMOD_USER_COMPS := usbpend
+CMOD_USER_TARGETS := $(addprefix ../cmod/, $(addsuffix .so, $(CMOD_USER_COMPS)))
+
+# usbpend: hal/user_comps/usb-pendant/usbpend.comp
+objects/cmod/usbpend.c: hal/user_comps/usb-pendant/usbpend.comp ../bin/modcompile
+	$(ECHO) "Preprocessing cmod $(notdir $<)"
+	@mkdir -p $(dir $@)
+	$(Q)../bin/modcompile --preprocess $< > $@
+
+# Userspace cmod .so — links with -lpthread for user_mainloop thread.
+../cmod/usbpend.so: objects/cmod/usbpend.c
+	$(ECHO) "Compiling cmod $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -o $@ $< -lm -lpthread
+
+TARGETS += $(CMOD_USER_TARGETS)
+modules: $(CMOD_USER_TARGETS)
+
 clean: cmod-comp-clean
 .PHONY: cmod-comp-clean
 cmod-comp-clean:
-	rm -f $(CMOD_TARGETS)
+	rm -f $(CMOD_TARGETS) $(CMOD_USER_TARGETS)
 	rm -rf objects/cmod/
 
 endif # BUILD_GOLANG

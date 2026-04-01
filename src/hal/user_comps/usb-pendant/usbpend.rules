@@ -1,0 +1,2 @@
+# udev rule for cnc usb pendant
+KERNEL=="hidraw*", ATTRS{product}=="CNC USB Pendant V1.0", MODE="0660", GROUP="plugdev", SYMLINK+="usbpend"
