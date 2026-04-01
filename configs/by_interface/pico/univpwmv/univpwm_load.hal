@@ -30,7 +30,7 @@ load not [not.0]
 loadrt estop_latch count=1
 load and2 [and2.0]
 load or2 [or2.0]
-loadrt conv_s32_float count=1
+load conv_s32_float [conv_s32_float.0]
 load mult2 [mult2.0,mult2.1]
 load lowpass [lowpass.0]
 

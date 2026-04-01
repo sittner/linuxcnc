@@ -88,7 +88,7 @@ encoder.0.position-scale = 500
 net heartbeat => encoder.0.phase-A
 net encoder-position <= encoder.0.position
 
-loadrt conv_float_u32
+load conv_float_u32 [conv_float_u32.0]
 net encoder-position => conv-float-u32.0.in
 
 net mux-select <= conv-float-u32.0.out
