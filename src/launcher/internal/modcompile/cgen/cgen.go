@@ -367,9 +367,9 @@ func (g *generator) emitInstanceStruct() {
 		}
 	}
 
-	// Option data — extra allocation.
-	if dataType, ok := g.comp.Options["data"]; ok {
-		g.printf("    %s _data;\n", dataType)
+	// Option data — extra allocation as void* (type defined in user code).
+	if _, ok := g.comp.Options["data"]; ok {
+		g.printf("    void *_data;\n")
 	}
 
 	g.printf("} inst_t;\n\n")
@@ -467,8 +467,8 @@ func (g *generator) emitConvenienceDefines() {
 	}
 
 	// Data convenience.
-	if _, ok := g.comp.Options["data"]; ok {
-		g.printf("#define data (__comp_inst->_data)\n")
+	if dataType, ok := g.comp.Options["data"]; ok {
+		g.printf("#define data (*(%s*)(__comp_inst->_data))\n", dataType)
 	}
 
 	// EXTRA_SETUP macro.
@@ -489,6 +489,13 @@ func (g *generator) emitConvenienceDefines() {
 		g.printf("\n#undef USERINIT\n")
 		g.printf("#define USERINIT() static void userinit(int argc, const char **argv)\n")
 	}
+
+	// RT-safe logging convenience macros.
+	g.printf("\n/* RT-safe logging macros */\n")
+	g.printf("#define GOMC_LOG_ERR(fmt, ...) gomc_log_errorf(__comp_inst->env->log, __comp_inst->name, fmt, ##__VA_ARGS__)\n")
+	g.printf("#define GOMC_LOG_WARN(fmt, ...) gomc_log_warnf(__comp_inst->env->log, __comp_inst->name, fmt, ##__VA_ARGS__)\n")
+	g.printf("#define GOMC_LOG_INFO(fmt, ...) gomc_log_infof(__comp_inst->env->log, __comp_inst->name, fmt, ##__VA_ARGS__)\n")
+	g.printf("#define GOMC_LOG_DBG(fmt, ...) gomc_log_dbgf(__comp_inst->env->log, __comp_inst->name, fmt, ##__VA_ARGS__)\n")
 
 	g.printf("\n")
 }
@@ -612,6 +619,11 @@ func (g *generator) emitStartStopDestroy() {
 	}
 	g.printf("    if (inst->comp_id > 0)\n")
 	g.printf("        inst->env->hal->exit(inst->env->hal->ctx, inst->comp_id);\n")
+	// Free option data if allocated.
+	if _, ok := g.comp.Options["data"]; ok {
+		g.printf("    if (inst->_data)\n")
+		g.printf("        inst->env->rtapi->free(inst->env->rtapi->ctx, inst->_data);\n")
+	}
 	g.printf("    inst->env->rtapi->free(inst->env->rtapi->ctx, inst);\n")
 	g.printf("}\n\n")
 }
@@ -705,6 +717,12 @@ func (g *generator) emitNew() {
 	// userinit callback (userspace only, called early in New).
 	if g.comp.Options["userinit"] != "" {
 		g.printf("    userinit(argc, argv);\n\n")
+	}
+
+	// Allocate option data (user-defined type, allocated separately).
+	if dataType, ok := g.comp.Options["data"]; ok {
+		g.printf("    inst->_data = env->rtapi->calloc(env->rtapi->ctx, sizeof(%s));\n", dataType)
+		g.printf("    if (!inst->_data) goto err;\n\n")
 	}
 
 	// Create pins.
