@@ -5,7 +5,7 @@ loadrt hal_parport cfg=0x378
 setp parport.0.reset-time 4000
 loadrt stepgen step_type=0,0,0,0,0 ctrl_type=p,p,p,p,v
 
-loadrt estop_latch
+load estop_latch
 net charge-pump <= estop-latch.0.watchdog
 
 addf parport.0.read base-thread
@@ -45,7 +45,7 @@ net spindle-ccw spindle.0.reverse or2.0.in1
 
 load toggle [toggle.0]
 load not [not.0]
-loadrt gearchange count=1
+load gearchange count=1
 addf toggle.0 servo-thread
 addf not.0 servo-thread
 addf gearchange.0 servo-thread

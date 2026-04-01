@@ -1,5 +1,5 @@
 # simulated spindle encoder (for spindle-synced moves)
-loadrt sim_spindle names=sim_spindle
+load sim_spindle names=sim_spindle
 setp sim_spindle.scale 0.01666667
 load limit2 [limit_speed]
 load lowpass [spindle_mass]

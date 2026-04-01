@@ -41,7 +41,7 @@ net input <= mux-gen.00.out-float
 # input sine wave.
 #
 
-loadrt limit3
+load limit3
 setp limit3.0.min -101
 setp limit3.0.max 101
 setp limit3.0.maxv 1500

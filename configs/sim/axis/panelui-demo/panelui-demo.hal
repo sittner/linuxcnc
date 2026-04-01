@@ -17,7 +17,7 @@ loadrt sampler cfg=u depth=1025
 
 # -d = debug, -v =verbose debug
 loadusr -W panelui -d
-loadrt sim_matrix_kb
+load sim_matrix_kb
 
 net key-scan    sim-matrix-kb.0.out
 net key-scan    sampler.0.pin.0

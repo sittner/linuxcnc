@@ -352,7 +352,7 @@ proc simulated_home {number_of_joints} {
 proc sim_spindle {} {
   # adapted as haltcl proc from sim_spindle_encoder.hal
   # simulated spindle encoder (for spindle-synced moves)
-  loadrt sim_spindle names=sim_spindle
+  load sim_spindle names=sim_spindle
   do_setp sim_spindle.scale 0.01666667
 
   load limit2 [limit_speed]

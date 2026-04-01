@@ -19,7 +19,7 @@ load mux2 [mux2.sxp-x-analog,mux2.sxp-y-analog,mux2.sxp-z-analog]
 load updown [updown.sxp]
 load and2 [and2.sxp-x-pos,and2.sxp-x-neg,and2.sxp-y-pos,and2.sxp-y-neg,and2.sxp-z-pos,and2.sxp-z-neg]
 load tristate_float [tristate-float.sxp0,tristate-float.sxp1,tristate-float.sxp2,tristate-float.sxp3,tristate-float.sxp4,tristate-float.sxp5,tristate-float.sxp6,tristate-float.sxp7,tristate-float.sxp-jog-increment-0,tristate-float.sxp-jog-increment-1,tristate-float.sxp-jog-increment-2,tristate-float.sxp-jog-increment-3]
-loadrt ilowpass names=ilowpass.sxp
+load ilowpass names=ilowpass.sxp
 
 
 

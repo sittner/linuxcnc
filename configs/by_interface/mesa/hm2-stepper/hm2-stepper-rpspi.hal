@@ -38,7 +38,7 @@ loadrt hostmot2
 loadrt [HOSTMOT2](DRIVER) config=[HOSTMOT2](CONFIG) spiclk_rate=[HOSTMOT2](SPICLK_RATE)
 
 # load estop latch component
-loadrt estop_latch
+load estop_latch
 
 # ################################################
 # THREADS

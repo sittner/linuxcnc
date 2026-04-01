@@ -1,7 +1,7 @@
 setexact_for_test_suite_only
 
 loadrt sampler cfg=f depth=4096
-loadrt limit3
+load limit3
 #loadrt blocks limit3=1
 newthread t 1000000
 setp limit3.0.maxv 500.000000

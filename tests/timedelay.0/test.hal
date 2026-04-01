@@ -1,5 +1,5 @@
 loadrt sampler cfg=bb depth=100
-loadrt timedelay
+load timedelay
 load not [not.0]
 newthread thread 1953125
 

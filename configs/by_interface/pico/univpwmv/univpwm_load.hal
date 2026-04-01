@@ -27,7 +27,7 @@ loadrt scope_rt
 # make some signals for the scope for tuning.
 load ddt [ddt.0,ddt.1,ddt.2,ddt.3]
 load not [not.0]
-loadrt estop_latch count=1
+load estop_latch count=1
 load and2 [and2.0]
 load or2 [or2.0]
 load conv_s32_float [conv_s32_float.0]

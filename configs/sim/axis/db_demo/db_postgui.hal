@@ -3,7 +3,7 @@
 delsig tool:change-loop # remove basic_sim.tcl loops
 delsig tool:prep-loop   # remove basic_sim.tcl loops
 
-loadrt oneshot names=prepare_time,prepare_pulse,change_time,change_pulse
+load oneshot names=prepare_time,prepare_pulse,change_time,change_pulse
 addf prepare_time  servo-thread
 addf prepare_pulse servo-thread
 addf change_time   servo-thread
