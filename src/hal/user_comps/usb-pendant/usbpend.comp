@@ -3,7 +3,6 @@ component usbpend "modusoft CNC USB Pendant component";
 author "Sascha Ittner";
 license "GPL";
 
-option singleton yes;
 option userspace yes;
 
 pin out u32 hw_time;
