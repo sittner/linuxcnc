@@ -21,7 +21,7 @@ addf stepgen.update-freq servo-thread
 loadrt encoder
 addf encoder.capture-position servo-thread
 addf encoder.update-counters servo-thread
-loadrt thc
+load thc
 addf thc servo-thread
 
 net spindle-cmd <= spindle.0.speed-out
