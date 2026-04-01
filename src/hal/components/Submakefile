@@ -172,7 +172,7 @@ modules: $(CMOD_TARGETS)
 # cmod userspace components (from hal/user_comps/)
 # ---------------------------------------------------------------------------
 
-CMOD_USER_COMPS := usbpend
+CMOD_USER_COMPS := usbpend thermistor wj200_vfd pi500_vfd
 CMOD_USER_TARGETS := $(addprefix ../cmod/, $(addsuffix .so, $(CMOD_USER_COMPS)))
 
 # usbpend: hal/user_comps/usb-pendant/usbpend.comp
@@ -186,6 +186,39 @@ objects/cmod/usbpend.c: hal/user_comps/usb-pendant/usbpend.comp ../bin/modcompil
 	$(ECHO) "Compiling cmod $(notdir $@)"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -o $@ $< -lm -lpthread
+
+# thermistor: hal/user_comps/thermistor.comp
+objects/cmod/thermistor.c: hal/user_comps/thermistor.comp ../bin/modcompile
+	$(ECHO) "Preprocessing cmod $(notdir $<)"
+	@mkdir -p $(dir $@)
+	$(Q)../bin/modcompile --preprocess $< > $@
+
+../cmod/thermistor.so: objects/cmod/thermistor.c
+	$(ECHO) "Compiling cmod $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -o $@ $< -lm -lpthread
+
+# wj200_vfd: hal/user_comps/wj200_vfd/wj200_vfd.comp
+objects/cmod/wj200_vfd.c: hal/user_comps/wj200_vfd/wj200_vfd.comp ../bin/modcompile
+	$(ECHO) "Preprocessing cmod $(notdir $<)"
+	@mkdir -p $(dir $@)
+	$(Q)../bin/modcompile --preprocess $< > $@
+
+../cmod/wj200_vfd.so: objects/cmod/wj200_vfd.c
+	$(ECHO) "Compiling cmod $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) $(LIBMODBUS_CFLAGS) -o $@ $< -lm -lpthread -lmodbus
+
+# pi500_vfd: hal/user_comps/pi500_vfd/pi500_vfd.comp
+objects/cmod/pi500_vfd.c: hal/user_comps/pi500_vfd/pi500_vfd.comp ../bin/modcompile
+	$(ECHO) "Preprocessing cmod $(notdir $<)"
+	@mkdir -p $(dir $@)
+	$(Q)../bin/modcompile --preprocess $< > $@
+
+../cmod/pi500_vfd.so: objects/cmod/pi500_vfd.c
+	$(ECHO) "Compiling cmod $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) $(LIBMODBUS_CFLAGS) -o $@ $< -lm -lpthread -lmodbus
 
 TARGETS += $(CMOD_USER_TARGETS)
 modules: $(CMOD_USER_TARGETS)

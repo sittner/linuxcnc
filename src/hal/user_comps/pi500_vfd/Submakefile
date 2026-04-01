@@ -1,3 +1,4 @@
+ifneq ($(BUILD_GOLANG),yes)
 ifdef HAVE_LIBMODBUS3
 
 PI500_SRCS = hal/user_comps/pi500_vfd/pi500_vfd.c
@@ -27,5 +28,6 @@ pi500_clean:
 
 TARGETS += ../bin/pi500_vfd
 GENERATED_MANPAGES += ../docs/man/man1/pi500_vfd.1
+endif
 endif
 

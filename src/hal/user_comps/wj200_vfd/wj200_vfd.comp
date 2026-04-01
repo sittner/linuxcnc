@@ -45,6 +45,7 @@ license "GPLv2 or greater";
 #include<modbus.h>
 #include<unistd.h>
 #include<ctype.h>
+#include<poll.h>
 
 typedef struct
 {
@@ -144,7 +145,7 @@ bool wj200_getStatus(modbus_t* ctx, wj200_status* status)
         return true;
 }
 
-void print_modbus_error(struct __comp_state *__comp_inst, const char* msg)
+void print_modbus_error(inst_t *__comp_inst, const char* msg)
 {
 	fprintf(stderr,
 		"Error: wj200_vfd slave(%d): %s - Modbus error (%d) -  %s\n",
@@ -162,8 +163,9 @@ char parity = 'N';
 int data_bits = 8;
 int stop_bits = 1;
 modbus_t *ctx;
+static int init_error = 0;
 
-void userinit(int argc, char **argv)
+void userinit(int argc, const char **argv)
 {
 	int opt_index = 0;
 	int c = 0;
@@ -178,7 +180,7 @@ void userinit(int argc, char **argv)
 	};
 
 	while(1) {
-		c = getopt_long(argc, argv, "", options, &opt_index);
+		c = getopt_long(argc, (char * const *)argv, "", options, &opt_index);
 
 		if(c == -1)
 			break;
@@ -192,7 +194,8 @@ void userinit(int argc, char **argv)
 					fprintf(stderr,
 						"Invalid argument: baud must be a number. Given '%s'\n",
 						optarg);
-					exit(1);
+					init_error = 1;
+					return;
 				}
 				break;
 
@@ -204,7 +207,8 @@ void userinit(int argc, char **argv)
 					fprintf(stderr, 
 						"Invalid argument: parity must be 'e', 'o' or 'n'. Given '%s'\n", 
 						optarg);
-					exit(1);
+					init_error = 1;
+					return;
 				}
 				break;
 
@@ -216,7 +220,8 @@ void userinit(int argc, char **argv)
 					fprintf(stderr,
 						"Invalid argument: databits must be a number. Given '%s'\n",
 						optarg);
-					exit(1);
+					init_error = 1;
+					return;
 				}
 				break;
 
@@ -228,7 +233,8 @@ void userinit(int argc, char **argv)
 					fprintf(stderr,
 						"Invalid argument: stopbits must be a number. Given '%s'\n",
 						optarg);
-					exit(1);
+					init_error = 1;
+					return;
 				}
 				break;
 			case 4:
@@ -238,7 +244,8 @@ void userinit(int argc, char **argv)
 
 			default:
                                 fprintf(stderr, "internal error: invalid option index!\n");
-				exit(1);
+				init_error = 1;
+				return;
 		}
 
 	}
@@ -257,14 +264,16 @@ void userinit(int argc, char **argv)
 			"ERROR: wj200_vfd unable to create libmodbus context. - %s\n",
 			modbus_strerror(errno));
 		fprintf(stderr, "Check your commandline!\n");
-		exit(1);
+		init_error = 1;
+		return;
 	}
 
 	if (modbus_connect(ctx)) {
 		fprintf(stderr,
 			"ERROR: wj200_vfd unable to create libmodbus connection. - %s\n",
 			modbus_strerror(errno));
-		exit(1);
+		init_error = 1;
+		return;
 	}
 }
 
@@ -272,8 +281,11 @@ void user_mainloop(void) {
 	wj200_status status;
 	uint16_t calculated_frequency;
     bool last_enable_state = FALSE;
+    int efd = GOMC_EXIT_FD();
 
-	while(1) {
+	if (init_error) return;
+
+	while(!GOMC_SHOULD_EXIT()) {
 	FOR_ALL_INSTS() {
 		/*
                   until the params are set we just wait a bit
@@ -283,7 +295,8 @@ void user_mainloop(void) {
                   this could cause bad behavior
 		*/
 		if(mbslaveaddr == 0) {
-			sleep(1);
+			struct pollfd pfd = { .fd = efd, .events = POLLIN };
+			poll(&pfd, 1, 1000);
 			continue;
 		}
 
