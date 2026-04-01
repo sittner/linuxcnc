@@ -63,6 +63,7 @@ typedef struct __attribute__ ((__packed__)) {
 } USBHID_Report_Data_In_t;
 
 EXTRA_SETUP() {
+  (void)nparams; (void)params;  /* unused */
   return 0;
 }
 

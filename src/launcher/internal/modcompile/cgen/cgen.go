@@ -32,8 +32,9 @@ func (g *generator) generate() error {
 	g.emitHeader()
 	g.emitInstanceStruct()
 	g.emitFunctionForwards()
+	g.emitUserIncludes()         // Extract and emit #include lines first
 	g.emitConvenienceDefines()
-	g.emitUserCode()
+	g.emitUserCodeBody()         // Emit rest of user code (without includes)
 	g.emitUndefConvenience()
 	g.emitStartStopDestroy()
 	g.emitNew()
@@ -368,9 +369,19 @@ func (g *generator) emitInstanceStruct() {
 		g.printf("    int _personality;\n")
 	}
 
-	// String modparams (stored in inst_t for access in extra_setup).
-	for _, mp := range g.stringModparams() {
-		g.printf("    const char *_mp_%s;\n", mp.Name)
+	// Modparams (all types, stored in inst_t for access in extra_setup and user code).
+	for _, mp := range g.comp.Modparams {
+		switch mp.Type {
+		case "string":
+			g.printf("    const char *_mp_%s;\n", mp.Name)
+		case "int":
+			g.printf("    int _mp_%s;\n", mp.Name)
+		case "float":
+			g.printf("    double _mp_%s;\n", mp.Name)
+		default:
+			// Fallback for unknown types
+			g.printf("    int _mp_%s;\n", mp.Name)
+		}
 	}
 
 	// Variables.
@@ -400,7 +411,7 @@ func (g *generator) emitFunctionForwards() {
 		g.printf("static void user_mainloop(void);\n")
 	}
 	if g.hasExtraSetup() {
-		g.printf("static int extra_setup(inst_t *__comp_inst, const char *name, int _pers);\n")
+		g.printf("static int extra_setup(inst_t *__comp_inst, const char *name, int nparams, const char **params);\n")
 	}
 	if g.hasExtraCleanup() {
 		g.printf("static void extra_cleanup(void);\n")
@@ -486,8 +497,8 @@ func (g *generator) emitConvenienceDefines() {
 		g.printf("#define data (*(%s*)(__comp_inst->_data))\n", dataType)
 	}
 
-	// String modparam convenience.
-	for _, mp := range g.stringModparams() {
+	// Modparam convenience macros (all types).
+	for _, mp := range g.comp.Modparams {
 		g.printf("#define %s (__comp_inst->_mp_%s)\n", mp.Name, mp.Name)
 	}
 
@@ -495,19 +506,13 @@ func (g *generator) emitConvenienceDefines() {
 	if g.hasExtraSetup() {
 		g.printf("\n#undef EXTRA_SETUP\n")
 		g.printf("#define EXTRA_SETUP() \\\n")
-		g.printf("    static int extra_setup(inst_t *__comp_inst, const char *name, int _pers)\n")
+		g.printf("    static int extra_setup(inst_t *__comp_inst, const char *name, int nparams, const char **params)\n")
 	}
 
 	// EXTRA_CLEANUP macro.
 	if g.hasExtraCleanup() {
 		g.printf("\n#undef EXTRA_CLEANUP\n")
 		g.printf("#define EXTRA_CLEANUP() static void extra_cleanup(void)\n")
-	}
-
-	// userinit macro (userspace only — called before HAL init).
-	if g.comp.Options["userinit"] != "" {
-		g.printf("\n#undef USERINIT\n")
-		g.printf("#define USERINIT() static void userinit(int argc, const char **argv)\n")
 	}
 
 	// RT-safe logging convenience macros.
@@ -532,17 +537,53 @@ func (g *generator) needsAutoWrap() bool {
 	return len(g.comp.Functions) == 1
 }
 
-func (g *generator) emitUserCode() {
+// splitUserCode separates #include directives from the rest of the user code.
+// This allows includes to be processed before convenience macros (avoiding macro
+// name clashes with function parameters like 'data' in modbus.h).
+func (g *generator) splitUserCode() (includes string, body string) {
+	if g.comp.VerbatimC == "" {
+		return "", ""
+	}
+
+	var incLines []string
+	var bodyLines []string
+
+	lines := strings.Split(g.comp.VerbatimC, "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#include") {
+			incLines = append(incLines, line)
+		} else {
+			bodyLines = append(bodyLines, line)
+		}
+	}
+
+	return strings.Join(incLines, "\n"), strings.Join(bodyLines, "\n")
+}
+
+func (g *generator) emitUserIncludes() {
+	includes, _ := g.splitUserCode()
+	if includes == "" {
+		return
+	}
+	g.printf("/* ---------------------------------------------------------------------------\n")
+	g.printf(" * User includes (emitted before convenience macros)\n")
+	g.printf(" * ------------------------------------------------------------------------- */\n\n")
+	g.printf("%s\n\n", includes)
+}
+
+func (g *generator) emitUserCodeBody() {
+	_, body := g.splitUserCode()
 	g.printf("/* ---------------------------------------------------------------------------\n")
 	g.printf(" * User code\n")
 	g.printf(" * ------------------------------------------------------------------------- */\n\n")
-	if g.comp.VerbatimC == "" {
+	if body == "" {
 		return
 	}
 	if g.needsAutoWrap() {
-		g.printf("FUNCTION(%s){\n%s\n}\n\n", g.comp.Functions[0].Name, g.comp.VerbatimC)
+		g.printf("FUNCTION(%s){\n%s\n}\n\n", g.comp.Functions[0].Name, body)
 	} else {
-		g.printf("%s\n\n", g.comp.VerbatimC)
+		g.printf("%s\n\n", body)
 	}
 }
 
@@ -576,7 +617,7 @@ func (g *generator) emitUndefConvenience() {
 	if _, ok := g.comp.Options["data"]; ok {
 		g.printf("#undef data\n")
 	}
-	for _, mp := range g.stringModparams() {
+	for _, mp := range g.comp.Modparams {
 		g.printf("#undef %s\n", mp.Name)
 	}
 	if g.hasExtraSetup() {
@@ -584,9 +625,6 @@ func (g *generator) emitUndefConvenience() {
 	}
 	if g.hasExtraCleanup() {
 		g.printf("#undef EXTRA_CLEANUP\n")
-	}
-	if g.comp.Options["userinit"] != "" {
-		g.printf("#undef USERINIT\n")
 	}
 	g.printf("\n")
 }
@@ -691,25 +729,43 @@ func (g *generator) emitNew() {
 			continue
 		}
 		g.printf("    /* modparam: %s */\n", mp.Name)
-		if mp.Type == "string" {
+		switch mp.Type {
+		case "string":
 			// String modparam: store pointer to argv (arena-managed).
-			g.printf("    inst->_mp_%s = \"\";\n", mp.Name)
+			g.printf("    inst->_mp_%s = ", mp.Name)
+			if mp.Default != "" {
+				g.printf("%s;\n", mp.Default)
+			} else {
+				g.printf("NULL;\n")
+			}
 			g.printf("    for (int i = 0; i < argc; i++) {\n")
 			g.printf("        if (strncmp(argv[i], \"%s=\", %d) == 0)\n", mp.Name, len(mp.Name)+1)
 			g.printf("            inst->_mp_%s = argv[i] + %d;\n", mp.Name, len(mp.Name)+1)
 			g.printf("    }\n\n")
-		} else {
-			// Integer modparam.
+		case "float":
+			// Float modparam: store as double in inst.
+			g.printf("    inst->_mp_%s = ", mp.Name)
 			if mp.Default != "" {
-				g.printf("    int mp_%s = %s;\n", mp.Name, mp.Default)
+				g.printf("%s;\n", mp.Default)
 			} else {
-				g.printf("    int mp_%s = 0;\n", mp.Name)
+				g.printf("0.0;\n")
 			}
 			g.printf("    for (int i = 0; i < argc; i++) {\n")
 			g.printf("        if (strncmp(argv[i], \"%s=\", %d) == 0)\n", mp.Name, len(mp.Name)+1)
-			g.printf("            mp_%s = atoi(argv[i] + %d);\n", mp.Name, len(mp.Name)+1)
-			g.printf("    }\n")
-			g.printf("    (void)mp_%s;\n\n", mp.Name)
+			g.printf("            inst->_mp_%s = atof(argv[i] + %d);\n", mp.Name, len(mp.Name)+1)
+			g.printf("    }\n\n")
+		default:
+			// Integer modparam: store as int in inst.
+			g.printf("    inst->_mp_%s = ", mp.Name)
+			if mp.Default != "" {
+				g.printf("%s;\n", mp.Default)
+			} else {
+				g.printf("0;\n")
+			}
+			g.printf("    for (int i = 0; i < argc; i++) {\n")
+			g.printf("        if (strncmp(argv[i], \"%s=\", %d) == 0)\n", mp.Name, len(mp.Name)+1)
+			g.printf("            inst->_mp_%s = atoi(argv[i] + %d);\n", mp.Name, len(mp.Name)+1)
+			g.printf("    }\n\n")
 		}
 	}
 
@@ -739,17 +795,8 @@ func (g *generator) emitNew() {
 
 	// Extra setup (runs before pins, can modify personality).
 	if g.hasExtraSetup() {
-		if g.hasPersonality() {
-			g.printf("    r = extra_setup(inst, name, inst->_personality);\n")
-		} else {
-			g.printf("    r = extra_setup(inst, name, 0);\n")
-		}
+		g.printf("    r = extra_setup(inst, name, argc, argv);\n")
 		g.printf("    if (r != 0) goto err;\n\n")
-	}
-
-	// userinit callback (userspace only, called early in New).
-	if g.comp.Options["userinit"] != "" {
-		g.printf("    userinit(argc, argv);\n\n")
 	}
 
 	// Allocate option data (user-defined type, allocated separately).

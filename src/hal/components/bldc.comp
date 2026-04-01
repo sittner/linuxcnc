@@ -849,6 +849,7 @@ FUNCTION(_) {
 }
 
 EXTRA_SETUP(){
+    (void)nparams; (void)params;  /* unused */
     int i;
     char c;
     if (cfg[0] == '\0') {
