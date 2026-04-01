@@ -735,7 +735,7 @@ func (g *generator) emitNew() {
 			// String modparam: store pointer to argv (arena-managed).
 			g.printf("    inst->_mp_%s = ", mp.Name)
 			if mp.Default != "" {
-				g.printf("%s;\n", mp.Default)
+				g.printf("\"%s\";\n", mp.Default)
 			} else {
 				g.printf("NULL;\n")
 			}
