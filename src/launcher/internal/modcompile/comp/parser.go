@@ -29,6 +29,16 @@ func Parse(filename, src string) (*ast.Package, error) {
 	}
 
 	p.pkg.Component.VerbatimC = userCode
+
+	// Reject unsupported RTAPI_MP_ARRAY_* macros.
+	// cmod/gomod allows multiple 'load' commands with different parameters instead.
+	for _, macro := range []string{"RTAPI_MP_ARRAY_STRING", "RTAPI_MP_ARRAY_INT"} {
+		if strings.Contains(userCode, macro) {
+			return nil, fmt.Errorf("%s: '%s' is not supported in cmod/gomod; "+
+				"use multiple 'load' commands with different parameters instead", filename, macro)
+		}
+	}
+
 	return p.pkg, nil
 }
 
@@ -354,6 +364,13 @@ func (p *parser) parseOption() error {
 	name, err := p.expectName()
 	if err != nil {
 		return err
+	}
+
+	// Reject unsupported legacy options.
+	// cmod/gomod is always multi-instance; use multiple 'load' commands instead.
+	if name == "singleton" {
+		return fmt.Errorf("%s: 'option singleton' is not supported in cmod/gomod; "+
+			"use multiple 'load' commands instead (each creates a separate instance)", p.file)
 	}
 
 	val := p.parseOptValue()

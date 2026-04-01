@@ -41,10 +41,6 @@ func (g *generator) generate() error {
 	return g.err
 }
 
-func (g *generator) isSingleton() bool {
-	return g.comp.Options["singleton"] != ""
-}
-
 func (g *generator) hasUserMainloop() bool {
 	// Detect user_mainloop() in verbatim C — independent of the userspace flag.
 	// A component can have both RT functions and a user mainloop (hybrid).
@@ -439,7 +435,7 @@ func (g *generator) emitConvenienceDefines() {
 		g.printf("#define GOMC_EXIT_FD()      (__comp_inst->exit_fd)\n")
 		g.printf("#define GOMC_SHOULD_EXIT()  gomc_should_exit(__comp_inst->exit_fd)\n\n")
 
-		g.printf("#define FOR_ALL_INSTS() /* singleton — __comp_inst is already set */\n\n")
+		g.printf("#define FOR_ALL_INSTS() /* userspace — __comp_inst is set per-thread */\n\n")
 	}
 
 	// FUNCTION macro — always available when the component declares functions.

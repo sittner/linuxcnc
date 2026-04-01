@@ -121,7 +121,6 @@ func TestParseOptions(t *testing.T) {
 	src := `component test "test";
 pin out bit x;
 function _;
-option singleton yes;
 option extra_setup;
 option data internal;
 license "GPL";
@@ -132,14 +131,28 @@ license "GPL";
 		t.Fatalf("Parse error: %v", err)
 	}
 	opts := pkg.Component.Options
-	if opts["singleton"] != "yes" {
-		t.Errorf("singleton = %q", opts["singleton"])
-	}
 	if opts["extra_setup"] != "1" {
 		t.Errorf("extra_setup = %q", opts["extra_setup"])
 	}
 	if opts["data"] != "internal" {
 		t.Errorf("data = %q", opts["data"])
+	}
+}
+
+func TestParseSingletonRejected(t *testing.T) {
+	src := `component test "test";
+pin out bit x;
+function _;
+option singleton yes;
+license "GPL";
+;;
+`
+	_, err := Parse("test.comp", src)
+	if err == nil {
+		t.Fatal("expected error for 'option singleton'")
+	}
+	if !strings.Contains(err.Error(), "singleton") {
+		t.Errorf("error should mention singleton: %v", err)
 	}
 }
 
@@ -270,6 +283,11 @@ func TestParseAllComponentFiles(t *testing.T) {
 				}
 				pkg, err := Parse(e.Name(), string(src))
 				if err != nil {
+					// Skip files with unsupported features (singleton, RTAPI_MP_ARRAY_*).
+					if strings.Contains(err.Error(), "singleton") ||
+						strings.Contains(err.Error(), "RTAPI_MP_ARRAY_") {
+						t.Skipf("unsupported feature: %v", err)
+					}
 					t.Fatalf("Parse error: %v", err)
 				}
 				if pkg.Component.Name == "" {
@@ -307,6 +325,11 @@ func TestParseUserComps(t *testing.T) {
 			}
 			pkg, err := Parse(name, string(src))
 			if err != nil {
+				// Skip files with unsupported features (singleton, RTAPI_MP_ARRAY_*).
+				if strings.Contains(err.Error(), "singleton") ||
+					strings.Contains(err.Error(), "RTAPI_MP_ARRAY_") {
+					t.Skipf("unsupported feature: %v", err)
+				}
 				t.Fatalf("Parse error: %v", err)
 			}
 			if pkg.Component.Name == "" {
