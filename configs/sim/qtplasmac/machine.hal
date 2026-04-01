@@ -14,7 +14,7 @@ load mux2 [sim:{{$jnum}}_mux]
 load ddt [sim:{{$jnum}}_vel,sim:{{$jnum}}_accel]
 load sim_home_switch [sim:{{$jnum}}_switch]
 {{- end}}
-loadrt hypot names=sim:hyp_xy,sim:hyp_xyz
+load hypot [sim:hyp_xy,sim:hyp_xyz]
 
 # ---THREAD LINKS---
 addf motion-command-handler servo-thread

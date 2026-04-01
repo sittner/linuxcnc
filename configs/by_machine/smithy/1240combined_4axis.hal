@@ -42,7 +42,7 @@ setp pid.0.deadband 0.01
 # Need this line so AXIS shows +/- buttons
 net srpm spindle.0.speed-out
 # Limit bounds and slew rate/second
-loadrt limit2
+load limit2 [limit2.0]
 setp limit2.0.min -100
 setp limit2.0.max 100
 setp limit2.0.maxv 50
@@ -56,7 +56,7 @@ load and2 [and2.0,and2.1]
 load lowpass [lowpass.0]
 setp lowpass.0.gain 0.07
 # Spindle at-speed detection
-loadrt near
+load near [near.0]
 setp near.0.scale 1.1
 setp near.0.difference 0.1
 net srps spindle.0.speed-out-rps limit2.0.in near.0.in1

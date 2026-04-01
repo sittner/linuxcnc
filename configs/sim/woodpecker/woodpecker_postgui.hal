@@ -1,7 +1,7 @@
 #show pin woodpecker
 
 load and2 [and2.0]
-loadrt near
+load near [near.0]
 addf and2.0 servo-thread
 addf near.0 servo-thread
 setp near.0.scale 1.01

@@ -8,7 +8,7 @@ loadrt [EMCMOT]EMCMOT base_period_nsec=[EMCMOT]BASE_PERIOD servo_period_nsec=[EM
 # load 6 differentiators (for velocity and accel signals
 load ddt [ddt.0,ddt.1,ddt.2,ddt.3,ddt.4,ddt.5]
 # load additional blocks
-loadrt hypot count=2
+load hypot [hypot.0,hypot.1]
 load comp [comp.0,comp.1,comp.2]
 load or2 [or2.0]
 

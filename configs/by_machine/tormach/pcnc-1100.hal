@@ -43,7 +43,7 @@ load or2 [or2.0]
 net spindle-cw or2.0.in0
 net spindle-ccw spindle.0.reverse or2.0.in1
 
-loadrt toggle count=1
+load toggle [toggle.0]
 load not [not.0]
 loadrt gearchange count=1
 addf toggle.0 servo-thread

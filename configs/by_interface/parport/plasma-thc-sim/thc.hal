@@ -4,9 +4,9 @@
 #3 extra ands for simulator
 load and2 [and2.0,and2.1,and2.2,and2.3,and2.4,and2.5,and2.6,and2.7,and2.8,and2.9,and2.10,and2.11]
 load comp [comp.0,comp.1,comp.2]
-loadrt updown
-loadrt flipflop count=3
-loadrt hypot
+load updown [updown.0]
+load flipflop [flipflop.0,flipflop.1,flipflop.2]
+load hypot [hypot.0]
 load logic [logic.0] personality=0x203
 load minmax [minmax.0]
 load mult2 [mult2.0,mult2.1]

@@ -256,7 +256,7 @@ proc make_ddts {number_of_joints} {
     }
   }
   if $has_xyz {
-    loadrt hypot names=hyp_xy,hyp_xyz ;# vector velocities
+    load hypot [hyp_xy,hyp_xyz] ; # vector velocities
     addf hyp_xy  servo-thread
     addf hyp_xyz servo-thread
     net J$::SIM_LIB(jointidx,x):vel <= J$::SIM_LIB(jointidx,x)_vel.out
@@ -355,9 +355,9 @@ proc sim_spindle {} {
   loadrt sim_spindle names=sim_spindle
   do_setp sim_spindle.scale 0.01666667
 
-  loadrt limit2  names=limit_speed
+  load limit2 [limit_speed]
   load lowpass [spindle_mass]
-  loadrt near    names=near_speed
+  load near [near_speed]
   load scale [rpm_rps]
 
   setp rpm_rps.gain .0167

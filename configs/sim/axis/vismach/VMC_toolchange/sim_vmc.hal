@@ -9,7 +9,7 @@ loadusr -W ./vmcgui
 load wcomp [xlim,ylim,zlim,armsw,drawsw,locksw]
 load mux2 [armpos,drawpos,lockpos,mux2.0]
 load sum2 [carpos,spindlepos]
-loadrt limit2 names=armlim,drawlim,locklim,spindlelim,carlim
+load limit2 [armlim,drawlim,locklim,spindlelim,carlim]
 
 addf xlim servo-thread
 addf ylim servo-thread
@@ -78,7 +78,7 @@ net bit4 bitslice.0.out-04
 # pulse and index output variant (untidy modmaths)
 load conv_s32_float [conv_s32_float.0,conv_s32_float.1]
 load conv_float_s32 [conv_float_s32.0,conv_float_s32.1,conv_float_s32.2]
-loadrt near count=3
+load near [near.0,near.1,near.2]
 load scale [scale.0]
 addf conv-s32-float.0 servo-thread
 addf conv-float-s32.0 servo-thread

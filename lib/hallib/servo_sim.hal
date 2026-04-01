@@ -263,7 +263,7 @@ setp wcomp_zhome.min [JOINT_2]HOME_SW_MIN
 setp wcomp_zhome.max [JOINT_2]HOME_SW_MAX
 
 # Configure fake probing
-loadrt sphereprobe names=sphereprobe
+load sphereprobe [sphereprobe]
 
 addf sphereprobe base-thread 2
 

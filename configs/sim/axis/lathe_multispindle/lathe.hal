@@ -2,7 +2,7 @@
 loadrt encoder names=encoder_0,encoder_1
 # simulate the encoder
 loadrt sim_encoder names=sim_encoder_0,sim_encoder_1
-loadrt limit2 names=limit_speed
+load limit2 [limit_speed]
 
 addf limit_speed servo-thread
 
@@ -83,7 +83,7 @@ addf lowpass_velocity.1 servo-thread
 addf scale_to_rpm.1 servo-thread
 
 # for at-speed detection
-loadrt near names=near_speed.0,near_speed.1
+load near [near_speed.0,near_speed.1]
 addf near_speed.0 servo-thread
 setp near_speed.0.scale 1.1
 setp near_speed.0.difference 10
