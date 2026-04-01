@@ -7,7 +7,7 @@
 # ---LOAD COMPONENTS---
 loadrt {{ini "KINS" "KINEMATICS"}}
 loadrt {{ini "EMCMOT" "EMCMOT"}} servo_period_nsec={{ini "EMCMOT" "SERVO_PERIOD"}} num_joints={{.Joints}} num_spindles={{ini "TRAJ" "SPINDLES"}}
-loadrt  plasmac
+load plasmac [plasmac.0]
 {{- range $jNum := count .Joints}}
 loadrt pid names=sim-joint.{{$jNum}}.pid
 load mux2 [sim-joint.{{$jNum}}.mux]

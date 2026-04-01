@@ -19,7 +19,7 @@ CMOD_COMP_NAMES := \
     flipflop gantry gray2bin hypot integ invert \
     knob2float limit1 limit2 lincurve logic lowpass lut5 \
     maj3 match8 minmax mult2 multiclick mux16 mux2 mux4 mux8 \
-    near not offset or2 sample_hold scale scaled_s32_sums \
+    near not offset or2 plasmac sample_hold scale scaled_s32_sums \
     select8 sim_axis_hardware sim_home_switch sim_parport sphereprobe \
     steptest sum2 threadtest tof toggle toggle2nist ton tp tristate_bit \
     tristate_float updown wcomp xor2
