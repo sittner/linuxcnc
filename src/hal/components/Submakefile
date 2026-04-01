@@ -5,36 +5,33 @@ CONVERTERS :=  \
     conv_u32_float.comp conv_u32_bit.comp conv_u32_s32.comp
 
 # ---------------------------------------------------------------------------
-# Components built via modcompile (cmod API, output to ../cmod/)
+# Legacy components that stay with halcompile (explicit list)
+# These use features not supported by cmod or have special requirements
 # ---------------------------------------------------------------------------
-CMOD_COMP_NAMES := \
-    abs abs_s32 and2 anglejog axistest bin2gray biquad bitslice bitwise bldc blend \
-    charge_pump clarke2 clarke3 clarkeinv comp constant \
-    conv_bit_float conv_bit_s32 conv_bit_u32 \
-    conv_float_s32 conv_float_u32 \
-    conv_s32_bit conv_s32_float conv_s32_u32 \
-    conv_u32_bit conv_u32_float conv_u32_s32 \
-    corexy_by_hal \
-    dbounce ddt deadzone demux differential div2 edge eoffset_per_angle estop_latch \
-    feedcomp filter_kalman flipflop gantry gearchange gray2bin histobins hypot \
-    ilowpass integ invert joyhandle \
-    knob2float latencybins limit1 limit2 limit3 limit_axis lincurve logic lowpass lut5 \
-    maj3 match8 max31855 minmax moveoff mult2 multiclick mux16 mux2 mux4 mux8 \
-    near not offset ohmic oneshot or2 orient plasmac \
-    sample_hold scale scaled_s32_sums select8 \
-    sim_axis_hardware sim_home_switch sim_matrix_kb sim_parport sim_spindle simple_tp \
-    sphereprobe spindle_monitor steptest sum2 \
-    threadtest time timedelay timedelta tof toggle toggle2nist ton tp \
-    tristate_bit tristate_float updown wcomp xhc_hb04_util xor2
+HALCOMPILE_COMP_NAMES := \
+    homecomp             \
+    mesa_pktgyro_test    \
+    millturn             \
+    tpcomp               \
+    userkins             \
+    xyzab_tdr_kins
+# Reasons:
+#   homecomp, tpcomp      - use EXTRA_SETUP (motion controller integration)
+#   millturn, userkins, xyzab_tdr_kins - kinematics modules (special motion integration)
+#   mesa_pktgyro_test     - hostmot2 driver test (depends on internal headers)
 
-CMOD_COMPS := $(addprefix hal/components/, $(addsuffix .comp, $(CMOD_COMP_NAMES)))
+HALCOMPILE_COMPS := $(addprefix hal/components/, $(addsuffix .comp, $(HALCOMPILE_COMP_NAMES)))
+
+# ---------------------------------------------------------------------------
+# Components built via modcompile (cmod API, output to ../cmod/)
+# All .comp files except those in HALCOMPILE_COMPS
+# ---------------------------------------------------------------------------
+CMOD_COMPS := $(filter-out $(HALCOMPILE_COMPS), $(sort $(wildcard hal/components/*.comp)))
+CMOD_COMP_NAMES := $(patsubst hal/components/%.comp,%,$(CMOD_COMPS))
 CMOD_TARGETS := $(addprefix ../cmod/, $(addsuffix .so, $(CMOD_COMP_NAMES)))
 
-# Everything else stays with halcompile (legacy RT API)
-COMPS := $(filter-out $(CMOD_COMPS), \
-    $(filter-out hal/components/tpcomp.comp, \
-        $(sort $(wildcard hal/components/*.comp) \
-               $(addprefix hal/components/, $(CONVERTERS)))))
+# Everything in HALCOMPILE_COMPS except tpcomp (which is special)
+COMPS := $(filter-out hal/components/tpcomp.comp, $(HALCOMPILE_COMPS))
 COMP_MANPAGES := $(patsubst hal/components/%.comp, ../docs/man/man9/%.9, $(COMPS) $(CMOD_COMPS)) ../docs/man/man9/tpcomp.9
 COMP_DRIVERS += hal/drivers/serport.comp
 COMP_DRIVERS += hal/drivers/mesa_7i65.comp
