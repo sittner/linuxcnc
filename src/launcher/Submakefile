@@ -9,6 +9,13 @@ TOP := $(shell cd ..; pwd)
 # Package path for -ldflags -X injection
 LAUNCHER_LDFLAGS_PKG := github.com/sittner/linuxcnc/src/launcher/internal/config
 
+# Cmod include directory - where gomc_*.h headers are
+ifeq ($(RUN_IN_PLACE),yes)
+EMC2_CMOD_INCLUDE_DIR := $(EMC2_HOME)/src/launcher/pkg/cmodule
+else
+EMC2_CMOD_INCLUDE_DIR := $(includedir)/linuxcnc/cmod
+endif
+
 # Compile-time variables injected via -ldflags
 LAUNCHER_LDFLAGS := \
     -X '$(LAUNCHER_LDFLAGS_PKG).EMC2Home=$(EMC2_HOME)' \
@@ -18,6 +25,7 @@ LAUNCHER_LDFLAGS := \
     -X '$(LAUNCHER_LDFLAGS_PKG).EMC2RtlibDir=$(EMC2_RTLIB_DIR)' \
     -X '$(LAUNCHER_LDFLAGS_PKG).EMC2GomodDir=$(EMC2_GOMOD_DIR)' \
     -X '$(LAUNCHER_LDFLAGS_PKG).EMC2CmodDir=$(EMC2_CMOD_DIR)' \
+    -X '$(LAUNCHER_LDFLAGS_PKG).EMC2CmodIncludeDir=$(EMC2_CMOD_INCLUDE_DIR)' \
     -X '$(LAUNCHER_LDFLAGS_PKG).EMC2ConfigPath=$(LINUXCNC_CONFIG_PATH)' \
     -X '$(LAUNCHER_LDFLAGS_PKG).EMC2NCFilesDir=$(EMC2_NCFILES_DIR)' \
     -X '$(LAUNCHER_LDFLAGS_PKG).EMC2LangDir=$(EMC2_LANG_DIR)' \
@@ -151,7 +159,7 @@ TARGETS += ../bin/linuxcnc-launcher ../bin/ads-xml-gen ../gomod/ads-server.so $(
 ../bin/modcompile: $(LAUNCHER_SRC)
 	$(ECHO) Building modcompile
 	@rm -f $@
-	$(Q)cd launcher && $(GO) build -o $(TOP)/bin/modcompile ./cmd/modcompile
+	$(Q)cd launcher && $(GO) build -ldflags "$(LAUNCHER_LDFLAGS)" -o $(TOP)/bin/modcompile ./cmd/modcompile
 
 TARGETS += ../bin/modcompile
 

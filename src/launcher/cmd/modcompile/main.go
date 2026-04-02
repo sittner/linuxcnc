@@ -6,14 +6,23 @@
 //
 // Options:
 //
-//	--help        Show this help message.
-//	--parse       Parse only — print the parsed AST and exit.
-//	--preprocess  Preprocess only — emit generated C to stdout.
-//	--document    Generate man page documentation.
-//	--view-doc    Generate and display man page.
-//	--compile     Compile to .so in the current directory.
-//	--install     Compile and install to EMC2_CMOD_DIR.
-//	-o FILE       Write output to FILE (for --preprocess, --document).
+//	--help           Show this help message.
+//	--parse          Parse only — print the parsed AST and exit.
+//	--preprocess     Preprocess only — emit generated C to stdout.
+//	--document       Generate man page documentation.
+//	--view-doc       Generate and display man page.
+//	--compile        Compile to .so in the current directory.
+//	--install        Compile and install to EMC2_CMOD_DIR.
+//	-o FILE          Write output to FILE (for --preprocess, --document).
+//
+// Environment query options (for external Makefiles):
+//
+//	--cflags         Print compiler flags for cmod components.
+//	--ldflags        Print linker flags for cmod components.
+//	--cmod-dir       Print cmod installation directory.
+//	--include-dir    Print cmod headers directory.
+//	--gomod-dir      Print gomod directory.
+//	--print-make-inc Print Makefile include snippet for external projects.
 package main
 
 import (
@@ -24,6 +33,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/sittner/linuxcnc/src/launcher/internal/config"
+	"github.com/sittner/linuxcnc/src/launcher/internal/modcompile/ast"
 	"github.com/sittner/linuxcnc/src/launcher/internal/modcompile/cgen"
 	"github.com/sittner/linuxcnc/src/launcher/internal/modcompile/comp"
 	"github.com/sittner/linuxcnc/src/launcher/internal/modcompile/docgen"
@@ -33,22 +44,52 @@ const usageText = `modcompile: Compile .comp files to cmod shared libraries
 
 Usage:
     modcompile [options] file.comp...
+    modcompile --cflags | --ldflags | --cmod-dir | --include-dir | --gomod-dir
+    modcompile --print-make-inc
 
-Options:
-    --help        Show this help message
-    --parse       Parse only — print the parsed AST as JSON
-    --preprocess  Preprocess only — emit generated C code
-    --document    Generate man page documentation
-    --view-doc    Generate and display man page in terminal
-    --compile     Compile to .so (not yet implemented)
-    --install     Compile and install (not yet implemented)
-    -o FILE       Write output to FILE (for --preprocess, --document)
+Compile options:
+    --help           Show this help message
+    --parse          Parse only — print the parsed AST as JSON
+    --preprocess     Preprocess only — emit generated C code
+    --document       Generate man page documentation
+    --view-doc       Generate and display man page in terminal
+    --compile        Compile .comp to .so in the current directory
+    --install        Compile .comp and install to cmod directory
+    -o FILE          Write output to FILE (for --preprocess, --document)
+
+Environment query options (for external Makefiles):
+    --cflags         Print compiler flags for cmod components
+    --ldflags        Print linker flags for cmod components
+    --cmod-dir       Print cmod installation directory
+    --include-dir    Print cmod headers directory
+    --gomod-dir      Print gomod directory
+    --print-make-inc Print Makefile include snippet for external projects
 
 Examples:
-    modcompile --preprocess mycomp.comp > mycomp.c
+    # Compile a .comp file
+    modcompile --compile mycomp.comp
+    modcompile --install mycomp.comp
+
+    # Generate documentation
     modcompile --document -o mycomp.9 mycomp.comp
     modcompile --view-doc mycomp.comp
+
+    # Use in external Makefile:
+    $(eval $(shell modcompile --print-make-inc))
+    mycomp.so: mycomp.c
+        $(GOMC_CC) $(GOMC_CFLAGS) -o $@ $< $(GOMC_LDFLAGS)
+
+    # Or query individual flags:
+    CFLAGS := $(shell modcompile --cflags)
+    LDFLAGS := $(shell modcompile --ldflags)
 `
+
+// Compiler/linker settings
+const (
+	defaultCC     = "gcc"
+	defaultCFlags = "-fPIC -Os -Wall"
+	defaultLDFlags = "-shared -lm"
+)
 
 func main() {
 	if len(os.Args) < 2 {
@@ -56,7 +97,29 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Parse arguments
+	// Handle environment query options first (no files needed)
+	switch os.Args[1] {
+	case "--cflags":
+		fmt.Printf("-I%s %s\n", config.EMC2CmodIncludeDir, defaultCFlags)
+		return
+	case "--ldflags":
+		fmt.Println(defaultLDFlags)
+		return
+	case "--cmod-dir":
+		fmt.Println(config.EMC2CmodDir)
+		return
+	case "--include-dir":
+		fmt.Println(config.EMC2CmodIncludeDir)
+		return
+	case "--gomod-dir":
+		fmt.Println(config.EMC2GomodDir)
+		return
+	case "--print-make-inc":
+		printMakeInc()
+		return
+	}
+
+	// Parse arguments for file-processing modes
 	var mode string
 	var outputFile string
 	var files []string
@@ -90,105 +153,187 @@ func main() {
 	}
 
 	for _, path := range files {
-		src, err := os.ReadFile(path)
-		if err != nil {
+		if err := processFile(path, mode, outputFile); err != nil {
 			fmt.Fprintf(os.Stderr, "modcompile: %v\n", err)
-			os.Exit(1)
-		}
-
-		pkg, err := comp.Parse(path, string(src))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "modcompile: %v\n", err)
-			os.Exit(1)
-		}
-
-		switch mode {
-		case "--parse":
-			enc := json.NewEncoder(os.Stdout)
-			enc.SetIndent("", "  ")
-			enc.Encode(pkg)
-
-		case "--preprocess":
-			out := os.Stdout
-			if outputFile != "" {
-				f, err := os.Create(outputFile)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "modcompile: %v\n", err)
-					os.Exit(1)
-				}
-				defer f.Close()
-				out = f
-			}
-			if err := cgen.Generate(out, pkg); err != nil {
-				fmt.Fprintf(os.Stderr, "modcompile: %v\n", err)
-				os.Exit(1)
-			}
-
-		case "--document":
-			out := os.Stdout
-			if outputFile != "" {
-				f, err := os.Create(outputFile)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "modcompile: %v\n", err)
-					os.Exit(1)
-				}
-				defer f.Close()
-				out = f
-			} else {
-				// Default output filename
-				base := strings.TrimSuffix(filepath.Base(path), ".comp")
-				section := "9"
-				if pkg.Component.Options["userspace"] == "yes" {
-					section = "1"
-				}
-				outName := base + "." + section
-				f, err := os.Create(outName)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "modcompile: %v\n", err)
-					os.Exit(1)
-				}
-				defer f.Close()
-				out = f
-			}
-			if err := docgen.Generate(out, pkg); err != nil {
-				fmt.Fprintf(os.Stderr, "modcompile: %v\n", err)
-				os.Exit(1)
-			}
-
-		case "--view-doc":
-			// Generate to temp file and display with man
-			tmpFile, err := os.CreateTemp("", "modcompile-*.man")
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "modcompile: %v\n", err)
-				os.Exit(1)
-			}
-			tmpName := tmpFile.Name()
-			defer os.Remove(tmpName)
-
-			if err := docgen.Generate(tmpFile, pkg); err != nil {
-				tmpFile.Close()
-				fmt.Fprintf(os.Stderr, "modcompile: %v\n", err)
-				os.Exit(1)
-			}
-			tmpFile.Close()
-
-			// Run man to display
-			cmd := exec.Command("man", tmpName)
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			cmd.Stdin = os.Stdin
-			if err := cmd.Run(); err != nil {
-				fmt.Fprintf(os.Stderr, "modcompile: %v\n", err)
-				os.Exit(1)
-			}
-
-		case "--compile", "--install":
-			fmt.Fprintf(os.Stderr, "modcompile: %s not yet implemented\n", mode)
-			os.Exit(1)
-
-		default:
-			fmt.Fprintf(os.Stderr, "modcompile: unknown mode %q\n", mode)
 			os.Exit(1)
 		}
 	}
+}
+
+func processFile(path, mode, outputFile string) error {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	pkg, err := comp.Parse(path, string(src))
+	if err != nil {
+		return err
+	}
+
+	switch mode {
+	case "--parse":
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(pkg)
+
+	case "--preprocess":
+		out := os.Stdout
+		if outputFile != "" {
+			f, err := os.Create(outputFile)
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+			out = f
+		}
+		return cgen.Generate(out, pkg)
+
+	case "--document":
+		out := os.Stdout
+		if outputFile != "" {
+			f, err := os.Create(outputFile)
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+			out = f
+		} else {
+			// Default output filename
+			base := strings.TrimSuffix(filepath.Base(path), ".comp")
+			section := "9"
+			if pkg.Component.Options["userspace"] == "yes" {
+				section = "1"
+			}
+			outName := base + "." + section
+			f, err := os.Create(outName)
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+			out = f
+		}
+		return docgen.Generate(out, pkg)
+
+	case "--view-doc":
+		// Generate to temp file and display with man
+		tmpFile, err := os.CreateTemp("", "modcompile-*.man")
+		if err != nil {
+			return err
+		}
+		tmpName := tmpFile.Name()
+		defer os.Remove(tmpName)
+
+		if err := docgen.Generate(tmpFile, pkg); err != nil {
+			tmpFile.Close()
+			return err
+		}
+		tmpFile.Close()
+
+		// Run man to display
+		cmd := exec.Command("man", tmpName)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Stdin = os.Stdin
+		return cmd.Run()
+
+	case "--compile":
+		return compileComp(path, pkg, ".")
+
+	case "--install":
+		return compileComp(path, pkg, config.EMC2CmodDir)
+
+	default:
+		return fmt.Errorf("unknown mode %q", mode)
+	}
+}
+
+// compileComp compiles a .comp file to a .so in the given output directory.
+func compileComp(compPath string, pkg *ast.Package, outDir string) error {
+	base := strings.TrimSuffix(filepath.Base(compPath), ".comp")
+	soPath := filepath.Join(outDir, base+".so")
+
+	// Create temp file for generated C
+	tmpFile, err := os.CreateTemp("", "modcompile-*.c")
+	if err != nil {
+		return fmt.Errorf("creating temp file: %w", err)
+	}
+	tmpCPath := tmpFile.Name()
+	defer os.Remove(tmpCPath)
+
+	// Generate C code
+	if err := cgen.Generate(tmpFile, pkg); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("generating C: %w", err)
+	}
+	tmpFile.Close()
+
+	// Ensure output directory exists
+	if err := os.MkdirAll(outDir, 0755); err != nil {
+		return fmt.Errorf("creating output directory: %w", err)
+	}
+
+	// Compile with gcc
+	cc := os.Getenv("CC")
+	if cc == "" {
+		cc = defaultCC
+	}
+
+	args := []string{
+		"-I" + config.EMC2CmodIncludeDir,
+		"-fPIC", "-Os", "-Wall",
+		"-shared",
+		"-o", soPath,
+		tmpCPath,
+		"-lm",
+	}
+
+	cmd := exec.Command(cc, args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("compiling %s: %w", base, err)
+	}
+
+	return nil
+}
+
+// printMakeInc outputs a Makefile snippet for external projects.
+func printMakeInc() {
+	cc := os.Getenv("CC")
+	if cc == "" {
+		cc = defaultCC
+	}
+
+	fmt.Printf(`# modcompile Makefile include - generated by modcompile --print-make-inc
+# Include in your Makefile with: $(eval $(shell modcompile --print-make-inc))
+
+GOMC_CC := %s
+GOMC_CFLAGS := -I%s %s
+GOMC_LDFLAGS := %s
+GOMC_CMOD_DIR := %s
+GOMC_GOMOD_DIR := %s
+GOMC_INCLUDE_DIR := %s
+
+# Pattern rule for compiling .comp files to .so
+%%.so: %%.comp
+	modcompile --compile $<
+
+# Pattern rule for compiling .c files to .so (cmod API)
+%%.so: %%.c
+	$(GOMC_CC) $(GOMC_CFLAGS) -o $@ $< $(GOMC_LDFLAGS)
+
+# Install target helper
+gomc-install: $(GOMC_TARGETS)
+	install -d $(DESTDIR)$(GOMC_CMOD_DIR)
+	install -m 644 $(GOMC_TARGETS) $(DESTDIR)$(GOMC_CMOD_DIR)/
+`,
+		cc,
+		config.EMC2CmodIncludeDir, defaultCFlags,
+		defaultLDFlags,
+		config.EMC2CmodDir,
+		config.EMC2GomodDir,
+		config.EMC2CmodIncludeDir,
+	)
 }

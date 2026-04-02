@@ -28,6 +28,10 @@ var (
 	// EMC2CmodDir is the directory containing C plugin modules (@EMC2_CMOD_DIR@).
 	EMC2CmodDir string
 
+	// EMC2CmodIncludeDir is the directory containing cmod header files (gomc_*.h).
+	// For RIP this is src/launcher/pkg/cmodule, for installed it's include/linuxcnc/cmod.
+	EMC2CmodIncludeDir string
+
 	// EMC2ConfigPath is the colon-separated list of config search directories (@LINUXCNC_CONFIG_PATH@).
 	EMC2ConfigPath string
 
