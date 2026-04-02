@@ -45,7 +45,7 @@ net spindle-ccw spindle.0.reverse or2.0.in1
 
 load toggle [toggle.0]
 load not [not.0]
-load gearchange count=1
+load gearchange [gearchange.0]
 addf toggle.0 servo-thread
 addf not.0 servo-thread
 addf gearchange.0 servo-thread
