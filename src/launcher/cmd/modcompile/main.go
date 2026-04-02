@@ -22,6 +22,8 @@
 //	--cmod-dir       Print cmod installation directory.
 //	--include-dir    Print cmod headers directory.
 //	--gomod-dir      Print gomod directory.
+//	--launcher-dir   Print launcher Go module source directory.
+//	--go             Print Go binary path used to build LinuxCNC.
 //	--print-make-inc Print Makefile include snippet for external projects.
 package main
 
@@ -63,6 +65,8 @@ Environment query options (for external Makefiles):
     --cmod-dir       Print cmod installation directory
     --include-dir    Print cmod headers directory
     --gomod-dir      Print gomod directory
+    --launcher-dir   Print launcher Go module source directory
+    --go             Print Go binary path used to build LinuxCNC
     --print-make-inc Print Makefile include snippet for external projects
 
 Examples:
@@ -113,6 +117,12 @@ func main() {
 		return
 	case "--gomod-dir":
 		fmt.Println(config.EMC2GomodDir)
+		return
+	case "--launcher-dir":
+		fmt.Println(config.EMC2LauncherDir)
+		return
+	case "--go":
+		fmt.Println(config.GoBinary)
 		return
 	case "--print-make-inc":
 		printMakeInc()
@@ -307,14 +317,19 @@ func printMakeInc() {
 		cc = defaultCC
 	}
 
+	libDir := filepath.Join(config.EMC2Home, "lib")
+
 	// Each line wrapped in $(eval ...) because $(shell) converts newlines to spaces.
 	// The outer $(eval $(shell ...)) then evaluates each inner $(eval) properly.
-	fmt.Printf(`$(eval GOMC_CC := %s) $(eval GOMC_CFLAGS := -I%s %s) $(eval GOMC_LDFLAGS := %s) $(eval GOMC_CMOD_DIR := %s) $(eval GOMC_GOMOD_DIR := %s) $(eval GOMC_INCLUDE_DIR := %s)`,
+	fmt.Printf(`$(eval GOMC_CC := %s) $(eval GOMC_CFLAGS := -I%s %s) $(eval GOMC_LDFLAGS := %s) $(eval GOMC_CMOD_DIR := %s) $(eval GOMC_GOMOD_DIR := %s) $(eval GOMC_INCLUDE_DIR := %s) $(eval GOMC_LAUNCHER_DIR := %s) $(eval GOMC_GO := %s) $(eval GOMC_LIB_DIR := %s)`,
 		cc,
 		config.EMC2CmodIncludeDir, defaultCFlags,
 		defaultLDFlags,
 		config.EMC2CmodDir,
 		config.EMC2GomodDir,
 		config.EMC2CmodIncludeDir,
+		config.EMC2LauncherDir,
+		config.GoBinary,
+		libDir,
 	)
 }
