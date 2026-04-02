@@ -38,9 +38,9 @@
 component message "Display a message";
  
 description """Allows HAL pins to trigger a message. Example hal commands:
- load message name=oillow message="Slideway oil low"
- load message name=oilpressure message="No oil pressure"  
- load message name=inverterfail message="Spindle inverter fault"
+ load message [oillow] message="Slideway oil low"
+ load message [oilpressure] message="No oil pressure"  
+ load message ]inverterfail] message="Spindle inverter fault"
  addf oillow servo-thread
  addf oilpressure servo-thread
  addf inverterfail servo-thread
