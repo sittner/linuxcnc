@@ -32,7 +32,11 @@ CMOD_TARGETS := $(addprefix ../cmod/, $(addsuffix .so, $(CMOD_COMP_NAMES)))
 
 # Everything in HALCOMPILE_COMPS except tpcomp (which is special)
 COMPS := $(filter-out hal/components/tpcomp.comp, $(HALCOMPILE_COMPS))
-COMP_MANPAGES := $(patsubst hal/components/%.comp, ../docs/man/man9/%.9, $(COMPS) $(CMOD_COMPS)) ../docs/man/man9/tpcomp.9
+
+# Man pages: cmod components use modcompile, legacy use halcompile
+CMOD_MANPAGES := $(patsubst hal/components/%.comp, ../docs/man/man9/%.9, $(CMOD_COMPS))
+HALCOMPILE_MANPAGES := $(patsubst hal/components/%.comp, ../docs/man/man9/%.9, $(COMPS)) ../docs/man/man9/tpcomp.9
+COMP_MANPAGES := $(CMOD_MANPAGES) $(HALCOMPILE_MANPAGES)
 COMP_DRIVERS += hal/drivers/serport.comp
 COMP_DRIVERS += hal/drivers/mesa_7i65.comp
 COMP_DRIVERS += hal/drivers/mesa_uart.comp
@@ -48,7 +52,15 @@ endif
 
 RTMODULES += $(patsubst hal/drivers/%.comp, %.o, $(patsubst hal/components/%.comp, %.o, $(COMPS) $(COMP_DRIVERS)))
 
-$(COMP_MANPAGES): ../docs/man/man9/%.9: hal/components/%.comp ../bin/halcompile
+# Man pages for cmod components (use modcompile)
+$(CMOD_MANPAGES): ../docs/man/man9/%.9: hal/components/%.comp ../bin/modcompile
+	$(ECHO) Making modcompile manpage $(notdir $@)
+	@mkdir -p $(dir $@)
+	$(Q)../bin/modcompile --document -o $@.new $< && preconv -r < $@.new > $@
+	$(RM) $@.new
+
+# Man pages for legacy halcompile components
+$(HALCOMPILE_MANPAGES): ../docs/man/man9/%.9: hal/components/%.comp ../bin/halcompile
 	$(ECHO) Making halcompile manpage $(notdir $@)
 	@mkdir -p $(dir $@)
 	$(Q)../bin/halcompile -U --document -o $@.new $< && preconv -r < $@.new > $@
