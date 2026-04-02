@@ -201,20 +201,8 @@ modules: $(CMOD_C_TARGETS)
 # cmod userspace components (from hal/user_comps/)
 # ---------------------------------------------------------------------------
 
-CMOD_USER_COMPS := usbpend thermistor wj200_vfd pi500_vfd
+CMOD_USER_COMPS := thermistor wj200_vfd pi500_vfd
 CMOD_USER_TARGETS := $(addprefix ../cmod/, $(addsuffix .so, $(CMOD_USER_COMPS)))
-
-# usbpend: hal/user_comps/usb-pendant/usbpend.comp
-objects/cmod/usbpend.c: hal/user_comps/usb-pendant/usbpend.comp ../bin/modcompile
-	$(ECHO) "Preprocessing cmod $(notdir $<)"
-	@mkdir -p $(dir $@)
-	$(Q)../bin/modcompile --preprocess $< > $@
-
-# Userspace cmod .so — links with -lpthread for user_mainloop thread.
-../cmod/usbpend.so: objects/cmod/usbpend.c
-	$(ECHO) "Compiling cmod $(notdir $@)"
-	@mkdir -p $(dir $@)
-	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -o $@ $< -lm -lpthread
 
 # thermistor: hal/user_comps/thermistor.comp
 objects/cmod/thermistor.c: hal/user_comps/thermistor.comp ../bin/modcompile
