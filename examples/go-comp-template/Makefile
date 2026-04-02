@@ -1,37 +1,26 @@
 # Makefile for a Go HAL plugin (.so)
 #
-# Uses halcompile to locate LinuxCNC's Makefile.inc, which provides the
-# exact Go binary, paths, and flags used to build LinuxCNC.  This guarantees
-# the plugin is compiled with the same Go toolchain as the linuxcnc-launcher
-# host binary (a hard requirement for Go plugins).
+# Uses modcompile to locate LinuxCNC paths and the exact Go binary used to
+# build LinuxCNC. This guarantees the plugin is compiled with the same Go
+# toolchain as linuxcnc-launcher (a hard requirement for Go plugins).
 #
 # Usage:
 #   make            - build mygomodule.so in the current directory
-#   make install    - install to EMC2_GOMOD_DIR (auto-detected via halcompile)
+#   make install    - install to GOMC_GOMOD_DIR (auto-detected via modcompile)
 #   make clean      - remove build artifacts
 
 PLUGIN_NAME ?= mygomodule
 PLUGIN_SO   := $(PLUGIN_NAME).so
-DESTDIR     ?=
 
 # ---------------------------------------------------------------------------
-# Locate Makefile.inc next to Makefile.modinc (works for both RIP and installed).
+# Get paths from modcompile
 # ---------------------------------------------------------------------------
-MODINC_PATH := $(shell halcompile --print-modinc 2>/dev/null)
-ifneq ($(MODINC_PATH),)
-MAKEFILE_INC := $(dir $(MODINC_PATH))Makefile.inc
--include $(MAKEFILE_INC)
+MODCOMPILE := $(shell command -v modcompile 2>/dev/null)
+ifneq ($(MODCOMPILE),)
+$(eval $(shell $(MODCOMPILE) --print-make-inc))
 endif
 
-# Derive launcher source path from EMC2_HOME + RUN_IN_PLACE.
-ifeq ($(RUN_IN_PLACE),yes)
-LAUNCHER_DIR := $(EMC2_HOME)/src/launcher
-else
-LAUNCHER_DIR := $(datadir)/linuxcnc/launcher
-endif
-
-INSTALL_DIR  := $(EMC2_GOMOD_DIR)
-CGO_LDFLAGS  ?= -Wl,-rpath,$(LIB_DIR)
+CGO_LDFLAGS ?= -Wl,-rpath,$(GOMC_LIB_DIR)
 
 # ---------------------------------------------------------------------------
 # Targets
@@ -41,35 +30,34 @@ CGO_LDFLAGS  ?= -Wl,-rpath,$(LIB_DIR)
 all: check-env go.work $(PLUGIN_SO)
 
 check-env:
-	@if [ -z "$(MODINC_PATH)" ]; then \
-		echo "Error: halcompile not found."; \
+	@if [ -z "$(MODCOMPILE)" ]; then \
+		echo "Error: modcompile not found in PATH."; \
 		echo "Source rip-environment or install LinuxCNC."; \
 		exit 1; \
 	fi
-	@if [ ! -d "$(LAUNCHER_DIR)" ]; then \
-		echo "Error: launcher not found at $(LAUNCHER_DIR)"; \
+	@if [ ! -d "$(GOMC_LAUNCHER_DIR)" ]; then \
+		echo "Error: launcher not found at $(GOMC_LAUNCHER_DIR)"; \
 		exit 1; \
 	fi
-	@echo "GO:           $(GO)"
-	@echo "launcher:     $(LAUNCHER_DIR)"
-	@echo "RUN_IN_PLACE: $(RUN_IN_PLACE)"
+	@echo "GO:       $(GOMC_GO)"
+	@echo "launcher: $(GOMC_LAUNCHER_DIR)"
 
 go.work: go.mod
 	@rm -f go.work go.work.sum
-	GOTOOLCHAIN=local $(GO) work init
-	GOTOOLCHAIN=local $(GO) work use .
-	GOTOOLCHAIN=local $(GO) work edit \
-		-replace github.com/sittner/linuxcnc/src/launcher=$(LAUNCHER_DIR)
+	GOTOOLCHAIN=local $(GOMC_GO) work init
+	GOTOOLCHAIN=local $(GOMC_GO) work use .
+	GOTOOLCHAIN=local $(GOMC_GO) work edit \
+		-replace github.com/sittner/linuxcnc/src/launcher=$(GOMC_LAUNCHER_DIR)
 
 $(PLUGIN_SO): main.go go.mod go.work
 	CGO_ENABLED=1 \
 	CGO_LDFLAGS="$(CGO_LDFLAGS)" \
 	GOTOOLCHAIN=local \
-	$(GO) build -buildmode=plugin -o $(PLUGIN_SO) .
+	$(GOMC_GO) build -buildmode=plugin -o $(PLUGIN_SO) .
 
 install: $(PLUGIN_SO)
-	install -d $(INSTALL_DIR)
-	install -m 644 $(PLUGIN_SO) $(INSTALL_DIR)/$(PLUGIN_SO)
+	install -d $(DESTDIR)$(GOMC_GOMOD_DIR)
+	install -m 644 $(PLUGIN_SO) $(DESTDIR)$(GOMC_GOMOD_DIR)/$(PLUGIN_SO)
 
 clean:
 	rm -f $(PLUGIN_SO) go.work go.work.sum
