@@ -128,7 +128,7 @@ func (p *parser) parseComponentDecl() error {
 	}
 	p.pkg.Component.Name = name
 
-	p.pkg.Component.Description = p.parseOptString()
+	p.pkg.Component.Summary = p.parseOptString()
 
 	return p.expectSemi()
 }

@@ -45,8 +45,8 @@ FUNCTION(_) { out = in0 && in1; }
 	if c.Name != "and2" {
 		t.Errorf("Name = %q, want %q", c.Name, "and2")
 	}
-	if c.Description != "Two-input AND gate" {
-		t.Errorf("Description = %q, want %q", c.Description, "Two-input AND gate")
+	if c.Summary != "Two-input AND gate" {
+		t.Errorf("Summary = %q, want %q", c.Summary, "Two-input AND gate")
 	}
 	if c.License != "GPL" {
 		t.Errorf("License = %q, want %q", c.License, "GPL")
@@ -246,8 +246,8 @@ license "GPL";
 	if err != nil {
 		t.Fatalf("Parse error: %v", err)
 	}
-	if !strings.Contains(pkg.Component.Description, "multi-line") {
-		t.Errorf("Description = %q", pkg.Component.Description)
+	if !strings.Contains(pkg.Component.Summary, "multi-line") {
+		t.Errorf("Summary = %q", pkg.Component.Summary)
 	}
 }
 

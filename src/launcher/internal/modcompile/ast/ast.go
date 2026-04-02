@@ -53,7 +53,8 @@ type Component struct {
 	Pos  Pos // position of the "component" keyword
 
 	// Documentation fields.
-	Description string
+	Summary     string // Short one-line description from component declaration
+	Description string // Full description from "description" block
 	License     string
 	Author      string
 	SeeAlso     string
