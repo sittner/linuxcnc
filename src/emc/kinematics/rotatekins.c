@@ -53,18 +53,6 @@ int kinematicsInverse(const EmcPose * pos,
     return 0;
 }
 
-/* implemented for these kinematics as giving joints preference */
-int kinematicsHome(EmcPose * world,
-		   double *joint,
-		   KINEMATICS_FORWARD_FLAGS * fflags,
-		   KINEMATICS_INVERSE_FLAGS * iflags)
-{
-    *fflags = 0;
-    *iflags = 0;
-
-    return kinematicsForward(joint, world, fflags, iflags);
-}
-
 KINEMATICS_TYPE kinematicsType()
 {
     return KINEMATICS_BOTH;
