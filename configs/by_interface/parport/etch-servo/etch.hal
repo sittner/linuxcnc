@@ -6,8 +6,8 @@ loadrt hal_parport cfg="0x378"
 loadrt encoder num_chan=2
 loadrt pid num_chan=2
 loadrt pwmgen output_type=1,1
-load ddt [ddt.0,ddt.1,ddt.2,ddt.3]
-load constant [constant.0]
+load ddt <ddt.0,ddt.1,ddt.2,ddt.3>
+load constant <constant.0>
 
 # define the order of execution for RT code
 addf parport.0.read            base-thread

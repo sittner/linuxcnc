@@ -4,7 +4,7 @@
 loadrt stepgen step_type=0,0,0,0
 
 # Load realtime ddt for velocity calculations used for CHL
-load ddt [ddt.0,ddt.1]
+load ddt <ddt.0,ddt.1>
 
 # Hook functions to base thread (high speed thread for step generation)
 addf stepgen.make-pulses base-thread

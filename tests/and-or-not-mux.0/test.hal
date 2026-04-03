@@ -1,9 +1,9 @@
 newthread fast 100000
-load and2 [and2.0]
-load or2 [or2.0]
-load not [not.0]
-load mux2 [mux2.0]
-load mux4 [mux4.0]
+load and2 <and2.0>
+load or2 <or2.0>
+load not <not.0>
+load mux2 <mux2.0>
+load mux4 <mux4.0>
 
 loadrt sampler depth=1000 cfg=bbbff
 loadrt streamer depth=32 cfg=bbbb

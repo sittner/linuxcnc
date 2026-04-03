@@ -14,7 +14,7 @@ loader.
 
 ```
 # In your .hal file:
-load /path/to/mygomodule.so [optional-arguments]
+load /path/to/mygomodule.so <optional-arguments>
 ```
 
 Everything after the module path is passed verbatim to the plugin's `New`

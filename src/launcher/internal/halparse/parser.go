@@ -699,11 +699,11 @@ func parseLoad(tokens []string, loc SourceLoc) (Token, *ParseError) {
 		Path: tokens[0],
 	}
 	rest := tokens[1:]
-	// Check for optional [name1,name2,...] instance name list.
-	if len(rest) > 0 && strings.HasPrefix(rest[0], "[") && strings.HasSuffix(rest[0], "]") {
-		nameList := rest[0][1 : len(rest[0])-1] // strip brackets
+	// Check for optional <name1,name2,...> instance name list.
+	if len(rest) > 0 && strings.HasPrefix(rest[0], "<") && strings.HasSuffix(rest[0], ">") {
+		nameList := rest[0][1 : len(rest[0])-1] // strip angle brackets
 		if nameList == "" {
-			return Token{}, &ParseError{Loc: loc, Msg: "load: empty instance name list []"}
+			return Token{}, &ParseError{Loc: loc, Msg: "load: empty instance name list <>"}
 		}
 		names := strings.Split(nameList, ",")
 		for i, n := range names {

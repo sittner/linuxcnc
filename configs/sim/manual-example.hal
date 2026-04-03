@@ -8,7 +8,7 @@
 setp gladevcp.status 1
 
 # create a 'estop-is-deactivated' signal
-load not [estop-not]
+load not <estop-not>
 addf estop-not servo-thread
 net estop halui.estop.is-activated => estop-not.in
 

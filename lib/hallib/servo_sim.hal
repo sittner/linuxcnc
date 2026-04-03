@@ -8,13 +8,13 @@ loadrt [EMCMOT]EMCMOT base_period_nsec=[EMCMOT]BASE_PERIOD servo_period_nsec=[EM
 # PID module, for three PID loops
 loadrt pid names=pid_x,pid_y,pid_z
 # 6 differentiators (for velocity and accel sigs)
-load ddt [ddt_x,ddt_xv,ddt_y,ddt_yv,ddt_z,ddt_zv]
+load ddt <ddt_x,ddt_xv,ddt_y,ddt_yv,ddt_z,ddt_zv>
 # three scale blocks (to simulate motor and leadscrew scaling)
-load scale [scale_x,scale_y,scale_z]
+load scale <scale_x,scale_y,scale_z>
 # three lowpass filters (to simulate motor inertia), and nine
-load lowpass [lowpass_x,lowpass_y,lowpass_z]
+load lowpass <lowpass_x,lowpass_y,lowpass_z>
 # window comparators (to simulate limit and home switches)
-load wcomp [wcomp_xneg,wcomp_xpos,wcomp_xhome,wcomp_yneg,wcomp_ypos,wcomp_yhome,wcomp_zneg,wcomp_zpos,wcomp_zhome]
+load wcomp <wcomp_xneg,wcomp_xpos,wcomp_xhome,wcomp_yneg,wcomp_ypos,wcomp_yhome,wcomp_zneg,wcomp_zpos,wcomp_zhome>
 
 # simulated encoders
 loadrt sim_encoder names=sim_encoder_px,sim_encoder_py,sim_encoder_pz
@@ -263,7 +263,7 @@ setp wcomp_zhome.min [JOINT_2]HOME_SW_MIN
 setp wcomp_zhome.max [JOINT_2]HOME_SW_MAX
 
 # Configure fake probing
-load sphereprobe [sphereprobe]
+load sphereprobe <sphereprobe>
 
 addf sphereprobe base-thread 2
 

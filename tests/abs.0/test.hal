@@ -2,7 +2,7 @@ setexact_for_test_suite_only
 
 loadrt sampler cfg=ff depth=350
 loadrt streamer cfg=f depth=350
-load abs [abs.0]
+load abs <abs.0>
 newthread fast 100000
 
 net in streamer.0.pin.0 => sampler.0.pin.0 abs.0.in

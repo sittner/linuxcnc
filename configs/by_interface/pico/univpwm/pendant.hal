@@ -1,4 +1,4 @@
-load mux4 [mux4.0]
+load mux4 <mux4.0>
 load ilowpass
 loadrt encoder num_chan=1
 

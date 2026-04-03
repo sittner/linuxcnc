@@ -10,7 +10,7 @@ setp tripodkins.Cy 7.071
 # motion controller, get name and thread periods from INI file
 loadrt [EMCMOT]EMCMOT servo_period_nsec=[EMCMOT]SERVO_PERIOD
 # 6 differentiators (for velocity and accel sigs)
-load ddt [ddt_j0,ddt_j1,ddt_j2,ddt_j0v,ddt_j1v,ddt_j2v]
+load ddt <ddt_j0,ddt_j1,ddt_j2,ddt_j0v,ddt_j1v,ddt_j2v>
 
 # add motion controller functions to servo thread
 addf motion-command-handler servo-thread

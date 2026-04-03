@@ -32,7 +32,7 @@ loadrt classicladder_rt
 loadusr -w classicladder --nogui 924.clp
 
 # load charge pump
-load charge_pump [charge_pump.0]
+load charge_pump <charge_pump.0>
 setp charge-pump.enable TRUE
 
 #configure the spindle encoder

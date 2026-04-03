@@ -2,7 +2,7 @@
 #        gmoccapy_postgui.hal file from Norbert Schechner         #
 ###################################################################
 
-load abs [abs_spindle_feedback]
+load abs <abs_spindle_feedback>
 addf abs_spindle_feedback servo-thread
 
 net spindle-speed-limited  =>  abs_spindle_feedback.in

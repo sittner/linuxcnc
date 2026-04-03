@@ -5,7 +5,7 @@ loadrt [KINS]KINEMATICS
 # motion controller, get name and thread periods from ini file
 loadrt [EMCMOT]EMCMOT servo_period_nsec=[EMCMOT]SERVO_PERIOD num_joints=[KINS]JOINTS
 
-load differential [differential.0]
+load differential <differential.0>
 
 
 addf motion-command-handler                servo-thread

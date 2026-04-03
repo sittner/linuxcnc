@@ -2,12 +2,12 @@
 loadrt [KINS]KINEMATICS
 loadrt [EMCMOT]EMCMOT servo_period_nsec=[EMCMOT]SERVO_PERIOD num_joints=[KINS]JOINTS
 loadrt pid num_chan=2 debug=1
-load ddt [ddt.0,ddt.1,ddt.2,ddt.3]
+load ddt <ddt.0,ddt.1,ddt.2,ddt.3>
 loadrt pluto_servo
-load scale [scale.0]
-load mux2 [mux2.0]
+load scale <scale.0>
+load mux2 <mux2.0>
 loadrt debounce cfg=1
-load limit1 [limit1.0]
+load limit1 <limit1.0>
 
 # define the order of execution for RT code
 addf pluto-servo.read        servo-thread

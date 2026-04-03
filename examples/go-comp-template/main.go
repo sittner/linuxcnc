@@ -64,7 +64,7 @@ func (m *passthroughModule) Destroy() {
 //
 // name is the instance name — use it as the HAL component name.
 // For single-instance loading it defaults to the module's base filename.
-// For multi-instance loading via [name1,name2,...] each instance gets a distinct name.
+// For multi-instance loading via <name1,name2,...> each instance gets a distinct name.
 //
 // args contains the individual arguments after the module path (and optional name list)
 // on the "load" line, e.g.:

@@ -39,13 +39,13 @@ net spindle-pwm stepgen.4.step parport.0.pin-01-out
 setp stepgen.4.stepspace 0
 setp stepgen.4.steplen 1
 setp parport.0.pin-01-out-reset 1
-load or2 [or2.0]
+load or2 <or2.0>
 linksp spindle-cw or2.0.in0
 net spindle-ccw spindle.0.reverse or2.0.in1
 
-load toggle [toggle.0]
-load not [not.0]
-load gearchange [gearchange.0]
+load toggle <toggle.0>
+load not <not.0>
+load gearchange <gearchange.0>
 addf toggle.0 servo-thread
 addf not.0 servo-thread
 addf gearchange.0 servo-thread

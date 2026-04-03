@@ -116,12 +116,12 @@ net stepcp parport.1.pin-17-out
 ###########Torch Height Control ########
 
 # Load the necessary functions
-load mux2 [mux2.0,mux2.1,mux2.2,mux2.3,mux2.4,mux2.5,mux2.6]
-load or2 [or2.0,or2.1,or2.2,or2.3]
-load not [not.0,not.1,not.2,not.3]
-load sum2 [sum2.0,sum2.1]
-load comp [comp.0,comp.1]
-load and2 [and2.0,and2.1]
+load mux2 <mux2.0,mux2.1,mux2.2,mux2.3,mux2.4,mux2.5,mux2.6>
+load or2 <or2.0,or2.1,or2.2,or2.3>
+load not <not.0,not.1,not.2,not.3>
+load sum2 <sum2.0,sum2.1>
+load comp <comp.0,comp.1>
+load and2 <and2.0,and2.1>
 
 # Make a sensor for the ARC OK signal with an active low
 net senseArcOKInverted <= parport.1.pin-15-in

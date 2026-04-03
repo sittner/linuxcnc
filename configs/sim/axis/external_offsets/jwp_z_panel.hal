@@ -1,4 +1,4 @@
-load updown [zctr]
+load updown <zctr>
 addf   zctr   servo-thread
 
 net  E:z-plus   <= pyvcp.z-plus            => zctr.countup

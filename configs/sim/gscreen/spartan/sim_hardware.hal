@@ -9,7 +9,7 @@ net fake-spindle-phase-a       sim-encoder.phase-A
 net fake-spindle-phase-b       sim-encoder.phase-B
 net fake-spindle-index         sim-encoder.phase-Z
 
-load sim_axis_hardware [sim-hardware]
+load sim_axis_hardware <sim-hardware>
 
 net xpos-fb            sim-hardware.Xcurrent-pos
 net ypos-fb            sim-hardware.Ycurrent-pos

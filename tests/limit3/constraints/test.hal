@@ -56,7 +56,7 @@ net output => mux-gen.00.in-float-05
 # Compute the velocity and acceleration of the limit3 output.
 #
 
-load ddt [ddt.out-accel,ddt.out-vel]
+load ddt <ddt.out-accel,ddt.out-vel>
 
 net output => ddt.out-vel.in
 
@@ -74,7 +74,7 @@ net out-accel <= ddt.out-accel.out
 # and fed to the mux select pin.
 #
 
-load charge_pump [charge_pump.0]
+load charge_pump <charge_pump.0>
 
 # The heartbeat toggles every other time the thread runs (so at 500 Hz).
 net heartbeat <= charge-pump.out
@@ -88,7 +88,7 @@ encoder.0.position-scale = 500
 net heartbeat => encoder.0.phase-A
 net encoder-position <= encoder.0.position
 
-load conv_float_u32 [conv_float_u32.0]
+load conv_float_u32 <conv_float_u32.0>
 net encoder-position => conv-float-u32.0.in
 
 net mux-select <= conv-float-u32.0.out

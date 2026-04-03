@@ -1,6 +1,6 @@
 loadrt sampler cfg=bb depth=100
 load timedelay
-load not [not.0]
+load not <not.0>
 newthread thread 1953125
 
 # Thread period is 1/512 second.

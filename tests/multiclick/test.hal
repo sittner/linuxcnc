@@ -1,7 +1,7 @@
 
 newthread millisecond 1000000
 
-load multiclick [multiclick.0,multiclick.1]
+load multiclick <multiclick.0,multiclick.1>
 loadrt sampler depth=100 cfg=bbbbbbbbbsbbbbbbbbbs
 loadrt streamer depth=100 cfg=bb
 

@@ -1,4 +1,4 @@
 
-load or2 [or2.0]
+load or2 <or2.0>
 show pin
 

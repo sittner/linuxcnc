@@ -1,7 +1,7 @@
 setexact_for_test_suite_only
 
 newthread fast 100000
-load edge [edge.0]
+load edge <edge.0>
 
 loadrt sampler cfg=bbb depth=500
 loadrt streamer cfg=b depth=500

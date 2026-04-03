@@ -1,6 +1,6 @@
 loadusr -W hal_manualtoolchange
 
-load conv_float_s32 [f2s32]
+load conv_float_s32 <f2s32>
 addf f2s32 servo-thread
 
 # in case they were linked already

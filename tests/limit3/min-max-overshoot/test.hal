@@ -18,7 +18,7 @@ net in => sampler.0.pin.0
 net out <= limit3.0.out
 net out => sampler.0.pin.1
 
-load ddt [vel,acc]
+load ddt <vel,acc>
 net out => vel.in
 net vel <= vel.out => sampler.0.pin.2 => acc.in
 net acc <= acc.out => sampler.0.pin.3

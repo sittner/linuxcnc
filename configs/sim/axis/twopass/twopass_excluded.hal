@@ -2,5 +2,5 @@
 # be excluded from twopass processing:
 # NOTWOPASS
 
-load flipflop [notwopass_ff]
+load flipflop <notwopass_ff>
 show pin notwopass_ff
