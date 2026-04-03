@@ -13,13 +13,13 @@ loadrt hal_parport cfg="0x0378"
 # counting the spindle counter in software
 loadrt counter num_chan=1
 # misc blocks needed to do fun things
-loadrt ddt count=6
+load ddt <ddt.0,ddt.1,ddt.2,ddt.3,ddt.4,ddt.5>
 # spindle speed pwm
 loadrt pwmgen output_type=0
 # spindle speed feedback
-loadrt lowpass count=1
-loadrt mult2 count=1
-loadrt scale count=1
+load lowpass <lowpass.0>
+load mult2 <mult2.0>
+load scale <scale.0>
 
 #######################################################
 # add realtime functions to the threads

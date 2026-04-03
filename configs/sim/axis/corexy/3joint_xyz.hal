@@ -19,7 +19,7 @@ loadrt [EMCMOT]EMCMOT  base_period_nsec=[EMCMOT]BASE_PERIOD \
 loadrt stepgen         step_type=0,0,0
 
 # simulated home switches:
-loadrt sim_home_switch names=j0home,j1home,j2home
+load sim_home_switch <j0home,j1home,j2home>
 
 #----------------------------------------------------------
 setp stepgen.0.position-scale [JOINT_0]SCALE

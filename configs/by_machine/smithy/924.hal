@@ -24,10 +24,10 @@ loadrt classicladder_rt
 loadusr -w classicladder --nogui 924.clp
 
 # load charge pump
-loadrt charge_pump
+load charge_pump <charge_pump.0>
 
 # load the spindle speed lowpass filter
-loadrt lowpass
+load lowpass <lowpass.0>
 
 #the Enable signal is used to permanently enable things
 newsig Enable bit

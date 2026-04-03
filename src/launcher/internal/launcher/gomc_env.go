@@ -120,7 +120,7 @@ func (r *gomcLogRing) drainAll(logger *slog.Logger) int {
 			logLevel = slog.LevelError
 		}
 
-		// Use the C-side monotonic timestamp for the log record.
+		// Convert C-side wall clock timestamp to Go time.
 		logTime := time.Unix(0, tsNano)
 		record := slog.NewRecord(logTime, logLevel, msg, 0)
 		record.AddAttrs(slog.String("component", component))

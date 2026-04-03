@@ -3,7 +3,7 @@
 # load RT modules
 loadrt [KINS]KINEMATICS
 loadrt [EMCMOT]EMCMOT servo_period_nsec=[EMCMOT]SERVO_PERIOD num_joints=[KINS]JOINTS
-loadrt ddt count=8
+load ddt <ddt.0,ddt.1,ddt.2,ddt.3,ddt.4,ddt.5,ddt.6,ddt.7>
 
 # add motion controller functions to servo thread
 addf motion-command-handler servo-thread

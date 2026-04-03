@@ -1,6 +1,6 @@
 loadrt [KINS]KINEMATICS
 loadrt [EMCMOT]EMCMOT base_period_nsec=[EMCMOT]BASE_PERIOD servo_period_nsec=[EMCMOT]SERVO_PERIOD num_joints=[KINS]JOINTS
-loadrt sim_parport names=parport.0
+load sim_parport <parport.0>
 setp parport.0.reset-time 5000
 loadrt stepgen step_type=0,0
 loadrt encoder num_chan=1
@@ -17,7 +17,7 @@ loadrt sampler cfg=u depth=1025
 
 # -d = debug, -v =verbose debug
 loadusr -W panelui -d
-loadrt sim_matrix_kb
+load sim_matrix_kb
 
 net key-scan    sim-matrix-kb.0.out
 net key-scan    sampler.0.pin.0

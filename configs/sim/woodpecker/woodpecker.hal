@@ -35,7 +35,7 @@ addf debounce.0 servo-thread
 setp debounce.0.delay 4
 
 # near component for spindle at speed
-loadrt near
+load near <near.0>
 addf near.0 servo-thread
 setp near.0.scale 1.01
 

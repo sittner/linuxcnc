@@ -1,5 +1,5 @@
-loadrt mux4 count=1
-loadrt ilowpass
+load mux4 <mux4.0>
+load ilowpass
 loadrt encoder num_chan=1
 
 setp ilowpass.0.scale 100

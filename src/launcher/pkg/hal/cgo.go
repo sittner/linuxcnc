@@ -32,18 +32,19 @@ static inline void go_hal_port_clear(hal_port_t* p) {
 import "C"
 import (
 	"fmt"
+	"syscall"
 	"unsafe"
 )
 
-// halInit wraps hal_init() to create a new HAL component.
+// halInit wraps hal_init_ex() to create a new HAL userspace component.
 // Returns the component ID on success, or an error on failure.
 func halInit(name string) (int, error) {
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
 
-	compID := C.hal_init(cName)
+	compID := C.hal_init_ex(cName, nil, C.COMPONENT_TYPE_USER)
 	if compID < 0 {
-		return 0, halError(int(compID), "hal_init")
+		return 0, halError(int(compID), "hal_init_ex")
 	}
 
 	return int(compID), nil
@@ -237,37 +238,55 @@ func halPortClear(portPtr *C.hal_port_t) {
 
 // halError translates a HAL C error code to a Go error.
 // Returns nil if the code is 0 (success).
+// Error codes are negative errno values as returned by HAL/RTAPI functions.
 func halError(code int, op string) error {
 	if code == 0 {
 		return nil
 	}
 
-	// Map common HAL error codes to meaningful messages
-	// These are based on standard errno values and HAL conventions
+	// Map HAL error codes (negative errno values) to meaningful messages.
+	// These match the verbosity of the old halcmd error output.
 	var message string
 	switch code {
-	case -1:
-		message = "general HAL error or operation not permitted (HAL may be locked)"
+	case -1: // -EPERM
+		message = "operation not permitted (HAL may be locked)"
+	case -2: // -ENOENT
+		message = "not found (no such pin, signal, parameter, function, thread, or component)"
+	case -3: // -ESRCH
+		message = "no such process or component not running"
+	case -10: // -ECHILD
+		message = "child process error"
 	case -11: // -EAGAIN
 		message = "resource temporarily unavailable"
 	case -12: // -ENOMEM
 		message = "insufficient HAL shared memory"
-	case -13: // -EPERM
-		message = "operation not permitted (pin/param is read-only or output-only)"
+	case -13: // -EACCES
+		message = "permission denied"
+	case -14: // -EFAULT
+		message = "bad address or invalid pointer"
 	case -16: // -EBUSY
-		message = "resource busy or already in use"
+		message = "resource busy (pin already linked to a signal, or signal has writers)"
 	case -17: // -EEXIST
-		message = "object already exists"
+		message = "already exists (signal, pin, parameter, function, or component with this name exists)"
+	case -19: // -ENODEV
+		message = "no such device or component"
 	case -22: // -EINVAL
-		message = "invalid argument or name"
+		message = "invalid argument (bad value, wrong type, or malformed name)"
 	case -23: // -ENFILE
 		message = "too many open files or components"
 	case -28: // -ENOSPC
 		message = "no space left in HAL shared memory"
+	case -36: // -ENAMETOOLONG
+		message = "name too long (exceeds HAL_NAME_LEN)"
 	case -110: // -ETIMEDOUT
-		message = "operation timed out"
+		message = "operation timed out (component did not become ready)"
 	default:
-		message = fmt.Sprintf("HAL error (code %d)", code)
+		// For unmapped codes, include both the code and the errno name if possible
+		if code < 0 && code > -256 {
+			message = fmt.Sprintf("system error %d (%s)", -code, syscall.Errno(-code).Error())
+		} else {
+			message = fmt.Sprintf("HAL error code %d", code)
+		}
 	}
 
 	return newError(op, message, code)

@@ -3,8 +3,40 @@ CONVERTERS :=  \
     conv_bit_s32.comp conv_bit_u32.comp conv_bit_float.comp \
     conv_s32_float.comp conv_s32_bit.comp conv_s32_u32.comp \
     conv_u32_float.comp conv_u32_bit.comp conv_u32_s32.comp
-COMPS := $(filter-out hal/components/tpcomp.comp, $(sort $(wildcard hal/components/*.comp) $(addprefix hal/components/, $(CONVERTERS))))
-COMP_MANPAGES := $(patsubst hal/components/%.comp, ../docs/man/man9/%.9, $(COMPS)) ../docs/man/man9/tpcomp.9
+
+# ---------------------------------------------------------------------------
+# Legacy components that stay with halcompile (explicit list)
+# These use features not supported by cmod or have special requirements
+# ---------------------------------------------------------------------------
+HALCOMPILE_COMP_NAMES := \
+    homecomp             \
+    mesa_pktgyro_test    \
+    millturn             \
+    tpcomp               \
+    userkins             \
+    xyzab_tdr_kins
+# Reasons:
+#   homecomp, tpcomp      - use EXTRA_SETUP (motion controller integration)
+#   millturn, userkins, xyzab_tdr_kins - kinematics modules (special motion integration)
+#   mesa_pktgyro_test     - hostmot2 driver test (depends on internal headers)
+
+HALCOMPILE_COMPS := $(addprefix hal/components/, $(addsuffix .comp, $(HALCOMPILE_COMP_NAMES)))
+
+# ---------------------------------------------------------------------------
+# Components built via modcompile (cmod API, output to ../cmod/)
+# All .comp files except those in HALCOMPILE_COMPS
+# ---------------------------------------------------------------------------
+CMOD_COMPS := $(filter-out $(HALCOMPILE_COMPS), $(sort $(wildcard hal/components/*.comp)))
+CMOD_COMP_NAMES := $(patsubst hal/components/%.comp,%,$(CMOD_COMPS))
+CMOD_TARGETS := $(addprefix ../cmod/, $(addsuffix .so, $(CMOD_COMP_NAMES)))
+
+# Everything in HALCOMPILE_COMPS except tpcomp (which is special)
+COMPS := $(filter-out hal/components/tpcomp.comp, $(HALCOMPILE_COMPS))
+
+# Man pages: cmod components use modcompile, legacy use halcompile
+CMOD_MANPAGES := $(patsubst hal/components/%.comp, ../docs/man/man9/%.9, $(CMOD_COMPS))
+HALCOMPILE_MANPAGES := $(patsubst hal/components/%.comp, ../docs/man/man9/%.9, $(COMPS)) ../docs/man/man9/tpcomp.9
+COMP_MANPAGES := $(CMOD_MANPAGES) $(HALCOMPILE_MANPAGES)
 COMP_DRIVERS += hal/drivers/serport.comp
 COMP_DRIVERS += hal/drivers/mesa_7i65.comp
 COMP_DRIVERS += hal/drivers/mesa_uart.comp
@@ -20,7 +52,15 @@ endif
 
 RTMODULES += $(patsubst hal/drivers/%.comp, %.o, $(patsubst hal/components/%.comp, %.o, $(COMPS) $(COMP_DRIVERS)))
 
-$(COMP_MANPAGES): ../docs/man/man9/%.9: hal/components/%.comp ../bin/halcompile
+# Man pages for cmod components (use modcompile)
+$(CMOD_MANPAGES): ../docs/man/man9/%.9: hal/components/%.comp ../bin/modcompile
+	$(ECHO) Making modcompile manpage $(notdir $@)
+	@mkdir -p $(dir $@)
+	$(Q)../bin/modcompile --document -o $@.new $< && preconv -r < $@.new > $@
+	$(RM) $@.new
+
+# Man pages for legacy halcompile components
+$(HALCOMPILE_MANPAGES): ../docs/man/man9/%.9: hal/components/%.comp ../bin/halcompile
 	$(ECHO) Making halcompile manpage $(notdir $@)
 	@mkdir -p $(dir $@)
 	$(Q)../bin/halcompile -U --document -o $@.new $< && preconv -r < $@.new > $@
@@ -116,3 +156,94 @@ hal/components/conv_u32_bit.comp: hal/components/conv.comp.in hal/components/mkc
 hal/components/conv_u32_s32.comp: hal/components/conv.comp.in hal/components/mkconv.sh hal/components/Submakefile
 	$(ECHO) converting conv for $(notdir $@)
 	$(Q)sh hal/components/mkconv.sh u32 s32 "" -1 2147483647 < $< > $@
+
+# ---------------------------------------------------------------------------
+# cmod build rules: .comp → modcompile → .c → gcc -shared → ../cmod/*.so
+# ---------------------------------------------------------------------------
+
+ifeq ($(BUILD_GOLANG),yes)
+
+CMOD_INCLUDE := launcher/pkg/cmodule
+CMOD_CFLAGS  := -fPIC -Os -Wall -shared -o
+
+# Step 1: .comp → .c via modcompile
+objects/cmod/%.c: hal/components/%.comp ../bin/modcompile
+	$(ECHO) "Preprocessing cmod $(notdir $<)"
+	@mkdir -p $(dir $@)
+	$(Q)../bin/modcompile --preprocess $< > $@
+
+# Step 2: .c → .so via gcc -shared
+../cmod/%.so: objects/cmod/%.c
+	$(ECHO) "Compiling cmod $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -o $@ $< -lm
+
+TARGETS += $(CMOD_TARGETS)
+modules: $(CMOD_TARGETS)
+
+# ---------------------------------------------------------------------------
+# cmod native C components (hand-written .c files, not from .comp)
+# ---------------------------------------------------------------------------
+
+CMOD_C_SRCS := spindle
+CMOD_C_TARGETS := $(addprefix ../cmod/, $(addsuffix .so, $(CMOD_C_SRCS)))
+
+# spindle.c → spindle.so
+../cmod/spindle.so: hal/components/spindle.c
+	$(ECHO) "Compiling cmod $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -o $@ $< -lm
+
+TARGETS += $(CMOD_C_TARGETS)
+modules: $(CMOD_C_TARGETS)
+
+# ---------------------------------------------------------------------------
+# cmod userspace components (from hal/user_comps/)
+# ---------------------------------------------------------------------------
+
+CMOD_USER_COMPS := thermistor wj200_vfd pi500_vfd
+CMOD_USER_TARGETS := $(addprefix ../cmod/, $(addsuffix .so, $(CMOD_USER_COMPS)))
+
+# thermistor: hal/user_comps/thermistor.comp
+objects/cmod/thermistor.c: hal/user_comps/thermistor.comp ../bin/modcompile
+	$(ECHO) "Preprocessing cmod $(notdir $<)"
+	@mkdir -p $(dir $@)
+	$(Q)../bin/modcompile --preprocess $< > $@
+
+../cmod/thermistor.so: objects/cmod/thermistor.c
+	$(ECHO) "Compiling cmod $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -o $@ $< -lm -lpthread
+
+# wj200_vfd: hal/user_comps/wj200_vfd/wj200_vfd.comp
+objects/cmod/wj200_vfd.c: hal/user_comps/wj200_vfd/wj200_vfd.comp ../bin/modcompile
+	$(ECHO) "Preprocessing cmod $(notdir $<)"
+	@mkdir -p $(dir $@)
+	$(Q)../bin/modcompile --preprocess $< > $@
+
+../cmod/wj200_vfd.so: objects/cmod/wj200_vfd.c
+	$(ECHO) "Compiling cmod $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) $(LIBMODBUS_CFLAGS) -o $@ $< -lm -lpthread -lmodbus
+
+# pi500_vfd: hal/user_comps/pi500_vfd/pi500_vfd.comp
+objects/cmod/pi500_vfd.c: hal/user_comps/pi500_vfd/pi500_vfd.comp ../bin/modcompile
+	$(ECHO) "Preprocessing cmod $(notdir $<)"
+	@mkdir -p $(dir $@)
+	$(Q)../bin/modcompile --preprocess $< > $@
+
+../cmod/pi500_vfd.so: objects/cmod/pi500_vfd.c
+	$(ECHO) "Compiling cmod $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) $(LIBMODBUS_CFLAGS) -o $@ $< -lm -lpthread -lmodbus
+
+TARGETS += $(CMOD_USER_TARGETS)
+modules: $(CMOD_USER_TARGETS)
+
+clean: cmod-comp-clean
+.PHONY: cmod-comp-clean
+cmod-comp-clean:
+	rm -f $(CMOD_TARGETS) $(CMOD_C_TARGETS) $(CMOD_USER_TARGETS)
+	rm -rf objects/cmod/
+
+endif # BUILD_GOLANG

@@ -93,10 +93,10 @@ typedef struct {
 // Producer API — pure C, no allocations, no syscalls, RT-safe.
 // ---------------------------------------------------------------------------
 
-// Get current monotonic time in nanoseconds (used for log timestamps).
+// Get current wall clock time in nanoseconds (used for log timestamps).
 static inline int64_t gomc_log_now_ns(void) {
     struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
+    clock_gettime(CLOCK_REALTIME, &ts);
     return (int64_t)ts.tv_sec * 1000000000LL + (int64_t)ts.tv_nsec;
 }
 

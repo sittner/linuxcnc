@@ -1,12 +1,12 @@
 #show pin woodpecker
 
-loadrt and2 count=1
-loadrt near
+load and2 <and2.0>
+load near <near.0>
 addf and2.0 servo-thread
 addf near.0 servo-thread
 setp near.0.scale 1.01
 
-loadrt abs names=abs_spindle_feedback
+load abs <abs_spindle_feedback>
 addf abs_spindle_feedback servo-thread
 
 # the unlink pin commands are only used, because they are connected 

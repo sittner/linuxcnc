@@ -1,4 +1,4 @@
-loadrt carousel pockets=10 dir=1 encoding=gray num_sense=4
+load carousel pockets=10 dir=1 encoding=gray num_sense=4
 #loadrt conv_float_s32 (Already loaded in sim_vmc.hal)
 addf carousel.0 servo-thread
 addf conv-float-s32.2 servo-thread # G-code analogue outputs are float-type

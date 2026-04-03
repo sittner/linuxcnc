@@ -14,7 +14,7 @@ loader.
 
 ```
 # In your .hal file:
-load /path/to/mygomodule.so [optional-arguments]
+load /path/to/mygomodule.so <optional-arguments>
 ```
 
 Everything after the module path is passed verbatim to the plugin's `New`
@@ -35,18 +35,21 @@ factory function as the `params string` argument.
 ## Building
 
 ```bash
-# From within the LinuxCNC source tree (recommended):
-cd src/hal/go-comp-template
+# Source the LinuxCNC environment first:
+source /path/to/linuxcnc/scripts/rip-environment
+
+# Build with make (uses modcompile to locate paths):
 make
 
-# Or with explicit CGO flags (when building outside the source tree):
-CGO_CFLAGS="-I/usr/include/linuxcnc" \
-CGO_LDFLAGS="-L/usr/lib -llinuxcnchal" \
-CGO_ENABLED=1 go build -buildmode=plugin -o mygomodule.so .
+# Install to the gomod directory:
+make install
 ```
 
-The resulting `mygomodule.so` can be installed to
-`$EMC2_GOMOD_DIR/` with `make install`.
+The Makefile uses `modcompile --print-make-inc` to obtain all necessary paths
+(`GOMC_GO`, `GOMC_LAUNCHER_DIR`, `GOMC_GOMOD_DIR`, `GOMC_LIB_DIR`) automatically.
+
+The resulting `mygomodule.so` can be installed to the gomod directory with
+`make install`.
 
 ## Plugin Interface
 
@@ -69,8 +72,8 @@ The `Module` interface has three lifecycle methods:
 ## Usage in a HAL file
 
 ```
-# Load the plugin — path can be absolute or a module name resolvable via EMC2_GOMOD_DIR
-load $EMC2_GOMOD_DIR/mygomodule.so config=/path/to/config.ini
+# Load the plugin — path can be absolute or a module name resolvable via gomod dir
+load mygomodule.so config=/path/to/config.ini
 
 # After the plugin is loaded, its HAL pins are available for wiring:
 net my-signal go-passthrough.in-f  some-component.output-pin
@@ -93,13 +96,13 @@ net my-signal go-passthrough.out-f some-other-component.input-pin
 - To verify compatibility, compare the module info of both binaries:
   ```bash
   go version -m /usr/bin/linuxcnc-launcher
-  go version -m $EMC2_GOMOD_DIR/mygomodule.so
+  go version -m mygomodule.so
   ```
   The Go toolchain version and all shared dependency versions must match exactly.
 
-- Distributing the launcher's `go.sum` alongside your plugin or building both
-  from the same source tree (as this template does) is the easiest way to
-  ensure version compatibility.
+- Building with the same Go toolchain (via `modcompile --go`) and using
+  `go.work` to link against the launcher source (via `modcompile --launcher-dir`)
+  is the easiest way to ensure version compatibility.
 
 ## Customizing the Template
 

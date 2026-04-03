@@ -1,6 +1,6 @@
 # Jog Pendant
 loadrt encoder num_chan=1
-loadrt mux8 count=1
+load mux8 <mux8.0>
 
 addf encoder.capture-position servo-thread
 addf encoder.update-counters servo-thread

@@ -1,6 +1,6 @@
 loadrt [KINS]KINEMATICS
 loadrt [EMCMOT]EMCMOT base_period_nsec=[EMCMOT]BASE_PERIOD servo_period_nsec=[EMCMOT]SERVO_PERIOD num_joints=[KINS]JOINTS
-loadrt sim_parport names=parport.0
+load sim_parport <parport.0>
 setp parport.0.reset-time 5000
 loadrt stepgen step_type=0,0,0
 loadrt encoder num_chan=1

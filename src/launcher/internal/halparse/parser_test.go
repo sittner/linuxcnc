@@ -319,7 +319,7 @@ func TestParseLoad(t *testing.T) {
 	})
 
 	t.Run("with single instance name", func(t *testing.T) {
-		tok, err := parseLoad([]string{"/tmp/foo.so", "[myinst]", "a=1"}, loc)
+		tok, err := parseLoad([]string{"/tmp/foo.so", "<myinst>", "a=1"}, loc)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -336,7 +336,7 @@ func TestParseLoad(t *testing.T) {
 	})
 
 	t.Run("with multiple instance names", func(t *testing.T) {
-		tok, err := parseLoad([]string{"mymod", "[inst1,inst2,inst3]", "x=1"}, loc)
+		tok, err := parseLoad([]string{"mymod", "<inst1,inst2,inst3>", "x=1"}, loc)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -350,7 +350,7 @@ func TestParseLoad(t *testing.T) {
 	})
 
 	t.Run("names only no args", func(t *testing.T) {
-		tok, err := parseLoad([]string{"mymod", "[inst1]"}, loc)
+		tok, err := parseLoad([]string{"mymod", "<inst1>"}, loc)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -364,14 +364,14 @@ func TestParseLoad(t *testing.T) {
 	})
 
 	t.Run("empty name list error", func(t *testing.T) {
-		_, err := parseLoad([]string{"mymod", "[]"}, loc)
+		_, err := parseLoad([]string{"mymod", "<>"}, loc)
 		if err == nil {
 			t.Error("expected error for empty name list, got nil")
 		}
 	})
 
 	t.Run("empty name in list error", func(t *testing.T) {
-		_, err := parseLoad([]string{"mymod", "[a,,b]"}, loc)
+		_, err := parseLoad([]string{"mymod", "<a,,b>"}, loc)
 		if err == nil {
 			t.Error("expected error for empty name in list, got nil")
 		}

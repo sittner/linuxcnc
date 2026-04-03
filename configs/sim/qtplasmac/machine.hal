@@ -7,14 +7,14 @@
 # ---COMPONENTS---
 loadrt {{ini "KINS" "KINEMATICS"}}
 loadrt {{ini "EMCMOT" "EMCMOT"}} servo_period_nsec={{ini "EMCMOT" "SERVO_PERIOD"}} num_joints={{.Joints}} num_spindles={{ini "TRAJ" "SPINDLES"}}
-loadrt  plasmac
+load plasmac <plasmac.0>
 {{- range $jnum := count .Joints}}
 loadrt pid names=sim:{{$jnum}}_pid
-loadrt mux2 names=sim:{{$jnum}}_mux
-loadrt ddt names=sim:{{$jnum}}_vel,sim:{{$jnum}}_accel
-loadrt sim_home_switch names=sim:{{$jnum}}_switch
+load mux2 <sim:{{$jnum}}_mux>
+load ddt <sim:{{$jnum}}_vel,sim:{{$jnum}}_accel>
+load sim_home_switch <sim:{{$jnum}}_switch>
 {{- end}}
-loadrt hypot names=sim:hyp_xy,sim:hyp_xyz
+load hypot <sim:hyp_xy,sim:hyp_xyz>
 
 # ---THREAD LINKS---
 addf motion-command-handler servo-thread
@@ -71,7 +71,7 @@ net sim:j{{$jnum}}-vel => sim:hyp_xyz.in2
 {{- end}}
 
 # ---PLASMA INPUT DEBOUNCE---
-loadrt dbounce names=db_breakaway,db_float,db_ohmic,db_arc-ok
+load dbounce <db_breakaway,db_float,db_ohmic,db_arc-ok>
 addf db_float     servo-thread
 addf db_ohmic     servo-thread
 addf db_breakaway servo-thread
@@ -89,15 +89,15 @@ net tool-change-loopback iocontrol.tool-change => iocontrol.tool-changed
 net tool-prepare-loopback iocontrol.tool-prepare => iocontrol.tool-prepared
 
 # ---QTPLASMAC ESTOP HANDLING---
-loadrt or2 names=estop_or
-loadrt not names=estop_not
+load or2 <estop_or>
+load not <estop_not>
 addf estop_or servo-thread
 addf estop_not servo-thread
 net sim:estop-raw estop_or.out estop_not.in
 net sim:estop-out estop_not.out iocontrol.emc-enable-in
 {{- if ini "QTPLASMAC" "ESTOP_TYPE"}}
 {{- if eq (ini "QTPLASMAC" "ESTOP_TYPE") "2"}}
-loadrt not names=estop_not_1
+load not <estop_not_1>
 addf estop_not_1 servo-thread
 net sim:estop-1-raw iocontrol.user-enable-out => estop_not_1.in
 net sim:estop-1-in estop_not_1.out => estop_or.in1

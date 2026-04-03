@@ -29,7 +29,7 @@ loadrt [HOSTMOT2](DRIVER) config=[HOSTMOT2](CONFIG)
 
 
 # Torch Height Control
-loadrt thc
+load thc
 addf thc servo-thread
 
 # THREADS

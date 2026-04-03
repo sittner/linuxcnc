@@ -83,15 +83,15 @@ loadrt weighted_sum wsum_sizes=5
 # the rest of these components implement spindle speed
 # scaling (for high/low shifting) and spindle orient
 
-loadrt mux2 count=2
-loadrt mux4 count=1
-loadrt wcomp count=2
-loadrt scale count=3
+load mux2 <mux2.0,mux2.1>
+load mux4 <mux4.0>
+load wcomp <wcomp.0,wcomp.1>
+load scale <scale.0,scale.1,scale.2>
 loadrt modmath mod_dir=2
-loadrt charge_pump
-loadrt tristate_bit
-loadrt tristate_float count=3
-loadrt conv_s32_float
+load charge_pump <charge_pump.0>
+load tristate_bit <tristate_bit.0>
+load tristate_float <tristate_float.0,tristate_float.1,tristate_float.2>
+load conv_s32_float <conv_s32_float.0>
 
 # Software encoder counter, for the jogwheel, and possibly a future
 # small manual encoder for a feedrate override knob.

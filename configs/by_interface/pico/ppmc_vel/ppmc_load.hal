@@ -33,9 +33,9 @@ loadrt pid num_chan=4
 loadrt hal_ppmc timestamp="0x00"
 
 # make some signals for the scope for tuning.
-loadrt ddt count=4
-loadrt estop_latch count=1
-loadrt and2 count=1
+load ddt <ddt.0,ddt.1,ddt.2,ddt.3>
+load estop_latch count=1
+load and2 <and2.0>
 
 # set up the realtime thread
 # read inputs first

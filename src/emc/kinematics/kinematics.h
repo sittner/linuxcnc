@@ -89,17 +89,6 @@ extern int kinematicsInverse(const struct EmcPose * world,
                              const KINEMATICS_INVERSE_FLAGS * iflags,
                              KINEMATICS_FORWARD_FLAGS * fflags);
 
-/* the home kinematics function sets all its arguments to their proper
-   values at the known home position. When called, these should be set,
-   when known, to initial values, e.g., from an INI file. If the home
-   kinematics can accept arbitrary starting points, these initial values
-   should be used.
-*/
-extern int kinematicsHome(struct EmcPose * world,
-                          double *joint,
-                          KINEMATICS_FORWARD_FLAGS * fflags,
-                          KINEMATICS_INVERSE_FLAGS * iflags);
-
 extern KINEMATICS_TYPE kinematicsType(void);
 
 /* parameters for use with switchkins.c */

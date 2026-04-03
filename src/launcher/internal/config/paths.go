@@ -28,6 +28,19 @@ var (
 	// EMC2CmodDir is the directory containing C plugin modules (@EMC2_CMOD_DIR@).
 	EMC2CmodDir string
 
+	// EMC2CmodIncludeDir is the directory containing cmod header files (gomc_*.h).
+	// For RIP this is src/launcher/pkg/cmodule, for installed it's include/linuxcnc/cmod.
+	EMC2CmodIncludeDir string
+
+	// EMC2LauncherDir is the directory containing the launcher Go module source.
+	// External Go plugins need this for 'go work -replace' to link against the same launcher.
+	// For RIP this is src/launcher, for installed it's share/linuxcnc/launcher.
+	EMC2LauncherDir string
+
+	// GoBinary is the path to the Go compiler used to build LinuxCNC.
+	// External Go plugins must use the same Go toolchain for compatibility.
+	GoBinary string
+
 	// EMC2ConfigPath is the colon-separated list of config search directories (@LINUXCNC_CONFIG_PATH@).
 	EMC2ConfigPath string
 

@@ -35,7 +35,7 @@ loadrt [HOSTMOT2](DRIVER) board_ip=[HOSTMOT2](BOARD_IP) config=[HOSTMOT2](CONFIG
 loadrt hm2_modbus ports=[MODBUS](PORTS) mbccbs=[MODBUS](MBCCBS)
 
 # load estop latch component
-loadrt estop_latch
+load estop_latch
 
 # ################################################
 # THREADS

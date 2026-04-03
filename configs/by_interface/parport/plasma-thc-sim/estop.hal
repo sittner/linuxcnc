@@ -1,7 +1,7 @@
 ################################ Other ##########################################
 #Connect Estop and ChargePump
 
-loadrt estop_latch
+load estop_latch
 addf estop-latch.0 base-thread
 
 # External Estop Signal handled by THC

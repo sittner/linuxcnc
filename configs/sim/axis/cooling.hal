@@ -1,5 +1,5 @@
 # Fake the existence of coolant options
-loadrt and2 count=3
+load and2 <and2.0,and2.1,and2.2>
 addf and2.0 servo-thread
 addf and2.1 servo-thread
 net flood iocontrol.coolant-flood => and2.0.in0
