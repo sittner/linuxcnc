@@ -20,7 +20,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
+	"github.com/sittner/linuxcnc/src/launcher/internal/gmicompile/ast"
+	"github.com/sittner/linuxcnc/src/launcher/internal/gmicompile/cgen"
 	"github.com/sittner/linuxcnc/src/launcher/internal/gmicompile/parser"
 )
 
@@ -33,19 +37,30 @@ Options:
     --help           Show this help message
     --parse          Parse only — print AST as JSON
 
-Code generation (not yet implemented):
-    --server-c       Generate C server callbacks and types
-    --server-go      Generate Go server handlers
-    --client-c       Generate C REST client (cJSON/libcurl)
-    --client-go      Generate Go REST client
-    --client-python  Generate Python REST client
+Code generation:
+    --server-c       Generate C server header (types, callback typedefs)
+    --client-c       Generate C REST client (header + source, cJSON/libcurl)
+    --server-go      Generate Go server handlers (not yet implemented)
+    --client-go      Generate Go REST client (not yet implemented)
+    --client-python  Generate Python REST client (not yet implemented)
     -o PATH          Output file or directory
 
 Examples:
     gmicompile --parse hal.gmi
     gmicompile --server-c hal.gmi -o hal_api.h
-    gmicompile --client-python halcmd.gmi -o halcmd_client.py
+    gmicompile --client-c halcmd.gmi -o halcmd_client
 `
+
+type mode int
+
+const (
+	modeParse mode = iota
+	modeServerC
+	modeClientC
+	modeServerGo
+	modeClientGo
+	modeClientPython
+)
 
 func main() {
 	if len(os.Args) < 2 {
@@ -53,7 +68,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	var parseOnly bool
+	var m mode
+	var outputPath string
 	var files []string
 
 	for i := 1; i < len(os.Args); i++ {
@@ -63,12 +79,22 @@ func main() {
 			fmt.Print(usageText)
 			os.Exit(0)
 		case "--parse":
-			parseOnly = true
-		case "--server-c", "--server-go", "--client-c", "--client-go", "--client-python":
-			fmt.Fprintf(os.Stderr, "gmicompile: %s not yet implemented\n", arg)
-			os.Exit(1)
+			m = modeParse
+		case "--server-c":
+			m = modeServerC
+		case "--client-c":
+			m = modeClientC
+		case "--server-go":
+			m = modeServerGo
+		case "--client-go":
+			m = modeClientGo
+		case "--client-python":
+			m = modeClientPython
 		case "-o":
-			i++ // skip output path for now
+			if i+1 < len(os.Args) {
+				i++
+				outputPath = os.Args[i]
+			}
 		default:
 			if len(arg) > 0 && arg[0] != '-' {
 				files = append(files, arg)
@@ -82,24 +108,100 @@ func main() {
 	}
 
 	for _, file := range files {
-		src, err := os.ReadFile(file)
-		if err != nil {
+		if err := processFile(file, m, outputPath); err != nil {
 			fmt.Fprintf(os.Stderr, "gmicompile: %v\n", err)
 			os.Exit(1)
 		}
-
-		api, errors := parser.Parse(file, string(src))
-		if len(errors) > 0 {
-			for _, e := range errors {
-				fmt.Fprintln(os.Stderr, e)
-			}
-			os.Exit(1)
-		}
-
-		if parseOnly {
-			enc := json.NewEncoder(os.Stdout)
-			enc.SetIndent("", "  ")
-			enc.Encode(api)
-		}
 	}
+}
+
+func processFile(file string, m mode, outputPath string) error {
+	src, err := os.ReadFile(file)
+	if err != nil {
+		return err
+	}
+
+	api, errors := parser.Parse(file, string(src))
+	if len(errors) > 0 {
+		for _, e := range errors {
+			fmt.Fprintln(os.Stderr, e)
+		}
+		return fmt.Errorf("parse failed")
+	}
+
+	switch m {
+	case modeParse:
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(api)
+
+	case modeServerC:
+		return generateServerC(api, outputPath)
+
+	case modeClientC:
+		return generateClientC(api, outputPath)
+
+	case modeServerGo, modeClientGo, modeClientPython:
+		return fmt.Errorf("mode not yet implemented")
+	}
+
+	return nil
+}
+
+func generateServerC(api *ast.API, outputPath string) error {
+	// Default output name
+	if outputPath == "" {
+		outputPath = api.Name + "_api.h"
+	}
+
+	f, err := os.Create(outputPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if err := cgen.GenerateServerHeader(f, api); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stderr, "generated %s\n", outputPath)
+	return nil
+}
+
+func generateClientC(api *ast.API, outputPath string) error {
+	// If outputPath ends with .h or .c, use it as base
+	// Otherwise treat as base name
+	var baseName string
+	if outputPath == "" {
+		baseName = api.Name + "_client"
+	} else {
+		baseName = strings.TrimSuffix(outputPath, filepath.Ext(outputPath))
+	}
+
+	headerPath := baseName + ".h"
+	sourcePath := baseName + ".c"
+
+	// Generate header
+	hf, err := os.Create(headerPath)
+	if err != nil {
+		return err
+	}
+	defer hf.Close()
+	if err := cgen.GenerateClientHeader(hf, api); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "generated %s\n", headerPath)
+
+	// Generate source
+	sf, err := os.Create(sourcePath)
+	if err != nil {
+		return err
+	}
+	defer sf.Close()
+	if err := cgen.GenerateClientSource(sf, api); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "generated %s\n", sourcePath)
+
+	return nil
 }
