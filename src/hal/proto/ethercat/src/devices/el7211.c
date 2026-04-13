@@ -81,11 +81,11 @@ typedef struct {
   gomc_hal_float_t *vel_cmd_out;       /**< OUT: actual velocity command sent (after clamping) */
   gomc_hal_s32_t *vel_cmd_out_raw;     /**< OUT: raw 32-bit velocity command sent to drive */
 
+  gomc_hal_u32_t *vel_resolution;      /**< OUT: velocity resolution from SDO 0x9010:14 */
+  gomc_hal_u32_t *pos_resolution;      /**< OUT: position resolution from SDO 0x9010:15 */
+
   gomc_hal_float_t scale;              /**< Parameter: velocity scale (user units → counts/s) */
   gomc_hal_float_t torque_scale;       /**< Parameter: torque scale (raw counts → user units) */
-
-  gomc_hal_u32_t vel_resolution;       /**< Parameter (RO): velocity resolution from SDO 0x9010:14 */
-  gomc_hal_u32_t pos_resolution;       /**< Parameter (RO): position resolution from SDO 0x9010:15 */
 
   gomc_hal_float_t min_vel;            /**< Parameter: minimum velocity clamp (user units/s) */
   gomc_hal_float_t max_vel;            /**< Parameter: maximum velocity clamp (user units/s) */
@@ -135,6 +135,8 @@ static const lcec_pindesc_t slave_pins[] = {
   { GOMC_HAL_FLOAT, GOMC_HAL_OUT, offsetof(lcec_el7211_data_t, torque_fb), "%s.%s.%s.torque-fb" },
   { GOMC_HAL_S32, GOMC_HAL_OUT, offsetof(lcec_el7211_data_t, torque_fb_raw), "%s.%s.%s.torque-fb-raw" },
   { GOMC_HAL_BIT, GOMC_HAL_OUT, offsetof(lcec_el7211_data_t, at_speed), "%s.%s.%s.at-speed" },
+  { GOMC_HAL_U32, GOMC_HAL_OUT, offsetof(lcec_el7211_data_t, vel_resolution), "%s.%s.%s.vel-resolution" },
+  { GOMC_HAL_U32, GOMC_HAL_OUT, offsetof(lcec_el7211_data_t, pos_resolution), "%s.%s.%s.pos-resolution" },
   { GOMC_HAL_TYPE_UNSPECIFIED, GOMC_HAL_DIR_UNSPECIFIED, -1, NULL }
 };
 
@@ -159,8 +161,6 @@ static const lcec_pindesc_t slave_pins_el7201_9014[] = {
 static const lcec_pindesc_t slave_params[] = {
   { GOMC_HAL_FLOAT, GOMC_HAL_RW, offsetof(lcec_el7211_data_t, scale), "%s.%s.%s.scale" },
   { GOMC_HAL_FLOAT, GOMC_HAL_RW, offsetof(lcec_el7211_data_t, torque_scale), "%s.%s.%s.torque-scale" },
-  { GOMC_HAL_U32, GOMC_HAL_RO, offsetof(lcec_el7211_data_t, vel_resolution), "%s.%s.%s.vel-resolution" },
-  { GOMC_HAL_U32, GOMC_HAL_RO, offsetof(lcec_el7211_data_t, pos_resolution), "%s.%s.%s.pos-resolution" },
   { GOMC_HAL_FLOAT, GOMC_HAL_RW, offsetof(lcec_el7211_data_t, min_vel), "%s.%s.%s.min-vel" },
   { GOMC_HAL_FLOAT, GOMC_HAL_RW, offsetof(lcec_el7211_data_t, max_vel), "%s.%s.%s.max-vel" },
   { GOMC_HAL_FLOAT, GOMC_HAL_RW, offsetof(lcec_el7211_data_t, max_accel), "%s.%s.%s.max-accel" },
@@ -313,8 +313,10 @@ int lcec_el7211_export_pins(lcec_master_t *master, struct lcec_slave *slave, lce
   // init parameters
   hal_data->scale = 1.0;
   hal_data->torque_scale = 1.0;
-  hal_data->vel_resolution = sdo_vel_resolution;
-  hal_data->pos_resolution = sdo_pos_resolution;
+
+  // init outputs
+  *(hal_data->vel_resolution) = sdo_vel_resolution;
+  *(hal_data->pos_resolution) = sdo_pos_resolution;
 
   // initialize variables
   if (sdo_vel_resolution > 0) {
@@ -547,7 +549,7 @@ void lcec_el7211_read(struct lcec_slave *slave, long period) {
 
   // update position feedback
   pos_cnt = EC_READ_U32(&pd[hal_data->pos_fb_pdo_os]);
-  class_enc_update(&hal_data->enc, hal_data->pos_resolution, hal_data->scale_rcpt, pos_cnt, 0, 0);
+  class_enc_update(&hal_data->enc, *(hal_data->pos_resolution), hal_data->scale_rcpt, pos_cnt, 0, 0);
 }
 
 /**
