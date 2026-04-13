@@ -1,5 +1,4 @@
 package parser
-package parser
 
 import (
 	"fmt"
