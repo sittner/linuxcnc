@@ -13,37 +13,37 @@
 #   https://github.com/DaveGamble/cJSON (MIT license, 2 files)
 
 # Include path
-INCLUDES += gmi
+INCLUDES += gmi/lib
 
 # Public headers -> ../include/
-../include/gmi.h: gmi/gmi.h
+../include/gmi.h: gmi/lib/gmi.h
 	cp $< $@
-../include/gmi_error.h: gmi/gmi_error.h
+../include/gmi_error.h: gmi/lib/gmi_error.h
 	cp $< $@
-../include/gmi_types.h: gmi/gmi_types.h
+../include/gmi_types.h: gmi/lib/gmi_types.h
 	cp $< $@
-../include/gmi_json.h: gmi/gmi_json.h
+../include/gmi_json.h: gmi/lib/gmi_json.h
 	cp $< $@
-../include/gmi_http.h: gmi/gmi_http.h
+../include/gmi_http.h: gmi/lib/gmi_http.h
 	cp $< $@
-../include/cJSON.h: gmi/cJSON.h
+../include/cJSON.h: gmi/lib/cJSON.h
 	cp $< $@
 
 GMI_HEADERS := ../include/gmi.h ../include/gmi_error.h ../include/gmi_types.h \
                ../include/gmi_json.h ../include/gmi_http.h ../include/cJSON.h
 
 # Source files
-GMI_SRCS := gmi/gmi_error.c gmi/gmi_types.c gmi/gmi_json.c gmi/gmi_http.c
+GMI_SRCS := gmi/lib/gmi_error.c gmi/lib/gmi_types.c gmi/lib/gmi_json.c gmi/lib/gmi_http.c
 
 # Check for system cJSON or use embedded
-ifneq ($(wildcard gmi/cJSON.c),)
-GMI_SRCS += gmi/cJSON.c
+ifneq ($(wildcard gmi/lib/cJSON.c),)
+GMI_SRCS += gmi/lib/cJSON.c
 GMI_CJSON_FLAGS :=
 else
 # Use system libcjson
 GMI_CJSON_FLAGS := $(shell pkg-config --cflags --libs libcjson 2>/dev/null)
 ifeq ($(GMI_CJSON_FLAGS),)
-$(warning cJSON not found. Either install libcjson-dev or download cJSON.c to src/gmi/)
+$(warning cJSON not found. Either install libcjson-dev or download cJSON.c to src/gmi/lib/)
 endif
 endif
 
