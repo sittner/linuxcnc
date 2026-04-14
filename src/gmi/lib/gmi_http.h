@@ -6,6 +6,7 @@
 
 #include "gmi_types.h"
 #include "gmi_error.h"
+#include <cjson/cJSON.h>
 
 #ifdef __cplusplus
 extern "C" {

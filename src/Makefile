@@ -163,6 +163,8 @@ SUBDIRS := \
     libnml/linklist libnml/cms libnml/rcs libnml/inifile libnml/os_intf \
     libnml/nml libnml/buffer libnml/posemath libnml \
     \
+    gmi/lib \
+    \
     rtapi \
     \
     hal/components hal/drivers hal/drivers/mesa-hostmot2 \

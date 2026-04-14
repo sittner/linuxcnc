@@ -430,6 +430,38 @@ PKG_CHECK_MODULES([LIBGPIOD], [libgpiod < 3.0.0],
             AC_SUBST([LIBGPIOD_VER], `pkg-config libgpiod --modversion | awk -F. '{print ($1 * 100)+($2) }'`)],
             [AC_MSG_WARN([Could not find libgpiod, not building hal_gpio])])
 
+#
+# check for libcurl (required for libgmi REST client)
+#
+AC_MSG_CHECKING([for libcurl])
+if pkg-config libcurl >/dev/null 2>&1; then
+    AC_MSG_RESULT(yes)
+    LIBCURL_CFLAGS=`pkg-config libcurl --cflags`
+    AC_SUBST([LIBCURL_CFLAGS])
+    LIBCURL_LIBS=`pkg-config libcurl --libs`
+    AC_SUBST([LIBCURL_LIBS])
+else
+    AC_MSG_RESULT(no)
+    AC_MSG_ERROR([libcurl not found!
+install with "sudo apt-get install libcurl4-openssl-dev"])
+fi
+
+#
+# check for libcjson (required for libgmi JSON parsing)
+#
+AC_MSG_CHECKING([for libcjson])
+if pkg-config libcjson >/dev/null 2>&1; then
+    AC_MSG_RESULT(yes)
+    LIBCJSON_CFLAGS=`pkg-config libcjson --cflags`
+    AC_SUBST([LIBCJSON_CFLAGS])
+    LIBCJSON_LIBS=`pkg-config libcjson --libs`
+    AC_SUBST([LIBCJSON_LIBS])
+else
+    AC_MSG_RESULT(no)
+    AC_MSG_ERROR([libcjson not found!
+install with "sudo apt-get install libcjson-dev"])
+fi
+
 ##############################################################################
 # Subsection 3.2 - check for the kernel version, with RT patches             #
 #----------------------------------------------------------------------------#

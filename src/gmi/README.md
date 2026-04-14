@@ -14,7 +14,6 @@ src/gmi/
 ├── lib/           # C runtime library (libgmi)
 │   ├── gmi.h      # Main include header
 │   ├── gmi_*.c/h  # Library implementation
-│   ├── cJSON.*    # JSON parser (embedded, MIT license)
 │   ├── Submakefile
 │   └── README.md  # Library API documentation
 └── README.md      # This file
@@ -65,5 +64,8 @@ make  # includes src/gmi/lib/Submakefile
 
 ## Dependencies
 
-- **libcurl**: `sudo apt install libcurl4-openssl-dev`
-- **cJSON**: Either `sudo apt install libcjson-dev` or download to `lib/`
+Both are required and checked by `./configure`:
+
+```bash
+sudo apt install libcurl4-openssl-dev libcjson-dev
+```

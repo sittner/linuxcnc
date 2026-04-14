@@ -7,10 +7,9 @@
 # - JSON parsing/building (gmi_json, wraps cJSON)
 # - HTTP client (gmi_http, wraps libcurl)
 #
-# Dependencies:
+# Dependencies (checked by configure):
 # - libcurl: sudo apt install libcurl4-openssl-dev
-# - cJSON: Either install libcjson-dev OR download cJSON.c from
-#   https://github.com/DaveGamble/cJSON (MIT license, 2 files)
+# - libcjson: sudo apt install libcjson-dev
 
 # Include path
 INCLUDES += gmi/lib
@@ -26,29 +25,15 @@ INCLUDES += gmi/lib
 	cp $< $@
 ../include/gmi_http.h: gmi/lib/gmi_http.h
 	cp $< $@
-../include/cJSON.h: gmi/lib/cJSON.h
-	cp $< $@
 
 GMI_HEADERS := ../include/gmi.h ../include/gmi_error.h ../include/gmi_types.h \
-               ../include/gmi_json.h ../include/gmi_http.h ../include/cJSON.h
+               ../include/gmi_json.h ../include/gmi_http.h
 
 # Source files
 GMI_SRCS := gmi/lib/gmi_error.c gmi/lib/gmi_types.c gmi/lib/gmi_json.c gmi/lib/gmi_http.c
 
-# Check for system cJSON or use embedded
-ifneq ($(wildcard gmi/lib/cJSON.c),)
-GMI_SRCS += gmi/lib/cJSON.c
-GMI_CJSON_FLAGS :=
-else
-# Use system libcjson
-GMI_CJSON_FLAGS := $(shell pkg-config --cflags --libs libcjson 2>/dev/null)
-ifeq ($(GMI_CJSON_FLAGS),)
-$(warning cJSON not found. Either install libcjson-dev or download cJSON.c to src/gmi/lib/)
-endif
-endif
-
-# Compile flags for shared library
-$(call TOOBJSDEPS, $(GMI_SRCS)): EXTRAFLAGS = -fPIC $(shell pkg-config --cflags libcurl 2>/dev/null)
+# Compile flags for shared library (uses configure-provided vars)
+$(call TOOBJSDEPS, $(GMI_SRCS)): EXTRAFLAGS = -fPIC $(LIBCURL_CFLAGS) $(LIBCJSON_CFLAGS)
 
 USERSRCS += $(GMI_SRCS)
 
@@ -61,5 +46,4 @@ TARGETS += ../lib/libgmi.so ../lib/libgmi.so.0
 	@mkdir -p ../lib
 	@rm -f $@
 	$(Q)$(CC) $(LDFLAGS) -Wl,-soname,$(notdir $@) -shared -o $@ $(call TOOBJS, $(GMI_SRCS)) \
-		$(shell pkg-config --libs libcurl 2>/dev/null || echo -lcurl) \
-		$(GMI_CJSON_FLAGS)
+		$(LIBCURL_LIBS) $(LIBCJSON_LIBS)

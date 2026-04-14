@@ -9,6 +9,8 @@ This library provides common utilities for GMI-generated code:
 
 ## Dependencies
 
+Both dependencies are required and checked by `./configure`.
+
 ### libcurl
 
 ```bash
@@ -19,9 +21,8 @@ sudo apt install libcurl4-openssl-dev
 sudo dnf install libcurl-devel
 ```
 
-### cJSON
+### libcjson
 
-**Option 1: Install system package**
 ```bash
 # Debian/Ubuntu
 sudo apt install libcjson-dev
@@ -30,18 +31,9 @@ sudo apt install libcjson-dev
 sudo dnf install cjson-devel
 ```
 
-**Option 2: Download and embed (MIT license)**
-```bash
-cd src/gmi
-curl -sLO https://raw.githubusercontent.com/DaveGamble/cJSON/master/cJSON.h
-curl -sLO https://raw.githubusercontent.com/DaveGamble/cJSON/master/cJSON.c
-```
-
-The Submakefile auto-detects whether cJSON.c is present and builds accordingly.
-
 ## Building
 
-The library is built automatically by the main Makefile via `src/gmi/Submakefile`.
+The library is built automatically by the main Makefile via `src/gmi/lib/Submakefile`.
 
 Output: `lib/libgmi.so` and `lib/libgmi.so.0`
 

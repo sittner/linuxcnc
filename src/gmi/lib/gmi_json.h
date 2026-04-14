@@ -5,7 +5,7 @@
 #define GMI_JSON_H
 
 #include "gmi_types.h"
-#include "cJSON.h"
+#include <cjson/cJSON.h>
 
 #ifdef __cplusplus
 extern "C" {
