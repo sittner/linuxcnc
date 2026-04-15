@@ -13,6 +13,7 @@
 struct gmi_http {
     char *base_url;
     long timeout;
+    CURL *curl;   // persistent handle — reused across requests for connection pooling
 };
 
 // ─── Request Structure ───
@@ -56,6 +57,13 @@ gmi_http_t *gmi_http_new(const char *base_url) {
         return NULL;
     }
 
+    http->curl = curl_easy_init();
+    if (!http->curl) {
+        free(http->base_url);
+        free(http);
+        return NULL;
+    }
+
     http->timeout = GMI_HTTP_TIMEOUT;
     return http;
 }
@@ -63,6 +71,9 @@ gmi_http_t *gmi_http_new(const char *base_url) {
 void gmi_http_free(gmi_http_t *http) {
     if (!http) {
         return;
+    }
+    if (http->curl) {
+        curl_easy_cleanup(http->curl);
     }
     free(http->base_url);
     free(http);
@@ -139,13 +150,8 @@ int gmi_request_path_param(gmi_request_t *req, const char *name, const char *val
         return GMI_ERR_NOT_FOUND;
     }
 
-    // URL-encode the value
-    CURL *curl = curl_easy_init();
-    if (!curl) {
-        return GMI_ERR_ALLOC;
-    }
-    char *encoded = curl_easy_escape(curl, value, 0);
-    curl_easy_cleanup(curl);
+    // URL-encode the value using the client's persistent handle
+    char *encoded = curl_easy_escape(req->http->curl, value, 0);
     if (!encoded) {
         return GMI_ERR_ALLOC;
     }
@@ -174,13 +180,8 @@ int gmi_request_query_param(gmi_request_t *req, const char *name, const char *va
         return GMI_ERR_INVALID;
     }
 
-    CURL *curl = curl_easy_init();
-    if (!curl) {
-        return GMI_ERR_ALLOC;
-    }
-    char *encoded_name = curl_easy_escape(curl, name, 0);
-    char *encoded_value = curl_easy_escape(curl, value, 0);
-    curl_easy_cleanup(curl);
+    char *encoded_name = curl_easy_escape(req->http->curl, name, 0);
+    char *encoded_value = curl_easy_escape(req->http->curl, value, 0);
     if (!encoded_name || !encoded_value) {
         curl_free(encoded_name);
         curl_free(encoded_value);
@@ -253,10 +254,10 @@ int gmi_request_execute(gmi_request_t *req) {
         return GMI_ERR_INVALID;
     }
 
-    CURL *curl = curl_easy_init();
-    if (!curl) {
-        return GMI_ERR_ALLOC;
-    }
+    CURL *curl = req->http->curl;
+
+    // Reset handle state from previous request, keep connection pool
+    curl_easy_reset(curl);
 
     // URL
     curl_easy_setopt(curl, CURLOPT_URL, req->url);
@@ -307,7 +308,6 @@ int gmi_request_execute(gmi_request_t *req) {
     // Execute
     CURLcode res = curl_easy_perform(curl);
     if (res != CURLE_OK) {
-        curl_easy_cleanup(curl);
         return GMI_ERR_CURL;
     }
 
@@ -315,7 +315,6 @@ int gmi_request_execute(gmi_request_t *req) {
     long http_code = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
     req->status = (int)http_code;
-    curl_easy_cleanup(curl);
 
     // Return HTTP status for non-2xx
     if (http_code < 200 || http_code >= 300) {

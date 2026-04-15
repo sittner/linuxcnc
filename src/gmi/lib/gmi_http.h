@@ -23,6 +23,11 @@ typedef enum {
 } gmi_http_method_t;
 
 // ─── HTTP Client ───
+//
+// Each gmi_http_t owns a persistent CURL handle for connection pooling
+// (TCP keep-alive, TLS session reuse). A single gmi_http_t must only be
+// used from one thread at a time. For concurrent access, create separate
+// gmi_http_t instances.
 
 typedef struct gmi_http gmi_http_t;
 

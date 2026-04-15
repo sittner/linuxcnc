@@ -209,13 +209,17 @@ halcmd_callbacks_t *halcmd_api_get(const char *instance, int required_version);
 
 ### Generated C REST Client Code (`--client-c` with `@rest_export true`)
 
-For external (non-launcher) C programs calling APIs over REST:
+For external (non-launcher) C programs calling APIs over REST.
+Each client instance owns a persistent CURL handle for connection pooling
+(TCP keep-alive, TLS session reuse). Not thread-safe — create one per thread:
 
 ```c
 // halcmd_rest_client.h - for standalone C programs
 
 typedef struct halcmd_rest_client halcmd_rest_client_t;
 
+// Create client — owns CURL handle, reuses connections across calls.
+// For multi-threaded use, create one client per thread.
 halcmd_rest_client_t *halcmd_rest_connect(const char *base_url);
 void halcmd_rest_disconnect(halcmd_rest_client_t *client);
 
