@@ -36,47 +36,38 @@ enum ParamDir {
 
 # ─── Component Lifecycle ───
 
-func init(name: string) -> i32 {
-    @rt_safe "false"
-    @doc "Initialize HAL component, returns comp_id or negative error"
-}
+@rt_safe "false"
+@doc "Initialize HAL component, returns comp_id or negative error"
+func init(name: string) -> i32
 
-func init_ex(name: string, dl_handle: ptr, type: ComponentType) -> i32 {
-    @rt_safe "false"
-    @doc "Extended init with explicit type and dlopen handle"
-}
+@rt_safe "false"
+@doc "Extended init with explicit type and dlopen handle"
+func init_ex(name: string, dl_handle: ptr, type: ComponentType) -> i32
 
-func ready(comp_id: i32) -> i32 {
-    @rt_safe "false"
-    @doc "Mark component ready after pin/param creation"
-}
+@rt_safe "false"
+@doc "Mark component ready after pin/param creation"
+func ready(comp_id: i32) -> i32
 
-func exit(comp_id: i32) -> i32 {
-    @rt_safe "false"
-    @doc "Cleanup and unregister component"
-}
+@rt_safe "false"
+@doc "Cleanup and unregister component"
+func exit(comp_id: i32) -> i32
 
 # ─── Pin Creation ───
 
-func pin_bit_new(name: string, dir: PinDir, data_ptr: ptr, comp_id: i32) -> i32 {
-    @rt_safe "false"
-}
+@rt_safe "false"
+func pin_bit_new(name: string, dir: PinDir, data_ptr: ptr, comp_id: i32) -> i32
 
-func pin_float_new(name: string, dir: PinDir, data_ptr: ptr, comp_id: i32) -> i32 {
-    @rt_safe "false"
-}
+@rt_safe "false"
+func pin_float_new(name: string, dir: PinDir, data_ptr: ptr, comp_id: i32) -> i32
 
-func pin_s32_new(name: string, dir: PinDir, data_ptr: ptr, comp_id: i32) -> i32 {
-    @rt_safe "false"
-}
+@rt_safe "false"
+func pin_s32_new(name: string, dir: PinDir, data_ptr: ptr, comp_id: i32) -> i32
 
-func pin_u32_new(name: string, dir: PinDir, data_ptr: ptr, comp_id: i32) -> i32 {
-    @rt_safe "false"
-}
+@rt_safe "false"
+func pin_u32_new(name: string, dir: PinDir, data_ptr: ptr, comp_id: i32) -> i32
 
 # ─── Memory ───
 
-func malloc(size: i64) -> ptr {
-    @rt_safe "false"
-    @doc "Allocate from HAL shared memory"
-}
+@rt_safe "false"
+@doc "Allocate from HAL shared memory"
+func malloc(size: i64) -> ptr

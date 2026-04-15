@@ -22,7 +22,7 @@ From each `.gmi` file, generate:
 ```
 @api <name>
 @version <n>
-@prefix <path>
+@prefix "<path>"
 @rest_export true|false
 
 enum Name {
@@ -35,15 +35,15 @@ type Name {
     ...
 }
 
-func name(params) -> ReturnType {
-    @method "GET|POST|PUT|DELETE"
-    @path "/endpoint"
-    @rt_safe "true|false"
-    @doc "description"
-}
+@method "GET|POST|PUT|DELETE"
+@path "/endpoint"
+@rt_safe "true|false"
+@doc "description"
+func name(params) -> ReturnType
 ```
 
-**Note:** Annotation values (`@method`, `@path`, `@rt_safe`, `@doc`) must be quoted strings.
+Function annotations (`@method`, `@path`, `@rt_safe`, `@doc`) precede the `func`
+declaration. Values must be quoted strings. Functions do not use braces.
 
 ## Type System
 

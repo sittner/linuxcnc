@@ -51,45 +51,87 @@ func (p *Parser) expect(t TokenType) bool {
 func (p *Parser) parseAPI() *ast.API {
 	api := &ast.API{}
 
+	// Pending function-level annotations collected before a func declaration
+	var pendingAnns []annotation
+
 	for p.cur.Type != EOF {
 		switch {
 		case p.cur.Type == AT:
-			p.parseDirective(api)
+			ann := p.parseAnnotation()
+			if isAPIDirective(ann.name) {
+				p.applyAPIDirective(api, ann)
+			} else {
+				pendingAnns = append(pendingAnns, ann)
+			}
 		case p.cur.Type == ENUM:
+			if len(pendingAnns) > 0 {
+				p.errorf("annotations before enum are not supported")
+				pendingAnns = nil
+			}
 			api.Enums = append(api.Enums, p.parseEnum())
 		case p.cur.Type == TYPE:
+			if len(pendingAnns) > 0 {
+				p.errorf("annotations before type are not supported")
+				pendingAnns = nil
+			}
 			api.Types = append(api.Types, p.parseType())
 		case p.cur.Type == FUNC:
-			api.Funcs = append(api.Funcs, p.parseFunc())
+			fn := p.parseFunc(pendingAnns)
+			pendingAnns = nil
+			api.Funcs = append(api.Funcs, fn)
 		default:
 			p.errorf("unexpected token %q", p.cur.Text)
 			p.advance()
 		}
 	}
+
+	if len(pendingAnns) > 0 {
+		p.errorf("trailing annotations without func declaration")
+	}
+
 	return api
 }
 
-func (p *Parser) parseDirective(api *ast.API) {
+// annotation is a parsed @name value pair.
+type annotation struct {
+	name  string
+	value string
+	pos   ast.Pos
+}
+
+// isAPIDirective returns true for top-level API directives.
+func isAPIDirective(name string) bool {
+	switch name {
+	case "api", "version", "prefix", "rest_export":
+		return true
+	}
+	return false
+}
+
+// parseAnnotation parses @ name value and returns the pair.
+func (p *Parser) parseAnnotation() annotation {
 	p.advance() // skip @
+	pos := p.pos()
 	name := p.cur.Text
 	p.advance()
+	value := p.cur.Text
+	p.advance()
+	return annotation{name: name, value: value, pos: pos}
+}
 
-	switch name {
+func (p *Parser) applyAPIDirective(api *ast.API, ann annotation) {
+	switch ann.name {
 	case "api":
-		api.Name = p.cur.Text
-		api.Pos = p.pos()
-		p.advance()
+		api.Name = ann.value
+		api.Pos = ann.pos
 	case "version":
-		if v, err := strconv.Atoi(p.cur.Text); err == nil {
+		if v, err := strconv.Atoi(ann.value); err == nil {
 			api.Version = v
 		}
-		p.advance()
 	case "prefix":
-		api.Prefix = p.cur.Text
-		p.advance()
+		api.Prefix = ann.value
 	case "rest_export":
-		api.RestExport = p.cur.Text == "true"
-		p.advance()
+		api.RestExport = ann.value == "true"
 	}
 }
 
@@ -136,7 +178,7 @@ func (p *Parser) parseType() ast.Type {
 	return typ
 }
 
-func (p *Parser) parseFunc() ast.Func {
+func (p *Parser) parseFunc(anns []annotation) ast.Func {
 	pos := p.pos()
 	p.advance() // skip "func"
 	name := p.cur.Text
@@ -166,30 +208,20 @@ func (p *Parser) parseFunc() ast.Func {
 		fn.Return = &ret
 	}
 
-	// Body with annotations
-	p.expect(LBRACE)
-	for p.cur.Type != RBRACE && p.cur.Type != EOF {
-		if p.cur.Type == AT {
-			p.advance()
-			aname := p.cur.Text
-			p.advance()
-			aval := p.cur.Text
-			p.advance()
-			switch aname {
-			case "method":
-				fn.Method = aval
-			case "path":
-				fn.Path = aval
-			case "rt_safe":
-				fn.RTSafe = aval == "true"
-			case "doc":
-				fn.Doc = aval
-			}
-		} else {
-			p.advance()
+	// Apply preceding annotations
+	for _, ann := range anns {
+		switch ann.name {
+		case "method":
+			fn.Method = ann.value
+		case "path":
+			fn.Path = ann.value
+		case "rt_safe":
+			fn.RTSafe = ann.value == "true"
+		case "doc":
+			fn.Doc = ann.value
 		}
 	}
-	p.expect(RBRACE)
+
 	return fn
 }
 

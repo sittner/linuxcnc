@@ -100,6 +100,9 @@ func (g *clientHeaderGen) emitClientFunctionDecl(fn ast.Func) {
 		cType := g.toCType(p.Type)
 		if p.Type.Kind == ast.TypeNamed {
 			g.printf(",\n    const %s *%s", cType, toSnakeCase(p.Name))
+		} else if p.Type.Nullable && p.Type.Kind == ast.TypePrimitive && p.Type.Name != "string" {
+			// Nullable non-string primitives use pointer-to-value (NULL = absent)
+			g.printf(",\n    const %s *%s", cType, toSnakeCase(p.Name))
 		} else {
 			g.printf(",\n    %s %s", cType, toSnakeCase(p.Name))
 		}
@@ -224,6 +227,8 @@ func (g *clientSourceGen) emitClientFunction(fn ast.Func) {
 		cType := g.toCType(p.Type)
 		if p.Type.Kind == ast.TypeNamed {
 			g.printf(",\n    const %s *%s", cType, toSnakeCase(p.Name))
+		} else if p.Type.Nullable && p.Type.Kind == ast.TypePrimitive && p.Type.Name != "string" {
+			g.printf(",\n    const %s *%s", cType, toSnakeCase(p.Name))
 		} else {
 			g.printf(",\n    %s %s", cType, toSnakeCase(p.Name))
 		}
@@ -260,8 +265,11 @@ func (g *clientSourceGen) emitClientFunction(fn ast.Func) {
 	// Handle path parameters
 	g.emitPathParams(fn)
 
-	// Handle request body for POST/PUT/PATCH
-	if fn.Method == "POST" || fn.Method == "PUT" || fn.Method == "PATCH" {
+	// Handle query parameters for GET/DELETE, request body for POST/PUT/PATCH
+	switch fn.Method {
+	case "GET", "DELETE", "":
+		g.emitQueryParams(fn)
+	case "POST", "PUT", "PATCH":
 		g.emitRequestBody(fn)
 	}
 
@@ -301,6 +309,68 @@ func (g *clientSourceGen) emitPathParams(fn ast.Func) {
 	g.printf("\n")
 }
 
+func (g *clientSourceGen) emitQueryParams(fn ast.Func) {
+	// Collect non-path parameters
+	var queryParams []ast.Param
+	for _, p := range fn.Params {
+		paramPlaceholder := "{" + p.Name + "}"
+		if !strings.Contains(fn.Path, paramPlaceholder) {
+			queryParams = append(queryParams, p)
+		}
+	}
+	if len(queryParams) == 0 {
+		return
+	}
+
+	for _, p := range queryParams {
+		pname := toSnakeCase(p.Name)
+		isNullable := p.Type.Nullable
+		isNullablePrim := isNullable && p.Type.Kind == ast.TypePrimitive && p.Type.Name != "string"
+
+		switch {
+		case p.Type.Kind == ast.TypePrimitive && p.Type.Name == "string":
+			// string (nullable or not) — check for NULL
+			g.printf("    if (%s) gmi_request_query_param(req, \"%s\", %s);\n", pname, p.Name, pname)
+		case isNullablePrim:
+			// Nullable non-string primitive — pointer, convert to string if non-NULL
+			g.printf("    if (%s) {\n", pname)
+			g.printf("        char %s_buf[32];\n", pname)
+			g.emitSprintfForType(p.Type, pname, fmt.Sprintf("%s_buf", pname))
+			g.printf("        gmi_request_query_param(req, \"%s\", %s_buf);\n", p.Name, pname)
+			g.printf("    }\n")
+		case p.Type.Kind == ast.TypePrimitive:
+			// Non-nullable primitive — always send
+			g.printf("    {\n")
+			g.printf("        char %s_buf[32];\n", pname)
+			g.emitSprintfForType(p.Type, pname, fmt.Sprintf("%s_buf", pname))
+			g.printf("        gmi_request_query_param(req, \"%s\", %s_buf);\n", p.Name, pname)
+			g.printf("    }\n")
+		}
+	}
+	g.printf("\n")
+}
+
+func (g *clientSourceGen) emitSprintfForType(t ast.TypeRef, varName, bufName string) {
+	deref := varName
+	if t.Nullable && t.Kind == ast.TypePrimitive && t.Name != "string" {
+		deref = "*" + varName
+	}
+	switch t.Name {
+	case "bool":
+		g.printf("        snprintf(%s, sizeof(%s), \"%%s\", %s ? \"true\" : \"false\");\n", bufName, bufName, deref)
+	case "i32":
+		g.printf("        snprintf(%s, sizeof(%s), \"%%d\", (int)%s);\n", bufName, bufName, deref)
+	case "u32":
+		g.printf("        snprintf(%s, sizeof(%s), \"%%u\", (unsigned)%s);\n", bufName, bufName, deref)
+	case "i64":
+		g.printf("        snprintf(%s, sizeof(%s), \"%%lld\", (long long)%s);\n", bufName, bufName, deref)
+	case "u64":
+		g.printf("        snprintf(%s, sizeof(%s), \"%%llu\", (unsigned long long)%s);\n", bufName, bufName, deref)
+	case "f64":
+		g.printf("        snprintf(%s, sizeof(%s), \"%%g\", %s);\n", bufName, bufName, deref)
+	}
+}
+
 func (g *clientSourceGen) emitRequestBody(fn ast.Func) {
 	// Filter out path parameters (they're already in the URL)
 	bodyParams := []ast.Param{}
@@ -319,27 +389,102 @@ func (g *clientSourceGen) emitRequestBody(fn ast.Func) {
 	g.printf("    cJSON *body = gmi_json_object();\n")
 	for _, p := range bodyParams {
 		pname := toSnakeCase(p.Name)
+		isNullable := p.Type.Nullable
+		isNullablePrim := isNullable && p.Type.Kind == ast.TypePrimitive && p.Type.Name != "string"
 		switch {
 		case p.Type.Kind == ast.TypePrimitive && p.Type.Name == "string":
+			// string (nullable or not) — NULL check
 			g.printf("    if (%s) gmi_json_add_str(body, \"%s\", %s);\n", pname, p.Name, pname)
-		case p.Type.Kind == ast.TypePrimitive && p.Type.Name == "bool":
-			g.printf("    gmi_json_add_bool(body, \"%s\", %s);\n", p.Name, pname)
-		case p.Type.Kind == ast.TypePrimitive && p.Type.Name == "i32":
-			g.printf("    gmi_json_add_i32(body, \"%s\", %s);\n", p.Name, pname)
-		case p.Type.Kind == ast.TypePrimitive && p.Type.Name == "i64":
-			g.printf("    gmi_json_add_i64(body, \"%s\", %s);\n", p.Name, pname)
-		case p.Type.Kind == ast.TypePrimitive && p.Type.Name == "u32":
-			g.printf("    gmi_json_add_u32(body, \"%s\", %s);\n", p.Name, pname)
-		case p.Type.Kind == ast.TypePrimitive && p.Type.Name == "u64":
-			g.printf("    gmi_json_add_u64(body, \"%s\", %s);\n", p.Name, pname)
-		case p.Type.Kind == ast.TypePrimitive && p.Type.Name == "f64":
-			g.printf("    gmi_json_add_f64(body, \"%s\", %s);\n", p.Name, pname)
+		case isNullablePrim:
+			// Nullable non-string primitive — pointer, add only if non-NULL
+			g.printf("    if (%s) ", pname)
+			g.emitJsonAddPrimitive(p.Type, p.Name, "*"+pname)
+		case p.Type.Kind == ast.TypePrimitive:
+			g.printf("    ")
+			g.emitJsonAddPrimitive(p.Type, p.Name, pname)
 		case p.Type.Kind == ast.TypeNamed:
-			g.printf("    // TODO: serialize struct %s to body\n", pname)
+			g.emitStructToJson(p, pname)
+		case p.Type.Kind == ast.TypeSlice:
+			g.emitSliceToJson(p, pname)
 		}
 	}
 	g.printf("    gmi_request_set_json(req, body);\n")
 	g.printf("    cJSON_Delete(body);\n\n")
+}
+
+// emitJsonAddPrimitive emits a single gmi_json_add_* call (no leading indent beyond what caller provides).
+func (g *clientSourceGen) emitJsonAddPrimitive(t ast.TypeRef, jsonKey, cExpr string) {
+	switch t.Name {
+	case "bool":
+		g.printf("gmi_json_add_bool(body, \"%s\", %s);\n", jsonKey, cExpr)
+	case "i32":
+		g.printf("gmi_json_add_i32(body, \"%s\", %s);\n", jsonKey, cExpr)
+	case "u32":
+		g.printf("gmi_json_add_u32(body, \"%s\", %s);\n", jsonKey, cExpr)
+	case "i64":
+		g.printf("gmi_json_add_i64(body, \"%s\", %s);\n", jsonKey, cExpr)
+	case "u64":
+		g.printf("gmi_json_add_u64(body, \"%s\", %s);\n", jsonKey, cExpr)
+	case "f64":
+		g.printf("gmi_json_add_f64(body, \"%s\", %s);\n", jsonKey, cExpr)
+	}
+}
+
+// emitStructToJson emits code to serialize a named struct param into the body JSON object.
+func (g *clientSourceGen) emitStructToJson(p ast.Param, pname string) {
+	var typeDef *ast.Type
+	for i := range g.api.Types {
+		if g.api.Types[i].Name == p.Type.Name {
+			typeDef = &g.api.Types[i]
+			break
+		}
+	}
+	if typeDef == nil {
+		g.printf("    // Warning: type %s not found in API\n", p.Type.Name)
+		return
+	}
+	g.printf("    if (%s) {\n", pname)
+	g.printf("        cJSON *%s_obj = gmi_json_object();\n", pname)
+	for _, f := range typeDef.Fields {
+		fname := f.Name
+		cname := toSnakeCase(f.Name)
+		accessor := fmt.Sprintf("%s->%s", pname, cname)
+		switch {
+		case f.Type.Kind == ast.TypePrimitive && f.Type.Name == "string":
+			g.printf("        if (%s) gmi_json_add_str(%s_obj, \"%s\", %s);\n", accessor, pname, fname, accessor)
+		case f.Type.Kind == ast.TypePrimitive && f.Type.Name == "bool":
+			g.printf("        gmi_json_add_bool(%s_obj, \"%s\", %s);\n", pname, fname, accessor)
+		case f.Type.Kind == ast.TypePrimitive && f.Type.Name == "i32":
+			g.printf("        gmi_json_add_i32(%s_obj, \"%s\", %s);\n", pname, fname, accessor)
+		case f.Type.Kind == ast.TypePrimitive && f.Type.Name == "u32":
+			g.printf("        gmi_json_add_u32(%s_obj, \"%s\", %s);\n", pname, fname, accessor)
+		case f.Type.Kind == ast.TypePrimitive && f.Type.Name == "i64":
+			g.printf("        gmi_json_add_i64(%s_obj, \"%s\", %s);\n", pname, fname, accessor)
+		case f.Type.Kind == ast.TypePrimitive && f.Type.Name == "u64":
+			g.printf("        gmi_json_add_u64(%s_obj, \"%s\", %s);\n", pname, fname, accessor)
+		case f.Type.Kind == ast.TypePrimitive && f.Type.Name == "f64":
+			g.printf("        gmi_json_add_f64(%s_obj, \"%s\", %s);\n", pname, fname, accessor)
+		}
+	}
+	g.printf("        cJSON_AddItemToObject(body, \"%s\", %s_obj);\n", p.Name, pname)
+	g.printf("    }\n")
+}
+
+// emitSliceToJson emits code to serialize a slice param into a JSON array in the body.
+func (g *clientSourceGen) emitSliceToJson(p ast.Param, pname string) {
+	// Slice params need a companion length — use <name>_len convention
+	lenName := pname + "_len"
+	g.printf("    if (%s && %s > 0) {\n", pname, lenName)
+	g.printf("        cJSON *%s_arr = gmi_json_array();\n", pname)
+	g.printf("        for (size_t _i = 0; _i < %s; _i++) {\n", lenName)
+	if p.Type.Elem != nil && p.Type.Elem.Kind == ast.TypePrimitive && p.Type.Elem.Name == "string" {
+		g.printf("            if (%s[_i]) cJSON_AddItemToArray(%s_arr, cJSON_CreateString(%s[_i]));\n", pname, pname, pname)
+	} else {
+		g.printf("            // Nested element serialization would go here\n")
+	}
+	g.printf("        }\n")
+	g.printf("        cJSON_AddItemToObject(body, \"%s\", %s_arr);\n", p.Name, pname)
+	g.printf("    }\n")
 }
 
 func (g *clientSourceGen) emitResponseParsing(fn ast.Func) {
@@ -379,34 +524,94 @@ func (g *clientSourceGen) emitStructParsing(fn ast.Func, ret ast.TypeRef) {
 		}
 	}
 	if typeDef == nil {
-		g.printf("            // TODO: parse struct %s\n", ret.Name)
+		g.printf("            // Warning: type %s not found in API — cannot parse\n", ret.Name)
 		return
 	}
 
 	g.printf("            memset(out, 0, sizeof(*out));\n")
+	g.emitStructFieldParsing(typeDef, "json", "out->")
+}
+
+// emitStructFieldParsing generates JSON-to-struct field parsing for all fields in a type.
+func (g *clientSourceGen) emitStructFieldParsing(typeDef *ast.Type, jsonVar, prefix string) {
 	for _, f := range typeDef.Fields {
 		fname := f.Name
 		cname := toSnakeCase(f.Name)
+		target := prefix + cname
 		switch {
 		case f.Type.Kind == ast.TypePrimitive && f.Type.Name == "string":
 			g.printf("            {\n")
-			g.printf("                const char *s = gmi_json_get_str(json, \"%s\");\n", fname)
-			g.printf("                if (s) out->%s = strdup(s);\n", cname)
+			g.printf("                const char *s = gmi_json_get_str(%s, \"%s\");\n", jsonVar, fname)
+			g.printf("                if (s) %s = strdup(s);\n", target)
 			g.printf("            }\n")
 		case f.Type.Kind == ast.TypePrimitive && f.Type.Name == "bool":
-			g.printf("            out->%s = gmi_json_get_bool(json, \"%s\", false);\n", cname, fname)
+			g.printf("            %s = gmi_json_get_bool(%s, \"%s\", false);\n", target, jsonVar, fname)
 		case f.Type.Kind == ast.TypePrimitive && f.Type.Name == "i32":
-			g.printf("            out->%s = gmi_json_get_i32(json, \"%s\", 0);\n", cname, fname)
+			g.printf("            %s = gmi_json_get_i32(%s, \"%s\", 0);\n", target, jsonVar, fname)
 		case f.Type.Kind == ast.TypePrimitive && f.Type.Name == "u32":
-			g.printf("            out->%s = gmi_json_get_u32(json, \"%s\", 0);\n", cname, fname)
+			g.printf("            %s = gmi_json_get_u32(%s, \"%s\", 0);\n", target, jsonVar, fname)
 		case f.Type.Kind == ast.TypePrimitive && f.Type.Name == "i64":
-			g.printf("            out->%s = gmi_json_get_i64(json, \"%s\", 0);\n", cname, fname)
+			g.printf("            %s = gmi_json_get_i64(%s, \"%s\", 0);\n", target, jsonVar, fname)
 		case f.Type.Kind == ast.TypePrimitive && f.Type.Name == "u64":
-			g.printf("            out->%s = gmi_json_get_u64(json, \"%s\", 0);\n", cname, fname)
+			g.printf("            %s = gmi_json_get_u64(%s, \"%s\", 0);\n", target, jsonVar, fname)
 		case f.Type.Kind == ast.TypePrimitive && f.Type.Name == "f64":
-			g.printf("            out->%s = gmi_json_get_f64(json, \"%s\", 0.0);\n", cname, fname)
-		default:
-			g.printf("            // TODO: parse field %s\n", fname)
+			g.printf("            %s = gmi_json_get_f64(%s, \"%s\", 0.0);\n", target, jsonVar, fname)
+		case f.Type.Kind == ast.TypeSlice && f.Type.Elem != nil && f.Type.Elem.Kind == ast.TypePrimitive && f.Type.Elem.Name == "string":
+			// []string field
+			g.printf("            {\n")
+			g.printf("                cJSON *arr = gmi_json_get_array(%s, \"%s\");\n", jsonVar, fname)
+			g.printf("                if (arr) {\n")
+			g.printf("                    int n = cJSON_GetArraySize(arr);\n")
+			g.printf("                    %s = calloc(n, sizeof(const char *));\n", target)
+			g.printf("                    %s_len = (size_t)n;\n", target)
+			g.printf("                    if (%s) {\n", target)
+			g.printf("                        cJSON *_el; int _j = 0;\n")
+			g.printf("                        cJSON_ArrayForEach(_el, arr) {\n")
+			g.printf("                            const char *_s = cJSON_GetStringValue(_el);\n")
+			g.printf("                            if (_s) %s[_j] = strdup(_s);\n", target)
+			g.printf("                            _j++;\n")
+			g.printf("                        }\n")
+			g.printf("                    }\n")
+			g.printf("                }\n")
+			g.printf("            }\n")
+		case f.Type.Kind == ast.TypeNamed:
+			// Nested struct — parse sub-object
+			g.printf("            {\n")
+			g.printf("                cJSON *sub = gmi_json_get_object(%s, \"%s\");\n", jsonVar, fname)
+			g.printf("                if (sub) {\n")
+			var subType *ast.Type
+			for i := range g.api.Types {
+				if g.api.Types[i].Name == f.Type.Name {
+					subType = &g.api.Types[i]
+					break
+				}
+			}
+			if subType != nil {
+				// Recursively parse sub-struct inline (shallow nesting only)
+				for _, sf := range subType.Fields {
+					sfname := sf.Name
+					scname := toSnakeCase(sf.Name)
+					starget := target + "." + scname
+					switch {
+					case sf.Type.Kind == ast.TypePrimitive && sf.Type.Name == "string":
+						g.printf("                    { const char *s = gmi_json_get_str(sub, \"%s\"); if (s) %s = strdup(s); }\n", sfname, starget)
+					case sf.Type.Kind == ast.TypePrimitive && sf.Type.Name == "bool":
+						g.printf("                    %s = gmi_json_get_bool(sub, \"%s\", false);\n", starget, sfname)
+					case sf.Type.Kind == ast.TypePrimitive && sf.Type.Name == "i32":
+						g.printf("                    %s = gmi_json_get_i32(sub, \"%s\", 0);\n", starget, sfname)
+					case sf.Type.Kind == ast.TypePrimitive && sf.Type.Name == "u32":
+						g.printf("                    %s = gmi_json_get_u32(sub, \"%s\", 0);\n", starget, sfname)
+					case sf.Type.Kind == ast.TypePrimitive && sf.Type.Name == "i64":
+						g.printf("                    %s = gmi_json_get_i64(sub, \"%s\", 0);\n", starget, sfname)
+					case sf.Type.Kind == ast.TypePrimitive && sf.Type.Name == "u64":
+						g.printf("                    %s = gmi_json_get_u64(sub, \"%s\", 0);\n", starget, sfname)
+					case sf.Type.Kind == ast.TypePrimitive && sf.Type.Name == "f64":
+						g.printf("                    %s = gmi_json_get_f64(sub, \"%s\", 0.0);\n", starget, sfname)
+					}
+				}
+			}
+			g.printf("                }\n")
+			g.printf("            }\n")
 		}
 	}
 }
@@ -421,12 +626,75 @@ func (g *clientSourceGen) emitSliceParsing(fn ast.Func, ret ast.TypeRef) {
 	g.printf("                    cJSON *elem;\n")
 	g.printf("                    int i = 0;\n")
 	g.printf("                    cJSON_ArrayForEach(elem, json) {\n")
-	// Generate element parsing based on element type
+
 	if ret.Elem.Kind == ast.TypeNamed {
-		g.printf("                        // TODO: parse struct element into (*out)[i]\n")
-	} else {
-		g.printf("                        // TODO: parse primitive element into (*out)[i]\n")
+		// Find the type definition and parse each field
+		var typeDef *ast.Type
+		for idx := range g.api.Types {
+			if g.api.Types[idx].Name == ret.Elem.Name {
+				typeDef = &g.api.Types[idx]
+				break
+			}
+		}
+		if typeDef != nil {
+			for _, f := range typeDef.Fields {
+				fname := f.Name
+				cname := toSnakeCase(f.Name)
+				target := fmt.Sprintf("(*out)[i].%s", cname)
+				switch {
+				case f.Type.Kind == ast.TypePrimitive && f.Type.Name == "string":
+					g.printf("                        { const char *s = gmi_json_get_str(elem, \"%s\"); if (s) %s = strdup(s); }\n", fname, target)
+				case f.Type.Kind == ast.TypePrimitive && f.Type.Name == "bool":
+					g.printf("                        %s = gmi_json_get_bool(elem, \"%s\", false);\n", target, fname)
+				case f.Type.Kind == ast.TypePrimitive && f.Type.Name == "i32":
+					g.printf("                        %s = gmi_json_get_i32(elem, \"%s\", 0);\n", target, fname)
+				case f.Type.Kind == ast.TypePrimitive && f.Type.Name == "u32":
+					g.printf("                        %s = gmi_json_get_u32(elem, \"%s\", 0);\n", target, fname)
+				case f.Type.Kind == ast.TypePrimitive && f.Type.Name == "i64":
+					g.printf("                        %s = gmi_json_get_i64(elem, \"%s\", 0);\n", target, fname)
+				case f.Type.Kind == ast.TypePrimitive && f.Type.Name == "u64":
+					g.printf("                        %s = gmi_json_get_u64(elem, \"%s\", 0);\n", target, fname)
+				case f.Type.Kind == ast.TypePrimitive && f.Type.Name == "f64":
+					g.printf("                        %s = gmi_json_get_f64(elem, \"%s\", 0.0);\n", target, fname)
+				case f.Type.Kind == ast.TypeSlice && f.Type.Elem != nil && f.Type.Elem.Kind == ast.TypePrimitive && f.Type.Elem.Name == "string":
+					g.printf("                        {\n")
+					g.printf("                            cJSON *arr = gmi_json_get_array(elem, \"%s\");\n", fname)
+					g.printf("                            if (arr) {\n")
+					g.printf("                                int sn = cJSON_GetArraySize(arr);\n")
+					g.printf("                                %s = calloc(sn, sizeof(const char *));\n", target)
+					g.printf("                                %s_len = (size_t)sn;\n", target)
+					g.printf("                                if (%s) {\n", target)
+					g.printf("                                    cJSON *_el; int _j = 0;\n")
+					g.printf("                                    cJSON_ArrayForEach(_el, arr) {\n")
+					g.printf("                                        const char *_s = cJSON_GetStringValue(_el);\n")
+					g.printf("                                        if (_s) %s[_j] = strdup(_s);\n", target)
+					g.printf("                                        _j++;\n")
+					g.printf("                                    }\n")
+					g.printf("                                }\n")
+					g.printf("                            }\n")
+					g.printf("                        }\n")
+				}
+			}
+		}
+	} else if ret.Elem.Kind == ast.TypePrimitive {
+		switch ret.Elem.Name {
+		case "string":
+			g.printf("                        { const char *s = cJSON_GetStringValue(elem); if (s) (*out)[i] = strdup(s); }\n")
+		case "bool":
+			g.printf("                        (*out)[i] = cJSON_IsTrue(elem);\n")
+		case "i32":
+			g.printf("                        (*out)[i] = (int32_t)cJSON_GetNumberValue(elem);\n")
+		case "u32":
+			g.printf("                        (*out)[i] = (uint32_t)cJSON_GetNumberValue(elem);\n")
+		case "i64":
+			g.printf("                        (*out)[i] = (int64_t)cJSON_GetNumberValue(elem);\n")
+		case "u64":
+			g.printf("                        (*out)[i] = (uint64_t)cJSON_GetNumberValue(elem);\n")
+		case "f64":
+			g.printf("                        (*out)[i] = cJSON_GetNumberValue(elem);\n")
+		}
 	}
+
 	g.printf("                        i++;\n")
 	g.printf("                    }\n")
 	g.printf("                }\n")

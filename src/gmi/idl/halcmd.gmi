@@ -40,110 +40,93 @@ type ComponentInfo {
 
 # ─── Query Commands ───
 
-func list_pins(pattern: string?) -> []PinInfo {
-    @method "GET"
-    @path "/pins"
-    @rt_safe "false"
-}
+@method "GET"
+@path "/pins"
+@rt_safe "false"
+func list_pins(pattern: string?) -> []PinInfo
 
-func list_signals(pattern: string?) -> []SignalInfo {
-    @method "GET"
-    @path "/signals"
-    @rt_safe "false"
-}
+@method "GET"
+@path "/signals"
+@rt_safe "false"
+func list_signals(pattern: string?) -> []SignalInfo
 
-func list_components(pattern: string?) -> []ComponentInfo {
-    @method "GET"
-    @path "/components"
-    @rt_safe "false"
-}
+@method "GET"
+@path "/components"
+@rt_safe "false"
+func list_components(pattern: string?) -> []ComponentInfo
 
-func get_pin(name: string) -> PinInfo {
-    @method "GET"
-    @path "/pin/{name}"
-    @rt_safe "false"
-}
+@method "GET"
+@path "/pin/{name}"
+@rt_safe "false"
+func get_pin(name: string) -> PinInfo
 
-func get_signal(name: string) -> SignalInfo {
-    @method "GET"
-    @path "/signal/{name}"
-    @rt_safe "false"
-}
+@method "GET"
+@path "/signal/{name}"
+@rt_safe "false"
+func get_signal(name: string) -> SignalInfo
 
 # ─── Mutation Commands ───
 
-func set_pin(name: string, value: string) -> CmdResult {
-    @method "PUT"
-    @path "/pin/{name}"
-    @rt_safe "false"
-}
+@method "PUT"
+@path "/pin/{name}"
+@rt_safe "false"
+func set_pin(name: string, value: string) -> CmdResult
 
-func set_signal(name: string, value: string) -> CmdResult {
-    @method "PUT"
-    @path "/signal/{name}"
-    @rt_safe "false"
-}
+@method "PUT"
+@path "/signal/{name}"
+@rt_safe "false"
+func set_signal(name: string, value: string) -> CmdResult
 
-func new_signal(name: string, type: string) -> CmdResult {
-    @method "POST"
-    @path "/signal"
-    @rt_safe "false"
-}
+@method "POST"
+@path "/signal"
+@rt_safe "false"
+func new_signal(name: string, type: string) -> CmdResult
 
-func delete_signal(name: string) -> CmdResult {
-    @method "DELETE"
-    @path "/signal/{name}"
-    @rt_safe "false"
-}
+@method "DELETE"
+@path "/signal/{name}"
+@rt_safe "false"
+func delete_signal(name: string) -> CmdResult
 
-func link(pin: string, signal: string) -> CmdResult {
-    @method "POST"
-    @path "/link"
-    @rt_safe "false"
-}
+@method "POST"
+@path "/link"
+@rt_safe "false"
+func link(pin: string, signal: string) -> CmdResult
 
-func unlink(pin: string) -> CmdResult {
-    @method "DELETE"
-    @path "/link/{pin}"
-    @rt_safe "false"
-}
+@method "DELETE"
+@path "/link/{pin}"
+@rt_safe "false"
+func unlink(pin: string) -> CmdResult
 
 # ─── Module Commands ───
 
-func load(module: string, args: []string?) -> CmdResult {
-    @method "POST"
-    @path "/load"
-    @rt_safe "false"
-}
+@method "POST"
+@path "/load"
+@rt_safe "false"
+func load(module: string, args: []string?) -> CmdResult
 
-func unload(module: string) -> CmdResult {
-    @method "DELETE"
-    @path "/module/{module}"
-    @rt_safe "false"
-}
+@method "DELETE"
+@path "/module/{module}"
+@rt_safe "false"
+func unload(module: string) -> CmdResult
 
 # ─── Thread Commands ───
 
-func add_thread(name: string, period_ns: i64, fp: bool?) -> CmdResult {
-    @method "POST"
-    @path "/thread"
-    @rt_safe "false"
-}
+@method "POST"
+@path "/thread"
+@rt_safe "false"
+func add_thread(name: string, period_ns: i64, fp: bool?) -> CmdResult
 
-func add_function(thread: string, function: string, position: i32?) -> CmdResult {
-    @method "POST"
-    @path "/thread/{thread}/function"
-    @rt_safe "false"
-}
+@method "POST"
+@path "/thread/{thread}/function"
+@rt_safe "false"
+func add_function(thread: string, function: string, position: i32?) -> CmdResult
 
-func start() -> CmdResult {
-    @method "POST"
-    @path "/start"
-    @rt_safe "false"
-}
+@method "POST"
+@path "/start"
+@rt_safe "false"
+func start() -> CmdResult
 
-func stop() -> CmdResult {
-    @method "POST"
-    @path "/stop"
-    @rt_safe "false"
-}
+@method "POST"
+@path "/stop"
+@rt_safe "false"
+func stop() -> CmdResult

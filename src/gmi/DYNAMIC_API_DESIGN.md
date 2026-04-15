@@ -21,27 +21,27 @@ centralized in the launcher and invisible to modules.
                             │ JSON/HTTP (localhost:port)
                             ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│                           LAUNCHER (Go)                                   │
+│                           LAUNCHER (Go)                                  │
 │                                                                          │
 │  ┌────────────────────────────────────────────────────────────────────┐  │
-│  │                      HTTP Server Layer                              │  │
+│  │                      HTTP Server Layer                             │  │
 │  │  - Binds to localhost only (no auth initially)                     │  │
 │  │  - JSON ↔ Go struct marshaling (ONLY external boundary)            │  │
-│  │  - Started after HAL setup, stopped before UI shutdown             │  │
+│  │  - Started after HAL setup, stopped after UI shutdown              │  │
 │  └────────────────────────────────────────────────────────────────────┘  │
-│                                    │                                      │
-│                                    │ Go struct                            │
-│                                    ▼                                      │
+│                                    │                                     │
+│                                    │ Go struct                           │
+│                                    ▼                                     │
 │  ┌────────────────────────────────────────────────────────────────────┐  │
-│  │                      Dispatcher / Registry                          │  │
+│  │                      Dispatcher / Registry                         │  │
 │  │  - Stores API definitions (from IDL)                               │  │
 │  │  - Stores callback references (Go func or C pointer)               │  │
 │  │  - Routes calls to correct implementation                          │  │
 │  │  - Handles Go↔C struct conversion for cross-language calls         │  │
 │  └────────────────────────────────────────────────────────────────────┘  │
-│              │                                      │                     │
-│              │ Go struct                            │ C struct (cgo)      │
-│              ▼                                      ▼                     │
+│              │                                      │                    │
+│              │ Go struct                            │ C struct (cgo)     │
+│              ▼                                      ▼                    │
 │  ┌─────────────────────┐                ┌─────────────────────┐          │
 │  │       gomod         │◀──────────────▶│       cmod          │          │
 │  │  (Go struct API)    │   Go↔C conv    │  (C struct API)     │          │
@@ -448,7 +448,7 @@ src/launcher/
 1. ~~**Versioning strategy**: How to handle API version mismatches?~~ **Resolved**: Exact match required, fail at lookup
 2. ~~**Hot reload**: Can APIs be re-registered while running?~~ **Resolved**: No, lookup at startup only
 3. ~~**Timeout handling**: Per-call timeouts? Global?~~ **Resolved**: No function timeouts, only HTTP transport
-4. ~~**Error codes**: Standardize across Go/C boundary?~~ **Resolved**: Use Linux errno codes
+4. ~~**Error codes**: Standardize across Go/C boundary?~~ **Resolved**: errno for inter-module callbacks, GMI_ERR_* for client library
 
 ## Design Decisions
 
@@ -507,12 +507,15 @@ API function calls behave like normal C/Go function calls:
 - Simplifies implementation
 - Matches normal function call semantics
 
-### Error Handling: Linux errno
+### Error Handling: Two Domains
 
-Use standard Linux errno codes for consistency with C ecosystem:
+There are two separate error code domains:
+
+**Inter-module callback API** (cmod↔cmod, cmod↔gomod): Use standard Linux errno
+codes for consistency with C ecosystem:
 
 ```c
-// Function return values:
+// Callback return values:
 //   0         = success
 //   -EINVAL   = invalid argument
 //   -ENOENT   = not found (pin, signal, etc.)
@@ -539,6 +542,23 @@ func (api *HalAPI) PinRead(name string) (*PinInfo, error) {
     }
     return &info, nil
 }
+```
+
+**Client library (libgmi)**: Uses custom `GMI_ERR_*` codes for HTTP/JSON/curl
+domain-specific errors. These do not overlap with errno:
+
+```c
+// Client library error codes (negative, libgmi-specific):
+//   GMI_OK            =  0   // Success
+//   GMI_ERR_ALLOC     = -1   // Memory allocation failed
+//   GMI_ERR_CURL      = -2   // CURL operation failed
+//   GMI_ERR_JSON      = -3   // JSON parse/encode error
+//   GMI_ERR_OVERFLOW  = -4   // Buffer overflow
+//   GMI_ERR_INVALID   = -5   // Invalid argument
+//   GMI_ERR_NOT_FOUND = -6   // Resource not found
+//   GMI_ERR_TIMEOUT   = -7   // Operation timed out
+//   GMI_ERR_IO        = -8   // I/O error
+//   >= 100                   // HTTP status code (returned as-is)
 ```
 
 **For detailed errors** (when simple errno insufficient):

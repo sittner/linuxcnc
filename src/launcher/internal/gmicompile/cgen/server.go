@@ -86,6 +86,9 @@ func (g *serverGen) emitTypes() {
 		g.printf("typedef struct {\n")
 		for _, f := range t.Fields {
 			g.printf("    %s;\n", g.fieldDecl(f))
+			if f.Type.Kind == ast.TypeSlice {
+				g.printf("    size_t %s_len;\n", toSnakeCase(f.Name))
+			}
 		}
 		g.printf("} %s_%s_t;\n\n", g.api.Name, toSnakeCase(t.Name))
 	}
