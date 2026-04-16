@@ -1,0 +1,40 @@
+# ---------------------------------------------------------------------------
+# GMI code generation
+# ---------------------------------------------------------------------------
+# Runs gmicompile on .gmi IDL files to produce C headers and Go cgo shims.
+# Generated output goes to launcher/generated/gmi/<api>/ so it is:
+#   - Inside the Go module (importable)
+#   - Separate from hand-written code
+#   - Gitignored (not checked in)
+#
+# This Submakefile must appear in SUBDIRS after 'launcher' (which builds
+# gmicompile) and before any Submakefile that uses the generated headers
+# (e.g. gmi/kins).
+# ---------------------------------------------------------------------------
+
+ifeq ($(BUILD_GOLANG),yes)
+
+GMICOMPILE := ../bin/gmicompile
+
+# IDL source files
+GMI_KINS_IDL := gmi/idl/kins.gmi
+
+# Generated output directory (relative to src/)
+GMI_KINS_GEN := launcher/generated/gmi/kins
+
+# --- kins API ---
+
+$(GMI_KINS_GEN)/kins_api.h $(GMI_KINS_GEN)/kins_cgo.go: $(GMI_KINS_IDL) $(GMICOMPILE)
+	$(ECHO) "Generating GMI kins API from $(GMI_KINS_IDL)"
+	@mkdir -p $(GMI_KINS_GEN)
+	$(Q)$(GMICOMPILE) --server-c $(GMI_KINS_IDL) -o $(GMI_KINS_GEN)/kins_api.h
+
+# Make generated files available as prerequisites for downstream Submakefiles
+TARGETS += $(GMI_KINS_GEN)/kins_api.h
+
+clean: gmi-codegen-clean
+.PHONY: gmi-codegen-clean
+gmi-codegen-clean:
+	rm -rf launcher/generated/
+
+endif # BUILD_GOLANG

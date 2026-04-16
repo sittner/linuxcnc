@@ -3,3 +3,6 @@
 /gmicompile
 /linuxcnc-launcher
 /modcompile
+
+# Generated code (produced by gmicompile from .gmi IDL files)
+/generated/

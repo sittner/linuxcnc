@@ -1,0 +1,31 @@
+# ---------------------------------------------------------------------------
+# GMI kinematics modules
+# ---------------------------------------------------------------------------
+# Kinematics modules using the GMI dynamic API infrastructure.
+# These are cmod .so plugins that register callbacks through
+# env->api->register_api (no link-time dependency on the Go launcher).
+#
+# Generated header (kins_api.h) lives in launcher/generated/gmi/kins/.
+# ---------------------------------------------------------------------------
+
+ifeq ($(BUILD_GOLANG),yes)
+
+GMI_KINS_INCLUDE := launcher/pkg/cmodule
+GMI_KINS_API_INCLUDE := launcher/generated/gmi/kins
+
+# --- trivkins ---
+
+../cmod/trivkins.so: gmi/kins/trivkins/trivkins.c \
+                     $(wildcard launcher/generated/gmi/kins/kins_api.h) \
+                     $(wildcard launcher/pkg/cmodule/gomc_env.h)
+	$(ECHO) "Compiling GMI cmod $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -fPIC -Os -Wall -Wextra -shared \
+	    -I $(GMI_KINS_INCLUDE) \
+	    -I $(GMI_KINS_API_INCLUDE) \
+	    -o $@ $< -lm
+
+TARGETS += ../cmod/trivkins.so
+modules: ../cmod/trivkins.so
+
+endif # BUILD_GOLANG

@@ -1,6 +1,7 @@
 package apiserver
 
 import (
+	"fmt"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -89,4 +90,28 @@ func SetDefaultRegistry(r *Registry) {
 // DefaultRegistry returns the package-level registry.
 func DefaultRegistry() *Registry {
 	return defaultRegistry
+}
+
+// ─── Meta Registry ───
+//
+// APIMeta objects are registered by generated cgo packages at init() time.
+// When a C plugin calls env->api->register_api("kins", 1, ...), the generic
+// callback looks up the meta here to pair it with the callbacks.
+
+var metaRegistry = map[string]*APIMeta{}
+
+// metaKey returns the lookup key for the meta registry.
+func metaKey(name string, version int) string {
+	return name + ":" + fmt.Sprintf("%d", version)
+}
+
+// RegisterMeta registers an APIMeta for later use by the generic API callbacks.
+// Called from generated cgo packages' init() functions.
+func RegisterMeta(meta *APIMeta) {
+	metaRegistry[metaKey(meta.Name, meta.Version)] = meta
+}
+
+// GetMeta looks up a registered APIMeta by name and version.
+func GetMeta(name string, version int) *APIMeta {
+	return metaRegistry[metaKey(name, version)]
 }

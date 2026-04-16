@@ -274,30 +274,69 @@ func (g *serverGen) emitCallbacksStruct() {
 	g.printf("// ─── Callbacks Struct ───\n\n")
 	g.printf("typedef struct {\n")
 	for _, fn := range g.api.Funcs {
-		g.printf("    %s_%s_fn %s;\n", g.api.Name, toSnakeCase(fn.Name), toSnakeCase(fn.Name))
+		fieldName := cSafeName(toSnakeCase(fn.Name))
+		g.printf("    %s_%s_fn %s;\n", g.api.Name, toSnakeCase(fn.Name), fieldName)
 	}
 	g.printf("} %s_callbacks_t;\n\n", g.api.Name)
 }
 
 func (g *serverGen) emitRegistration() {
-	g.printf("// ─── Registration & Lookup ───\n\n")
-	g.printf("// Register API callbacks with the launcher.\n")
-	g.printf("// instance_name: unique name for this API instance\n")
-	g.printf("// callbacks: struct with function pointers for all API functions\n")
-	g.printf("// Returns 0 on success, negative error code on failure.\n")
-	g.printf("int %s_api_register(\n", g.api.Name)
-	g.printf("    const char *instance_name,\n")
-	g.printf("    const %s_callbacks_t *callbacks\n", g.api.Name)
-	g.printf(");\n\n")
+	name := g.api.Name
+	cbsType := fmt.Sprintf("%s_callbacks_t", name)
+	version := g.api.Version
+	guard := strings.ToUpper(name) + "_API_CGO"
 
-	g.printf("// Look up a registered API instance by name.\n")
-	g.printf("// Returns pointer to callbacks struct, or NULL if not found.\n")
-	g.printf("// Thread-safe. Call once at startup, cache the result.\n")
-	g.printf("const %s_callbacks_t *%s_api_get(\n", g.api.Name, g.api.Name)
-	g.printf("    const char *instance_name\n")
-	g.printf(");\n\n")
+	g.printf("// ─── Registration & Lookup ───\n")
+	g.printf("//\n")
+	g.printf("// These static inline wrappers call through the gomc_api_t callback\n")
+	g.printf("// table provided in cmod_env_t.  No extern symbols — the C plugin\n")
+	g.printf("// has zero undefined references to the Go launcher.\n")
+	g.printf("// Skipped when included from the cgo dispatcher (types only).\n\n")
+	g.printf("#ifndef %s\n\n", guard)
+	g.printf("#include \"gomc_api.h\"\n\n")
+
+	// Register wrapper
+	g.printf("static inline int %s_api_register(\n", name)
+	g.printf("    const gomc_api_t *api,\n")
+	g.printf("    const char *instance_name,\n")
+	g.printf("    const %s *callbacks)\n", cbsType)
+	g.printf("{\n")
+	g.printf("    return api->register_api(api->ctx, %q, %d,\n", name, version)
+	g.printf("                             instance_name, callbacks);\n")
+	g.printf("}\n\n")
+
+	// Get wrapper
+	g.printf("static inline const %s *%s_api_get(\n", cbsType, name)
+	g.printf("    const gomc_api_t *api,\n")
+	g.printf("    const char *instance_name)\n")
+	g.printf("{\n")
+	g.printf("    return (const %s *)api->get_api(\n", cbsType)
+	g.printf("        api->ctx, %q, %d, instance_name);\n", name, version)
+	g.printf("}\n\n")
+
+	g.printf("#endif // %s\n\n", guard)
 
 	g.printf("#ifdef __cplusplus\n}\n#endif\n\n")
+}
+
+// cKeywords is the set of C/C++ reserved words that cannot be used as identifiers.
+var cKeywords = map[string]bool{
+	"auto": true, "break": true, "case": true, "char": true,
+	"const": true, "continue": true, "default": true, "do": true,
+	"double": true, "else": true, "enum": true, "extern": true,
+	"float": true, "for": true, "goto": true, "if": true,
+	"int": true, "long": true, "register": true, "return": true,
+	"short": true, "signed": true, "sizeof": true, "static": true,
+	"struct": true, "switch": true, "typedef": true, "union": true,
+	"unsigned": true, "void": true, "volatile": true, "while": true,
+}
+
+// cSafeName appends an underscore to C reserved words.
+func cSafeName(name string) string {
+	if cKeywords[name] {
+		return name + "_"
+	}
+	return name
 }
 
 // toSnakeCase converts CamelCase to snake_case.

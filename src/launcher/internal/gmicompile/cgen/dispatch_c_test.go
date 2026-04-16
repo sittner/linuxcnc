@@ -136,16 +136,9 @@ func TestGenerateDispatchC(t *testing.T) {
 	assertContains(t, out, "testapiDispatchGetItem,")
 	assertContains(t, out, "testapiDispatchDeleteItem,")
 
-	// ── Register export ──
-	assertContains(t, out, "//export testapi_api_register")
-	assertContains(t, out, "func testapi_api_register(instanceName *C.char, callbacks *C.testapi_callbacks_t) C.int")
-	assertContains(t, out, "apiserver.DefaultRegistry()")
-	assertContains(t, out, "reg.Register(TestapiMeta,")
-
-	// ── Get export ──
-	assertContains(t, out, "//export testapi_api_get")
-	assertContains(t, out, "func testapi_api_get(instanceName *C.char) *C.testapi_callbacks_t")
-	assertContains(t, out, "reg.GetAPI(instance, TestapiMeta.Version)")
+	// ── Meta Registration ──
+	assertContains(t, out, "func init() {")
+	assertContains(t, out, "apiserver.RegisterMeta(TestapiMeta)")
 }
 
 func TestGenerateDispatchCKeywordFields(t *testing.T) {

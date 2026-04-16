@@ -43,6 +43,7 @@ func (g *dispatchCGen) generate() error {
 	g.emitConstants()
 	g.emitGoTypes()
 	g.emitConverters()
+	g.emitGoToCConverters()
 	g.emitDispatchFuncs()
 	g.emitMeta()
 	g.emitRegister()
@@ -56,6 +57,7 @@ func (g *dispatchCGen) emitCgoPreamble() {
 	g.printf("package %s\n\n", g.pkg)
 
 	g.printf("/*\n")
+	g.printf("#define %s_API_CGO\n", strings.ToUpper(g.api.Name))
 	g.printf("#include \"%s\"\n", g.header)
 	g.printf("#include <stdlib.h>\n")
 	g.printf("#include <string.h>\n")
@@ -323,6 +325,67 @@ func (g *dispatchCGen) isEnum(name string) bool {
 	return false
 }
 
+// ─── Go→C Converters ───
+
+func (g *dispatchCGen) emitGoToCConverters() {
+	// Only emit for struct types (not enums).
+	hasStructs := false
+	for _, t := range g.api.Types {
+		if !g.isEnum(t.Name) {
+			hasStructs = true
+			break
+		}
+	}
+	if !hasStructs {
+		return
+	}
+	g.printf("// ─── Go→C Converters ───\n\n")
+
+	for _, t := range g.api.Types {
+		goName := toPascalCase(t.Name)
+		cType := fmt.Sprintf("C.%s_%s_t", g.api.Name, toSnakeCase(t.Name))
+		funcName := toLowerCamelRaw(t.Name) + "GoToC"
+
+		g.printf("func %s(src %s) %s {\n", funcName, goName, cType)
+		g.printf("\treturn %s{\n", cType)
+		for _, f := range t.Fields {
+			goField := toPascalCase(f.Name)
+			cField := cgoFieldAccess(toSnakeCase(f.Name))
+			g.emitFieldGoToC(cField, "src."+goField, f.Type)
+		}
+		g.printf("\t}\n")
+		g.printf("}\n\n")
+	}
+}
+
+func (g *dispatchCGen) emitFieldGoToC(cField, goExpr string, t ast.TypeRef) {
+	switch t.Kind {
+	case ast.TypePrimitive:
+		switch t.Name {
+		case ast.PrimBool:
+			g.printf("\t\t%s: C.bool(%s),\n", cField, goExpr)
+		case ast.PrimI32:
+			g.printf("\t\t%s: C.int32_t(%s),\n", cField, goExpr)
+		case ast.PrimU32:
+			g.printf("\t\t%s: C.uint32_t(%s),\n", cField, goExpr)
+		case ast.PrimI64:
+			g.printf("\t\t%s: C.int64_t(%s),\n", cField, goExpr)
+		case ast.PrimU64:
+			g.printf("\t\t%s: C.uint64_t(%s),\n", cField, goExpr)
+		case ast.PrimF64:
+			g.printf("\t\t%s: C.double(%s),\n", cField, goExpr)
+		}
+	case ast.TypeNamed:
+		if g.isEnum(t.Name) {
+			cType := fmt.Sprintf("C.%s_%s_t", g.api.Name, toSnakeCase(t.Name))
+			g.printf("\t\t%s: %s(%s),\n", cField, cType, goExpr)
+		} else {
+			converter := toLowerCamelRaw(t.Name) + "GoToC"
+			g.printf("\t\t%s: %s(%s),\n", cField, converter, goExpr)
+		}
+	}
+}
+
 // ─── Dispatch Functions ───
 
 func (g *dispatchCGen) emitDispatchFuncs() {
@@ -370,8 +433,8 @@ func (g *dispatchCGen) emitOneDispatch(fn ast.Func) {
 	for _, p := range fn.Params {
 		cVar := "c" + toPascalCase(p.Name)
 		goVar := "params." + toPascalCase(p.Name)
-		g.emitParamGoToC(cVar, goVar, p.Type)
-		callArgs = append(callArgs, cVar)
+		g.emitParamGoToC(cVar, goVar, p)
+		callArgs = append(callArgs, g.paramCallArg(cVar, p)...)
 	}
 
 	// Add out params for return type
@@ -400,7 +463,8 @@ func (g *dispatchCGen) emitOneDispatch(fn ast.Func) {
 	g.printf("}\n\n")
 }
 
-func (g *dispatchCGen) emitParamGoToC(cVar, goVar string, t ast.TypeRef) {
+func (g *dispatchCGen) emitParamGoToC(cVar, goVar string, p ast.Param) {
+	t := p.Type
 	switch t.Kind {
 	case ast.TypePrimitive:
 		switch t.Name {
@@ -425,9 +489,16 @@ func (g *dispatchCGen) emitParamGoToC(cVar, goVar string, t ast.TypeRef) {
 			cType := fmt.Sprintf("C.%s_%s_t", g.api.Name, toSnakeCase(t.Name))
 			g.printf("\t%s := %s(%s)\n", cVar, cType, goVar)
 		} else {
-			// Struct param — would need Go→C converter. For now, this case is rare.
-			g.printf("\t// TODO: struct param Go→C for %s\n", cVar)
+			converter := toLowerCamelRaw(t.Name) + "GoToC"
+			g.printf("\t%s := %s(%s)\n", cVar, converter, goVar)
 		}
+	case ast.TypeArray:
+		// Convert Go [N]T → C [N]T element by element.
+		elemCType := cTypeForAPICgo(g.api.Name, *t.Elem)
+		g.printf("\tvar %s [%d]%s\n", cVar, t.ArrayLen, elemCType)
+		g.printf("\tfor i := 0; i < %d; i++ {\n", t.ArrayLen)
+		g.printf("\t\t%s[i] = %s(%s[i])\n", cVar, elemCType, goVar)
+		g.printf("\t}\n")
 	case ast.TypeSlice:
 		if t.Elem != nil && t.Elem.Kind == ast.TypePrimitive && t.Elem.Name == ast.PrimString {
 			// []string → char** + count
@@ -445,6 +516,27 @@ func (g *dispatchCGen) emitParamGoToC(cVar, goVar string, t ast.TypeRef) {
 			g.printf("\t}()\n")
 		}
 	}
+}
+
+// paramCallArg returns the C call arguments for a parameter.
+// Handles byref (pass pointer), arrays (pass pointer to first element), etc.
+func (g *dispatchCGen) paramCallArg(cVar string, p ast.Param) []string {
+	switch p.Type.Kind {
+	case ast.TypePrimitive:
+		if p.ByRef {
+			return []string{"&" + cVar}
+		}
+		return []string{cVar}
+	case ast.TypeNamed:
+		// Structs always pass by pointer (const or mutable).
+		return []string{"&" + cVar}
+	case ast.TypeArray:
+		// Arrays pass pointer to first element.
+		return []string{"&" + cVar + "[0]"}
+	case ast.TypeSlice:
+		return []string{cVar, cVar + "Len"}
+	}
+	return []string{cVar}
 }
 
 func (g *dispatchCGen) emitReturnSetup(fn ast.Func) {
@@ -542,50 +634,14 @@ func (g *dispatchCGen) emitMeta() {
 	g.printf("}\n\n")
 }
 
-// ─── Register (exported to C) ───
+// ─── Meta Registration ───
 
 func (g *dispatchCGen) emitRegister() {
-	apiName := g.api.Name
-	cbsType := fmt.Sprintf("%s_callbacks_t", apiName)
-	registerName := fmt.Sprintf("%s_api_register", apiName)
-	metaVar := toPascalCase(apiName) + "Meta"
+	metaVar := toPascalCase(g.api.Name) + "Meta"
 
-	g.printf("// ─── Registration (exported to C) ───\n\n")
-	g.printf("//export %s\n", registerName)
-	g.printf("func %s(instanceName *C.char, callbacks *C.%s) C.int {\n", registerName, cbsType)
-	g.printf("\treg := apiserver.DefaultRegistry()\n")
-	g.printf("\tif reg == nil {\n")
-	g.printf("\t\treturn -C.int(syscall.EINVAL)\n")
-	g.printf("\t}\n")
-	g.printf("\tinstance := C.GoString(instanceName)\n")
-	g.printf("\terr := reg.Register(%s, instance, unsafe.Pointer(callbacks))\n", metaVar)
-	g.printf("\tif err != nil {\n")
-	g.printf("\t\tswitch err {\n")
-	g.printf("\t\tcase syscall.EEXIST:\n")
-	g.printf("\t\t\treturn -C.int(syscall.EEXIST)\n")
-	g.printf("\t\tcase syscall.EINVAL:\n")
-	g.printf("\t\t\treturn -C.int(syscall.EINVAL)\n")
-	g.printf("\t\tdefault:\n")
-	g.printf("\t\t\treturn -1\n")
-	g.printf("\t\t}\n")
-	g.printf("\t}\n")
-	g.printf("\treturn 0\n")
-	g.printf("}\n\n")
-
-	// Lookup function — returns callbacks pointer for direct calls.
-	getName := fmt.Sprintf("%s_api_get", apiName)
-	g.printf("//export %s\n", getName)
-	g.printf("func %s(instanceName *C.char) *C.%s {\n", getName, cbsType)
-	g.printf("\treg := apiserver.DefaultRegistry()\n")
-	g.printf("\tif reg == nil {\n")
-	g.printf("\t\treturn nil\n")
-	g.printf("\t}\n")
-	g.printf("\tinstance := C.GoString(instanceName)\n")
-	g.printf("\tcbs, err := reg.GetAPI(instance, %s.Version)\n", metaVar)
-	g.printf("\tif err != nil {\n")
-	g.printf("\t\treturn nil\n")
-	g.printf("\t}\n")
-	g.printf("\treturn (*C.%s)(cbs)\n", cbsType)
+	g.printf("// ─── Meta Registration ───\n\n")
+	g.printf("func init() {\n")
+	g.printf("\tapiserver.RegisterMeta(%s)\n", metaVar)
 	g.printf("}\n")
 }
 
@@ -665,6 +721,11 @@ func goTypeForDispatch(t ast.TypeRef) string {
 // cgoFieldAccess returns the field name for accessing a C struct field from Go.
 // Go keywords get a _ prefix in cgo.
 func cgoFieldAccess(cFieldName string) string {
+	// C keywords get underscore suffix in struct fields (see cSafeName).
+	// cgo accesses those escaped names directly.
+	if cKeywords[cFieldName] {
+		return cFieldName + "_"
+	}
 	if goKeywords[cFieldName] {
 		return "_" + cFieldName
 	}

@@ -49,6 +49,7 @@ LAUNCHER_SRC := $(wildcard launcher/*.go) \
     $(wildcard launcher/pkg/*/*.go) \
     $(wildcard launcher/internal/*/*.go) \
     $(wildcard launcher/internal/*/*/*.go) \
+    $(wildcard launcher/generated/*/*/*) \
     launcher/go.mod
 
 # Build the launcher binary.
@@ -167,6 +168,17 @@ TARGETS += ../bin/linuxcnc-launcher ../bin/ads-xml-gen ../gomod/ads-server.so $(
 
 TARGETS += ../bin/modcompile
 
+# ---------------------------------------------------------------------------
+# gmicompile — .gmi IDL → C/Go code generator
+# ---------------------------------------------------------------------------
+
+../bin/gmicompile: $(LAUNCHER_SRC)
+	$(ECHO) Building gmicompile
+	@rm -f $@
+	$(Q)cd launcher && $(GO) build -ldflags "$(LAUNCHER_LDFLAGS)" -o $(TOP)/bin/gmicompile ./cmd/gmicompile
+
+TARGETS += ../bin/gmicompile
+
 # Test target
 .PHONY: test-launcher
 test-launcher:
@@ -177,7 +189,7 @@ clean: launcher-clean
 .PHONY: launcher-clean
 launcher-clean:
 	rm -f ../bin/linuxcnc-launcher ../bin/ads-xml-gen ../gomod/ads-server.so
-	rm -f ../bin/modcompile
+	rm -f ../bin/modcompile ../bin/gmicompile
 	rm -f $(HAL_GO_EXAMPLES)
 	rm -f $(LAUNCHER_PKG_FILES)
 
