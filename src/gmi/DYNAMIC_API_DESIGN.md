@@ -34,9 +34,9 @@ centralized in the launcher and invisible to modules.
 │                                    ▼                                     │
 │  ┌────────────────────────────────────────────────────────────────────┐  │
 │  │                      Dispatcher / Registry                         │  │
-│  │  - Stores APIMeta (from IDL) and DispatchTable per instance        │  │
+│  │  - Stores APIMeta (from IDL) per instance                          │  │
 │  │  - Holds opaque Callbacks pointer (Go interface or C struct ptr)   │  │
-│  │  - HTTP server matches path → funcIndex → DispatchTable[i]        │  │
+│  │  - HTTP server matches path → funcIndex → Funcs[i].Dispatch       │  │
 │  │  - Generated dispatch wrappers handle all marshaling               │  │
 │  └────────────────────────────────────────────────────────────────────┘  │
 │              │                                      │                    │
@@ -139,7 +139,7 @@ typedef struct {
 } hal_callbacks_t;
 
 // Register this API implementation with the launcher.
-// Internally generates Go dispatch wrappers (via cgo) and a DispatchTable.
+// Internally generates Go dispatch wrappers (via cgo) embedded in FuncMeta.
 int hal_api_register(const char *instance_name, const hal_callbacks_t *callbacks);
 ```
 
@@ -165,8 +165,13 @@ func halDispatchPinRead(cb unsafe.Pointer, req []byte) ([]byte, error) {
     return json.Marshal(pinInfoFromC(&out))
 }
 
-var halMeta = &APIMeta{ ... }
-var halDispatchTable = []DispatchFunc{ halDispatchPinRead, ... }
+var halMeta = &APIMeta{
+    Name: "hal", Version: 1, RESTExport: true, Prefix: "hal",
+    Funcs: []FuncMeta{
+        {Name: "pin_read", Method: "GET", Path: "/pin/{name}", Dispatch: halDispatchPinRead},
+        // ...
+    },
+}
 ```
 
 ### Generated Go Server Code (`--server-go`)
@@ -186,8 +191,8 @@ type HalCallbacks interface {
     // ... other callbacks
 }
 
-// Register generates a DispatchTable wrapping the Go interface methods
-// and calls the generic registry.Register().
+// Register populates FuncMeta.Dispatch for each function and calls
+// the generic registry.Register().
 func RegisterHalAPI(instance string, impl HalCallbacks) error
 ```
 
@@ -251,7 +256,7 @@ func GetHalcmdAPI(instance string, requiredVersion int) (HalcmdCallbacks, error)
 1. HTTP request: GET /api/v1/hal0/pin/axis.0.pos-cmd
 2. HTTP server looks up "hal0" in registry → RegisteredAPI
 3. HTTP server matches (GET, "/pin/{name}") → funcIndex
-4. HTTP server calls api.DispatchTable[funcIndex](api.Callbacks, body)
+4. HTTP server calls api.Meta.Funcs[funcIndex].Dispatch(api.Callbacks, body)
 5. Generated dispatch wrapper (Go):
    a. Unmarshals JSON request body → Go values
    b. For cmod: converts Go values → C values, calls C callback via cgo
@@ -319,13 +324,14 @@ At runtime (can be from RT context if callback is RT-safe):
 // The HTTP server calls these — it never touches callbacks directly.
 type DispatchFunc func(callbacks unsafe.Pointer, req []byte) ([]byte, error)
 
-// FuncMeta holds static metadata for one API function (generated, read-only).
-// Used by the HTTP server for path matching and method validation.
+// FuncMeta holds static metadata + dispatch for one API function (generated).
+// Routing info and dispatch wrapper live together — no parallel arrays.
 type FuncMeta struct {
-    Name   string // "pin_read"
-    Method string // "GET", "POST", etc. (empty if not REST-exported)
-    Path   string // "/pin/{name}" (empty if not REST-exported)
-    RTSafe bool
+    Name     string       // "pin_read"
+    Method   string       // "GET", "POST", etc. (empty if not REST-exported)
+    Path     string       // "/pin/{name}" (empty if not REST-exported)
+    RTSafe   bool
+    Dispatch DispatchFunc // generated wrapper (nil if not REST-exported)
 }
 
 // APIMeta holds static metadata for an entire API (generated, read-only).
@@ -334,15 +340,14 @@ type APIMeta struct {
     Version    int
     RESTExport bool
     Prefix     string     // REST path prefix
-    Funcs      []FuncMeta // same order as DispatchTable
+    Funcs      []FuncMeta // routing + dispatch in one place
 }
 
 // RegisteredAPI is one registered API instance in the registry.
 type RegisteredAPI struct {
-    Meta          *APIMeta        // generated, static — for REST routing
-    Instance      string          // "hal0" — unique instance name
-    Callbacks     unsafe.Pointer  // opaque — *hal_callbacks_t (cmod) or Go interface
-    DispatchTable []DispatchFunc  // generated — same order as Meta.Funcs
+    Meta      *APIMeta       // generated — routing, dispatch, metadata
+    Instance  string         // "hal0" — unique instance name
+    Callbacks unsafe.Pointer // opaque — *hal_callbacks_t (cmod) or Go interface
 }
 ```
 
@@ -375,11 +380,13 @@ func halDispatchPinRead(cb unsafe.Pointer, req []byte) ([]byte, error) {
     return marshalPinInfo(result), nil      // Go → JSON
 }
 
-// Both register the same table shape:
-var halDispatchTable = []DispatchFunc{
-    halDispatchInit,       // index 0 = Meta.Funcs[0]
-    halDispatchPinRead,    // index 1 = Meta.Funcs[1]
-    // ...
+// Both populate Dispatch in the same FuncMeta slice:
+var halMeta = &APIMeta{
+    Funcs: []FuncMeta{
+        {Name: "init", Dispatch: halDispatchInit},
+        {Name: "pin_read", Method: "GET", Path: "/pin/{name}", Dispatch: halDispatchPinRead},
+        // ...
+    },
 }
 ```
 
@@ -387,16 +394,14 @@ var halDispatchTable = []DispatchFunc{
 
 ```go
 // Register is called by generated code during module init.
-func Register(meta *APIMeta, instance string, callbacks unsafe.Pointer,
-              table []DispatchFunc) error {
+func Register(meta *APIMeta, instance string, callbacks unsafe.Pointer) error {
     if registry.Has(instance) {
         return syscall.EEXIST
     }
     registry.Put(instance, &RegisteredAPI{
-        Meta:          meta,
-        Instance:      instance,
-        Callbacks:     callbacks,
-        DispatchTable: table,
+        Meta:      meta,
+        Instance:  instance,
+        Callbacks: callbacks,
     })
     return nil
 }
@@ -450,7 +455,7 @@ func (s *Server) handleAPIRequest(w http.ResponseWriter, r *http.Request) {
 
     // 4. Dispatch — uniform call, no cmod/gomod awareness
     body, _ := io.ReadAll(r.Body)
-    resp, err := api.DispatchTable[funcIndex](api.Callbacks, body)
+    resp, err := api.Meta.Funcs[funcIndex].Dispatch(api.Callbacks, body)
 
     // 5. Write response
     if err != nil {
@@ -561,7 +566,7 @@ src/gmi/
 
 src/generated/              # Generated code (gitignored)
 ├── hal_api.h               # C server (callbacks struct + register)
-├── hal_dispatch.go         # Go dispatch wrappers + DispatchTable (cmod)
+├── hal_dispatch.go         # Go dispatch wrappers + APIMeta with Dispatch (cmod)
 ├── hal_api.go              # Go server (interface + register, gomod)
 ├── hal_rest_client.h/c     # C REST client (for external programs)
 ├── hal_client.go           # Go client (typed wrapper around registry)
@@ -578,26 +583,86 @@ src/launcher/
 └── ...
 ```
 
-## Implementation Phases
+## Implementation Plan
 
-### Phase 1: Foundation
-- [ ] apiserver package (types.go, registry.go, server.go)
-- [ ] Registry with RegisteredAPI, DispatchFunc, APIMeta
-- [ ] Generic HTTP handler (path match → funcIndex → dispatch)
-- [ ] gmicompile: `--server-go` (Go callbacks interface + dispatch table + register)
-- [ ] Integration with launcher lifecycle
+### Step 1: apiserver Package (pure Go, no cgo, no codegen)
 
-### Phase 2: C Integration
-- [ ] gmicompile: `--server-c` (C callbacks struct + Go dispatch wrappers via cgo)
-- [ ] gmicompile: Go↔C struct converter generation
-- [ ] cmod registration support (C register → Go Register via cgo export)
+Foundation for everything else. Fully testable in isolation.
 
-### Phase 3: Client Libraries
-- [ ] gmicompile: `--client-go` (typed wrapper around registry GetAPI)
-- [ ] gmicompile: `--client-c` (REST client using libgmi, for external programs)
-- [ ] Internal call path (direct callbacks, no HTTP, no dispatch table)
+**Deliverables:**
+- [ ] `types.go` — `DispatchFunc`, `FuncMeta`, `APIMeta`, `RegisteredAPI`
+- [ ] `registry.go` — `Register()`, `GetAPI()`, thread-safe instance map
+- [ ] `server.go` — generic HTTP handler, path matching, JSON error responses
 
-### Phase 4: Polish
+**Tests:**
+- [ ] Unit: registry Register/GetAPI, duplicate rejection, version mismatch
+- [ ] Unit: path matching (static, parameterized, method filtering)
+- [ ] Unit: dispatch with mock `DispatchFunc` (success, error, not found)
+- [ ] Integration: `httptest.Server` → register fake API → REST roundtrip → verify JSON
+
+**No dependencies on:** gmicompile, cgo, generated code. Hand-written mock APIs only.
+
+### Step 2: gmicompile `--server-go` (gomod registration)
+
+Generate Go code that plugs into the apiserver from Step 1.
+
+**Deliverables:**
+- [ ] Generate `APIMeta` literal with `FuncMeta` entries (including `Dispatch`)
+- [ ] Generate Go callbacks interface (e.g., `HalCallbacks`)
+- [ ] Generate Go dispatch wrappers (`DispatchFunc` per function)
+- [ ] Generate `Register*API()` wrapper calling `apiserver.Register()`
+- [ ] Generate Go struct types from IDL `type` declarations
+
+**Tests:**
+- [ ] Unit: golden-file comparison of generated .go output vs expected
+- [ ] Integration: generate from test .gmi → compile → register → REST roundtrip
+- [ ] Integration: verify JSON request/response matches IDL types
+
+### Step 3: gmicompile `--server-c` + cgo Bridge (cmod registration)
+
+Generate C callbacks struct + Go dispatch wrappers that cross the cgo boundary.
+
+**Deliverables:**
+- [ ] Generate C header (callbacks struct, register function, types)
+- [ ] Generate Go dispatch wrappers (cgo: JSON → Go → C → errno → JSON)
+- [ ] Generate Go↔C struct converters
+- [ ] Generate cgo-exported `Register()` callable from C
+
+**Tests:**
+- [ ] Unit: golden-file comparison of generated .h and .go output
+- [ ] Integration: C implementation → cgo register → REST roundtrip
+- [ ] Integration: verify errno → HTTP status mapping
+
+### Step 4: Client Generation (Go + C)
+
+Enable inter-module calls (direct) and external REST clients.
+
+**Deliverables:**
+- [ ] `--client-go` — typed Go wrapper around `apiserver.GetAPI()` + type assertion
+- [ ] `--client-c` internal — C header for cmod→cmod/gomod (direct callback)
+- [ ] `--client-c` REST — C REST client using libgmi (for external programs)
+
+**Tests:**
+- [ ] Unit: golden-file comparison of generated client code
+- [ ] Integration: gomod→gomod direct call
+- [ ] Integration: gomod→cmod direct call (via cgo)
+- [ ] Integration: cmod→cmod direct call (pure C function pointers)
+- [ ] Integration: C REST client → HTTP server → cmod roundtrip
+
+### Step 5: Python Client Generation (`--client-py`)
+
+REST client for Python UIs (axis, gmoccapy, etc.).
+
+**Deliverables:**
+- [ ] `--client-py` — generate Python REST client module using `requests`/`urllib`
+- [ ] Generate typed Python classes from IDL `type`/`enum` declarations
+- [ ] Generate method wrappers with path/query param handling
+
+**Tests:**
+- [ ] Unit: golden-file comparison of generated .py output
+- [ ] Integration: generated Python client → HTTP server → roundtrip (pytest)
+
+### Step 6: Polish
 - [ ] Error handling standardization
 - [ ] Logging/tracing
 - [ ] Performance optimization
