@@ -151,7 +151,10 @@ func processFile(file string, m mode, outputPath string) error {
 		}
 		return generateClientC(api, outputPath)
 
-	case modeServerGo, modeClientGo, modeClientPython:
+	case modeServerGo:
+		return generateServerGo(api, outputPath)
+
+	case modeClientGo, modeClientPython:
 		return fmt.Errorf("mode not yet implemented")
 	}
 
@@ -213,6 +216,31 @@ func generateClientC(api *ast.API, outputPath string) error {
 	}
 	fmt.Fprintf(os.Stderr, "generated %s\n", sourcePath)
 
+	return nil
+}
+
+func generateServerGo(api *ast.API, outputPath string) error {
+	if outputPath == "" {
+		outputPath = api.Name + "_api.go"
+	}
+
+	// Derive package name from output directory, default to api name
+	pkgName := api.Name
+	if dir := filepath.Dir(outputPath); dir != "." && dir != "" {
+		pkgName = filepath.Base(dir)
+	}
+
+	f, err := os.Create(outputPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if err := cgen.GenerateServerGo(f, api, pkgName); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stderr, "generated %s\n", outputPath)
 	return nil
 }
 

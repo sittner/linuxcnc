@@ -1,5 +1,4 @@
 package apiserver
-package apiserver
 
 import (
 	"syscall"
