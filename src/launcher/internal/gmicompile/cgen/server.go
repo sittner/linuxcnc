@@ -280,14 +280,21 @@ func (g *serverGen) emitCallbacksStruct() {
 }
 
 func (g *serverGen) emitRegistration() {
-	g.printf("// ─── Registration ───\n\n")
+	g.printf("// ─── Registration & Lookup ───\n\n")
 	g.printf("// Register API callbacks with the launcher.\n")
-	g.printf("// instance_name: unique name for this API instance (prepended to REST paths)\n")
+	g.printf("// instance_name: unique name for this API instance\n")
 	g.printf("// callbacks: struct with function pointers for all API functions\n")
 	g.printf("// Returns 0 on success, negative error code on failure.\n")
 	g.printf("int %s_api_register(\n", g.api.Name)
 	g.printf("    const char *instance_name,\n")
 	g.printf("    const %s_callbacks_t *callbacks\n", g.api.Name)
+	g.printf(");\n\n")
+
+	g.printf("// Look up a registered API instance by name.\n")
+	g.printf("// Returns pointer to callbacks struct, or NULL if not found.\n")
+	g.printf("// Thread-safe. Call once at startup, cache the result.\n")
+	g.printf("const %s_callbacks_t *%s_api_get(\n", g.api.Name, g.api.Name)
+	g.printf("    const char *instance_name\n")
 	g.printf(");\n\n")
 
 	g.printf("#ifdef __cplusplus\n}\n#endif\n\n")

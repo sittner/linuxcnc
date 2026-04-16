@@ -570,6 +570,22 @@ func (g *dispatchCGen) emitRegister() {
 	g.printf("\t\t}\n")
 	g.printf("\t}\n")
 	g.printf("\treturn 0\n")
+	g.printf("}\n\n")
+
+	// Lookup function — returns callbacks pointer for direct calls.
+	getName := fmt.Sprintf("%s_api_get", apiName)
+	g.printf("//export %s\n", getName)
+	g.printf("func %s(instanceName *C.char) *C.%s {\n", getName, cbsType)
+	g.printf("\treg := apiserver.DefaultRegistry()\n")
+	g.printf("\tif reg == nil {\n")
+	g.printf("\t\treturn nil\n")
+	g.printf("\t}\n")
+	g.printf("\tinstance := C.GoString(instanceName)\n")
+	g.printf("\tcbs, err := reg.GetAPI(instance, %s.Version)\n", metaVar)
+	g.printf("\tif err != nil {\n")
+	g.printf("\t\treturn nil\n")
+	g.printf("\t}\n")
+	g.printf("\treturn (*C.%s)(cbs)\n", cbsType)
 	g.printf("}\n")
 }
 
