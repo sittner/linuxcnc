@@ -24,6 +24,7 @@ type serverGen struct {
 func (g *serverGen) generate() error {
 	g.emitHeaderGuard()
 	g.emitIncludes()
+	g.emitConstants()
 	g.emitEnums()
 	g.emitTypes()
 	g.emitCallbackTypedefs()
@@ -57,6 +58,17 @@ func (g *serverGen) emitIncludes() {
 	g.printf("#include <stdbool.h>\n")
 	g.printf("#include <stddef.h>\n")
 	g.printf("\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n")
+}
+
+func (g *serverGen) emitConstants() {
+	if len(g.api.Consts) == 0 {
+		return
+	}
+	g.printf("// ─── Constants ───\n\n")
+	for _, c := range g.api.Consts {
+		g.printf("#define %s_%s %d\n", strings.ToUpper(g.api.Name), c.Name, c.Value)
+	}
+	g.printf("\n")
 }
 
 func (g *serverGen) emitEnums() {
@@ -95,6 +107,13 @@ func (g *serverGen) emitTypes() {
 }
 
 func (g *serverGen) fieldDecl(f ast.Field) string {
+	if f.Type.Kind == ast.TypeArray {
+		// Arrays declared inline: type name[SIZE]
+		elemType := g.toCType(*f.Type.Elem)
+		name := toSnakeCase(f.Name)
+		sizeStr := g.arraySizeStr(f.Type)
+		return fmt.Sprintf("%s %s[%s]", elemType, name, sizeStr)
+	}
 	cType := g.toCType(f.Type)
 	name := toSnakeCase(f.Name)
 	return fmt.Sprintf("%s %s", cType, name)
@@ -115,10 +134,21 @@ func (g *serverGen) toCType(t ast.TypeRef) string {
 		elemType := g.toCType(*t.Elem)
 		return fmt.Sprintf("%s *", elemType)
 	case ast.TypeArray:
+		// For param typedefs, arrays decay to pointers — handled at call site
 		elemType := g.toCType(*t.Elem)
-		return fmt.Sprintf("%s[%d]", elemType, t.ArrayLen)
+		sizeStr := g.arraySizeStr(t)
+		return fmt.Sprintf("%s[%s]", elemType, sizeStr)
 	}
 	return "void"
+}
+
+// arraySizeStr returns the C size expression for an array type.
+// Uses the #define constant name if available.
+func (g *serverGen) arraySizeStr(t ast.TypeRef) string {
+	if t.ArrayLenName != "" {
+		return fmt.Sprintf("%s_%s", strings.ToUpper(g.api.Name), t.ArrayLenName)
+	}
+	return fmt.Sprintf("%d", t.ArrayLen)
 }
 
 func primitiveToCType(name string) string {
@@ -137,8 +167,6 @@ func primitiveToCType(name string) string {
 		return "double"
 	case "string":
 		return "const char *"
-	case "ptr":
-		return "void *"
 	}
 	return "int"
 }
@@ -154,13 +182,7 @@ func (g *serverGen) emitCallbackTypedefs() {
 		// Parameters
 		params := []string{}
 		for _, p := range fn.Params {
-			cType := g.toCType(p.Type)
-			// Pass structs by const pointer
-			if p.Type.Kind == ast.TypeNamed {
-				params = append(params, fmt.Sprintf("const %s *%s", cType, toSnakeCase(p.Name)))
-			} else {
-				params = append(params, fmt.Sprintf("%s %s", cType, toSnakeCase(p.Name)))
-			}
+			params = append(params, g.paramDecl(p))
 		}
 
 		// Return value as out parameter
@@ -170,7 +192,11 @@ func (g *serverGen) emitCallbackTypedefs() {
 				// Slice: pointer + out length
 				params = append(params, fmt.Sprintf("%s *out", retType))
 				params = append(params, "size_t *out_len")
-			} else if fn.Return.Kind == ast.TypeNamed || fn.Return.Kind == ast.TypeArray {
+			} else if fn.Return.Kind == ast.TypeArray {
+				elemType := g.toCType(*fn.Return.Elem)
+				sizeStr := g.arraySizeStr(*fn.Return)
+				params = append(params, fmt.Sprintf("%s out[%s]", elemType, sizeStr))
+			} else if fn.Return.Kind == ast.TypeNamed {
 				params = append(params, fmt.Sprintf("%s *out", retType))
 			} else {
 				params = append(params, fmt.Sprintf("%s *out", retType))
@@ -190,6 +216,55 @@ func (g *serverGen) emitCallbackTypedefs() {
 		}
 		g.printf(");\n\n")
 	}
+}
+
+// paramDecl returns the C parameter declaration for a function parameter.
+//
+// byref semantics:
+//
+//	primitive         → value:     int32_t x
+//	primitive byref   → pointer:   int32_t *x
+//	named (struct)    → const ptr: const kins_pose_t *x
+//	named byref       → mut ptr:   kins_pose_t *x
+//	[]T               → const ptr: const double *x, size_t x_len
+//	[]T byref         → mut ptr:   double *x, size_t x_len
+//	[N]T              → const arr: const double x[N]
+//	[N]T byref        → mut arr:   double x[N]
+func (g *serverGen) paramDecl(p ast.Param) string {
+	name := toSnakeCase(p.Name)
+
+	switch p.Type.Kind {
+	case ast.TypePrimitive:
+		cType := primitiveToCType(p.Type.Name)
+		if p.ByRef {
+			return fmt.Sprintf("%s *%s", cType, name)
+		}
+		return fmt.Sprintf("%s %s", cType, name)
+
+	case ast.TypeNamed:
+		cType := g.toCType(p.Type)
+		if p.ByRef {
+			return fmt.Sprintf("%s *%s", cType, name)
+		}
+		return fmt.Sprintf("const %s *%s", cType, name)
+
+	case ast.TypeSlice:
+		elemType := g.toCType(*p.Type.Elem)
+		if p.ByRef {
+			return fmt.Sprintf("%s *%s, size_t %s_len", elemType, name, name)
+		}
+		return fmt.Sprintf("const %s *%s, size_t %s_len", elemType, name, name)
+
+	case ast.TypeArray:
+		elemType := g.toCType(*p.Type.Elem)
+		sizeStr := g.arraySizeStr(p.Type)
+		if p.ByRef {
+			return fmt.Sprintf("%s %s[%s]", elemType, name, sizeStr)
+		}
+		return fmt.Sprintf("const %s %s[%s]", elemType, name, sizeStr)
+	}
+
+	return fmt.Sprintf("void *%s", name)
 }
 
 func (g *serverGen) emitCallbacksStruct() {

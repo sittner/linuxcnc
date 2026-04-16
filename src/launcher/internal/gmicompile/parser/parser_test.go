@@ -131,7 +131,7 @@ func TestParseArrayTypes(t *testing.T) {
 @version 1
 
 type Position {
-    coords: [f64; 3]
+    coords: [3]f64
 }
 `
 	api, errors := Parse("test.gmi", src)
@@ -168,5 +168,158 @@ enum Type {
 
 	if api.Enums[0].Values[0].Value != -1 {
 		t.Errorf("Values[0].Value = %d, want -1", api.Enums[0].Values[0].Value)
+	}
+}
+
+func TestParseConst(t *testing.T) {
+	src := `@api test
+@version 1
+
+const MAX_JOINTS = 16
+
+type Joints {
+    values: [MAX_JOINTS]f64
+}
+`
+	api, errors := Parse("test.gmi", src)
+	if len(errors) > 0 {
+		t.Fatalf("Parse errors: %v", errors)
+	}
+
+	if len(api.Consts) != 1 {
+		t.Fatalf("len(Consts) = %d, want 1", len(api.Consts))
+	}
+	if api.Consts[0].Name != "MAX_JOINTS" {
+		t.Errorf("Consts[0].Name = %q, want %q", api.Consts[0].Name, "MAX_JOINTS")
+	}
+	if api.Consts[0].Value != 16 {
+		t.Errorf("Consts[0].Value = %d, want 16", api.Consts[0].Value)
+	}
+
+	// Array should resolve named size
+	field := api.Types[0].Fields[0]
+	if field.Type.Kind != ast.TypeArray {
+		t.Fatalf("Field.Type.Kind = %v, want TypeArray", field.Type.Kind)
+	}
+	if field.Type.ArrayLen != 16 {
+		t.Errorf("Field.Type.ArrayLen = %d, want 16", field.Type.ArrayLen)
+	}
+	if field.Type.ArrayLenName != "MAX_JOINTS" {
+		t.Errorf("Field.Type.ArrayLenName = %q, want %q", field.Type.ArrayLenName, "MAX_JOINTS")
+	}
+}
+
+func TestParseByRef(t *testing.T) {
+	src := `@api test
+@version 1
+
+type Pose {
+    x: f64
+    y: f64
+}
+
+func forward(joints: []f64, world: Pose byref, flags: u64 byref) -> i32
+`
+	api, errors := Parse("test.gmi", src)
+	if len(errors) > 0 {
+		t.Fatalf("Parse errors: %v", errors)
+	}
+
+	fn := api.Funcs[0]
+	if len(fn.Params) != 3 {
+		t.Fatalf("len(Params) = %d, want 3", len(fn.Params))
+	}
+
+	// joints: []f64 — no byref
+	if fn.Params[0].ByRef {
+		t.Error("Params[0].ByRef = true, want false")
+	}
+	// world: Pose byref
+	if !fn.Params[1].ByRef {
+		t.Error("Params[1].ByRef = false, want true")
+	}
+	if fn.Params[1].Type.Kind != ast.TypeNamed {
+		t.Errorf("Params[1].Type.Kind = %v, want TypeNamed", fn.Params[1].Type.Kind)
+	}
+	// flags: u64 byref
+	if !fn.Params[2].ByRef {
+		t.Error("Params[2].ByRef = false, want true")
+	}
+	if fn.Params[2].Type.Kind != ast.TypePrimitive {
+		t.Errorf("Params[2].Type.Kind = %v, want TypePrimitive", fn.Params[2].Type.Kind)
+	}
+}
+
+func TestParsePtrIsUnknownType(t *testing.T) {
+	src := `@api test
+@version 1
+
+func bad(handle: ptr) -> i32
+`
+	api, _ := Parse("test.gmi", src)
+
+	// "ptr" is not a primitive — it should be parsed as TypeNamed (unknown type)
+	p := api.Funcs[0].Params[0]
+	if p.Type.Kind != ast.TypeNamed {
+		t.Errorf("ptr should be TypeNamed (unknown), got Kind=%v", p.Type.Kind)
+	}
+	if p.Type.Name != "ptr" {
+		t.Errorf("Name = %q, want %q", p.Type.Name, "ptr")
+	}
+}
+
+func TestParseConstAndByRefCombined(t *testing.T) {
+	src := `@api kins
+@version 1
+
+const MAX_JOINTS = 16
+
+type Pose {
+    x: f64
+    y: f64
+    z: f64
+}
+
+@rt_safe "true"
+func forward(joints: [MAX_JOINTS]f64, world: Pose byref, fflags: u64, iflags: u64 byref) -> i32
+`
+	api, errors := Parse("test.gmi", src)
+	if len(errors) > 0 {
+		t.Fatalf("Parse errors: %v", errors)
+	}
+
+	fn := api.Funcs[0]
+	if !fn.RTSafe {
+		t.Error("RTSafe = false, want true")
+	}
+
+	// joints: [MAX_JOINTS]f64 — array with named size, no byref
+	p0 := fn.Params[0]
+	if p0.Type.Kind != ast.TypeArray {
+		t.Fatalf("Params[0].Type.Kind = %v, want TypeArray", p0.Type.Kind)
+	}
+	if p0.Type.ArrayLen != 16 {
+		t.Errorf("Params[0].Type.ArrayLen = %d, want 16", p0.Type.ArrayLen)
+	}
+	if p0.Type.ArrayLenName != "MAX_JOINTS" {
+		t.Errorf("Params[0].Type.ArrayLenName = %q, want %q", p0.Type.ArrayLenName, "MAX_JOINTS")
+	}
+	if p0.ByRef {
+		t.Error("Params[0].ByRef = true, want false")
+	}
+
+	// world: Pose byref
+	if !fn.Params[1].ByRef {
+		t.Error("Params[1].ByRef = false, want true")
+	}
+
+	// fflags: u64 — value
+	if fn.Params[2].ByRef {
+		t.Error("Params[2].ByRef = true, want false")
+	}
+
+	// iflags: u64 byref
+	if !fn.Params[3].ByRef {
+		t.Error("Params[3].ByRef = false, want true")
 	}
 }

@@ -271,41 +271,5 @@ func generateServerGo(api *ast.API, outputPath string) error {
 
 // validateAPI checks semantic constraints on a parsed API.
 func validateAPI(api *ast.API) []string {
-	var errs []string
-	if !api.RestExport {
-		return nil
-	}
-
-	// ptr type is forbidden in REST-exported APIs
-	for _, fn := range api.Funcs {
-		for _, p := range fn.Params {
-			if typeUsesPtr(p.Type) {
-				errs = append(errs, fmt.Sprintf("%s: func %s param %q uses ptr, which is forbidden in @rest_export true APIs",
-					fn.Pos, fn.Name, p.Name))
-			}
-		}
-		if fn.Return != nil && typeUsesPtr(*fn.Return) {
-			errs = append(errs, fmt.Sprintf("%s: func %s return type uses ptr, which is forbidden in @rest_export true APIs",
-				fn.Pos, fn.Name))
-		}
-	}
-	for _, t := range api.Types {
-		for _, f := range t.Fields {
-			if typeUsesPtr(f.Type) {
-				errs = append(errs, fmt.Sprintf("%s: type %s field %q uses ptr, which is forbidden in @rest_export true APIs",
-					f.Pos, t.Name, f.Name))
-			}
-		}
-	}
-	return errs
-}
-
-func typeUsesPtr(t ast.TypeRef) bool {
-	if t.Kind == ast.TypePrimitive && t.Name == ast.PrimPtr {
-		return true
-	}
-	if t.Elem != nil {
-		return typeUsesPtr(*t.Elem)
-	}
-	return false
+	return nil
 }

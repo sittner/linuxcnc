@@ -31,6 +31,7 @@ func (g *serverGoGen) printf(format string, args ...interface{}) {
 
 func (g *serverGoGen) generate() error {
 	g.emitHeader()
+	g.emitConstants()
 	g.emitEnums()
 	g.emitTypes()
 	g.emitCallbacksInterface()
@@ -58,6 +59,20 @@ func (g *serverGoGen) emitHeader() {
 	g.printf("var _ = json.Marshal\n")
 	g.printf("var _ = syscall.EINVAL\n")
 	g.printf("var _ unsafe.Pointer\n\n")
+}
+
+// ─── Constants ───
+
+func (g *serverGoGen) emitConstants() {
+	if len(g.api.Consts) == 0 {
+		return
+	}
+	g.printf("// ─── Constants ───\n\n")
+	g.printf("const (\n")
+	for _, c := range g.api.Consts {
+		g.printf("\t%s = %d\n", c.Name, c.Value)
+	}
+	g.printf(")\n\n")
 }
 
 // ─── Enums ───
@@ -282,8 +297,6 @@ func primitiveToGoType(name string) string {
 		return "float64"
 	case ast.PrimString:
 		return "string"
-	case ast.PrimPtr:
-		return "unsafe.Pointer"
 	}
 	return "interface{}"
 }

@@ -21,6 +21,7 @@ const (
 	ENUM
 	TYPE
 	FUNC
+	CONST
 
 	// Punctuation
 	LBRACE   // {
@@ -210,6 +211,8 @@ func (s *Scanner) keyword(text string) TokenType {
 		return TYPE
 	case "func":
 		return FUNC
+	case "const":
+		return CONST
 	}
 	return IDENT
 }

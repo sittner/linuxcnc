@@ -1,5 +1,9 @@
 # HAL Component API
 # Core functions for HAL component lifecycle and pin/param management
+#
+# NOTE: This API uses opaque pointers (data_ptr, dl_handle, malloc return)
+# that cannot be expressed in the typed IDL. It serves as a design reference
+# but cannot be compiled until those interfaces are redesigned.
 
 @api hal
 @version 1

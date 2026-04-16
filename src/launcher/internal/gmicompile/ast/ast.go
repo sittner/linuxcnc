@@ -42,9 +42,21 @@ type API struct {
 	RestExport bool   // Whether to expose via REST from @rest_export directive
 	Pos        Pos    // Position of @api directive
 
-	Enums []Enum
-	Types []Type
-	Funcs []Func
+	Consts []Const
+	Enums  []Enum
+	Types  []Type
+	Funcs  []Func
+}
+
+// ---------------------------------------------------------------------------
+// Const — named integer constant
+// ---------------------------------------------------------------------------
+
+// Const represents a named integer constant (e.g. const MAX_JOINTS = 16).
+type Const struct {
+	Name  string
+	Value int
+	Pos   Pos
 }
 
 // ---------------------------------------------------------------------------
@@ -91,19 +103,20 @@ type Field struct {
 type TypeKind int
 
 const (
-	TypePrimitive TypeKind = iota // bool, i32, u32, i64, u64, f64, string, ptr
+	TypePrimitive TypeKind = iota // bool, i32, u32, i64, u64, f64, string
 	TypeNamed                     // user-defined type or enum
-	TypeArray                     // [T; N] fixed-size array
+	TypeArray                     // [N]T fixed-size array (N can be const name or integer)
 	TypeSlice                     // []T dynamic slice
 )
 
 // TypeRef represents a reference to a type.
 type TypeRef struct {
-	Kind     TypeKind
-	Name     string   // for Primitive: "bool", "i32", etc.; for Named: type name
-	Elem     *TypeRef // for Array/Slice: element type
-	ArrayLen int      // for Array: fixed length
-	Nullable bool     // T? syntax
+	Kind         TypeKind
+	Name         string   // for Primitive: "bool", "i32", etc.; for Named: type name
+	Elem         *TypeRef // for Array/Slice: element type
+	ArrayLen     int      // for Array: resolved integer length
+	ArrayLenName string   // for Array: const name if used (e.g. "MAX_JOINTS")
+	Nullable     bool     // T? syntax
 }
 
 func (t TypeRef) String() string {
@@ -112,7 +125,11 @@ func (t TypeRef) String() string {
 	case TypePrimitive, TypeNamed:
 		base = t.Name
 	case TypeArray:
-		base = fmt.Sprintf("[%s; %d]", t.Elem.String(), t.ArrayLen)
+		if t.ArrayLenName != "" {
+			base = fmt.Sprintf("[%s]%s", t.ArrayLenName, t.Elem.String())
+		} else {
+			base = fmt.Sprintf("[%d]%s", t.ArrayLen, t.Elem.String())
+		}
 	case TypeSlice:
 		base = fmt.Sprintf("[]%s", t.Elem.String())
 	}
@@ -136,7 +153,6 @@ const (
 	PrimU64    = "u64"
 	PrimF64    = "f64"
 	PrimString = "string"
-	PrimPtr    = "ptr"
 )
 
 // Primitives is the set of valid primitive type names.
@@ -148,7 +164,6 @@ var Primitives = map[string]bool{
 	PrimU64:    true,
 	PrimF64:    true,
 	PrimString: true,
-	PrimPtr:    true,
 }
 
 // ---------------------------------------------------------------------------
@@ -171,7 +186,8 @@ type Func struct {
 
 // Param represents a function parameter.
 type Param struct {
-	Name string
-	Type TypeRef
-	Pos  Pos
+	Name  string
+	Type  TypeRef
+	ByRef bool // passed as mutable pointer (byref keyword)
+	Pos   Pos
 }

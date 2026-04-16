@@ -40,6 +40,7 @@ func (g *dispatchCGen) printf(format string, args ...interface{}) {
 func (g *dispatchCGen) generate() error {
 	g.emitCgoPreamble()
 	g.emitImports()
+	g.emitConstants()
 	g.emitGoTypes()
 	g.emitConverters()
 	g.emitDispatchFuncs()
@@ -81,14 +82,13 @@ func (g *dispatchCGen) emitCallWrapper(fn ast.Func) {
 	args := []string{}
 
 	for _, p := range fn.Params {
-		cType := toCTypeForAPI(g.api.Name, p.Type)
 		name := toSnakeCase(p.Name)
-		if p.Type.Kind == ast.TypeNamed {
-			params = append(params, fmt.Sprintf("const %s *%s", cType, name))
-		} else {
-			params = append(params, fmt.Sprintf("%s %s", cType, name))
-		}
+		params = append(params, cgoParamDecl(apiName, p))
 		args = append(args, name)
+		// Slice params also pass a length arg
+		if p.Type.Kind == ast.TypeSlice {
+			args = append(args, name+"_len")
+		}
 	}
 
 	if fn.Return != nil {
@@ -97,6 +97,11 @@ func (g *dispatchCGen) emitCallWrapper(fn ast.Func) {
 			params = append(params, fmt.Sprintf("%s *out", retType))
 			params = append(params, "size_t *out_len")
 			args = append(args, "out", "out_len")
+		} else if fn.Return.Kind == ast.TypeArray {
+			elemType := toCTypeForAPI(g.api.Name, *fn.Return.Elem)
+			sizeStr := cgoArraySizeStr(apiName, *fn.Return)
+			params = append(params, fmt.Sprintf("%s out[%s]", elemType, sizeStr))
+			args = append(args, "out")
 		} else {
 			params = append(params, fmt.Sprintf("%s *out", retType))
 			args = append(args, "out")
@@ -106,6 +111,52 @@ func (g *dispatchCGen) emitCallWrapper(fn ast.Func) {
 	g.printf("static int %s(%s) {\n", wrapperName, strings.Join(params, ", "))
 	g.printf("    return fn(%s);\n", strings.Join(args, ", "))
 	g.printf("}\n\n")
+}
+
+// cgoParamDecl returns the C parameter declaration for use in cgo preamble wrappers.
+func cgoParamDecl(apiName string, p ast.Param) string {
+	name := toSnakeCase(p.Name)
+
+	switch p.Type.Kind {
+	case ast.TypePrimitive:
+		cType := primitiveToCType(p.Type.Name)
+		if p.ByRef {
+			return fmt.Sprintf("%s *%s", cType, name)
+		}
+		return fmt.Sprintf("%s %s", cType, name)
+
+	case ast.TypeNamed:
+		cType := fmt.Sprintf("%s_%s_t", apiName, toSnakeCase(p.Type.Name))
+		if p.ByRef {
+			return fmt.Sprintf("%s *%s", cType, name)
+		}
+		return fmt.Sprintf("const %s *%s", cType, name)
+
+	case ast.TypeSlice:
+		elemCType := toCTypeForAPI(apiName, *p.Type.Elem)
+		if p.ByRef {
+			return fmt.Sprintf("%s *%s, size_t %s_len", elemCType, name, name)
+		}
+		return fmt.Sprintf("const %s *%s, size_t %s_len", elemCType, name, name)
+
+	case ast.TypeArray:
+		elemCType := toCTypeForAPI(apiName, *p.Type.Elem)
+		sizeStr := cgoArraySizeStr(apiName, p.Type)
+		if p.ByRef {
+			return fmt.Sprintf("%s %s[%s]", elemCType, name, sizeStr)
+		}
+		return fmt.Sprintf("const %s %s[%s]", elemCType, name, sizeStr)
+	}
+
+	return fmt.Sprintf("void *%s", name)
+}
+
+// cgoArraySizeStr returns the C size expression for an array type (using #define name).
+func cgoArraySizeStr(apiName string, t ast.TypeRef) string {
+	if t.ArrayLenName != "" {
+		return fmt.Sprintf("%s_%s", strings.ToUpper(apiName), t.ArrayLenName)
+	}
+	return fmt.Sprintf("%d", t.ArrayLen)
 }
 
 // ─── Go Imports ───
@@ -123,6 +174,20 @@ func (g *dispatchCGen) emitImports() {
 	g.printf("var _ = json.Marshal\n")
 	g.printf("var _ = syscall.EINVAL\n")
 	g.printf("var _ unsafe.Pointer\n\n")
+}
+
+// ─── Go Constants ───
+
+func (g *dispatchCGen) emitConstants() {
+	if len(g.api.Consts) == 0 {
+		return
+	}
+	g.printf("// ─── Constants ───\n\n")
+	g.printf("const (\n")
+	for _, c := range g.api.Consts {
+		g.printf("\t%s = %d\n", c.Name, c.Value)
+	}
+	g.printf(")\n\n")
 }
 
 // ─── Go Types (same as server_go, needed in the cgo package) ───
@@ -226,8 +291,6 @@ func (g *dispatchCGen) emitFieldCToGo(goField, cExpr string, t ast.TypeRef) {
 			}
 		case ast.PrimF64:
 			g.printf("\t\t%s: float64(%s),\n", goField, cExpr)
-		case ast.PrimPtr:
-			g.printf("\t\t%s: unsafe.Pointer(%s),\n", goField, cExpr)
 		}
 	case ast.TypeNamed:
 		// Could be enum or struct — for enums, cast; for structs, recurse
@@ -356,8 +419,6 @@ func (g *dispatchCGen) emitParamGoToC(cVar, goVar string, t ast.TypeRef) {
 			g.printf("\t%s := C.uint64_t(%s)\n", cVar, goVar)
 		case ast.PrimF64:
 			g.printf("\t%s := C.double(%s)\n", cVar, goVar)
-		case ast.PrimPtr:
-			g.printf("\t%s := %s\n", cVar, goVar)
 		}
 	case ast.TypeNamed:
 		if g.isEnum(t.Name) {
@@ -553,8 +614,6 @@ func cTypeForAPICgo(apiName string, t ast.TypeRef) string {
 			return "C.double"
 		case ast.PrimString:
 			return "*C.char"
-		case ast.PrimPtr:
-			return "unsafe.Pointer"
 		}
 	case ast.TypeNamed:
 		return fmt.Sprintf("C.%s_%s_t", apiName, toSnakeCase(t.Name))

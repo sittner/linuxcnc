@@ -13,6 +13,7 @@ type Parser struct {
 	cur     Token
 	file    string
 	errors  []string
+	consts  map[string]int // named constants for array size resolution
 }
 
 // Parse parses a GMI file and returns the AST and any errors.
@@ -20,6 +21,7 @@ func Parse(filename, src string) (*ast.API, []string) {
 	p := &Parser{
 		scanner: NewScanner(src),
 		file:    filename,
+		consts:  make(map[string]int),
 	}
 	p.advance()
 	api := p.parseAPI()
@@ -69,6 +71,12 @@ func (p *Parser) parseAPI() *ast.API {
 				pendingAnns = nil
 			}
 			api.Enums = append(api.Enums, p.parseEnum())
+		case p.cur.Type == CONST:
+			if len(pendingAnns) > 0 {
+				p.errorf("annotations before const are not supported")
+				pendingAnns = nil
+			}
+			api.Consts = append(api.Consts, p.parseConst())
 		case p.cur.Type == TYPE:
 			if len(pendingAnns) > 0 {
 				p.errorf("annotations before type are not supported")
@@ -117,6 +125,21 @@ func (p *Parser) parseAnnotation() annotation {
 	value := p.cur.Text
 	p.advance()
 	return annotation{name: name, value: value, pos: pos}
+}
+
+func (p *Parser) parseConst() ast.Const {
+	pos := p.pos()
+	p.advance() // skip "const"
+	name := p.cur.Text
+	p.advance()
+	p.expect(EQ)
+	val, err := strconv.Atoi(p.cur.Text)
+	if err != nil {
+		p.errorf("const value must be integer, got %q", p.cur.Text)
+	}
+	p.advance()
+	p.consts[name] = val
+	return ast.Const{Name: name, Value: val, Pos: pos}
 }
 
 func (p *Parser) applyAPIDirective(api *ast.API, ann annotation) {
@@ -194,7 +217,12 @@ func (p *Parser) parseFunc(anns []annotation) ast.Func {
 		p.advance()
 		p.expect(COLON)
 		ptype := p.parseTypeRef()
-		fn.Params = append(fn.Params, ast.Param{Name: pname, Type: ptype, Pos: ppos})
+		byref := false
+		if p.cur.Type == IDENT && p.cur.Text == "byref" {
+			byref = true
+			p.advance()
+		}
+		fn.Params = append(fn.Params, ast.Param{Name: pname, Type: ptype, ByRef: byref, Pos: ppos})
 		if p.cur.Type == COMMA {
 			p.advance()
 		}
@@ -226,21 +254,36 @@ func (p *Parser) parseFunc(anns []annotation) ast.Func {
 }
 
 func (p *Parser) parseTypeRef() ast.TypeRef {
-	// []T slice
+	// []T slice or [N]T / [NAME]T array
 	if p.cur.Type == LBRACKET {
 		p.advance()
 		if p.cur.Type == RBRACKET {
+			// []T — slice
 			p.advance()
 			elem := p.parseTypeRef()
 			return ast.TypeRef{Kind: ast.TypeSlice, Elem: &elem}
 		}
-		// [T; N] array
-		elem := p.parseTypeRef()
-		p.expect(SEMI)
-		size, _ := strconv.Atoi(p.cur.Text)
-		p.advance()
+		// [N]T or [NAME]T — array
+		var size int
+		var sizeName string
+		if p.cur.Type == INT {
+			size, _ = strconv.Atoi(p.cur.Text)
+			p.advance()
+		} else if p.cur.Type == IDENT {
+			sizeName = p.cur.Text
+			var ok bool
+			size, ok = p.consts[sizeName]
+			if !ok {
+				p.errorf("undefined constant %q in array size", sizeName)
+			}
+			p.advance()
+		} else {
+			p.errorf("expected integer or constant name for array size, got %q", p.cur.Text)
+			p.advance()
+		}
 		p.expect(RBRACKET)
-		return ast.TypeRef{Kind: ast.TypeArray, Elem: &elem, ArrayLen: size}
+		elem := p.parseTypeRef()
+		return ast.TypeRef{Kind: ast.TypeArray, Elem: &elem, ArrayLen: size, ArrayLenName: sizeName}
 	}
 
 	name := p.cur.Text
