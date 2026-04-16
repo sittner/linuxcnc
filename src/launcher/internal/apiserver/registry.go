@@ -75,3 +75,18 @@ func (r *Registry) Instances() []string {
 	}
 	return names
 }
+
+// defaultRegistry is the package-level registry used by cgo-exported register
+// functions. Set by the launcher before loading any modules.
+var defaultRegistry *Registry
+
+// SetDefaultRegistry sets the package-level registry. Must be called before
+// any cmod calls Register via cgo export.
+func SetDefaultRegistry(r *Registry) {
+	defaultRegistry = r
+}
+
+// DefaultRegistry returns the package-level registry.
+func DefaultRegistry() *Registry {
+	return defaultRegistry
+}

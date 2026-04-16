@@ -167,6 +167,7 @@ func generateServerC(api *ast.API, outputPath string) error {
 		outputPath = api.Name + "_api.h"
 	}
 
+	// Generate C header
 	f, err := os.Create(outputPath)
 	if err != nil {
 		return err
@@ -176,8 +177,32 @@ func generateServerC(api *ast.API, outputPath string) error {
 	if err := cgen.GenerateServerHeader(f, api); err != nil {
 		return err
 	}
-
 	fmt.Fprintf(os.Stderr, "generated %s\n", outputPath)
+
+	// Generate Go cgo dispatch file alongside the header.
+	// Derive Go file path: same directory, <api>_cgo.go
+	dir := filepath.Dir(outputPath)
+	goPath := filepath.Join(dir, api.Name+"_cgo.go")
+
+	// Derive package name from directory
+	pkgName := api.Name
+	if dir != "." && dir != "" {
+		pkgName = filepath.Base(dir)
+	}
+
+	headerFile := filepath.Base(outputPath)
+
+	gf, err := os.Create(goPath)
+	if err != nil {
+		return err
+	}
+	defer gf.Close()
+
+	if err := cgen.GenerateDispatchC(gf, api, pkgName, headerFile); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "generated %s\n", goPath)
+
 	return nil
 }
 
