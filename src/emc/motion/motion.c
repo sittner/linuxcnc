@@ -10,8 +10,10 @@
 ********************************************************************/
 
 #include <stdarg.h>
+#include <stdlib.h>
+#include <string.h>
+#include "gomc_env.h"
 #include "rtapi.h"		/* RTAPI realtime OS API */
-#include "rtapi_app.h"		/* RTAPI realtime module decls */
 #include "rtapi_string.h"       /* memset */
 #include "hal.h"		/* decls for HAL implementation */
 #include "motion.h"
@@ -26,60 +28,34 @@
 #define _(s) (s)
 
 /***********************************************************************
-*                    KERNEL MODULE PARAMETERS                          *
+*                    MODULE PARAMETERS                                 *
 ************************************************************************/
-
-/* module information */
-/* register symbols to be modified by insmod
-   see "Linux Device Drivers", Alessandro Rubini, p. 385
-   (p.42-44 in 2nd edition) */
-MODULE_AUTHOR("Matt Shaver/John Kasunich");
-MODULE_DESCRIPTION("Motion Controller for EMC");
-MODULE_LICENSE("GPL");
 
 /* RTAPI shmem key - for comms with higher level user space stuff */
 static int key = DEFAULT_SHMEM_KEY;	/* the shared memory key, default value */
-RTAPI_MP_INT(key, "shared memory key");
 static long base_period_nsec = 0;	/* fastest thread period */
-RTAPI_MP_LONG(base_period_nsec, "fastest thread period (nsecs)");
 int base_thread_fp = 0;	/* default is no floating point in base thread */
-RTAPI_MP_INT(base_thread_fp, "floating point in base thread?");
 static long servo_period_nsec = 1000000;	/* servo thread period */
-RTAPI_MP_LONG(servo_period_nsec, "servo thread period (nsecs)");
 static long traj_period_nsec = 0;	/* trajectory planner period */
-RTAPI_MP_LONG(traj_period_nsec, "trajectory planner period (nsecs)");
 static int num_spindles = 1; /* default number of spindles is 1 */
-RTAPI_MP_INT (num_spindles, "number of spindles");
 int motion_num_spindles;
 static int num_joints = EMCMOT_MAX_JOINTS;	/* default number of joints present */
-RTAPI_MP_INT(num_joints, "number of joints used in kinematics");
 static int num_extrajoints = 0;	/* default number of extra joints present */
-RTAPI_MP_INT(num_extrajoints, "number of extra joints (not used in kinematics)");
 static int num_dio = 0;	/* default number of motion synched DIO */
-RTAPI_MP_INT(num_dio, "number of digital inputs/outputs");
 
 #define MAX_IO 64
 static char *names_din[MAX_IO] = {0,};
-RTAPI_MP_ARRAY_STRING(names_din, MAX_IO, "names of digital inputs");
 static char *names_dout[MAX_IO] = {0,};
-RTAPI_MP_ARRAY_STRING(names_dout, MAX_IO, "names of digital outputs");
 
 static int num_aio = 0;	/* default number of motion synched AIO */
-RTAPI_MP_INT(num_aio, "number of analog inputs/outputs");
-
 
 static char *names_ain[MAX_IO] = {0,};
-RTAPI_MP_ARRAY_STRING(names_ain, MAX_IO, "names of analog inputs");
 static char *names_aout[MAX_IO] = {0,};
-RTAPI_MP_ARRAY_STRING(names_aout, MAX_IO, "names of analog outputs");
 static int num_misc_error = -1;   /* To check use of num_misc_error modparam */
-RTAPI_MP_INT(num_misc_error, "number of misc error inputs");
 
 static char *names_misc_errors[MAX_IO] = {0,};
-RTAPI_MP_ARRAY_STRING(names_misc_errors, MAX_IO, "names of errors");
 
 static int unlock_joints_mask = 0;/* mask to select joints for unlock pins */
-RTAPI_MP_INT(unlock_joints_mask, "mask to select joints for unlock pins");
 /***********************************************************************
 *                  GLOBAL VARIABLE DEFINITIONS                         *
 ************************************************************************/
@@ -261,16 +237,124 @@ static int tp_init() {
     return 0;
 }
 
-int rtapi_app_main(void)
+/***********************************************************************
+*              ARGUMENT PARSING (replaces RTAPI_MP_* macros)           *
+************************************************************************/
+
+/* Parse "key=value" from argv[].  Supports int, long, and array-of-string.
+   Returns 0 on success, -1 if a required value is malformed. */
+static int parse_argv(int argc, const char **argv)
+{
+    for (int i = 0; i < argc; i++) {
+        const char *a = argv[i];
+        if (!a) continue;
+
+        if (strncmp(a, "key=", 4) == 0)                  key = atoi(a + 4);
+        else if (strncmp(a, "base_period_nsec=", 17) == 0) base_period_nsec = atol(a + 17);
+        else if (strncmp(a, "base_thread_fp=", 15) == 0)  base_thread_fp = atoi(a + 15);
+        else if (strncmp(a, "servo_period_nsec=", 18) == 0) servo_period_nsec = atol(a + 18);
+        else if (strncmp(a, "traj_period_nsec=", 17) == 0) traj_period_nsec = atol(a + 17);
+        else if (strncmp(a, "num_spindles=", 13) == 0)    num_spindles = atoi(a + 13);
+        else if (strncmp(a, "num_joints=", 11) == 0)      num_joints = atoi(a + 11);
+        else if (strncmp(a, "num_extrajoints=", 16) == 0) num_extrajoints = atoi(a + 16);
+        else if (strncmp(a, "num_dio=", 8) == 0)          num_dio = atoi(a + 8);
+        else if (strncmp(a, "num_aio=", 8) == 0)          num_aio = atoi(a + 8);
+        else if (strncmp(a, "num_misc_error=", 15) == 0)  num_misc_error = atoi(a + 15);
+        else if (strncmp(a, "unlock_joints_mask=", 19) == 0) unlock_joints_mask = atoi(a + 19);
+        /* Array-of-string params: names_din=foo,bar,baz */
+        else if (strncmp(a, "names_din=", 10) == 0) {
+            const char *p = a + 10;
+            for (int n = 0; n < MAX_IO && *p; n++) {
+                const char *c = strchr(p, ',');
+                size_t len = c ? (size_t)(c - p) : strlen(p);
+                names_din[n] = strndup(p, len);
+                p = c ? c + 1 : p + len;
+            }
+        }
+        else if (strncmp(a, "names_dout=", 11) == 0) {
+            const char *p = a + 11;
+            for (int n = 0; n < MAX_IO && *p; n++) {
+                const char *c = strchr(p, ',');
+                size_t len = c ? (size_t)(c - p) : strlen(p);
+                names_dout[n] = strndup(p, len);
+                p = c ? c + 1 : p + len;
+            }
+        }
+        else if (strncmp(a, "names_ain=", 10) == 0) {
+            const char *p = a + 10;
+            for (int n = 0; n < MAX_IO && *p; n++) {
+                const char *c = strchr(p, ',');
+                size_t len = c ? (size_t)(c - p) : strlen(p);
+                names_ain[n] = strndup(p, len);
+                p = c ? c + 1 : p + len;
+            }
+        }
+        else if (strncmp(a, "names_aout=", 11) == 0) {
+            const char *p = a + 11;
+            for (int n = 0; n < MAX_IO && *p; n++) {
+                const char *c = strchr(p, ',');
+                size_t len = c ? (size_t)(c - p) : strlen(p);
+                names_aout[n] = strndup(p, len);
+                p = c ? c + 1 : p + len;
+            }
+        }
+        else if (strncmp(a, "names_misc_errors=", 18) == 0) {
+            const char *p = a + 18;
+            for (int n = 0; n < MAX_IO && *p; n++) {
+                const char *c = strchr(p, ',');
+                size_t len = c ? (size_t)(c - p) : strlen(p);
+                names_misc_errors[n] = strndup(p, len);
+                p = c ? c + 1 : p + len;
+            }
+        }
+        /* Ignore unknown params — HAL file may pass extra args */
+    }
+    return 0;
+}
+
+static void free_name_arrays(void)
+{
+    for (int i = 0; i < MAX_IO; i++) {
+        free(names_din[i]);   names_din[i] = NULL;
+        free(names_dout[i]);  names_dout[i] = NULL;
+        free(names_ain[i]);   names_ain[i] = NULL;
+        free(names_aout[i]);  names_aout[i] = NULL;
+        free(names_misc_errors[i]); names_misc_errors[i] = NULL;
+    }
+}
+
+/***********************************************************************
+*                    cmod LIFECYCLE                                     *
+************************************************************************/
+
+/* Forward declaration — filled in below. */
+static void motmod_Destroy(cmod_t *self);
+
+/* Module-level cmod_t (motmod is a singleton). */
+static cmod_t motmod_cmod;
+
+/* Store the env pointer for Destroy(). */
+static const cmod_env_t *motmod_env;
+
+int New(const cmod_env_t *env, const char *name,
+        int argc, const char **argv, cmod_t **out)
 {
     int retval;
 
-    rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: rtapi_app_main() starting...\n");
+    motmod_env = env;
+
+    rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: New() starting...\n");
+
+    /* Parse module arguments from argv */
+    if (parse_argv(argc, argv) != 0) {
+        rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: argument parsing failed\n"));
+        return -1;
+    }
 
     /* connect to the HAL and RTAPI */
-    mot_comp_id = hal_init("motmod");
+    mot_comp_id = hal_init_ex(name, env->dl_handle, COMPONENT_TYPE_REALTIME);
     if (mot_comp_id < 0) {
-	rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: hal_init() failed\n"));
+	rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: hal_init_ex() failed\n"));
 	return -1;
     }
     if (( num_joints < 1 ) || ( num_joints > EMCMOT_MAX_JOINTS )) {
@@ -405,28 +489,32 @@ int rtapi_app_main(void)
 	return -1;
     }
 
-    rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: rtapi_app_main() complete\n");
+    rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: New() complete\n");
 
     hal_ready(mot_comp_id);
 
     old_handler = rtapi_get_msg_handler();
     rtapi_set_msg_handler(emc_message_handler);
+
+    /* Set up cmod interface */
+    motmod_cmod.Start   = NULL;
+    motmod_cmod.Stop    = NULL;
+    motmod_cmod.Destroy = motmod_Destroy;
+    motmod_cmod.priv    = NULL;
+
+    *out = &motmod_cmod;
     return 0;
 }
 
-void rtapi_app_exit(void)
+static void motmod_Destroy(cmod_t *self)
 {
     int retval;
+    (void)self;
 
     rtapi_set_msg_handler(old_handler);
 
-    rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: cleanup_module() started.\n");
+    rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: Destroy() started.\n");
 
-    retval = hal_stop_threads();
-    if (retval < 0) {
-	rtapi_print_msg(RTAPI_MSG_ERR,
-	    _("MOTION: hal_stop_threads() failed, returned %d\n"), retval);
-    }
     /* free shared memory */
     retval = rtapi_shmem_delete(emc_shmem_id, mot_comp_id);
     if (retval < 0) {
@@ -439,7 +527,10 @@ void rtapi_app_exit(void)
 	rtapi_print_msg(RTAPI_MSG_ERR,
 	    _("MOTION: hal_exit() failed, returned %d\n"), retval);
     }
-    rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: cleanup_module() finished.\n");
+
+    free_name_arrays();
+
+    rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: Destroy() finished.\n");
 }
 
 /***********************************************************************

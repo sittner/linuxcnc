@@ -4,3 +4,45 @@ $(patsubst ./emc/motion/%,../include/%,$(wildcard ./emc/motion/*.h)): ../include
 	cp $^ $@
 $(patsubst ./emc/motion/%,../include/%,$(wildcard ./emc/motion/*.hh)): ../include/%.hh: ./emc/motion/%.hh
 	cp $^ $@
+
+# ---------------------------------------------------------------------------
+# cmod build: motmod.so
+# ---------------------------------------------------------------------------
+# Hybrid cmod — uses New/Destroy lifecycle but still links liblinuxcnchal
+# for HAL, RTAPI, and shmem functions. The RTMODULE build in src/Makefile
+# produces the legacy rtlib/motmod.so; this produces cmod/motmod.so.
+# ---------------------------------------------------------------------------
+
+ifeq ($(BUILD_GOLANG),yes)
+
+MOTMOD_CMOD_SRCS := \
+    emc/motion/motion.c \
+    emc/motion/command.c \
+    emc/motion/control.c \
+    emc/motion/axis.c \
+    emc/motion/simple_tp.c \
+    emc/motion/emcmotutil.c \
+    emc/motion/stashf.c \
+    emc/motion/dbuf.c \
+    emc/kinematics/cubic.c
+
+MOTMOD_CMOD_CFLAGS := \
+    -fPIC -Os -Wall -Wextra \
+    -DUSPACE -D_GNU_SOURCE -Drealtime -DSEQUENTIAL_SUPPORT \
+    -fno-builtin-sin -fno-builtin-cos -fno-builtin-sincos \
+    -fno-strict-aliasing -fwrapv \
+    -I. -I../include -Ilibnml/linklist -Ilauncher/pkg/cmodule -Iemc/tp
+
+../cmod/motmod.so: $(MOTMOD_CMOD_SRCS) \
+                   $(wildcard emc/motion/*.h) \
+                   $(wildcard launcher/pkg/cmodule/gomc_*.h)
+	$(ECHO) "Compiling cmod motmod.so"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -shared $(MOTMOD_CMOD_CFLAGS) \
+	    -o $@ $(MOTMOD_CMOD_SRCS) \
+	    -L../lib -llinuxcnchal -lm
+
+TARGETS += ../cmod/motmod.so
+modules: ../cmod/motmod.so
+
+endif # BUILD_GOLANG
