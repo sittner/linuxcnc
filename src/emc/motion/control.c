@@ -32,7 +32,6 @@
 #include "motion_types.h"
 #include "homing.h"
 #include "axis.h"
-#include "kinematics.h"  //for kinematicsSwitchable()
 
 // Mark strings for translation, but defer translation to userspace
 #define _(s) (s)

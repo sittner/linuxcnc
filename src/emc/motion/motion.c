@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "gomc_env.h"
+#include "kins_api.h"
 #include "rtapi.h"		/* RTAPI realtime OS API */
 #include "rtapi_string.h"       /* memset */
 #include "hal.h"		/* decls for HAL implementation */
@@ -94,6 +95,63 @@ struct emcmot_error_t *emcmotError = 0;	/* unused for RT_FIFO */
 static int emc_shmem_id;	/* the shared memory ID */
 
 static int mot_comp_id;	/* component ID for motion module */
+
+/***********************************************************************
+*           KINEMATICS API WRAPPERS (via GMI kins_callbacks_t)         *
+************************************************************************/
+
+/* Pointer to kinematics callbacks, set during New() via kins_api_get(). */
+static const kins_callbacks_t *motmod_kins;
+
+/* These functions satisfy the legacy extern declarations in kinematics.h
+   but delegate to the registered kins API callbacks. */
+
+int kinematicsForward(const double *joint,
+                      struct EmcPose *world,
+                      const KINEMATICS_FORWARD_FLAGS *fflags,
+                      KINEMATICS_INVERSE_FLAGS *iflags)
+{
+    int32_t result;
+    uint64_t ifl = *iflags;
+    motmod_kins->forward(joint, (kins_pose_t *)world,
+                         (uint64_t)*fflags, &ifl, &result);
+    *iflags = ifl;
+    return result;
+}
+
+int kinematicsInverse(const struct EmcPose *world,
+                      double *joint,
+                      const KINEMATICS_INVERSE_FLAGS *iflags,
+                      KINEMATICS_FORWARD_FLAGS *fflags)
+{
+    int32_t result;
+    uint64_t ffl = *fflags;
+    motmod_kins->inverse((const kins_pose_t *)world, joint,
+                         (uint64_t)*iflags, &ffl, &result);
+    *fflags = ffl;
+    return result;
+}
+
+KINEMATICS_TYPE kinematicsType(void)
+{
+    kins_kinematics_type_t out;
+    motmod_kins->type(&out);
+    return (KINEMATICS_TYPE)out;
+}
+
+int kinematicsSwitchable(void)
+{
+    int32_t out;
+    motmod_kins->switchable(&out);
+    return out;
+}
+
+int kinematicsSwitch(int switchkins_type)
+{
+    int32_t out;
+    motmod_kins->switch_(switchkins_type, &out);
+    return out;
+}
 
 /***********************************************************************
 *                   LOCAL FUNCTION PROTOTYPES                          *
@@ -357,6 +415,16 @@ int New(const cmod_env_t *env, const char *name,
 	rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: hal_init_ex() failed\n"));
 	return -1;
     }
+
+    /* Look up the kinematics API registered by the kins module */
+    motmod_kins = kins_api_get(env->api, "kinematics");
+    if (!motmod_kins) {
+	rtapi_print_msg(RTAPI_MSG_ERR,
+	    _("MOTION: kinematics API not registered (is kins module loaded?)\n"));
+	hal_exit(mot_comp_id);
+	return -1;
+    }
+
     if (( num_joints < 1 ) || ( num_joints > EMCMOT_MAX_JOINTS )) {
 	rtapi_print_msg(RTAPI_MSG_ERR,
 	    _("MOTION: num_joints is %d, must be between 1 and %d\n"), num_joints, EMCMOT_MAX_JOINTS);
