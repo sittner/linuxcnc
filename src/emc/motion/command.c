@@ -369,6 +369,7 @@ STATIC int is_feed_type(int motion_type)
         return 1;
     default:
         rtapi_print_msg(RTAPI_MSG_ERR, "Internal error: unhandled motion type %d\n", motion_type);
+        /* fall through */
     case EMC_MOTION_TYPE_TOOLCHANGE:
     case EMC_MOTION_TYPE_TRAVERSE:
     case EMC_MOTION_TYPE_INDEXROTARY:
@@ -385,6 +386,7 @@ STATIC int is_feed_type(int motion_type)
   */
 void emcmotCommandHandler_locked(void *arg, long servo_period)
 {
+    (void)arg;
     int joint_num, spindle_num;
     int n,s0,s1;
     emcmot_joint_t *joint;

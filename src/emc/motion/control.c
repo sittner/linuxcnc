@@ -54,7 +54,7 @@ KINEMATICS_INVERSE_FLAGS iflags = 0;
 ************************************************************************/
 
 /* the (nominal) period the last time the motion handler was invoked */
-static unsigned long last_period = 0;
+static long last_period = 0;
 
 /* servo cycle time */
 static double servo_period;
@@ -205,6 +205,7 @@ static void handle_kinematicsSwitch(void);
   */
 void emcmotController(void *arg, long period)
 {
+    (void)arg;
     static int do_once = 1;
     if (do_once) {
         pcmd_p[0] = &(emcmotStatus->carte_pos_cmd.tran.x);
