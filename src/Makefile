@@ -1132,16 +1132,8 @@ RTMODULES += 5axiskins.o
 5axiskins-objs += $(USERKFUNCS)
 #----------------------------------------------------------------
 
-RTMODULES += motmod.o
-motmod-objs := emc/kinematics/cubic.o
-motmod-objs += emc/motion/axis.o
-motmod-objs += emc/motion/motion.o
-motmod-objs += emc/motion/command.o
-motmod-objs += emc/motion/control.o
-motmod-objs += emc/motion/simple_tp.o
-motmod-objs += emc/motion/emcmotutil.o
-motmod-objs += emc/motion/stashf.o
-motmod-objs += emc/motion/dbuf.o
+# motmod is now built as a cmod (see emc/motion/Submakefile).
+# Legacy RTMODULE build removed.
 
 RTMODULES += homemod.o
 homemod-objs := emc/motion/homemod.o
