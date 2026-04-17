@@ -32,6 +32,9 @@ import (
 	"github.com/sittner/linuxcnc/src/launcher/internal/launcher"
 
 	halcmd "github.com/sittner/linuxcnc/src/launcher/internal/halcmd"
+
+	// Register generated GMI API metadata at init() time.
+	_ "github.com/sittner/linuxcnc/src/launcher/generated/gmi/kins"
 )
 
 func init() {

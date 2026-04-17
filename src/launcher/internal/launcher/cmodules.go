@@ -188,14 +188,17 @@ static int cmod_call_new(cmod_new_fn fn, const cmod_env_t *env,
 }
 
 static int cmod_call_start(cmod_t *m) {
+    if (!m->Start) return 0;
     return m->Start(m);
 }
 
 static void cmod_call_stop(cmod_t *m) {
+    if (!m->Stop) return;
     m->Stop(m);
 }
 
 static void cmod_call_destroy(cmod_t *m) {
+    if (!m->Destroy) return;
     m->Destroy(m);
 }
 */

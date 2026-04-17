@@ -25,6 +25,7 @@ import (
 
 	halcmd "github.com/sittner/linuxcnc/src/launcher/internal/halcmd"
 
+	"github.com/sittner/linuxcnc/src/launcher/internal/apiserver"
 	"github.com/sittner/linuxcnc/src/launcher/internal/config"
 	"github.com/sittner/linuxcnc/src/launcher/internal/halfile"
 	"github.com/sittner/linuxcnc/src/launcher/internal/lockfile"
@@ -128,6 +129,9 @@ func (l *Launcher) ensureLogRing() {
 // responsibility of the display GUI (AXIS, QtVCP, gmoccapy, etc.) to load
 // its own post-GUI HAL files after creating its HAL pins.
 func (l *Launcher) Run() (runErr error) {
+	// Initialize the API registry so cmod plugins can register/lookup APIs.
+	apiserver.SetDefaultRegistry(apiserver.NewRegistry())
+
 	l.setupEnvironment()
 
 	// Export INI file path and config directory so that child processes
