@@ -12,20 +12,48 @@ ifeq ($(BUILD_GOLANG),yes)
 
 GMI_KINS_INCLUDE := launcher/pkg/cmodule
 GMI_KINS_API_INCLUDE := launcher/generated/gmi/kins
+GMI_KINS_COMMON := gmi/kins
 
-# --- trivkins ---
+GMI_KINS_CFLAGS = -fPIC -Os -Wall -Wextra -shared \
+    -I $(GMI_KINS_INCLUDE) \
+    -I $(GMI_KINS_API_INCLUDE) \
+    -I $(GMI_KINS_COMMON)
 
-../cmod/trivkins.so: gmi/kins/trivkins/trivkins.c \
-                     $(wildcard launcher/generated/gmi/kins/kins_api.h) \
-                     $(wildcard launcher/pkg/cmodule/gomc_env.h)
-	$(ECHO) "Compiling GMI cmod $(notdir $@)"
-	@mkdir -p $(dir $@)
-	$(Q)$(CC) -fPIC -Os -Wall -Wextra -shared \
-	    -I $(GMI_KINS_INCLUDE) \
-	    -I $(GMI_KINS_API_INCLUDE) \
-	    -o $@ $< -lm
+GMI_KINS_DEPS = $(wildcard launcher/generated/gmi/kins/kins_api.h) \
+                $(wildcard launcher/pkg/cmodule/gomc_env.h)
 
-TARGETS += ../cmod/trivkins.so
-modules: ../cmod/trivkins.so
+# Helper: build a simple kins cmod .so from a single .c file
+# $(1) = module name  $(2) = source dir relative to src/
+define GMI_KINS_BUILD
+../cmod/$(1).so: $(2)/$(1).c $$(GMI_KINS_DEPS)
+	$$(ECHO) "Compiling GMI cmod $$(notdir $$@)"
+	@mkdir -p $$(dir $$@)
+	$$(Q)$$(CC) $$(GMI_KINS_CFLAGS) -o $$@ $$< -lm
+TARGETS += ../cmod/$(1).so
+modules: ../cmod/$(1).so
+endef
+
+# --- Group 0: trivkins (already ported) ---
+$(eval $(call GMI_KINS_BUILD,trivkins,gmi/kins/trivkins))
+
+# --- Group A: simple non-switchable (no HAL pins) ---
+$(eval $(call GMI_KINS_BUILD,corexykins,gmi/kins/corexykins))
+$(eval $(call GMI_KINS_BUILD,rotatekins,gmi/kins/rotatekins))
+$(eval $(call GMI_KINS_BUILD,scorbot-kins,gmi/kins/scorbot-kins))
+
+# --- Group B: non-switchable with HAL pins ---
+$(eval $(call GMI_KINS_BUILD,lineardeltakins,gmi/kins/lineardeltakins))
+$(eval $(call GMI_KINS_BUILD,rotarydeltakins,gmi/kins/rotarydeltakins))
+$(eval $(call GMI_KINS_BUILD,maxkins,gmi/kins/maxkins))
+$(eval $(call GMI_KINS_BUILD,rosekins,gmi/kins/rosekins))
+$(eval $(call GMI_KINS_BUILD,tripodkins,gmi/kins/tripodkins))
+$(eval $(call GMI_KINS_BUILD,pentakins,gmi/kins/pentakins))
+
+# --- Group C: switchkins-based ---
+$(eval $(call GMI_KINS_BUILD,5axiskins,gmi/kins/5axiskins))
+$(eval $(call GMI_KINS_BUILD,xyzac-trt-kins,gmi/kins/xyzac-trt-kins))
+$(eval $(call GMI_KINS_BUILD,xyzbc-trt-kins,gmi/kins/xyzbc-trt-kins))
+$(eval $(call GMI_KINS_BUILD,scarakins,gmi/kins/scarakins))
+$(eval $(call GMI_KINS_BUILD,pumakins,gmi/kins/pumakins))
 
 endif # BUILD_GOLANG
