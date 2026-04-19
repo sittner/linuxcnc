@@ -397,6 +397,7 @@ error:
 
 int tpCreate(TP_STRUCT * const tp, int _queueSize,int id)
 {
+    (void)id;
     if (0 == tp) {
         return TP_ERR_FAIL;
     }
@@ -461,7 +462,7 @@ int tpClear(TP_STRUCT * const tp)
     // Clear out status ID's
     tp->nextId = 0;
     tp->execId = 0;
-    struct state_tag_t tag = {{0}};
+    struct state_tag_t tag = {0};
     tp->execTag = tag;
     tp->motionType = 0;
     tp->done = 1;
@@ -627,7 +628,7 @@ int tpGetExecId(TP_STRUCT * const tp)
 struct state_tag_t tpGetExecTag(TP_STRUCT * const tp)
 {
     if (0 == tp) {
-        struct state_tag_t empty = {{0}};
+        struct state_tag_t empty = {0};
         return empty;
     }
 
@@ -2370,6 +2371,8 @@ STATIC void tpDebugCycleInfo(TP_STRUCT const * const tp, TC_STRUCT const * const
     if (tc->on_final_decel) {
         rtapi_print(" on final decel\n");
     }
+#else
+    (void)tp; (void)tc; (void)nexttc; (void)acc;
 #endif
 }
 
@@ -2524,7 +2527,7 @@ STATIC void tpUpdateRigidTapState(TP_STRUCT const * const tp,
         case RIGIDTAP_START:
             old_spindlepos = new_spindlepos;
             tc->coords.rigidtap.state = TAPPING;
-            // Deliberate fallthrough
+            /* fallthrough */
         case TAPPING:
             tc_debug_print("TAPPING\n");
             if (tc->progress >= tc->coords.rigidtap.reversal_target) {
@@ -3400,6 +3403,7 @@ STATIC int tpHandleRegularCycle(TP_STRUCT * const tp,
  */
 int tpRunCycle(TP_STRUCT * const tp, long period)
 {
+    (void)period;
     //Pointers to current and next trajectory component
     TC_STRUCT *tc;
     TC_STRUCT *nexttc;
@@ -3606,6 +3610,7 @@ int tpActiveDepth(TP_STRUCT * const tp)
 }
 
 int tpSetAout(TP_STRUCT * const tp, unsigned char index, double start, double end) {
+    (void)end;
     if (0 == tp) {
         return TP_ERR_FAIL;
     }
@@ -3616,6 +3621,7 @@ int tpSetAout(TP_STRUCT * const tp, unsigned char index, double start, double en
 }
 
 int tpSetDout(TP_STRUCT * const tp, int index, unsigned char start, unsigned char end) {
+    (void)end;
     if (0 == tp) {
         return TP_ERR_FAIL;
     }

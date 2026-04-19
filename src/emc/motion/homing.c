@@ -350,8 +350,7 @@ static void do_homing_sequence(void)
             }
         }
         sequence_is_set = 1;
-        //drop through----drop through----drop through----drop through
-
+        /* fallthrough */
     case HOME_SEQUENCE_DO_ONE_SEQUENCE:
         // Expect multiple joints with home_state==HOME_START
         // specified by a negative sequence
@@ -378,9 +377,7 @@ static void do_homing_sequence(void)
             }
         }
         sequence_state = HOME_SEQUENCE_START;
-
-        //drop through----drop through----drop through----drop through
-
+        /* fallthrough */
     case HOME_SEQUENCE_START:
         // Request to home all joints or a single sequence
         // A negative H[i].home_sequence means sync final move
@@ -430,8 +427,7 @@ static void do_homing_sequence(void)
         }
         /* tell the world we're on the job */
         homing_active = 1;
-        //drop through----drop through----drop through----drop through
-
+        /* fallthrough */
     case HOME_SEQUENCE_START_JOINTS:
         seen = 0;
         /* start all joints whose sequence number matches H[i].home_sequence */
