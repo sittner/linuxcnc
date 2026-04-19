@@ -285,6 +285,10 @@ func primitiveToGoType(name string) string {
 	switch name {
 	case ast.PrimBool:
 		return "bool"
+	case ast.PrimI8:
+		return "int8"
+	case ast.PrimU8:
+		return "uint8"
 	case ast.PrimI32:
 		return "int32"
 	case ast.PrimU32:
@@ -293,6 +297,8 @@ func primitiveToGoType(name string) string {
 		return "int64"
 	case ast.PrimU64:
 		return "uint64"
+	case ast.PrimF32:
+		return "float32"
 	case ast.PrimF64:
 		return "float64"
 	case ast.PrimString:

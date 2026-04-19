@@ -20,9 +20,9 @@
 #include "motion.h"
 #include "motion_struct.h"
 #include "mot_priv.h"
-#include "tp.h"
+#include "tp_types.h"
+#include "motmod_gmi_bridge.h"
 #include "rtapi_math.h"
-#include "homing.h"
 #include "axis.h"
 
 // Mark strings for translation, but defer translation to userspace
@@ -263,21 +263,19 @@ int count_names(char *names[]){
 }
 
 static int module_intfc() {
-    homeMotFunctions(emcmotSetRotaryUnlock
-                    ,emcmotGetRotaryIsUnlocked
-                    );
+    /* Wire reverse callbacks into tp via GMI init */
+    static tp_ctx_t tp_ctx;
+    tp_ctx.dio_write          = emcmotDioWrite;
+    tp_ctx.aio_write          = emcmotAioWrite;
+    tp_ctx.set_rotary_unlock  = emcmotSetRotaryUnlock;
+    tp_ctx.get_rotary_unlock  = emcmotGetRotaryIsUnlocked;
+    tp_ctx.axis_get_vel_limit = axis_get_vel_limit;
+    tp_ctx.axis_get_acc_limit = axis_get_acc_limit;
+    tp_ctx.status             = emcmotStatus;
+    tp_ctx.config             = emcmotConfig;
 
-    tpMotFunctions(emcmotDioWrite
-                  ,emcmotAioWrite
-                  ,emcmotSetRotaryUnlock
-                  ,emcmotGetRotaryIsUnlocked
-                  ,axis_get_vel_limit
-                  ,axis_get_acc_limit
-                  );
-
-    tpMotData(emcmotStatus
-             ,emcmotConfig
-             );
+    int32_t out;
+    motmod_tp_api->init((uintptr_t)&tp_ctx, &out);
     return 0;
 }
 
@@ -394,6 +392,10 @@ static cmod_t motmod_cmod;
 /* Store the env pointer for Destroy(). */
 static const cmod_env_t *motmod_env;
 
+/* GMI API pointers — set in New(), used by bridge inlines */
+const tp_callbacks_t   *motmod_tp_api;
+const home_callbacks_t *motmod_home_api;
+
 int New(const cmod_env_t *env, const char *name,
         int argc, const char **argv, cmod_t **out)
 {
@@ -421,6 +423,24 @@ int New(const cmod_env_t *env, const char *name,
     if (!motmod_kins) {
 	rtapi_print_msg(RTAPI_MSG_ERR,
 	    _("MOTION: kinematics API not registered (is kins module loaded?)\n"));
+	hal_exit(mot_comp_id);
+	return -1;
+    }
+
+    /* Look up the trajectory planner API registered by the tp module */
+    motmod_tp_api = tp_api_get(env->api, "default");
+    if (!motmod_tp_api) {
+	rtapi_print_msg(RTAPI_MSG_ERR,
+	    _("MOTION: tp API not registered (is tp module loaded?)\n"));
+	hal_exit(mot_comp_id);
+	return -1;
+    }
+
+    /* Look up the homing API registered by the home module */
+    motmod_home_api = home_api_get(env->api, "default");
+    if (!motmod_home_api) {
+	rtapi_print_msg(RTAPI_MSG_ERR,
+	    _("MOTION: home API not registered (is home module loaded?)\n"));
 	hal_exit(mot_comp_id);
 	return -1;
     }
@@ -547,14 +567,24 @@ int New(const cmod_env_t *env, const char *name,
 	return -1;
     }
 
-    if (homing_init(mot_comp_id,
-                    emcmotConfig->servoCycleTime,
-                    num_joints,
-                    num_extrajoints,
-                    joints)) {
-	rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: homing_init() failed\n"));
-	hal_exit(mot_comp_id);
-	return -1;
+    /* Initialize homing via GMI home API */
+    {
+        static home_ctx_t homing_ctx;
+        homing_ctx.set_rotary_unlock    = emcmotSetRotaryUnlock;
+        homing_ctx.get_rotary_is_unlocked = emcmotGetRotaryIsUnlocked;
+        int32_t homing_rc;
+        motmod_home_api->init(mot_comp_id,
+                              emcmotConfig->servoCycleTime,
+                              num_joints,
+                              num_extrajoints,
+                              (uintptr_t)joints,
+                              (uintptr_t)&homing_ctx,
+                              &homing_rc);
+        if (homing_rc != 0) {
+            rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: homing init failed\n"));
+            hal_exit(mot_comp_id);
+            return -1;
+        }
     }
 
     rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: New() complete\n");

@@ -26,11 +26,11 @@
 #include "motion.h"
 #include "mot_priv.h"
 #include "rtapi_math.h"
-#include "tp.h"
+#include "tp_types.h"
 #include "simple_tp.h"
 #include "config.h"
 #include "motion_types.h"
-#include "homing.h"
+#include "motmod_gmi_bridge.h"
 #include "axis.h"
 
 // Mark strings for translation, but defer translation to userspace
@@ -2162,7 +2162,7 @@ static void update_status(void)
     emcmotStatus->reverse_run = emcmotInternal->coord_tp.reverse_run;
     emcmotStatus->tag = tpGetExecTag(&emcmotInternal->coord_tp);
     emcmotStatus->motionType = tpGetMotionType(&emcmotInternal->coord_tp);
-    emcmotStatus->queueFull = tcqFull(&emcmotInternal->coord_tp.queue);
+    emcmotStatus->queueFull = motmod_tcqFull(&emcmotInternal->coord_tp);
 
     /* check to see if we should pause in order to implement
        single emcmotStatus->stepping */

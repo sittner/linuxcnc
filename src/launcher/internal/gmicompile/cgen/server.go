@@ -155,6 +155,10 @@ func primitiveToCType(name string) string {
 	switch name {
 	case "bool":
 		return "bool"
+	case "i8":
+		return "int8_t"
+	case "u8":
+		return "uint8_t"
 	case "i32":
 		return "int32_t"
 	case "u32":
@@ -163,6 +167,8 @@ func primitiveToCType(name string) string {
 		return "int64_t"
 	case "u64":
 		return "uint64_t"
+	case "f32":
+		return "float"
 	case "f64":
 		return "double"
 	case "string":

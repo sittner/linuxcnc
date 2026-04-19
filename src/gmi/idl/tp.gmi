@@ -1,0 +1,166 @@
+# Trajectory Planner API
+# Blending trajectory planner for LinuxCNC motion controller
+
+@api tp
+@version 1
+@prefix tp
+@rest_export false
+
+# ─── Types ───
+
+type Pose {
+    x: f64
+    y: f64
+    z: f64
+    a: f64
+    b: f64
+    c: f64
+    u: f64
+    v: f64
+    w: f64
+}
+
+type Cartesian {
+    x: f64
+    y: f64
+    z: f64
+}
+
+# state_tag_t: interp state carried with each motion segment
+# fields_float: 5 floats (feed, speed, tolerances, etc.)
+# fields: 8 ints (line number, G-mode, cutter comp, motion mode, etc.)
+# packed_flags: bit-packed state flags
+type StateTag {
+    fields_float_0: f32
+    fields_float_1: f32
+    fields_float_2: f32
+    fields_float_3: f32
+    fields_float_4: f32
+    fields_0: i32
+    fields_1: i32
+    fields_2: i32
+    fields_3: i32
+    fields_4: i32
+    fields_5: i32
+    fields_6: i32
+    fields_7: i32
+    packed_flags: u64
+}
+
+# ─── Enums ───
+
+enum Direction {
+    FORWARD = 0
+    REVERSE = 1
+}
+
+# ─── Functions ───
+# TP_STRUCT * is passed as opaque u64 (tp_ptr) — allocated by motmod in shmem.
+# ctx_ptr is an opaque u64 to tp_ctx_t carrying reverse callbacks + data pointers.
+
+# --- Initialization ---
+
+@doc "Set context: reverse callbacks and shared data pointers"
+func init(ctx_ptr: u64) -> i32
+
+@doc "Create and initialize the trajectory planner queue"
+func create(tp_ptr: u64, queue_size: i32, comp_id: i32) -> i32
+
+@doc "Clear the trajectory planner queue"
+func clear(tp_ptr: u64) -> i32
+
+# --- Configuration ---
+
+@doc "Set the cycle time (servo period)"
+func set_cycle_time(tp_ptr: u64, secs: f64) -> i32
+
+@doc "Set maximum velocity"
+func set_vmax(tp_ptr: u64, vmax: f64, ini_maxvel: f64) -> i32
+
+@doc "Set velocity limit"
+func set_vlimit(tp_ptr: u64, limit: f64) -> i32
+
+@doc "Set maximum acceleration"
+func set_amax(tp_ptr: u64, amax: f64) -> i32
+
+@doc "Set current segment ID"
+func set_id(tp_ptr: u64, id: i32) -> i32
+
+@doc "Set the current position"
+func set_pos(tp_ptr: u64, pos: Pose byref) -> i32
+
+@doc "Set termination condition and tolerance"
+func set_term_cond(tp_ptr: u64, cond: i32, tolerance: f64) -> i32
+
+@doc "Set spindle synchronization"
+func set_spindle_sync(tp_ptr: u64, spindle: i32, sync: f64, wait: i32) -> i32
+
+@doc "Set run direction (forward/reverse)"
+func set_run_dir(tp_ptr: u64, dir: Direction) -> i32
+
+# --- Motion segment addition ---
+
+@doc "Add a linear motion segment"
+func add_line(tp_ptr: u64, end: Pose,
+              canon_motion_type: i32, vel: f64, ini_maxvel: f64,
+              acc: f64, enables: u8, atspeed: i8,
+              indexrotary: i32, tag: StateTag) -> i32
+
+@doc "Add a circular arc motion segment"
+func add_circle(tp_ptr: u64, end: Pose,
+                center: Cartesian, normal: Cartesian,
+                turn: i32, canon_motion_type: i32,
+                vel: f64, ini_maxvel: f64, acc: f64,
+                enables: u8, atspeed: i8, tag: StateTag) -> i32
+
+@doc "Add a rigid tapping motion segment"
+func add_rigid_tap(tp_ptr: u64, end: Pose,
+                   vel: f64, ini_maxvel: f64, acc: f64,
+                   enables: u8, scale: f64, tag: StateTag) -> i32
+
+@doc "Set synchronized analog output on current segment"
+func set_aout(tp_ptr: u64, index: u8, start_val: f64, end_val: f64) -> i32
+
+@doc "Set synchronized digital output on current segment"
+func set_dout(tp_ptr: u64, index: i32, start_val: u8, end_val: u8) -> i32
+
+# --- Execution control ---
+
+@rt_safe "true"
+@doc "Run one cycle of the trajectory planner"
+func run_cycle(tp_ptr: u64, period: i64) -> i32
+
+@doc "Pause trajectory execution"
+func pause(tp_ptr: u64) -> i32
+
+@doc "Resume trajectory execution"
+func resume(tp_ptr: u64) -> i32
+
+@doc "Abort trajectory execution"
+func abort(tp_ptr: u64) -> i32
+
+# --- Queries ---
+
+@doc "Get the executing segment ID"
+func get_exec_id(tp_ptr: u64) -> i32
+
+@doc "Get the executing segment's state tag"
+func get_exec_tag(tp_ptr: u64, tag: StateTag byref) -> i32
+
+@doc "Get the current position"
+func get_pos(tp_ptr: u64, pos: Pose byref) -> i32
+
+@doc "Returns 1 if the trajectory planner is done"
+func is_done(tp_ptr: u64) -> i32
+
+@doc "Get the number of segments in the queue"
+func queue_depth(tp_ptr: u64) -> i32
+
+@doc "Get the number of active (executing) segments"
+func active_depth(tp_ptr: u64) -> i32
+
+@doc "Get the current motion type"
+func get_motion_type(tp_ptr: u64) -> i32
+
+@doc "Returns 1 if the trajectory queue is full"
+func queue_full(tp_ptr: u64) -> i32

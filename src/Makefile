@@ -179,6 +179,8 @@ SUBDIRS := \
 	launcher \
 	gmi/codegen \
 	gmi/kins \
+	gmi/home \
+	gmi/tp \
     \
     emc/usr_intf/axis emc/usr_intf/touchy emc/usr_intf/stepconf emc/usr_intf/pncconf \
     emc/usr_intf/gremlin emc/usr_intf/gscreen emc/usr_intf/pyui emc/usr_intf/qtvcp \

@@ -31,12 +31,14 @@ MOTMOD_CMOD_CFLAGS := \
     -DUSPACE -D_GNU_SOURCE -Drealtime -DSEQUENTIAL_SUPPORT \
     -fno-builtin-sin -fno-builtin-cos -fno-builtin-sincos \
     -fno-strict-aliasing -fwrapv \
-    -I. -I../include -Ilibnml/linklist -Ilauncher/pkg/cmodule -Ilauncher/generated/gmi/kins -Iemc/tp
+    -I. -I../include -Ilibnml/linklist -Ilauncher/pkg/cmodule -Ilauncher/generated/gmi/kins -Ilauncher/generated/gmi/tp -Ilauncher/generated/gmi/home -Iemc/tp -Iemc/motion
 
 ../cmod/motmod.so: $(MOTMOD_CMOD_SRCS) \
                    $(wildcard emc/motion/*.h) \
                    $(wildcard launcher/pkg/cmodule/gomc_*.h) \
-                   $(wildcard launcher/generated/gmi/kins/kins_api.h)
+                   $(wildcard launcher/generated/gmi/kins/kins_api.h) \
+                   $(wildcard launcher/generated/gmi/tp/tp_api.h) \
+                   $(wildcard launcher/generated/gmi/home/home_api.h)
 	$(ECHO) "Compiling cmod motmod.so"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(MOTMOD_CMOD_CFLAGS) \

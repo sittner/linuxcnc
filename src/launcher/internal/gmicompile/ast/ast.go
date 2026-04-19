@@ -147,10 +147,13 @@ func (t TypeRef) IsPrimitive() bool {
 // Primitive type names.
 const (
 	PrimBool   = "bool"
+	PrimI8     = "i8"
+	PrimU8     = "u8"
 	PrimI32    = "i32"
 	PrimU32    = "u32"
 	PrimI64    = "i64"
 	PrimU64    = "u64"
+	PrimF32    = "f32"
 	PrimF64    = "f64"
 	PrimString = "string"
 )
@@ -158,10 +161,13 @@ const (
 // Primitives is the set of valid primitive type names.
 var Primitives = map[string]bool{
 	PrimBool:   true,
+	PrimI8:     true,
+	PrimU8:     true,
 	PrimI32:    true,
 	PrimU32:    true,
 	PrimI64:    true,
 	PrimU64:    true,
+	PrimF32:    true,
 	PrimF64:    true,
 	PrimString: true,
 }

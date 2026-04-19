@@ -267,6 +267,10 @@ func (g *dispatchCGen) emitFieldCToGo(goField, cExpr string, t ast.TypeRef) {
 			}
 		case ast.PrimBool:
 			g.printf("\t\t%s: bool(%s),\n", goField, cExpr)
+		case ast.PrimI8:
+			g.printf("\t\t%s: int8(%s),\n", goField, cExpr)
+		case ast.PrimU8:
+			g.printf("\t\t%s: uint8(%s),\n", goField, cExpr)
 		case ast.PrimI32:
 			if t.Nullable {
 				g.printf("\t\t%s: func() *int32 { v := int32(%s); return &v }(),\n", goField, cExpr)
@@ -291,6 +295,8 @@ func (g *dispatchCGen) emitFieldCToGo(goField, cExpr string, t ast.TypeRef) {
 			} else {
 				g.printf("\t\t%s: uint64(%s),\n", goField, cExpr)
 			}
+		case ast.PrimF32:
+			g.printf("\t\t%s: float32(%s),\n", goField, cExpr)
 		case ast.PrimF64:
 			g.printf("\t\t%s: float64(%s),\n", goField, cExpr)
 		}
@@ -364,6 +370,10 @@ func (g *dispatchCGen) emitFieldGoToC(cField, goExpr string, t ast.TypeRef) {
 		switch t.Name {
 		case ast.PrimBool:
 			g.printf("\t\t%s: C.bool(%s),\n", cField, goExpr)
+		case ast.PrimI8:
+			g.printf("\t\t%s: C.int8_t(%s),\n", cField, goExpr)
+		case ast.PrimU8:
+			g.printf("\t\t%s: C.uint8_t(%s),\n", cField, goExpr)
 		case ast.PrimI32:
 			g.printf("\t\t%s: C.int32_t(%s),\n", cField, goExpr)
 		case ast.PrimU32:
@@ -372,6 +382,8 @@ func (g *dispatchCGen) emitFieldGoToC(cField, goExpr string, t ast.TypeRef) {
 			g.printf("\t\t%s: C.int64_t(%s),\n", cField, goExpr)
 		case ast.PrimU64:
 			g.printf("\t\t%s: C.uint64_t(%s),\n", cField, goExpr)
+		case ast.PrimF32:
+			g.printf("\t\t%s: C.float(%s),\n", cField, goExpr)
 		case ast.PrimF64:
 			g.printf("\t\t%s: C.double(%s),\n", cField, goExpr)
 		}
@@ -473,6 +485,10 @@ func (g *dispatchCGen) emitParamGoToC(cVar, goVar string, p ast.Param) {
 			g.printf("\tdefer C.free(unsafe.Pointer(%s))\n", cVar)
 		case ast.PrimBool:
 			g.printf("\t%s := C.bool(%s)\n", cVar, goVar)
+		case ast.PrimI8:
+			g.printf("\t%s := C.int8_t(%s)\n", cVar, goVar)
+		case ast.PrimU8:
+			g.printf("\t%s := C.uint8_t(%s)\n", cVar, goVar)
 		case ast.PrimI32:
 			g.printf("\t%s := C.int32_t(%s)\n", cVar, goVar)
 		case ast.PrimU32:
@@ -481,6 +497,8 @@ func (g *dispatchCGen) emitParamGoToC(cVar, goVar string, p ast.Param) {
 			g.printf("\t%s := C.int64_t(%s)\n", cVar, goVar)
 		case ast.PrimU64:
 			g.printf("\t%s := C.uint64_t(%s)\n", cVar, goVar)
+		case ast.PrimF32:
+			g.printf("\t%s := C.float(%s)\n", cVar, goVar)
 		case ast.PrimF64:
 			g.printf("\t%s := C.double(%s)\n", cVar, goVar)
 		}
@@ -674,6 +692,10 @@ func cTypeForAPICgo(apiName string, t ast.TypeRef) string {
 		switch t.Name {
 		case ast.PrimBool:
 			return "C.bool"
+		case ast.PrimI8:
+			return "C.int8_t"
+		case ast.PrimU8:
+			return "C.uint8_t"
 		case ast.PrimI32:
 			return "C.int32_t"
 		case ast.PrimU32:
@@ -682,6 +704,8 @@ func cTypeForAPICgo(apiName string, t ast.TypeRef) string {
 			return "C.int64_t"
 		case ast.PrimU64:
 			return "C.uint64_t"
+		case ast.PrimF32:
+			return "C.float"
 		case ast.PrimF64:
 			return "C.double"
 		case ast.PrimString:

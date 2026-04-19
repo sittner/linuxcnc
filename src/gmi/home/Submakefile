@@ -1,0 +1,40 @@
+# ---------------------------------------------------------------------------
+# GMI home module (cmod)
+# ---------------------------------------------------------------------------
+# Provides the "home" API by wrapping homing.c behind GMI callbacks.
+# motmod consumes this API via home_api_get() in its Start() function.
+# ---------------------------------------------------------------------------
+
+ifeq ($(BUILD_GOLANG),yes)
+
+HOMEMOD_CMOD_SRCS := \
+    gmi/home/homemod.c \
+    emc/motion/homing.c
+
+HOMEMOD_CMOD_CFLAGS := \
+    -fPIC -Os -Wall -Wextra \
+    -DUSPACE -D_GNU_SOURCE -Drealtime \
+    -fno-strict-aliasing -fwrapv \
+    -I. -I../include \
+    -Ilauncher/pkg/cmodule \
+    -Ilauncher/generated/gmi/home \
+    -Iemc/motion
+
+HOMEMOD_CMOD_DEPS := \
+    $(wildcard launcher/generated/gmi/home/home_api.h) \
+    $(wildcard launcher/pkg/cmodule/gomc_*.h) \
+    $(wildcard emc/motion/homing.h) \
+    $(wildcard emc/motion/home_ctx.h) \
+    $(wildcard emc/motion/motion.h)
+
+../cmod/homemod.so: $(HOMEMOD_CMOD_SRCS) $(HOMEMOD_CMOD_DEPS)
+	$(ECHO) "Compiling cmod homemod.so"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -shared $(HOMEMOD_CMOD_CFLAGS) \
+	    -o $@ $(HOMEMOD_CMOD_SRCS) \
+	    -L../lib -llinuxcnchal -lm
+
+TARGETS += ../cmod/homemod.so
+modules: ../cmod/homemod.so
+
+endif # BUILD_GOLANG

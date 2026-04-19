@@ -1,0 +1,49 @@
+# ---------------------------------------------------------------------------
+# GMI trajectory planner module (cmod)
+# ---------------------------------------------------------------------------
+# Provides the "tp" API by wrapping tp.c behind GMI callbacks.
+# motmod consumes this API via tp_api_get() in its Start() function.
+# ---------------------------------------------------------------------------
+
+ifeq ($(BUILD_GOLANG),yes)
+
+TPMOD_CMOD_SRCS := \
+    gmi/tp/tpmod.c \
+    emc/tp/tp.c \
+    emc/tp/tc.c \
+    emc/tp/tcq.c \
+    emc/tp/spherical_arc.c \
+    emc/tp/blendmath.c \
+    emc/nml_intf/emcpose.c \
+    libnml/posemath/_posemath.c \
+    libnml/posemath/sincos.c
+
+TPMOD_CMOD_CFLAGS := \
+    -fPIC -Os -Wall -Wextra \
+    -DUSPACE -D_GNU_SOURCE -Drealtime \
+    -fno-builtin-sin -fno-builtin-cos -fno-builtin-sincos \
+    -fno-strict-aliasing -fwrapv \
+    -I. -I../include \
+    -Ilauncher/pkg/cmodule \
+    -Ilauncher/generated/gmi/tp \
+    -Iemc/motion \
+    -Iemc/tp \
+    -Ilibnml/posemath
+
+TPMOD_CMOD_DEPS := \
+    $(wildcard launcher/generated/gmi/tp/tp_api.h) \
+    $(wildcard launcher/pkg/cmodule/gomc_*.h) \
+    $(wildcard emc/tp/*.h) \
+    $(wildcard emc/motion/motion.h)
+
+../cmod/tp.so: $(TPMOD_CMOD_SRCS) $(TPMOD_CMOD_DEPS)
+	$(ECHO) "Compiling cmod tp.so"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -shared $(TPMOD_CMOD_CFLAGS) \
+	    -o $@ $(TPMOD_CMOD_SRCS) \
+	    -L../lib -llinuxcnchal -lm
+
+TARGETS += ../cmod/tp.so
+modules: ../cmod/tp.so
+
+endif # BUILD_GOLANG
