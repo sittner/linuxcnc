@@ -93,7 +93,7 @@ proc check_ini_items {} {
 proc setup_kins {axes} {
   if ![info exists ::KINS(KINEMATICS)] {
     puts stderr "setup_kins: NO \[KINS\]KINEMATICS, trying default trivkins"
-    loadrt trivkins
+    load trivkins
     return
   }
   set kins_kinematics [lindex $::KINS(KINEMATICS) end]

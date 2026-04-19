@@ -12,7 +12,7 @@
 # 2) home switches are simulated
 #----------------------------------------------------------
 
-loadrt [KINS]KINEMATICS
+load [KINS]KINEMATICS
 loadrt [EMCMOT]EMCMOT  base_period_nsec=[EMCMOT]BASE_PERIOD \
                        servo_period_nsec=[EMCMOT]SERVO_PERIOD \
                        num_joints=[KINS]JOINTS

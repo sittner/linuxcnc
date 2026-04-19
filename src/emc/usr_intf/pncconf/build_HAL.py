@@ -77,7 +77,7 @@ class HAL:
             if theme == "Follow System Theme":theme = ""
             else: theme = " -t "+theme
             print("loadusr -Wn gladevcp gladevcp -c gladevcp%s%s%s -H gvcp_call_list.hal gvcp-panel.ui"%(theme,fmax,geo), file=file)
-        print("loadrt [KINS]KINEMATICS", file=file)
+        print("load [KINS]KINEMATICS", file=file)
         # qtplasmac requires 3 spindles
         if self.d.frontend == _PD._QTPLASMAC:
             print("loadrt [EMCMOT]EMCMOT servo_period_nsec=[EMCMOT]SERVO_PERIOD num_joints=[KINS]JOINTS num_spindles=[TRAJ]SPINDLES", file=file)

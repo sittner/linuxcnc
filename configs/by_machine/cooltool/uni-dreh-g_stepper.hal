@@ -1,4 +1,4 @@
-loadrt [KINS]KINEMATICS
+load [KINS]KINEMATICS
 
 # core HAL config file for steppers
 

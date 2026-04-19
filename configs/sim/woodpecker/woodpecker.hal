@@ -3,7 +3,7 @@
 # This file will be replaced with a new file if you do!
 
 # kinematics
-loadrt [KINS]KINEMATICS
+load [KINS]KINEMATICS
 
 # motion controller
 loadrt [EMCMOT]EMCMOT servo_period_nsec=[EMCMOT]SERVO_PERIOD num_joints=[KINS]JOINTS

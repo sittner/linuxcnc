@@ -1,4 +1,4 @@
-loadrt [KINS]KINEMATICS
+load [KINS]KINEMATICS
 show comp
 
 # motion controller, get name and thread periods from INI file

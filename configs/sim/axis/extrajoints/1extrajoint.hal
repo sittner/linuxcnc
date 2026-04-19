@@ -1,6 +1,6 @@
 # 1extrajoint demo
 # immediate homing -- jog joint4 to make a motor-offset before homing
-loadrt [KINS]KINEMATICS
+load [KINS]KINEMATICS
 loadrt [EMCMOT]EMCMOT servo_period_nsec=[EMCMOT]SERVO_PERIOD num_joints=[KINS]JOINTS
 
 addf motion-command-handler servo-thread
