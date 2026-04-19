@@ -138,7 +138,7 @@ func TestGenerateServerGoSimple(t *testing.T) {
 
 	// Check Register function
 	assertContains(t, out, "func RegisterTestapiAPI(registry *apiserver.Registry, instance string, impl TestapiCallbacks) error")
-	assertContains(t, out, "registry.Register(TestapiMeta, instance, unsafe.Pointer(&cb))")
+	assertContains(t, out, `registry.Register("testapi", 1, instance, unsafe.Pointer(&cb))`)
 }
 
 func TestGenerateServerGoKeywordEscape(t *testing.T) {

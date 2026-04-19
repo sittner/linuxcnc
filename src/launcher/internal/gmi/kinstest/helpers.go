@@ -176,12 +176,7 @@ func test_api_register_cb(ctx unsafe.Pointer, apiName *C.char, version C.int,
 	ver := int(version)
 	instance := C.GoString(instanceName)
 
-	meta := apiserver.GetMeta(name, ver)
-	if meta == nil {
-		return -C.int(syscall.EINVAL)
-	}
-
-	err := reg.Register(meta, instance, callbacks)
+	err := reg.Register(name, ver, instance, callbacks)
 	if err != nil {
 		switch err {
 		case syscall.EEXIST:

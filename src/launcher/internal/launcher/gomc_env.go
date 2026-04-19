@@ -207,14 +207,7 @@ func gomc_api_register_cb(ctx unsafe.Pointer, apiName *C.char, version C.int,
 	ver := int(version)
 	instance := C.GoString(instanceName)
 
-	meta := apiserver.GetMeta(name, ver)
-	if meta == nil {
-		slog.Error("register_api: unknown API (missing init import?)",
-			"api", name, "version", ver)
-		return -C.int(syscall.EINVAL)
-	}
-
-	err := reg.Register(meta, instance, callbacks)
+	err := reg.Register(name, ver, instance, callbacks)
 	if err != nil {
 		slog.Error("register_api: registration failed",
 			"api", name, "instance", instance, "error", err)

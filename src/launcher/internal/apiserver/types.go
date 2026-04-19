@@ -30,7 +30,9 @@ type APIMeta struct {
 
 // RegisteredAPI is one registered API instance in the registry.
 type RegisteredAPI struct {
-	Meta      *APIMeta       // generated — routing, dispatch, metadata
-	Instance  string         // "hal0" — unique instance name
-	Callbacks unsafe.Pointer // opaque — *hal_callbacks_t (cmod) or Go interface
+	APIName   string         // "tp" — API name from registration
+	Version   int            // API version from registration
+	Meta      *APIMeta       // optional — REST routing/dispatch (nil for pure C-to-C)
+	Instance  string         // "default" — unique instance name within an API
+	Callbacks unsafe.Pointer // opaque — *tp_callbacks_t (cmod) or Go interface
 }

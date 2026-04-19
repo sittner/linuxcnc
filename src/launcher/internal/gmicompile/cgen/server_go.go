@@ -247,13 +247,12 @@ func (g *serverGoGen) emitRegister() {
 	apiPascal := toPascalCase(g.api.Name)
 	funcName := "Register" + apiPascal + "API"
 	ifaceName := apiPascal + "Callbacks"
-	metaVar := apiPascal + "Meta"
 
 	g.printf("// ─── Registration ───\n\n")
 	g.printf("// %s registers an implementation of the %s API.\n", funcName, g.api.Name)
 	g.printf("func %s(registry *apiserver.Registry, instance string, impl %s) error {\n", funcName, ifaceName)
 	g.printf("\tcb := impl\n")
-	g.printf("\treturn registry.Register(%s, instance, unsafe.Pointer(&cb))\n", metaVar)
+	g.printf("\treturn registry.Register(%q, %d, instance, unsafe.Pointer(&cb))\n", g.api.Name, g.api.Version)
 	g.printf("}\n")
 }
 

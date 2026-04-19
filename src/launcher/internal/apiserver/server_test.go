@@ -156,7 +156,8 @@ func setupTestServer(t *testing.T) (*httptest.Server, *Registry) {
 			{Name: "fail_func", Method: "GET", Path: "/fail", Dispatch: errorDispatch(syscall.ENOENT)},
 		},
 	}
-	reg.Register(meta, "hal0", fakeCallbacks)
+	RegisterMeta(meta)
+	reg.Register("hal", 1, "hal0", fakeCallbacks)
 
 	srv := NewServer(reg, "localhost:0")
 	ts := httptest.NewServer(srv.Handler())
@@ -327,7 +328,8 @@ func TestHTTPNonRESTExported(t *testing.T) {
 			{Name: "do_thing", Method: "GET", Path: "/thing", Dispatch: mockDispatch("do_thing")},
 		},
 	}
-	reg.Register(meta, "internal0", fakeCallbacks)
+	RegisterMeta(meta)
+	reg.Register("internal", 1, "internal0", fakeCallbacks)
 
 	srv := NewServer(reg, "localhost:0")
 	ts := httptest.NewServer(srv.Handler())

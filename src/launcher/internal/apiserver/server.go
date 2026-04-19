@@ -77,7 +77,7 @@ func (s *Server) handleAPIRequest(w http.ResponseWriter, r *http.Request) {
 		writeErrorJSON(w, http.StatusNotFound, "unknown API instance: "+instance)
 		return
 	}
-	if !api.Meta.RESTExport {
+	if api.Meta == nil || !api.Meta.RESTExport {
 		writeErrorJSON(w, http.StatusNotFound, "API not REST-exported: "+instance)
 		return
 	}

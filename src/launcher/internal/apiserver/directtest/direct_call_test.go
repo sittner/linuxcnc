@@ -14,8 +14,7 @@ func TestDirectKinsRegisterAndCall(t *testing.T) {
 	// Build C callbacks (simulating what a cmod would do).
 	cbs := MakeCallbacks()
 
-	meta := &apiserver.APIMeta{Name: "kins", Version: 1}
-	err := reg.Register(meta, "kinematics", CallbacksPtr(&cbs))
+	err := reg.Register("kins", 1, "kinematics", CallbacksPtr(&cbs))
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -77,8 +76,7 @@ func TestDirectKinsVersionMismatch(t *testing.T) {
 	defer apiserver.SetDefaultRegistry(nil)
 
 	cbs := MakeCallbacks()
-	meta := &apiserver.APIMeta{Name: "kins", Version: 1}
-	reg.Register(meta, "kinematics", CallbacksPtr(&cbs))
+	reg.Register("kins", 1, "kinematics", CallbacksPtr(&cbs))
 
 	_, err := reg.GetAPI("kins", "kinematics", 2)
 	if err == nil {
@@ -92,14 +90,13 @@ func TestDirectKinsDuplicateRegister(t *testing.T) {
 	defer apiserver.SetDefaultRegistry(nil)
 
 	cbs := MakeCallbacks()
-	meta := &apiserver.APIMeta{Name: "kins", Version: 1}
 
-	err := reg.Register(meta, "kinematics", CallbacksPtr(&cbs))
+	err := reg.Register("kins", 1, "kinematics", CallbacksPtr(&cbs))
 	if err != nil {
 		t.Fatalf("first Register: %v", err)
 	}
 
-	err = reg.Register(meta, "kinematics", CallbacksPtr(&cbs))
+	err = reg.Register("kins", 1, "kinematics", CallbacksPtr(&cbs))
 	if err == nil {
 		t.Fatal("expected EEXIST for duplicate registration")
 	}

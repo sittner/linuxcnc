@@ -166,7 +166,8 @@ func setupIntegrationServer(t *testing.T) *httptest.Server {
 	}
 
 	reg := apiserver.NewRegistry()
-	err := reg.Register(meta, "items0", unsafe.Pointer(&cb))
+	apiserver.RegisterMeta(meta)
+	err := reg.Register("items", 1, "items0", unsafe.Pointer(&cb))
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -407,10 +408,9 @@ func TestIntegrationCRUDSequence(t *testing.T) {
 
 func TestIntegrationVersionMismatch(t *testing.T) {
 	reg := apiserver.NewRegistry()
-	meta := &apiserver.APIMeta{Name: "v", Version: 3}
 	impl := &mockImpl{items: map[string]Item{}}
 	var cb MockCallbacks = impl
-	reg.Register(meta, "v0", unsafe.Pointer(&cb))
+	reg.Register("v", 3, "v0", unsafe.Pointer(&cb))
 
 	_, err := reg.GetAPI("v", "v0", 2)
 	if err != syscall.EINVAL {
@@ -441,8 +441,11 @@ func TestIntegrationMultipleAPIs(t *testing.T) {
 		},
 	}
 
-	reg.Register(meta1, "a1", unsafe.Pointer(&cb))
-	reg.Register(meta2, "a2", unsafe.Pointer(&cb))
+	apiserver.RegisterMeta(meta1)
+	apiserver.RegisterMeta(meta2)
+
+	reg.Register("api1", 1, "a1", unsafe.Pointer(&cb))
+	reg.Register("api2", 1, "a2", unsafe.Pointer(&cb))
 
 	srv := apiserver.NewServer(reg, "localhost:0")
 	ts := httptest.NewServer(srv.Handler())

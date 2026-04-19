@@ -26,13 +26,17 @@ func registryKey(apiName, instance string) string {
 	return apiName + ":" + instance
 }
 
-// Register adds an API instance. Returns EEXIST if the api:instance pair is taken.
-func (r *Registry) Register(meta *APIMeta, instance string, callbacks unsafe.Pointer) error {
-	if meta == nil || instance == "" {
+// Register adds an API instance.  Only apiName, version, instance, and
+// callbacks are required — all supplied by the C module at runtime.
+// If an APIMeta with matching name+version was registered (e.g. via a
+// generated Go package init()), it is automatically attached for REST
+// dispatch.  Returns EEXIST if the api:instance pair is taken.
+func (r *Registry) Register(apiName string, version int, instance string, callbacks unsafe.Pointer) error {
+	if apiName == "" || instance == "" {
 		return syscall.EINVAL
 	}
 
-	key := registryKey(meta.Name, instance)
+	key := registryKey(apiName, instance)
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -41,7 +45,12 @@ func (r *Registry) Register(meta *APIMeta, instance string, callbacks unsafe.Poi
 		return syscall.EEXIST
 	}
 
+	// Attach REST metadata if available (optional — nil is fine).
+	meta := GetMeta(apiName, version)
+
 	r.instances[key] = &RegisteredAPI{
+		APIName:   apiName,
+		Version:   version,
 		Meta:      meta,
 		Instance:  instance,
 		Callbacks: callbacks,
@@ -61,7 +70,7 @@ func (r *Registry) GetAPI(apiName string, instance string, requiredVersion int) 
 	if api == nil {
 		return nil, syscall.ENOENT
 	}
-	if api.Meta.Version != requiredVersion {
+	if api.Version != requiredVersion {
 		return nil, syscall.EINVAL
 	}
 	return api.Callbacks, nil
