@@ -398,6 +398,11 @@ func (g *generator) emitInstanceStruct() {
 		}
 	}
 
+	// GMI consumed API pointers (populated during Start via api_get).
+	for _, api := range g.comp.GMIConsume {
+		g.printf("    const %s_callbacks_t *__gmi_%s;\n", api, api)
+	}
+
 	// Option data — extra allocation as void* (type defined in user code).
 	if _, ok := g.comp.Options["data"]; ok {
 		g.printf("    void *_data;\n")
@@ -638,6 +643,17 @@ func (g *generator) emitUndefConvenience() {
 	g.printf("\n")
 }
 
+// emitConsumeAPILookups emits api_get() calls for each gmi_consume API.
+// Called from inst_start() so that all providers have completed New()
+// (and thus api_register) before any consumer looks them up.
+func (g *generator) emitConsumeAPILookups() {
+	for _, api := range g.comp.GMIConsume {
+		g.printf("    /* gmi_consume %s */\n", api)
+		g.printf("    inst->__gmi_%s = %s_api_get(inst->env->api, inst->name);\n", api, api)
+		g.printf("    if (!inst->__gmi_%s) return -1;\n", api)
+	}
+}
+
 func (g *generator) emitStartStopDestroy() {
 	g.printf("/* ---------------------------------------------------------------------------\n")
 	g.printf(" * Lifecycle: Start / Stop / Destroy\n")
@@ -651,9 +667,10 @@ func (g *generator) emitStartStopDestroy() {
 		g.printf("    return NULL;\n")
 		g.printf("}\n\n")
 
-		// Start: spawn the user_mainloop thread.
+		// Start: look up consumed APIs, then spawn the user_mainloop thread.
 		g.printf("static int inst_start(cmod_t *self) {\n")
 		g.printf("    inst_t *inst = (inst_t *)self;\n")
+		g.emitConsumeAPILookups()
 		g.printf("    return pthread_create(&inst->thread, NULL, userspace_thread, inst);\n")
 		g.printf("}\n\n")
 
@@ -665,7 +682,12 @@ func (g *generator) emitStartStopDestroy() {
 		g.printf("}\n\n")
 	} else {
 		g.printf("static int inst_start(cmod_t *self) {\n")
-		g.printf("    (void)self;\n")
+		if len(g.comp.GMIConsume) > 0 {
+			g.printf("    inst_t *inst = (inst_t *)self;\n")
+			g.emitConsumeAPILookups()
+		} else {
+			g.printf("    (void)self;\n")
+		}
 		g.printf("    return 0;\n")
 		g.printf("}\n\n")
 
