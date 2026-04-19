@@ -56,15 +56,22 @@ $(eval $(call GMI_KINS_BUILD,xyzbc-trt-kins,gmi/kins/xyzbc-trt-kins))
 $(eval $(call GMI_KINS_BUILD,scarakins,gmi/kins/scarakins))
 $(eval $(call GMI_KINS_BUILD,pumakins,gmi/kins/pumakins))
 
-# --- Group D: switchkins-based with posemath linkage ---
-# genhexkins links against libposemath.so (already built with -fPIC).
+# --- Group D: switchkins-based with posemath/gomath linkage ---
+# These link against libposemath.so (already built with -fPIC).
 GMI_POSEMATH_INCDIR := libnml/posemath
 
-../cmod/genhexkins.so: gmi/kins/genhexkins/genhexkins.c ../lib/libposemath.so $(GMI_KINS_DEPS)
-	$(ECHO) "Compiling GMI cmod $(notdir $@)"
-	@mkdir -p $(dir $@)
-	$(Q)$(CC) $(GMI_KINS_CFLAGS) -I $(GMI_POSEMATH_INCDIR) -o $@ $< -L../lib -lposemath -lm
-TARGETS += ../cmod/genhexkins.so
-modules: ../cmod/genhexkins.so
+# Helper: build a kins cmod that links against libposemath.so
+# $(1) = module name  $(2) = source dir relative to src/
+define GMI_KINS_POSEMATH_BUILD
+../cmod/$(1).so: $(2)/$(1).c ../lib/libposemath.so $$(GMI_KINS_DEPS)
+	$$(ECHO) "Compiling GMI cmod $$(notdir $$@)"
+	@mkdir -p $$(dir $$@)
+	$$(Q)$$(CC) $$(GMI_KINS_CFLAGS) -I $$(GMI_POSEMATH_INCDIR) -I ../include -o $$@ $$< -L../lib -lposemath -lm
+TARGETS += ../cmod/$(1).so
+modules: ../cmod/$(1).so
+endef
+
+$(eval $(call GMI_KINS_POSEMATH_BUILD,genhexkins,gmi/kins/genhexkins))
+$(eval $(call GMI_KINS_POSEMATH_BUILD,genserkins,gmi/kins/genserkins))
 
 endif # BUILD_GOLANG
