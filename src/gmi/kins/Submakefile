@@ -66,7 +66,7 @@ define GMI_KINS_POSEMATH_BUILD
 ../cmod/$(1).so: $(2)/$(1).c ../lib/libposemath.so $$(GMI_KINS_DEPS)
 	$$(ECHO) "Compiling GMI cmod $$(notdir $$@)"
 	@mkdir -p $$(dir $$@)
-	$$(Q)$$(CC) $$(GMI_KINS_CFLAGS) -I $$(GMI_POSEMATH_INCDIR) -I ../include -o $$@ $$< -L../lib -lposemath -lm
+	$$(Q)$$(CC) $$(GMI_KINS_CFLAGS) -I $$(GMI_POSEMATH_INCDIR) -I rtapi -o $$@ $$< -L../lib -lposemath -lm
 TARGETS += ../cmod/$(1).so
 modules: ../cmod/$(1).so
 endef

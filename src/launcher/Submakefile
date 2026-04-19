@@ -56,12 +56,17 @@ LAUNCHER_SRC_BASE := $(wildcard launcher/*.go) \
 LAUNCHER_SRC := $(LAUNCHER_SRC_BASE) \
     $(wildcard launcher/generated/*/*/*)
 
+# Generated GMI files that the launcher imports.  The wildcard above may be
+# empty on a fresh build (files don't exist yet at parse time), so we list
+# concrete prerequisites here to ensure codegen runs first.
+GMI_KINS_GEN_GO := launcher/generated/gmi/kins/kins_cgo.go
+
 # Build the launcher binary.
 #
 # CGO_LDFLAGS adds -Wl,-rpath so the dynamic linker finds liblinuxcnchal.so
 # and its companions at runtime (RIP and installed builds alike).
 # LIB_DIR is $(EMC2_HOME)/lib, defined in Makefile.inc.
-../bin/linuxcnc-launcher: $(LAUNCHER_SRC) ../lib/liblinuxcnchal.so
+../bin/linuxcnc-launcher: $(LAUNCHER_SRC) $(GMI_KINS_GEN_GO) ../lib/liblinuxcnchal.so
 	$(ECHO) Building Go launcher
 	$(Q)cd launcher && CGO_LDFLAGS="-Wl,-rpath,$(LIB_DIR)" $(GO) build -ldflags "$(LAUNCHER_LDFLAGS)" -o $(TOP)/bin/linuxcnc-launcher ./cmd/linuxcnc-launcher
 
