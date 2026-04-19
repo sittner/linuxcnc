@@ -77,7 +77,6 @@ struct haldata {
 };
 static struct haldata *haldata;
 static int total_joints;
-static double j_prev[GENSER_MAX_JOINTS];
 
 #define A(i)     (*(haldata->a[i]))
 #define ALPHA(i) (*(haldata->alpha[i]))
