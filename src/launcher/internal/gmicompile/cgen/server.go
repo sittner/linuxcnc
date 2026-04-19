@@ -278,6 +278,23 @@ func (g *serverGen) emitCallbacksStruct() {
 		g.printf("    %s_%s_fn %s;\n", g.api.Name, toSnakeCase(fn.Name), fieldName)
 	}
 	g.printf("} %s_callbacks_t;\n\n", g.api.Name)
+
+	// Emit GMI_<UPPER>_CALLBACKS macro for modcompile integration.
+	// User writes gmi_<api>_<func>() and this macro wires them into the struct.
+	upper := strings.ToUpper(g.api.Name)
+	g.printf("// Convenience macro for modcompile gmi_provide integration.\n")
+	g.printf("// Maps gmi_%s_<name>() user functions to callback struct fields.\n", g.api.Name)
+	g.printf("#define GMI_%s_CALLBACKS { \\\n", upper)
+	for i, fn := range g.api.Funcs {
+		fieldName := cSafeName(toSnakeCase(fn.Name))
+		funcName := fmt.Sprintf("gmi_%s_%s", g.api.Name, toSnakeCase(fn.Name))
+		comma := ","
+		if i == len(g.api.Funcs)-1 {
+			comma = ""
+		}
+		g.printf("    .%s = %s%s \\\n", fieldName, funcName, comma)
+	}
+	g.printf("}\n\n")
 }
 
 func (g *serverGen) emitRegistration() {

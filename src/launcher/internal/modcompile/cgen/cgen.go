@@ -302,6 +302,14 @@ func (g *generator) emitHeader() {
 	for _, inc := range g.comp.Includes {
 		g.printf("#include %s\n", inc)
 	}
+
+	// GMI API headers for gmi_provide / gmi_consume.
+	for _, api := range g.comp.GMIProvide {
+		g.printf("#include \"%s_api.h\"\n", api)
+	}
+	for _, api := range g.comp.GMIConsume {
+		g.printf("#include \"%s_api.h\"\n", api)
+	}
 	g.printf("\n")
 }
 
@@ -840,6 +848,17 @@ func (g *generator) emitNew() {
 	// hal_ready.
 	g.printf("    r = env->hal->ready(env->hal->ctx, inst->comp_id);\n")
 	g.printf("    if (r != 0) goto err;\n\n")
+
+	// GMI API registration (gmi_provide).
+	for _, api := range g.comp.GMIProvide {
+		upper := strings.ToUpper(api)
+		g.printf("    /* gmi_provide %s */\n", api)
+		g.printf("    {\n")
+		g.printf("        static const %s_callbacks_t __gmi_%s_cb = GMI_%s_CALLBACKS;\n", api, api, upper)
+		g.printf("        r = %s_api_register(env->api, name, &__gmi_%s_cb);\n", api, api)
+		g.printf("        if (r != 0) goto err;\n")
+		g.printf("    }\n\n")
+	}
 
 	g.printf("    *out = &inst->base;\n")
 	g.printf("    return 0;\n\n")

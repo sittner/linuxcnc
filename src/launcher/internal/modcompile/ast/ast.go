@@ -70,6 +70,12 @@ type Component struct {
 	Modparams []Modparam
 	Includes  []string
 
+	// GMI API bindings.
+	// GMIProvide lists API names this component provides (server side).
+	// GMIConsume lists API names this component consumes (client side).
+	GMIProvide []string
+	GMIConsume []string
+
 	// VerbatimC holds the raw C code from after the ";;" separator
 	// in .comp files.  Empty for ST modules.
 	VerbatimC string
