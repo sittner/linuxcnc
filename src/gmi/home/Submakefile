@@ -27,7 +27,7 @@ HOMEMOD_CMOD_DEPS := \
     $(wildcard emc/motion/home_ctx.h) \
     $(wildcard emc/motion/motion.h)
 
-../cmod/homemod.so: $(HOMEMOD_CMOD_SRCS) $(HOMEMOD_CMOD_DEPS)
+../cmod/homemod.so: $(HOMEMOD_CMOD_SRCS) $(HOMEMOD_CMOD_DEPS) | headers
 	$(ECHO) "Compiling cmod homemod.so"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HOMEMOD_CMOD_CFLAGS) \

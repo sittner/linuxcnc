@@ -36,7 +36,7 @@ TPMOD_CMOD_DEPS := \
     $(wildcard emc/tp/*.h) \
     $(wildcard emc/motion/motion.h)
 
-../cmod/tpmod.so: $(TPMOD_CMOD_SRCS) $(TPMOD_CMOD_DEPS)
+../cmod/tpmod.so: $(TPMOD_CMOD_SRCS) $(TPMOD_CMOD_DEPS) | headers
 	$(ECHO) "Compiling cmod tpmod.so"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(TPMOD_CMOD_CFLAGS) \
