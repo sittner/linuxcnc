@@ -56,4 +56,15 @@ $(eval $(call GMI_KINS_BUILD,xyzbc-trt-kins,gmi/kins/xyzbc-trt-kins))
 $(eval $(call GMI_KINS_BUILD,scarakins,gmi/kins/scarakins))
 $(eval $(call GMI_KINS_BUILD,pumakins,gmi/kins/pumakins))
 
+# --- Group D: switchkins-based with posemath linkage ---
+# genhexkins links against libposemath.so (already built with -fPIC).
+GMI_POSEMATH_INCDIR := libnml/posemath
+
+../cmod/genhexkins.so: gmi/kins/genhexkins/genhexkins.c ../lib/libposemath.so $(GMI_KINS_DEPS)
+	$(ECHO) "Compiling GMI cmod $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) $(GMI_KINS_CFLAGS) -I $(GMI_POSEMATH_INCDIR) -o $@ $< -L../lib -lposemath -lm
+TARGETS += ../cmod/genhexkins.so
+modules: ../cmod/genhexkins.so
+
 endif # BUILD_GOLANG
