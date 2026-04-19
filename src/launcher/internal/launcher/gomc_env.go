@@ -199,6 +199,7 @@ func gomc_api_register_cb(ctx unsafe.Pointer, apiName *C.char, version C.int,
 
 	reg := apiserver.DefaultRegistry()
 	if reg == nil {
+		slog.Error("register_api: no default registry")
 		return -C.int(syscall.EINVAL)
 	}
 
@@ -208,11 +209,15 @@ func gomc_api_register_cb(ctx unsafe.Pointer, apiName *C.char, version C.int,
 
 	meta := apiserver.GetMeta(name, ver)
 	if meta == nil {
+		slog.Error("register_api: unknown API (missing init import?)",
+			"api", name, "version", ver)
 		return -C.int(syscall.EINVAL)
 	}
 
 	err := reg.Register(meta, instance, callbacks)
 	if err != nil {
+		slog.Error("register_api: registration failed",
+			"api", name, "instance", instance, "error", err)
 		switch err {
 		case syscall.EEXIST:
 			return -C.int(syscall.EEXIST)
@@ -231,14 +236,18 @@ func gomc_api_get_cb(ctx unsafe.Pointer, apiName *C.char, version C.int,
 
 	reg := apiserver.DefaultRegistry()
 	if reg == nil {
+		slog.Error("get_api: no default registry")
 		return nil
 	}
 
+	name := C.GoString(apiName)
 	instance := C.GoString(instanceName)
 	ver := int(version)
 
-	cbs, err := reg.GetAPI(instance, ver)
+	cbs, err := reg.GetAPI(name, instance, ver)
 	if err != nil {
+		slog.Error("get_api: lookup failed",
+			"api", name, "instance", instance, "version", ver, "error", err)
 		return nil
 	}
 	return cbs

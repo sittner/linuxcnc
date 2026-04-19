@@ -21,20 +21,27 @@ func NewRegistry() *Registry {
 	}
 }
 
-// Register adds an API instance. Returns EEXIST if instance name is taken.
+// registryKey returns a composite key for the registry map.
+func registryKey(apiName, instance string) string {
+	return apiName + ":" + instance
+}
+
+// Register adds an API instance. Returns EEXIST if the api:instance pair is taken.
 func (r *Registry) Register(meta *APIMeta, instance string, callbacks unsafe.Pointer) error {
 	if meta == nil || instance == "" {
 		return syscall.EINVAL
 	}
 
+	key := registryKey(meta.Name, instance)
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if _, exists := r.instances[instance]; exists {
+	if _, exists := r.instances[key]; exists {
 		return syscall.EEXIST
 	}
 
-	r.instances[instance] = &RegisteredAPI{
+	r.instances[key] = &RegisteredAPI{
 		Meta:      meta,
 		Instance:  instance,
 		Callbacks: callbacks,
@@ -44,11 +51,13 @@ func (r *Registry) Register(meta *APIMeta, instance string, callbacks unsafe.Poi
 
 // GetAPI returns the callbacks pointer for direct inter-module calls.
 // Returns ENOENT if not found, EINVAL on version mismatch.
-func (r *Registry) GetAPI(instance string, requiredVersion int) (unsafe.Pointer, error) {
+func (r *Registry) GetAPI(apiName string, instance string, requiredVersion int) (unsafe.Pointer, error) {
+	key := registryKey(apiName, instance)
+
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	api := r.instances[instance]
+	api := r.instances[key]
 	if api == nil {
 		return nil, syscall.ENOENT
 	}
@@ -58,21 +67,29 @@ func (r *Registry) GetAPI(instance string, requiredVersion int) (unsafe.Pointer,
 	return api.Callbacks, nil
 }
 
-// Get returns the full RegisteredAPI or nil if not found.
+// Get returns the full RegisteredAPI matching the given instance name, or nil
+// if not found.  This performs a linear scan because the internal map is keyed
+// by api:instance.  Used by the REST server where the URL path contains only
+// the instance name and the map is small.
 func (r *Registry) Get(instance string) *RegisteredAPI {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.instances[instance]
+	for _, api := range r.instances {
+		if api.Instance == instance {
+			return api
+		}
+	}
+	return nil
 }
 
-// Instances returns all registered instance names.
+// Instances returns all registered instance names (without the api: prefix).
 func (r *Registry) Instances() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	names := make([]string, 0, len(r.instances))
-	for name := range r.instances {
-		names = append(names, name)
+	for _, api := range r.instances {
+		names = append(names, api.Instance)
 	}
 	return names
 }

@@ -154,7 +154,7 @@ func getKinsCallbacks() *C.kins_callbacks_t {
 	if reg == nil {
 		return nil
 	}
-	cbs, err := reg.GetAPI("kinematics", 1)
+	cbs, err := reg.GetAPI("kins", "kinematics", 1)
 	if err != nil {
 		return nil
 	}
@@ -205,7 +205,7 @@ func test_api_get_cb(ctx unsafe.Pointer, apiName *C.char, version C.int,
 	instance := C.GoString(instanceName)
 	ver := int(version)
 
-	cbs, err := reg.GetAPI(instance, ver)
+	cbs, err := reg.GetAPI(C.GoString(apiName), instance, ver)
 	if err != nil {
 		return nil
 	}
