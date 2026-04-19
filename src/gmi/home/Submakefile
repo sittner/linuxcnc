@@ -21,7 +21,7 @@ HOMEMOD_CMOD_CFLAGS := \
     -Iemc/motion
 
 HOMEMOD_CMOD_DEPS := \
-    $(wildcard launcher/generated/gmi/home/home_api.h) \
+    launcher/generated/gmi/home/home_api.h \
     $(wildcard launcher/pkg/cmodule/gomc_*.h) \
     $(wildcard emc/motion/homing.h) \
     $(wildcard emc/motion/home_ctx.h) \

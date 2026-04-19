@@ -31,19 +31,19 @@ TPMOD_CMOD_CFLAGS := \
     -Ilibnml/posemath
 
 TPMOD_CMOD_DEPS := \
-    $(wildcard launcher/generated/gmi/tp/tp_api.h) \
+    launcher/generated/gmi/tp/tp_api.h \
     $(wildcard launcher/pkg/cmodule/gomc_*.h) \
     $(wildcard emc/tp/*.h) \
     $(wildcard emc/motion/motion.h)
 
-../cmod/tp.so: $(TPMOD_CMOD_SRCS) $(TPMOD_CMOD_DEPS)
-	$(ECHO) "Compiling cmod tp.so"
+../cmod/tpmod.so: $(TPMOD_CMOD_SRCS) $(TPMOD_CMOD_DEPS)
+	$(ECHO) "Compiling cmod tpmod.so"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(TPMOD_CMOD_CFLAGS) \
 	    -o $@ $(TPMOD_CMOD_SRCS) \
 	    -L../lib -llinuxcnchal -lm
 
-TARGETS += ../cmod/tp.so
-modules: ../cmod/tp.so
+TARGETS += ../cmod/tpmod.so
+modules: ../cmod/tpmod.so
 
 endif # BUILD_GOLANG

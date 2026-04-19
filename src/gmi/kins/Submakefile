@@ -19,7 +19,7 @@ GMI_KINS_CFLAGS = -fPIC -Os -Wall -Wextra -shared \
     -I $(GMI_KINS_API_INCLUDE) \
     -I $(GMI_KINS_COMMON)
 
-GMI_KINS_DEPS = $(wildcard launcher/generated/gmi/kins/kins_api.h) \
+GMI_KINS_DEPS = launcher/generated/gmi/kins/kins_api.h \
                 $(wildcard launcher/pkg/cmodule/gomc_env.h)
 
 # Helper: build a simple kins cmod .so from a single .c file
