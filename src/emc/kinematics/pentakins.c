@@ -29,19 +29,21 @@ static void pm_cart_sub(const pm_cart_t *a, const pm_cart_t *b, pm_cart_t *c) {
     c->z = a->z - b->z;
 }
 
+// R = Rz(yaw) * Ry(pitch) * Rx(roll), row-major 2D array: m[row][col].
+// Matches posemath pmRpyMatConvert with: r=roll(about X), p=pitch(about Y), y=yaw(about Z).
 static void pm_rpy_to_mat(const pm_rpy_t *rpy, pm_mat_t *m) {
-    double sa = sin(rpy->r), ca = cos(rpy->r);
-    double sb = sin(rpy->p), cb = cos(rpy->p);
-    double sg = sin(rpy->y), cg = cos(rpy->y);
-    m->x[0][0] = ca * cb;
-    m->x[0][1] = ca * sb * sg - sa * cg;
-    m->x[0][2] = ca * sb * cg + sa * sg;
-    m->x[1][0] = sa * cb;
-    m->x[1][1] = sa * sb * sg + ca * cg;
-    m->x[1][2] = sa * sb * cg - ca * sg;
-    m->x[2][0] = -sb;
-    m->x[2][1] = cb * sg;
-    m->x[2][2] = cb * cg;
+    double sr = sin(rpy->r), cr = cos(rpy->r);  // roll
+    double sp = sin(rpy->p), cp = cos(rpy->p);  // pitch
+    double sy = sin(rpy->y), cy = cos(rpy->y);  // yaw
+    m->x[0][0] = cy * cp;
+    m->x[0][1] = cy * sp * sr - sy * cr;
+    m->x[0][2] = cy * sp * cr + sy * sr;
+    m->x[1][0] = sy * cp;
+    m->x[1][1] = sy * sp * sr + cy * cr;
+    m->x[1][2] = sy * sp * cr - cy * sr;
+    m->x[2][0] = -sp;
+    m->x[2][1] = cp * sr;
+    m->x[2][2] = cp * cr;
 }
 
 static void pm_mat_inv(const pm_mat_t *m, pm_mat_t *inv) {

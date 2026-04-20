@@ -31,7 +31,8 @@
 
 // ─── Inline rotation matrix helpers ───
 // Convention: R = Rz(yaw) * Ry(pitch) * Rx(roll) (ZYX Euler)
-// RPY: r=roll→a, p=pitch→b, y=yaw→c
+// Storage:    R.AB = column A, row B (matches PmRotationMatrix: m->A.B)
+// RPY:        r=roll(about X)→a, p=pitch(about Y)→b, y=yaw(about Z)→c
 
 typedef struct { double xx,xy,xz, yx,yy,yz, zx,zy,zz; } rot3_t;
 
@@ -39,15 +40,18 @@ static void rpy_to_rot(double r, double p, double y, rot3_t *R) {
     double sr = sin(r), cr = cos(r);
     double sp = sin(p), cp = cos(p);
     double sy = sin(y), cy = cos(y);
-    R->xx = cr*cp;          R->xy = cr*sp*sy - sr*cy; R->xz = cr*sp*cy + sr*sy;
-    R->yx = sr*cp;          R->yy = sr*sp*sy + cr*cy; R->yz = sr*sp*cy - cr*sy;
-    R->zx = -sp;            R->zy = cp*sy;            R->zz = cp*cy;
+    // Column 0 (m->x):
+    R->xx = cy*cp;          R->xy = sy*cp;          R->xz = -sp;
+    // Column 1 (m->y):
+    R->yx = cy*sp*sr-sy*cr; R->yy = sy*sp*sr+cy*cr; R->yz = cp*sr;
+    // Column 2 (m->z):
+    R->zx = cy*sp*cr+sy*sr; R->zy = sy*sp*cr-cy*sr; R->zz = cp*cr;
 }
 
 static void rot_to_rpy(const rot3_t *R, double *roll, double *pitch, double *yaw) {
-    *pitch = atan2(-R->zx, sqrt(R->xx * R->xx + R->yx * R->yx));
-    *roll  = atan2(R->yx, R->xx);
-    *yaw   = atan2(R->zy, R->zz);
+    *pitch = atan2(-R->xz, sqrt(R->xx * R->xx + R->xy * R->xy));
+    *roll  = atan2(R->yz, R->zz);
+    *yaw   = atan2(R->xy, R->xx);
 }
 
 // ─── Module state ───
@@ -129,14 +133,10 @@ static int32_t puma_forward(const double joints[KINS_MAX_JOINTS],
     world->y = ty;
     world->z = tz;
 
-    // NOTE: pumakins stores the rotation matrix as:
-    //   Row 0: (R.xx, R.yx, R.zx) — but wait, the legacy code builds
-    //   hom.rot.x.x = first col first row, etc.
-    // The legacy Layout is hom.rot.{x,y,z} = rows, .{x,y,z} = columns
-    // Here R.{xx,xy,xz} = row 0  (matches hom.rot.x.{x,y,z})
-    //      R.{yx,yy,yz} = row 1  (matches hom.rot.y.{x,y,z})
-    //      R.{zx,zy,zz} = row 2  (matches hom.rot.z.{x,y,z})
-    // The rot_to_rpy function expects this layout.
+    // Storage convention: R.AB = column A, row B (posemath layout).
+    //   R.{xx,xy,xz} = column 0 = hom.rot.x.{x,y,z}
+    //   R.{yx,yy,yz} = column 1 = hom.rot.y.{x,y,z}
+    //   R.{zx,zy,zz} = column 2 = hom.rot.z.{x,y,z}
     double roll, pitch, yaw;
     rot_to_rpy(&R, &roll, &pitch, &yaw);
     world->a = roll  * 180.0 / M_PI;

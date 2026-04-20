@@ -630,6 +630,8 @@ modules to self-contained cmods using the GMI dynamic API.
 - [x] All wrapper layers eliminated (tpmod.c, homemod.c deleted)
 - [x] Build system: cmod rules in Makefile/Submakefiles, rtlib rules removed
 - [x] Generated code properly gitignored (`src/launcher/.gitignore`)
+- [x] Kins round-trip Go tests: forward→inverse→compare (trivkins, pumakins)
+- [x] RPY convention test: verifies j1 rotation maps to yaw (C), not roll (A)
 
 **Migration findings:**
 
@@ -652,6 +654,13 @@ modules to self-contained cmods using the GMI dynamic API.
 - **Kinematics are trivial cmods**: Each is a single .c file with `New()` that
   registers kins callbacks. No complex lifecycle. The `switchkins_cmod.h` header
   provides common infrastructure for switchable kins modules.
+
+- **Posemath convention standardized**: Modules that inline rotation helpers must
+  use the same convention as `posemath.h`. Storage: `R.AB` = column A, row B
+  (matching `PmRotationMatrix` where `m->x.y` = column x, row y). RPY:
+  `R = Rz(yaw) * Ry(pitch) * Rx(roll)`, where roll=A (about X), pitch=B (about Y),
+  yaw=C (about Z). Two modules (`pumakins.c`, `pentakins.c`) had roll/yaw swapped
+  in their inline helpers — fixed to match legacy posemath behavior.
 
 - **No separate directories needed**: Source lives in standard locations
   (`emc/kinematics/`, `emc/tp/`, `emc/motion/`). Only the IDL definitions and
