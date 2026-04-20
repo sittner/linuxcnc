@@ -1032,22 +1032,9 @@ scope_rt-objs := hal/utils/scope_rt.o $(MATHSTUB)
 # Legacy RTMODULE kins builds removed.
 
 # motmod is now built as a cmod (see emc/motion/Submakefile).
-# Legacy RTMODULE build removed.
-
-RTMODULES += homemod.o
-homemod-objs := emc/motion/homemod.o
-homemod-objs += emc/motion/homing.o
-
-RTMODULES += tpmod.o
-tpmod-objs := emc/tp/tpmod.o
-tpmod-objs += emc/tp/tc.o
-tpmod-objs += emc/tp/tcq.o
-tpmod-objs += emc/tp/tp.o
-tpmod-objs += emc/tp/spherical_arc.o
-tpmod-objs += emc/tp/blendmath.o
-tpmod-objs += emc/nml_intf/emcpose.o
-tpmod-objs += libnml/posemath/_posemath.o
-tpmod-objs += libnml/posemath/sincos.o $(MATHSTUB)
+# homemod is now built as a cmod (see gmi/home/Submakefile).
+# tpmod is now built as a cmod (see gmi/tp/Submakefile).
+# Legacy RTMODULE builds removed.
 
 TORTOBJS = $(foreach file,$($(patsubst %.o,%,$(1))-objs), objects/rt$(file))
 RTCFLAGS += -fPIC -Os

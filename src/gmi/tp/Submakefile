@@ -1,14 +1,13 @@
 # ---------------------------------------------------------------------------
 # GMI trajectory planner module (cmod)
 # ---------------------------------------------------------------------------
-# Provides the "tp" API by wrapping tp.c behind GMI callbacks.
-# motmod consumes this API via tp_api_get() in its Start() function.
+# tp.c is a self-contained cmod that owns the TP_STRUCT and provides
+# the "tp" API.  motmod consumes this API via tp_api_get().
 # ---------------------------------------------------------------------------
 
 ifeq ($(BUILD_GOLANG),yes)
 
 TPMOD_CMOD_SRCS := \
-    gmi/tp/tpmod.c \
     emc/tp/tp.c \
     emc/tp/tc.c \
     emc/tp/tcq.c \

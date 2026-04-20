@@ -1,14 +1,13 @@
 # ---------------------------------------------------------------------------
 # GMI home module (cmod)
 # ---------------------------------------------------------------------------
-# Provides the "home" API by wrapping homing.c behind GMI callbacks.
-# motmod consumes this API via home_api_get() in its Start() function.
+# homing.c is a self-contained cmod that provides the "home" API.
+# motmod consumes this API via home_api_get().
 # ---------------------------------------------------------------------------
 
 ifeq ($(BUILD_GOLANG),yes)
 
 HOMEMOD_CMOD_SRCS := \
-    gmi/home/homemod.c \
     emc/motion/homing.c
 
 HOMEMOD_CMOD_CFLAGS := \

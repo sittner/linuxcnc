@@ -15,7 +15,6 @@
 #include "emcpose.h"
 #include "rtapi_math.h"
 #include "motion.h"
-#include "tp.h"
 #include "tc.h"
 #include "motion_types.h"
 #include "spherical_arc.h"
@@ -55,20 +54,13 @@
 #include "hal.h"
 #endif // }
 
-#define MOT_API_CGO  // Only need types, not register/lookup functions
+#include <stdlib.h>
+#include <string.h>
+#include "gomc_env.h"
+#include "tp_api.h"
 #include "mot_api.h"
 
 static const mot_callbacks_t *_mot;
-
-//==========================================================
-// tp module interface — single mot API pointer replaces
-// the old tpMotFunctions() + tpMotData() pattern.
-
-void tpSetMotAPI(const void *api)
-{
-    _mot = (const mot_callbacks_t *)api;
-}
-//=========================================================
 
 /** static function primitives (ugly but less of a pain than moving code around)*/
 STATIC int tpComputeBlendVelocity(
@@ -95,6 +87,12 @@ STATIC int tpRunOptimization(TP_STRUCT * const tp);
 STATIC inline int tpAddSegmentToQueue(TP_STRUCT * const tp, TC_STRUCT * const tc, int inc_id);
 
 STATIC inline double tpGetMaxTargetVel(TP_STRUCT const * const tp, TC_STRUCT const * const tc);
+
+// Forward declarations for functions used before defined
+static int tpInit(TP_STRUCT * const tp);
+static int tpSetCurrentPos(TP_STRUCT * const tp, EmcPose const * const pos);
+static int tpResume(TP_STRUCT * const tp);
+static int tpIsMoving(TP_STRUCT const * const tp);
 
 /**
  * @section tpcheck Internal state check functions.
@@ -383,7 +381,7 @@ error:
 }
 #endif // }
 
-int tpCreate(TP_STRUCT * const tp, int _queueSize,int id)
+static int tpCreate(TP_STRUCT * const tp, int _queueSize,int id)
 {
     (void)id;
     if (0 == tp) {
@@ -417,7 +415,7 @@ int tpCreate(TP_STRUCT * const tp, int _queueSize,int id)
  * If any DIOs need to be changed: dios[i] = 1, DIO needs to get turned on, -1
  * = off
  */
-int tpClearDIOs(TP_STRUCT * const tp) {
+static int tpClearDIOs(TP_STRUCT * const tp) {
     //XXX: All IO's will be flushed on next synced aio/dio! Is it ok?
     int i;
     tp->syncdio.anychanged = 0;
@@ -445,7 +443,7 @@ int tpClearDIOs(TP_STRUCT * const tp) {
  *    intended to put the motion queue in the state it would be if all queued
  *    motions finished at the current position.
  */
-int tpClear(TP_STRUCT * const tp)
+static int tpClear(TP_STRUCT * const tp)
 {
     tcqInit(&tp->queue);
     tp->queueSize = 0;
@@ -483,7 +481,7 @@ int tpClear(TP_STRUCT * const tp)
  * Sets tp configuration to default values and calls tpClear to create a fresh,
  * empty queue.
  */
-int tpInit(TP_STRUCT * const tp)
+static int tpInit(TP_STRUCT * const tp)
 {
     tp->cycleTime = 0.0;
     //Velocity limits
@@ -524,7 +522,7 @@ int tpInit(TP_STRUCT * const tp)
 /**
  * Set the cycle time for the trajectory planner.
  */
-int tpSetCycleTime(TP_STRUCT * const tp, double secs)
+static int tpSetCycleTime(TP_STRUCT * const tp, double secs)
 {
     if (0 == tp || secs <= 0.0) {
         return TP_ERR_FAIL;
@@ -543,7 +541,7 @@ int tpSetCycleTime(TP_STRUCT * const tp, double secs)
  * allowed to go up to this high when feed override >100% is requested)  These
  * settings apply to subsequent moves until changed.
  */
-int tpSetVmax(TP_STRUCT * const tp, double vMax, double ini_maxvel)
+static int tpSetVmax(TP_STRUCT * const tp, double vMax, double ini_maxvel)
 {
     if (0 == tp || vMax <= 0.0 || ini_maxvel <= 0.0) {
         return TP_ERR_FAIL;
@@ -561,7 +559,7 @@ int tpSetVmax(TP_STRUCT * const tp, double vMax, double ini_maxvel)
  * const the TOOL TIP, not necessarily any particular axis. This applies to
  * subsequent moves until changed.
  */
-int tpSetVlimit(TP_STRUCT * const tp, double vLimit)
+static int tpSetVlimit(TP_STRUCT * const tp, double vLimit)
 {
     if (!tp) return TP_ERR_FAIL;
 
@@ -574,7 +572,7 @@ int tpSetVlimit(TP_STRUCT * const tp, double vLimit)
 }
 
 /** Sets the max acceleration for the trajectory planner. */
-int tpSetAmax(TP_STRUCT * const tp, double aMax)
+static int tpSetAmax(TP_STRUCT * const tp, double aMax)
 {
     if (0 == tp || aMax <= 0.0) {
         return TP_ERR_FAIL;
@@ -592,7 +590,7 @@ int tpSetAmax(TP_STRUCT * const tp, double aMax)
  * ids for each motion, call this before each motion you append and stick what
  * you want in here.
  */
-int tpSetId(TP_STRUCT * const tp, int id)
+static int tpSetId(TP_STRUCT * const tp, int id)
 {
 
     if (!MOTION_ID_VALID(id)) {
@@ -611,7 +609,7 @@ int tpSetId(TP_STRUCT * const tp, int id)
 
 /** Returns the id of the last motion that is currently
   executing.*/
-int tpGetExecId(TP_STRUCT * const tp)
+static int tpGetExecId(TP_STRUCT * const tp)
 {
     if (0 == tp) {
         return TP_ERR_FAIL;
@@ -620,7 +618,7 @@ int tpGetExecId(TP_STRUCT * const tp)
     return tp->execId;
 }
 
-struct state_tag_t tpGetExecTag(TP_STRUCT * const tp)
+static struct state_tag_t tpGetExecTag(TP_STRUCT * const tp)
 {
     if (0 == tp) {
         struct state_tag_t empty = {0};
@@ -637,7 +635,7 @@ struct state_tag_t tpGetExecTag(TP_STRUCT * const tp)
  * begins. If cond is TC_TERM_COND_PARABOLIC, the following move is begun when the
  * current move slows below a calculated blend velocity.
  */
-int tpSetTermCond(TP_STRUCT * const tp, int cond, double tolerance)
+static int tpSetTermCond(TP_STRUCT * const tp, int cond, double tolerance)
 {
     if (!tp) {
         return TP_ERR_FAIL;
@@ -665,7 +663,7 @@ int tpSetTermCond(TP_STRUCT * const tp, int cond, double tolerance)
  * It sets the current position AND the goal position to be the same.  Used
  * only at TP initialization and when switching modes.
  */
-int tpSetPos(TP_STRUCT * const tp, EmcPose const * const pos)
+static int tpSetPos(TP_STRUCT * const tp, EmcPose const * const pos)
 {
     if (0 == tp) {
         return TP_ERR_FAIL;
@@ -686,7 +684,7 @@ int tpSetPos(TP_STRUCT * const tp, EmcPose const * const pos)
  * It sets the current position AND the goal position to be the same.  Used
  * only at TP initialization and when switching modes.
  */
-int tpSetCurrentPos(TP_STRUCT * const tp, EmcPose const * const pos)
+static int tpSetCurrentPos(TP_STRUCT * const tp, EmcPose const * const pos)
 {
     if (0 == tp) {
         return TP_ERR_FAIL;
@@ -707,7 +705,7 @@ int tpSetCurrentPos(TP_STRUCT * const tp, EmcPose const * const pos)
 }
 
 
-int tpAddCurrentPos(TP_STRUCT * const tp, EmcPose const * const disp)
+static int tpAddCurrentPos(TP_STRUCT * const tp, EmcPose const * const disp)
 {
     if (!tp || !disp) {
         return TP_ERR_MISSING_INPUT;
@@ -731,7 +729,7 @@ int tpAddCurrentPos(TP_STRUCT * const tp, EmcPose const * const disp)
 /**
  * Check for valid tp before queueing additional moves.
  */
-int tpErrorCheck(TP_STRUCT const * const tp) {
+static int tpErrorCheck(TP_STRUCT const * const tp) {
 
     if (!tp) {
         rtapi_print_msg(RTAPI_MSG_ERR, "TP is null\n");
@@ -1573,7 +1571,7 @@ STATIC int tpSetupSyncedIO(TP_STRUCT * const tp, TC_STRUCT * const tc) {
 /**
  * Adds a rigid tap cycle to the motion queue.
  */
-int tpAddRigidTap(TP_STRUCT * const tp,
+static int tpAddRigidTap(TP_STRUCT * const tp,
         EmcPose end,
         double vel,
         double ini_maxvel,
@@ -2062,7 +2060,7 @@ STATIC tc_blend_type_t tpHandleBlendArc(TP_STRUCT * const tp, TC_STRUCT * const 
  * currently-active accel and vel settings from the tp struct.
  */
 
-int tpAddLine(TP_STRUCT * const tp, EmcPose end, int canon_motion_type,
+static int tpAddLine(TP_STRUCT * const tp, EmcPose end, int canon_motion_type,
             double vel, double ini_maxvel, double acc, unsigned char enables,
             char atspeed, int indexer_jnum, struct state_tag_t tag)
 {
@@ -2137,7 +2135,7 @@ int tpAddLine(TP_STRUCT * const tp, EmcPose end, int canon_motion_type,
  * degenerate arcs/circles are not allowed. We are guaranteed to have a move in
  * xyz so the target is always the circle/arc/helical length.
  */
-int tpAddCircle(TP_STRUCT * const tp,
+static int tpAddCircle(TP_STRUCT * const tp,
         EmcPose end,
         PmCartesian center,
         PmCartesian normal,
@@ -2406,7 +2404,7 @@ STATIC void tpDebugCycleInfo(TP_STRUCT const * const tp, TC_STRUCT const * const
  * acceleration limits. The formula has been tweaked slightly to allow a
  * non-zero velocity at the instant the target is reached.
  */
-void tpCalculateTrapezoidalAccel(TP_STRUCT const * const tp, TC_STRUCT * const tc, TC_STRUCT const * const nexttc,
+static void tpCalculateTrapezoidalAccel(TP_STRUCT const * const tp, TC_STRUCT * const tc, TC_STRUCT const * const nexttc,
         double * const acc, double * const vel_desired)
 {
     tc_debug_print("using trapezoidal acceleration\n");
@@ -2512,7 +2510,7 @@ STATIC int tpCalculateRampAccel(TP_STRUCT const * const tp,
     return TP_ERR_OK;
 }
 
-void tpToggleDIOs(TC_STRUCT * const tc) {
+static void tpToggleDIOs(TC_STRUCT * const tc) {
 
     int i=0;
     if (tc->syncdio.anychanged != 0) { // we have DIO's to turn on or off
@@ -3462,7 +3460,7 @@ STATIC int tpHandleRegularCycle(TP_STRUCT * const tp,
  * status; I think those are spelled out here correctly and I can't clean it up
  * without breaking the API that the TP presents to motion.
  */
-int tpRunCycle(TP_STRUCT * const tp, long period)
+static int tpRunCycle(TP_STRUCT * const tp, long period)
 {
     (void)period;
     //Pointers to current and next trajectory component
@@ -3578,7 +3576,7 @@ int tpRunCycle(TP_STRUCT * const tp, long period)
     return TP_ERR_OK;
 }
 
-int tpSetSpindleSync(TP_STRUCT * const tp, int spindle, double sync, int mode) {
+static int tpSetSpindleSync(TP_STRUCT * const tp, int spindle, double sync, int mode) {
     if(sync) {
         if (mode) {
             tp->synchronized = TC_SYNC_VELOCITY;
@@ -3593,7 +3591,7 @@ int tpSetSpindleSync(TP_STRUCT * const tp, int spindle, double sync, int mode) {
     return TP_ERR_OK;
 }
 
-int tpPause(TP_STRUCT * const tp)
+static int tpPause(TP_STRUCT * const tp)
 {
     if (0 == tp) {
         return TP_ERR_FAIL;
@@ -3602,7 +3600,7 @@ int tpPause(TP_STRUCT * const tp)
     return TP_ERR_OK;
 }
 
-int tpResume(TP_STRUCT * const tp)
+static int tpResume(TP_STRUCT * const tp)
 {
     if (0 == tp) {
         return TP_ERR_FAIL;
@@ -3611,7 +3609,7 @@ int tpResume(TP_STRUCT * const tp)
     return TP_ERR_OK;
 }
 
-int tpAbort(TP_STRUCT * const tp)
+static int tpAbort(TP_STRUCT * const tp)
 {
     if (0 == tp) {
         return TP_ERR_FAIL;
@@ -3625,12 +3623,12 @@ int tpAbort(TP_STRUCT * const tp)
     return tpClearDIOs(tp); //clears out any already cached DIOs
 }
 
-int tpGetMotionType(TP_STRUCT * const tp)
+static int tpGetMotionType(TP_STRUCT * const tp)
 {
     return tp->motionType;
 }
 
-int tpGetPos(TP_STRUCT const * const tp, EmcPose * const pos)
+static int tpGetPos(TP_STRUCT const * const tp, EmcPose * const pos)
 {
 
     if (0 == tp) {
@@ -3643,7 +3641,7 @@ int tpGetPos(TP_STRUCT const * const tp, EmcPose * const pos)
     return TP_ERR_OK;
 }
 
-int tpIsDone(TP_STRUCT * const tp)
+static int tpIsDone(TP_STRUCT * const tp)
 {
     if (0 == tp) {
         return TP_ERR_OK;
@@ -3652,7 +3650,7 @@ int tpIsDone(TP_STRUCT * const tp)
     return tp->done;
 }
 
-int tpQueueDepth(TP_STRUCT * const tp)
+static int tpQueueDepth(TP_STRUCT * const tp)
 {
     if (0 == tp) {
         return TP_ERR_OK;
@@ -3661,7 +3659,7 @@ int tpQueueDepth(TP_STRUCT * const tp)
     return tp->depth;
 }
 
-int tpActiveDepth(TP_STRUCT * const tp)
+static int tpActiveDepth(TP_STRUCT * const tp)
 {
     if (0 == tp) {
         return TP_ERR_OK;
@@ -3670,7 +3668,7 @@ int tpActiveDepth(TP_STRUCT * const tp)
     return tp->activeDepth;
 }
 
-int tpSetAout(TP_STRUCT * const tp, unsigned char index, double start, double end) {
+static int tpSetAout(TP_STRUCT * const tp, unsigned char index, double start, double end) {
     (void)end;
     if (0 == tp) {
         return TP_ERR_FAIL;
@@ -3681,7 +3679,7 @@ int tpSetAout(TP_STRUCT * const tp, unsigned char index, double start, double en
     return TP_ERR_OK;
 }
 
-int tpSetDout(TP_STRUCT * const tp, int index, unsigned char start, unsigned char end) {
+static int tpSetDout(TP_STRUCT * const tp, int index, unsigned char start, unsigned char end) {
     (void)end;
     if (0 == tp) {
         return TP_ERR_FAIL;
@@ -3695,7 +3693,7 @@ int tpSetDout(TP_STRUCT * const tp, int index, unsigned char start, unsigned cha
     return TP_ERR_OK;
 }
 
-int tpSetRunDir(TP_STRUCT * const tp, tc_direction_t dir)
+static int tpSetRunDir(TP_STRUCT * const tp, tc_direction_t dir)
 {
     // Can't change direction while moving
     if (tpIsMoving(tp)) {
@@ -3713,7 +3711,7 @@ int tpSetRunDir(TP_STRUCT * const tp, tc_direction_t dir)
     }
 }
 
-int tpIsMoving(TP_STRUCT const * const tp)
+static int tpIsMoving(TP_STRUCT const * const tp)
 {
 
     //TODO may be better to explicitly check velocities on the first 2 segments, but this is messy
@@ -3727,37 +3725,162 @@ int tpIsMoving(TP_STRUCT const * const tp)
     return false;
 }
 
-// api: functions called by motion:
-EXPORT_SYMBOL(tpSetMotAPI);
+// ═══════════════════════════════════════════════════════════════════════════
+// GMI cmod interface
+// ═══════════════════════════════════════════════════════════════════════════
 
-EXPORT_SYMBOL(tpAbort);
-EXPORT_SYMBOL(tpActiveDepth);
-EXPORT_SYMBOL(tpAddCircle);
-EXPORT_SYMBOL(tpAddLine);
-EXPORT_SYMBOL(tpAddRigidTap);
-EXPORT_SYMBOL(tpClear);
-EXPORT_SYMBOL(tpCreate);
-EXPORT_SYMBOL(tpGetExecId);
-EXPORT_SYMBOL(tpGetExecTag);
-EXPORT_SYMBOL(tpGetMotionType);
-EXPORT_SYMBOL(tpGetPos);
-EXPORT_SYMBOL(tpIsDone);
-EXPORT_SYMBOL(tpPause);
-EXPORT_SYMBOL(tpQueueDepth);
-EXPORT_SYMBOL(tpResume);
-EXPORT_SYMBOL(tpRunCycle);
-EXPORT_SYMBOL(tpSetAmax);
-EXPORT_SYMBOL(tpSetAout);
-EXPORT_SYMBOL(tpSetCycleTime);
-EXPORT_SYMBOL(tpSetDout);
-EXPORT_SYMBOL(tpSetId);
-EXPORT_SYMBOL(tpSetPos);
-EXPORT_SYMBOL(tpSetRunDir);
-EXPORT_SYMBOL(tpSetSpindleSync);
-EXPORT_SYMBOL(tpSetTermCond);
-EXPORT_SYMBOL(tpSetVlimit);
-EXPORT_SYMBOL(tpSetVmax);
+// Static assert to verify type layout compatibility.
+_Static_assert(sizeof(tp_pose_t) == sizeof(EmcPose),
+    "tp_pose_t and EmcPose must have the same size");
+_Static_assert(sizeof(tp_cartesian_t) == sizeof(PmCartesian),
+    "tp_cartesian_t and PmCartesian must have the same size");
+_Static_assert(sizeof(tp_state_tag_t) == sizeof(struct state_tag_t),
+    "tp_state_tag_t and state_tag_t must have the same size");
 
-EXPORT_SYMBOL(tcqFull);
+// ─── TP instance (owned by this module, calloc'd at create time) ────────
 
-#undef MAKE_TP_HAL_PINS
+static TP_STRUCT *g_tp;
+
+// ─── GMI callback implementations ──────────────────────────────────────
+
+static int32_t gmi_tp_init(void) { return 0; }
+
+static int32_t gmi_tp_create(int32_t queue_size, int32_t comp_id)
+{
+    g_tp = calloc(1, sizeof(TP_STRUCT));
+    if (!g_tp) return -1;
+    return tpCreate(g_tp, queue_size, comp_id);
+}
+
+static int32_t gmi_tp_clear(void) { return tpClear(g_tp); }
+static int32_t gmi_tp_set_cycle_time(double secs) { return tpSetCycleTime(g_tp, secs); }
+static int32_t gmi_tp_set_vmax(double vmax, double ini_maxvel) { return tpSetVmax(g_tp, vmax, ini_maxvel); }
+static int32_t gmi_tp_set_vlimit(double limit) { return tpSetVlimit(g_tp, limit); }
+static int32_t gmi_tp_set_amax(double amax) { return tpSetAmax(g_tp, amax); }
+static int32_t gmi_tp_set_id(int32_t id) { return tpSetId(g_tp, id); }
+static int32_t gmi_tp_set_pos(tp_pose_t *pos) { return tpSetPos(g_tp, (EmcPose const *)pos); }
+
+static int32_t gmi_tp_set_term_cond(int32_t cond, double tolerance)
+{
+    return tpSetTermCond(g_tp, cond, tolerance);
+}
+
+static int32_t gmi_tp_set_spindle_sync(int32_t spindle, double sync, int32_t wait)
+{
+    return tpSetSpindleSync(g_tp, spindle, sync, wait);
+}
+
+static int32_t gmi_tp_set_run_dir(tp_direction_t dir)
+{
+    return tpSetRunDir(g_tp, (tc_direction_t)dir);
+}
+
+static int32_t gmi_tp_add_line(const tp_pose_t *end,
+    int32_t canon_motion_type, double vel, double ini_maxvel,
+    double acc, uint8_t enables, int8_t atspeed,
+    int32_t indexrotary, const tp_state_tag_t *tag)
+{
+    return tpAddLine(g_tp, *(EmcPose *)end,
+                     canon_motion_type, vel, ini_maxvel, acc,
+                     enables, (char)atspeed, indexrotary,
+                     *(struct state_tag_t *)tag);
+}
+
+static int32_t gmi_tp_add_circle(const tp_pose_t *end,
+    const tp_cartesian_t *center, const tp_cartesian_t *normal,
+    int32_t turn, int32_t canon_motion_type,
+    double vel, double ini_maxvel, double acc,
+    uint8_t enables, int8_t atspeed, const tp_state_tag_t *tag)
+{
+    return tpAddCircle(g_tp, *(EmcPose *)end,
+                       *(PmCartesian *)center, *(PmCartesian *)normal,
+                       turn, canon_motion_type,
+                       vel, ini_maxvel, acc,
+                       enables, (char)atspeed,
+                       *(struct state_tag_t *)tag);
+}
+
+static int32_t gmi_tp_add_rigid_tap(const tp_pose_t *end,
+    double vel, double ini_maxvel, double acc,
+    uint8_t enables, double scale, const tp_state_tag_t *tag)
+{
+    return tpAddRigidTap(g_tp, *(EmcPose *)end,
+                         vel, ini_maxvel, acc,
+                         enables, scale,
+                         *(struct state_tag_t *)tag);
+}
+
+static int32_t gmi_tp_set_aout(uint8_t index, double start_val, double end_val)
+{
+    return tpSetAout(g_tp, index, start_val, end_val);
+}
+
+static int32_t gmi_tp_set_dout(int32_t index, uint8_t start_val, uint8_t end_val)
+{
+    return tpSetDout(g_tp, index, start_val, end_val);
+}
+
+static int32_t gmi_tp_run_cycle(int64_t period) { return tpRunCycle(g_tp, (long)period); }
+static int32_t gmi_tp_pause(void) { return tpPause(g_tp); }
+static int32_t gmi_tp_resume(void) { return tpResume(g_tp); }
+static int32_t gmi_tp_abort(void) { return tpAbort(g_tp); }
+static int32_t gmi_tp_get_exec_id(void) { return tpGetExecId(g_tp); }
+
+static int32_t gmi_tp_get_exec_tag(tp_state_tag_t *tag)
+{
+    struct state_tag_t t = tpGetExecTag(g_tp);
+    memcpy(tag, &t, sizeof(t));
+    return 0;
+}
+
+static int32_t gmi_tp_get_pos(tp_pose_t *pos) { return tpGetPos(g_tp, (EmcPose *)pos); }
+static int32_t gmi_tp_is_done(void) { return tpIsDone(g_tp); }
+static int32_t gmi_tp_queue_depth(void) { return tpQueueDepth(g_tp); }
+static int32_t gmi_tp_active_depth(void) { return tpActiveDepth(g_tp); }
+static int32_t gmi_tp_get_motion_type(void) { return tpGetMotionType(g_tp); }
+static int32_t gmi_tp_queue_full(void) { return tcqFull(&g_tp->queue); }
+static int32_t gmi_tp_get_run_dir(void) { return g_tp->reverse_run; }
+
+// ─── Callbacks table ────────────────────────────────────────────────────
+
+static const tp_callbacks_t tp_cmod_callbacks = GMI_TP_CALLBACKS;
+
+// ─── cmod lifecycle ─────────────────────────────────────────────────────
+
+static cmod_t tp_cmod;
+static const gomc_api_t *tp_cmod_api;
+
+static void tp_cmod_destroy(cmod_t *self) {
+    (void)self;
+    free(g_tp);
+    g_tp = NULL;
+}
+
+static int tp_cmod_init(cmod_t *self)
+{
+    (void)self;
+    const mot_callbacks_t *mot = mot_api_get(tp_cmod_api, "default");
+    if (!mot) return -1;
+    _mot = mot;
+    return 0;
+}
+
+int New(const cmod_env_t *env, const char *name,
+        int argc, const char **argv, cmod_t **out)
+{
+    (void)argc; (void)argv;
+    tp_cmod_api = env->api;
+
+    int rc = tp_api_register(env->api, "default", &tp_cmod_callbacks);
+    if (rc != 0) {
+        gomc_log_errorf(env->log, name,
+            "failed to register tp API: %d", rc);
+        return rc;
+    }
+
+    tp_cmod.Init    = tp_cmod_init;
+    tp_cmod.Start   = NULL;
+    tp_cmod.Destroy = tp_cmod_destroy;
+    *out = &tp_cmod;
+    return 0;
+}
