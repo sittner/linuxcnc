@@ -161,7 +161,10 @@ func processFile(file string, m mode, outputPath string) error {
 		return generateClientGo(api, outputPath)
 
 	case modeClientPython:
-		return fmt.Errorf("mode not yet implemented")
+		if !api.RestExport {
+			return fmt.Errorf("%s: --client-python requires @rest_export true", file)
+		}
+		return generateClientPython(api, outputPath)
 	}
 
 	return nil
@@ -293,6 +296,25 @@ func generateClientGo(api *ast.API, outputPath string) error {
 	defer f.Close()
 
 	if err := cgen.GenerateClientGo(f, api, pkgName); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stderr, "generated %s\n", outputPath)
+	return nil
+}
+
+func generateClientPython(api *ast.API, outputPath string) error {
+	if outputPath == "" {
+		outputPath = api.Name + "_client.py"
+	}
+
+	f, err := os.Create(outputPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if err := cgen.GenerateClientPython(f, api); err != nil {
 		return err
 	}
 

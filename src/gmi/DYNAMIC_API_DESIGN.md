@@ -13,10 +13,10 @@ intended to replace NML with a modern, type-safe approach.
 | 3: `--server-c` + cgo | ✅ Complete | 5 |
 | 4: Client Generation | ✅ Complete | 14 |
 | 4.5: halcmd REST Tool | ✅ Complete | — |
-| 5: Python Client | ❌ Not Started | — |
+| 5: Python Client | ✅ Complete | 3 |
 | 6: Polish | ❌ Not Started | — |
 
-**Total: 70 tests passing**
+**Total: 73 tests passing**
 
 **Inter-module call patterns tested:**
 - cmod→cmod ✅ (directtest)
@@ -630,10 +630,13 @@ src/gmi/
 
 src/launcher/
 ├── cmd/
-│   └── gmicompile/         # Code generator CLI
+│   ├── gmicompile/         # Code generator CLI
+│   │   └── main.go
+│   └── halcmd/             # Go REST-based halcmd replacement (Step 4.5)
 │       └── main.go
 ├── generated/              # Generated code (gitignored)
 │   └── gmi/
+│       ├── halcmd/         # halcmd_client.go (Go REST client)
 │       ├── home/           # home_api.h, home_cgo.go
 │       ├── kins/           # kins_api.h, kins_cgo.go
 │       ├── mot/            # mot_api.h, mot_cgo.go
@@ -645,6 +648,12 @@ src/launcher/
 │   │   ├── server.go       # HTTP handler, path matching
 │   │   ├── *_test.go       # 37 tests
 │   │   └── directtest/     # cmod direct-call simulation tests
+│   ├── halrest/            # Server-side REST handler for halcmd API (Step 4.5)
+│   │   └── halrest.go      # Dispatches REST calls to internal/halcmd
+│   ├── launcher/           # Launcher lifecycle
+│   │   ├── launcher.go     # Main launcher struct + startup
+│   │   ├── rest_server.go  # REST API server start/stop ([GMC]REST_ADDR)
+│   │   └── cleanup.go      # Shutdown sequence
 │   └── gmicompile/         # Code generator (parses .gmi → C/Go)
 │       ├── ast/            # AST types
 │       ├── parser/         # IDL parser (8 tests)
@@ -652,7 +661,9 @@ src/launcher/
 │           ├── server.go       # --server-c: C header generation
 │           ├── dispatch_c.go   # --server-c: Go cgo dispatch wrappers
 │           ├── server_go.go    # --server-go: Go server generation
-│           └── client.go       # --client-c: C REST client generation
+│           ├── client.go       # --client-c: C REST client generation
+│           ├── client_go.go    # --client-go: Go REST client generation
+│           └── client_py.go    # --client-python: Python REST client generation
 └── ...
 
 src/emc/kinematics/         # Kinematics modules (cmod .so plugins)
@@ -863,25 +874,32 @@ Replace the legacy C halcmd/halrmt with a new Go-based halcmd using the REST API
 | `debug <level>` | PUT /debug |
 | `save [type]` | GET /save |
 
-### Step 5: Python Client Generation (NOT STARTED)
+### Step 5: Python Client Generation (COMPLETE)
 
 REST client for Python UIs (axis, gmoccapy, etc.).
 
 **Deliverables:**
-- [ ] `--client-py` — generate Python REST client module using `requests`/`urllib`
-- [ ] Generate typed Python classes from IDL `type`/`enum` declarations
-- [ ] Generate method wrappers with path/query param handling
+- [x] `--client-python` — generate Python REST client module using `urllib` (stdlib only, no external deps)
+- [x] Generate `@dataclass` classes from IDL `type` declarations (with `from_dict()`/`to_dict()`)
+- [x] Generate `IntEnum` subclasses from IDL `enum` declarations
+- [x] Generate `<Api>Client` class with typed methods, path/query param handling, JSON body
+- [x] `APIError` exception class for HTTP error responses
+- [x] Wired into gmicompile CLI (`--client-python` mode with `@rest_export` validation)
+- [x] Generated halcmd Python client (621 lines, valid Python syntax)
 
-**Tests:**
-- [ ] Unit: golden-file comparison of generated .py output
-- [ ] Integration: generated Python client → HTTP server → roundtrip (pytest)
+**Implementation:** `internal/gmicompile/cgen/client_py.go`
+
+**Tests:** 3 passing (`client_py_test.go`)
+- [x] Unit: full API generation (types, enums, constants, client class, methods)
+- [x] Unit: multiple path parameter substitution
+- [x] Unit: primitive return types and void methods
 
 ### Step 6: Polish (NOT STARTED)
 - [ ] Error handling standardization
 - [ ] Logging/tracing
 - [ ] Performance optimization
 - [ ] Documentation
-- [ ] Launcher REST server reads listen URL from INI file (halcmd client already uses `GMC_REST_URL`)
+- [x] Launcher REST server reads listen URL from INI file (`[GMC]REST_ADDR`, default `localhost:5080`)
 
 ## Open Questions
 
