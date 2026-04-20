@@ -44,19 +44,21 @@ FUNCTION(_) {
     }
 }
 
-/* GMI callbacks — ctx is inst_t*, enables convenience macros */
+/* GMI callbacks — use convenience macros for HAL pin access.
+ * Note: .gmi struct field names must not collide with HAL pin names
+ * (which are preprocessor macros in .comp files). */
 
 static manualtoolchange_tool_change_state_t gmi_manualtoolchange_get_state(void *ctx) {
-    struct inst *__comp_inst = (struct inst *)ctx;
+    inst_t *__comp_inst = (inst_t *)ctx;
     manualtoolchange_tool_change_state_t state;
-    state.change  = change;
-    state.number  = number;
-    state.changed = changed;
+    state.change_requested = change;
+    state.tool_number      = number;
+    state.change_confirmed = changed;
     return state;
 }
 
 static bool gmi_manualtoolchange_confirm(void *ctx) {
-    struct inst *__comp_inst = (struct inst *)ctx;
+    inst_t *__comp_inst = (inst_t *)ctx;
     if (change && !changed) {
         changed = 1;
         return true;

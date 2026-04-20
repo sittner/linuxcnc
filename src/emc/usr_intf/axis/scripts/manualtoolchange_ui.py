@@ -35,7 +35,7 @@ def main():
     base = rest_url.rstrip("/")
     # Override client's base_url after construction to use the right instance
     client = ManualtoolchangeClient(rest_url)
-    client.base_url = f\"{base}/api/v1/{instance}\"
+    client.base_url = f"{base}/api/v1/{instance}"
 
     app = tkinter.Tk(className="AxisToolChanger")
     app.wm_geometry("-60-60")
@@ -67,10 +67,10 @@ def main():
             app.after(200, poll)
             return
 
-        if state.change and not state.changed and not prev_change:
+        if state.change_requested and not state.change_confirmed and not prev_change:
             prev_change = True
-            do_change(app, client, state.number)
-        elif not state.change:
+            do_change(app, client, state.tool_number)
+        elif not state.change_requested:
             prev_change = False
 
         app.after(100, poll)
@@ -102,7 +102,7 @@ def do_change(app, client, tool_number):
             return
         try:
             state = client.get_state()
-            if not state.change or state.changed:
+            if not state.change_requested or state.change_confirmed:
                 # Already confirmed (e.g. via change_button pin) — dismiss dialog
                 app.tk.call("set", "::tkPriv(button)", -1)
                 dismissed[0] = True

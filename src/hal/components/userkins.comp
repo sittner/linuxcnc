@@ -61,7 +61,7 @@ author "Dewey Garrett";
 //
 // With the ctx parameter, gmi_kins_* callbacks can access the
 // component instance by casting:
-//   struct inst *__comp_inst = (struct inst *)ctx;
+//   inst_t *__comp_inst = (inst_t *)ctx;
 // This enables use of HAL pin convenience macros.
 
 static kins_kinematics_type_t gmi_kins_type(void *ctx)
