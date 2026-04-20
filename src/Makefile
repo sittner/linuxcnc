@@ -356,7 +356,6 @@ SRCHEADERS := \
     emc/tp/tc.h \
     emc/tp/tc_types.h \
     emc/tp/tcq.h \
-    emc/tp/tp.h \
     emc/tp/tp_types.h \
     emc/tp/spherical_arc.h \
     emc/tp/blendmath.h \

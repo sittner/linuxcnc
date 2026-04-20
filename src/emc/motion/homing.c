@@ -34,6 +34,12 @@ static int extra_joints;   // motmod num_extrajoints
 // Mark strings for translation, but defer translation to userspace
 #define _(s) (s)
 
+// Forward declarations for base_* functions used before definition
+static bool base_get_allhomed(void);
+static bool base_get_homing_is_active(void);
+static bool base_get_homing(int jno);
+static bool base_get_homed(int jno);
+
 
 
 /***********************************************************************
@@ -250,7 +256,7 @@ static int base_make_joint_home_pins(int id,int njoints)
 
 static void do_home_all(void)
 {
-    if (!get_homing_is_active() ) {
+    if (!base_get_homing_is_active() ) {
         sequence_state = HOME_SEQUENCE_START;
     }
 } // do_home_all()
@@ -285,7 +291,7 @@ static void set_all_unhomed(int unhome_method, motion_state_t motstate)
      * for instance if a homing sequence is running. */
     for (jno = 0; jno < all_joints; jno++) {
         if(_mot->joint_get_active_flag(jno)) {
-            if (get_homing(jno)) {
+            if (base_get_homing(jno)) {
                 rtapi_print_msg(RTAPI_MSG_ERR,
                      _("Cannot unhome while homing, joint %d"), jno);
                 return;
@@ -567,7 +573,7 @@ static void base_set_unhomed(int jno, motion_state_t motstate) {
         return;
     }
     if(_mot->joint_get_active_flag(jno) ) {
-        if (get_homing(jno) ) {
+        if (base_get_homing(jno) ) {
             rtapi_print_msg(RTAPI_MSG_ERR,
                  _("Cannot unhome while homing, joint %d\n"), jno);
             return;
@@ -626,7 +632,7 @@ static bool base_get_allhomed(void) {
             /* if joint is not active, don't even look at its limits */
             continue;
         }
-        if (!get_homed(joint_num) ) {
+        if (!base_get_homed(joint_num) ) {
             /* if any of the joints is not homed return false */
             return 0;
         }
@@ -1359,7 +1365,7 @@ static bool base_do_homing(void)
 {
     int  joint_num;
     int  homing_flag = 0;
-    bool beginning_allhomed = get_allhomed();
+    bool beginning_allhomed = base_get_allhomed();
 
     do_homing_sequence();
     /* loop thru joints, treat each one individually */
@@ -1378,7 +1384,7 @@ static bool base_do_homing(void)
         }
     }
     // return 1 if homing completed this period
-    if (!beginning_allhomed && get_allhomed()) {homing_active=0; return 1;}
+    if (!beginning_allhomed && base_get_allhomed()) {homing_active=0; return 1;}
     return 0;
 } // base_do_homing()
 
