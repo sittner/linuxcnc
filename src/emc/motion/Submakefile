@@ -40,7 +40,7 @@ MOTMOD_CMOD_CFLAGS := \
                    launcher/generated/gmi/tp/tp_api.h \
                    launcher/generated/gmi/home/home_api.h \
                    launcher/generated/gmi/mot/mot_api.h \
-                   | headers
+                   | headers ../lib/liblinuxcnchal.so
 	$(ECHO) "Compiling cmod motmod.so"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(MOTMOD_CMOD_CFLAGS) \
