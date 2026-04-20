@@ -207,6 +207,15 @@ CMOD_HOME_CFLAGS := -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I $(CMOD_GMI_HOM
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) $(CMOD_HOME_CFLAGS) -o $@ $<
 
+# Step 2d: manualtoolchange needs the GMI manualtoolchange API header path.
+CMOD_GMI_MTC_API := launcher/generated/gmi/manualtoolchange
+CMOD_MTC_CFLAGS := -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I $(CMOD_GMI_MTC_API) -lm
+
+../cmod/manualtoolchange.so: objects/cmod/manualtoolchange.c $(CMOD_GMI_MTC_API)/manualtoolchange_api.h
+	$(ECHO) "Compiling cmod (manualtoolchange) $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) $(CMOD_MTC_CFLAGS) -o $@ $<
+
 TARGETS += $(CMOD_TARGETS)
 modules: $(CMOD_TARGETS)
 

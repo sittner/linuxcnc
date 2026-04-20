@@ -1,10 +1,12 @@
-loadusr -W hal_manualtoolchange
+loadrt manualtoolchange
+addf manualtoolchange.0 servo-thread
+loadusr -W manualtoolchange_ui
 
 # in case they were linked already
 unlinkp iocontrol.tool-change
 unlinkp iocontrol.tool-changed
 
-net tool-change hal_manualtoolchange.change iocontrol.tool-change 
-net tool-changed hal_manualtoolchange.changed iocontrol.tool-changed
-net tool-prep-number hal_manualtoolchange.number iocontrol.tool-prep-number
+net tool-change manualtoolchange.0.change iocontrol.tool-change
+net tool-changed manualtoolchange.0.changed iocontrol.tool-changed
+net tool-prep-number manualtoolchange.0.number iocontrol.tool-prep-number
 
