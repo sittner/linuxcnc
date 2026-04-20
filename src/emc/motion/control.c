@@ -26,7 +26,7 @@
 #include "motion.h"
 #include "mot_priv.h"
 #include "rtapi_math.h"
-#include "tp_types.h"
+
 #include "simple_tp.h"
 #include "config.h"
 #include "motion_types.h"
@@ -393,13 +393,13 @@ static void process_inputs(void)
         // Case 1: positive to negative direction change
         if ( adaptive_feed_in < 0.0 && motmod_tp_api->get_run_dir() == TP_FORWARD) {
             // User commands feed in reverse direction, but we're not running in reverse yet
-            if (motmod_tp_api->set_run_dir(TP_REVERSE) != TP_ERR_OK) {
+            if (motmod_tp_api->set_run_dir(TP_REVERSE) != 0) {
                 // Need to decelerate to a stop first
                 adaptive_feed_out = 0.0;
             }
         } else if (adaptive_feed_in > 0.0 && motmod_tp_api->get_run_dir() == TP_REVERSE ) {
             // User commands feed in forward direction, but we're running in reverse
-            if (motmod_tp_api->set_run_dir(TP_FORWARD) != TP_ERR_OK) {
+            if (motmod_tp_api->set_run_dir(TP_FORWARD) != 0) {
                 // Need to decelerate to a stop first
                 adaptive_feed_out = 0.0;
             }

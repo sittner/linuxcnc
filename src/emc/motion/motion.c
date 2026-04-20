@@ -21,7 +21,7 @@
 #include "motion.h"
 #include "motion_struct.h"
 #include "mot_priv.h"
-#include "tp_types.h"
+
 #include "tp_api.h"
 #include "home_api.h"
 #include "rtapi_math.h"

@@ -60,7 +60,7 @@
 #include "rtapi_mutex.h"
 #include "hal.h"
 #include "motion.h"
-#include "tp_types.h"
+
 #include "mot_priv.h"
 #include "motion_struct.h"
 #include "rtapi_math.h"
@@ -72,7 +72,7 @@
 extern const tp_callbacks_t   *motmod_tp_api;
 extern const home_callbacks_t *motmod_home_api;
 
-#include "tp_debug.h"
+
 
 #define ABS(x) (((x) < 0) ? -(x) : (x))
 
@@ -85,7 +85,7 @@ static int rehomeAll;
 
 /* limits_ok() returns 1 if none of the hard limits are set,
    0 if any are set. Called on a linear and circular move. */
-STATIC int limits_ok(void)
+static int limits_ok(void)
 {
     int joint_num;
     emcmot_joint_t *joint;
@@ -109,7 +109,7 @@ STATIC int limits_ok(void)
 /* check the value of the joint and velocity against current position,
    returning 1 (okay) if the request is to jog off the limit, 0 (bad)
    if the request is to jog further past a limit. */
-STATIC int joint_jog_ok(int joint_num, double vel)
+static int joint_jog_ok(int joint_num, double vel)
 {
     emcmot_joint_t *joint;
     int neg_limit_override, pos_limit_override;
@@ -192,7 +192,7 @@ void apply_spindle_limits(spindle_status_t *s){
 /* inRange() returns non-zero if the position lies within the joint
    limits, or 0 if not.  It also reports an error for each joint limit
    violation.  It's possible to get more than one violation per move. */
-STATIC int inRange(EmcPose pos, int id, char *move_type)
+static int inRange(EmcPose pos, int id, char *move_type)
 {
     double joint_pos[EMCMOT_MAX_JOINTS];
     int joint_num, axis_num;
@@ -364,7 +364,7 @@ void emcmotAioWrite(int index, double value)
     }
 }
 
-STATIC int is_feed_type(int motion_type)
+static int is_feed_type(int motion_type)
 {
     switch(motion_type) {
     case EMC_MOTION_TYPE_ARC:
