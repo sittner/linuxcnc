@@ -1,12 +1,14 @@
-loadrt manualtoolchange
-addf manualtoolchange.0 servo-thread
-loadusr -W manualtoolchange_ui
+load manualtoolchange
+addf manualtoolchange servo-thread
+# load manualtoolchange_ui without waiting, since it is no component anymore
+# we have to remove this later, ui launcher script should handle it
+loadusr manualtoolchange_ui
 
 # in case they were linked already
 unlinkp iocontrol.tool-change
 unlinkp iocontrol.tool-changed
 
-net tool-change manualtoolchange.0.change iocontrol.tool-change
-net tool-changed manualtoolchange.0.changed iocontrol.tool-changed
-net tool-prep-number manualtoolchange.0.number iocontrol.tool-prep-number
+net tool-change manualtoolchange.change iocontrol.tool-change
+net tool-changed manualtoolchange.changed iocontrol.tool-changed
+net tool-prep-number manualtoolchange.number iocontrol.tool-prep-number
 
