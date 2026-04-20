@@ -11,11 +11,17 @@ intended to replace NML with a modern, type-safe approach.
 | 1: apiserver Package | ✅ Complete | 37 |
 | 2: `--server-go` | ✅ Complete | 3 |
 | 3: `--server-c` + cgo | ✅ Complete | 5 |
-| 4: Client Generation | ✅ Complete | 4 |
+| 4: Client Generation | ✅ Complete | 14 |
 | 5: Python Client | ❌ Not Started | — |
 | 6: Polish | ❌ Not Started | — |
 
-**Total: 60 tests passing**
+**Total: 70 tests passing**
+
+**Inter-module call patterns tested:**
+- cmod→cmod ✅ (directtest)
+- gomod→cmod ✅ (directtest)  
+- gomod→gomod ✅ (gomodtest)
+- cmod→gomod ✅ (cmodtogomod)
 
 ## Overview
 
@@ -789,10 +795,11 @@ Enable inter-module calls (direct) and external REST clients.
 - [x] `--client-c` internal — C header with `<api>_api_get()` for cmod→cmod/gomod (direct callback)
 - [x] `--client-c` REST — C REST client using libgmi (for external programs)
 
-**Tests:** 4 passing
-- [x] Unit: Go client generation (simple, path params, no REST)
-- [x] Unit: extractPathParams utility
-- [x] Integration: cmod→cmod direct call (pure C function pointers) — motmod→tp, motmod→home
+**Tests:** All four calling patterns tested (14 tests total)
+- [x] cmod→cmod: `directtest/` — C callbacks registered, Go looks up, calls via cgo (4 tests)
+- [x] gomod→cmod: `directtest/` — same mechanism, Go code calling C function pointers
+- [x] gomod→gomod: `gomodtest/` — pure Go interface registration and lookup (5 tests)
+- [x] cmod→gomod: `cmodtogomod/` — C code calling `//export` Go functions (5 tests)
 
 **Runtime library (libgmi):** Complete in `src/gmi/lib/`
 - `gmi.h` — main include
