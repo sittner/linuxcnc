@@ -118,7 +118,7 @@ int kinematicsForward(const double *joint,
                       KINEMATICS_INVERSE_FLAGS *iflags)
 {
     uint64_t ifl = *iflags;
-    int32_t result = motmod_kins->forward(joint, (kins_pose_t *)world,
+    int32_t result = motmod_kins->forward(motmod_kins->ctx, joint, (kins_pose_t *)world,
                          (uint64_t)*fflags, &ifl);
     *iflags = ifl;
     return result;
@@ -130,7 +130,7 @@ int kinematicsInverse(const struct EmcPose *world,
                       KINEMATICS_FORWARD_FLAGS *fflags)
 {
     uint64_t ffl = *fflags;
-    int32_t result = motmod_kins->inverse((const kins_pose_t *)world, joint,
+    int32_t result = motmod_kins->inverse(motmod_kins->ctx, (const kins_pose_t *)world, joint,
                          (uint64_t)*iflags, &ffl);
     *fflags = ffl;
     return result;
@@ -138,17 +138,17 @@ int kinematicsInverse(const struct EmcPose *world,
 
 KINEMATICS_TYPE kinematicsType(void)
 {
-    return (KINEMATICS_TYPE)motmod_kins->type();
+    return (KINEMATICS_TYPE)motmod_kins->type(motmod_kins->ctx);
 }
 
 int kinematicsSwitchable(void)
 {
-    return motmod_kins->switchable();
+    return motmod_kins->switchable(motmod_kins->ctx);
 }
 
 int kinematicsSwitch(int switchkins_type)
 {
-    return motmod_kins->switch_(switchkins_type);
+    return motmod_kins->switch_(motmod_kins->ctx, switchkins_type);
 }
 
 /***********************************************************************
@@ -158,295 +158,335 @@ int kinematicsSwitch(int switchkins_type)
 
 /* --- I/O callbacks --- */
 
-static void gmi_mot_dio_write(int32_t index, int8_t value)
-{    emcmotDioWrite(index, value);
+static void gmi_mot_dio_write(void *ctx, int32_t index, int8_t value)
+{    (void)ctx; emcmotDioWrite(index, value);
 }
 
-static void gmi_mot_aio_write(int32_t index, double value)
-{    emcmotAioWrite(index, value);
+static void gmi_mot_aio_write(void *ctx, int32_t index, double value)
+{    (void)ctx; emcmotAioWrite(index, value);
 }
 
 /* --- Rotary unlock --- */
 
-static void gmi_mot_set_rotary_unlock(int32_t jnum, int32_t unlock)
-{    emcmotSetRotaryUnlock(jnum, unlock);
+static void gmi_mot_set_rotary_unlock(void *ctx, int32_t jnum, int32_t unlock)
+{    (void)ctx; emcmotSetRotaryUnlock(jnum, unlock);
 }
 
-static int32_t gmi_mot_get_rotary_unlock(int32_t jnum)
+static int32_t gmi_mot_get_rotary_unlock(void *ctx, int32_t jnum)
 {
+    (void)ctx;
     return emcmotGetRotaryIsUnlocked(jnum);
 }
 
 /* --- Axis limits --- */
 
-static double gmi_mot_axis_get_vel_limit(int32_t axis)
+static double gmi_mot_axis_get_vel_limit(void *ctx, int32_t axis)
 {
+    (void)ctx;
     return axis_get_vel_limit(axis);
 }
 
-static double gmi_mot_axis_get_acc_limit(int32_t axis)
+static double gmi_mot_axis_get_acc_limit(void *ctx, int32_t axis)
 {
+    (void)ctx;
     return axis_get_acc_limit(axis);
 }
 
 /* --- Config getters (emcmotConfig fields, read-only) --- */
 
-static int32_t gmi_mot_cfg_get_arc_blend_enable(void)
+static int32_t gmi_mot_cfg_get_arc_blend_enable(void *ctx)
 {
+    (void)ctx;
     return emcmotConfig->arcBlendEnable;
 }
 
-static int32_t gmi_mot_cfg_get_arc_blend_gap_cycles(void)
+static int32_t gmi_mot_cfg_get_arc_blend_gap_cycles(void *ctx)
 {
+    (void)ctx;
     return emcmotConfig->arcBlendGapCycles;
 }
 
-static int32_t gmi_mot_cfg_get_arc_blend_opt_depth(void)
+static int32_t gmi_mot_cfg_get_arc_blend_opt_depth(void *ctx)
 {
+    (void)ctx;
     return emcmotConfig->arcBlendOptDepth;
 }
 
-static double gmi_mot_cfg_get_arc_blend_ramp_freq(void)
+static double gmi_mot_cfg_get_arc_blend_ramp_freq(void *ctx)
 {
+    (void)ctx;
     return emcmotConfig->arcBlendRampFreq;
 }
 
-static double gmi_mot_cfg_get_arc_blend_tangent_kink_ratio(void)
+static double gmi_mot_cfg_get_arc_blend_tangent_kink_ratio(void *ctx)
 {
+    (void)ctx;
     return emcmotConfig->arcBlendTangentKinkRatio;
 }
 
-static double gmi_mot_cfg_get_max_feed_scale(void)
+static double gmi_mot_cfg_get_max_feed_scale(void *ctx)
 {
+    (void)ctx;
     return emcmotConfig->maxFeedScale;
 }
 
-static int32_t gmi_mot_cfg_get_num_aio(void)
+static int32_t gmi_mot_cfg_get_num_aio(void *ctx)
 {
+    (void)ctx;
     return emcmotConfig->numAIO;
 }
 
-static int32_t gmi_mot_cfg_get_num_dio(void)
+static int32_t gmi_mot_cfg_get_num_dio(void *ctx)
 {
+    (void)ctx;
     return emcmotConfig->numDIO;
 }
 
-static int32_t gmi_mot_cfg_get_num_spindles(void)
+static int32_t gmi_mot_cfg_get_num_spindles(void *ctx)
 {
+    (void)ctx;
     return emcmotConfig->numSpindles;
 }
 
 /* --- Status getters --- */
 
-static double gmi_mot_status_get_net_feed_scale(void)
+static double gmi_mot_status_get_net_feed_scale(void *ctx)
 {
+    (void)ctx;
     return emcmotStatus->net_feed_scale;
 }
 
-static int32_t gmi_mot_status_get_stepping(void)
+static int32_t gmi_mot_status_get_stepping(void *ctx)
 {
+    (void)ctx;
     return emcmotStatus->stepping;
 }
 
-static double gmi_mot_status_get_current_vel(void)
+static double gmi_mot_status_get_current_vel(void *ctx)
 {
+    (void)ctx;
     return emcmotStatus->current_vel;
 }
 
-static int32_t gmi_mot_status_get_spindle_sync(void)
+static int32_t gmi_mot_status_get_spindle_sync(void *ctx)
 {
+    (void)ctx;
     return emcmotStatus->spindleSync;
 }
 
-static double gmi_mot_status_get_spindle_revs(int32_t spindle)
+static double gmi_mot_status_get_spindle_revs(void *ctx, int32_t spindle)
 {
+    (void)ctx;
     return emcmotStatus->spindle_status[spindle].spindleRevs;
 }
 
-static int32_t gmi_mot_status_get_spindle_direction(int32_t spindle)
+static int32_t gmi_mot_status_get_spindle_direction(void *ctx, int32_t spindle)
 {
+    (void)ctx;
     return emcmotStatus->spindle_status[spindle].direction;
 }
 
-static int32_t gmi_mot_status_get_spindle_at_speed(int32_t spindle)
+static int32_t gmi_mot_status_get_spindle_at_speed(void *ctx, int32_t spindle)
 {
+    (void)ctx;
     return emcmotStatus->spindle_status[spindle].at_speed;
 }
 
-static double gmi_mot_status_get_spindle_speed_in(int32_t spindle)
+static double gmi_mot_status_get_spindle_speed_in(void *ctx, int32_t spindle)
 {
+    (void)ctx;
     return emcmotStatus->spindle_status[spindle].spindleSpeedIn;
 }
 
-static int32_t gmi_mot_status_get_spindle_index_enable(int32_t spindle)
+static int32_t gmi_mot_status_get_spindle_index_enable(void *ctx, int32_t spindle)
 {
+    (void)ctx;
     return emcmotStatus->spindle_status[spindle].spindle_index_enable;
 }
 
-static uint8_t gmi_mot_status_get_enables_new(void)
+static uint8_t gmi_mot_status_get_enables_new(void *ctx)
 {
+    (void)ctx;
     return emcmotStatus->enables_new;
 }
 
-static double gmi_mot_status_get_spindle_speed(int32_t spindle)
+static double gmi_mot_status_get_spindle_speed(void *ctx, int32_t spindle)
 {
+    (void)ctx;
     return emcmotStatus->spindle_status[spindle].speed;
 }
 
 /* --- Status setters --- */
 
-static void gmi_mot_status_set_current_vel(double vel)
-{    emcmotStatus->current_vel = vel;
+static void gmi_mot_status_set_current_vel(void *ctx, double vel)
+{    (void)ctx; emcmotStatus->current_vel = vel;
 }
 
-static void gmi_mot_status_set_requested_vel(double vel)
-{    emcmotStatus->requested_vel = vel;
+static void gmi_mot_status_set_requested_vel(void *ctx, double vel)
+{    (void)ctx; emcmotStatus->requested_vel = vel;
 }
 
-static void gmi_mot_status_set_distance_to_go(double dist)
-{    emcmotStatus->distance_to_go = dist;
+static void gmi_mot_status_set_distance_to_go(void *ctx, double dist)
+{    (void)ctx; emcmotStatus->distance_to_go = dist;
 }
 
-static void gmi_mot_status_set_dtg(mot_pose_t *dtg)
-{    memcpy(&emcmotStatus->dtg, dtg, sizeof(EmcPose));
+static void gmi_mot_status_set_dtg(void *ctx, mot_pose_t *dtg)
+{    (void)ctx; memcpy(&emcmotStatus->dtg, dtg, sizeof(EmcPose));
 }
 
-static void gmi_mot_status_or_motion_flag(uint32_t bits)
-{    emcmotStatus->motionFlag |= bits;
+static void gmi_mot_status_or_motion_flag(void *ctx, uint32_t bits)
+{    (void)ctx; emcmotStatus->motionFlag |= bits;
 }
 
-static void gmi_mot_status_set_enables_queued(uint8_t val)
-{    emcmotStatus->enables_queued = val;
+static void gmi_mot_status_set_enables_queued(void *ctx, uint8_t val)
+{    (void)ctx; emcmotStatus->enables_queued = val;
 }
 
-static void gmi_mot_status_set_spindle_sync(int32_t val)
-{    emcmotStatus->spindleSync = val;
+static void gmi_mot_status_set_spindle_sync(void *ctx, int32_t val)
+{    (void)ctx; emcmotStatus->spindleSync = val;
 }
 
-static void gmi_mot_status_set_tcqlen(uint32_t len)
-{    emcmotStatus->tcqlen = len;
+static void gmi_mot_status_set_tcqlen(void *ctx, uint32_t len)
+{    (void)ctx; emcmotStatus->tcqlen = len;
 }
 
-static void gmi_mot_status_set_spindle_speed(int32_t spindle, double speed)
-{    emcmotStatus->spindle_status[spindle].speed = speed;
+static void gmi_mot_status_set_spindle_speed(void *ctx, int32_t spindle, double speed)
+{    (void)ctx; emcmotStatus->spindle_status[spindle].speed = speed;
 }
 
-static void gmi_mot_status_set_spindle_index_enable(int32_t spindle, int32_t enable)
-{    emcmotStatus->spindle_status[spindle].spindle_index_enable = enable;
+static void gmi_mot_status_set_spindle_index_enable(void *ctx, int32_t spindle, int32_t enable)
+{    (void)ctx; emcmotStatus->spindle_status[spindle].spindle_index_enable = enable;
 }
 
 /* --- Joint accessors (for homing subsystem) --- */
 
-static int32_t gmi_mot_get_num_joints(void)
+static int32_t gmi_mot_get_num_joints(void *ctx)
 {
+    (void)ctx;
     return num_joints;
 }
 
-static int32_t gmi_mot_joint_get_active_flag(int32_t jno)
+static int32_t gmi_mot_joint_get_active_flag(void *ctx, int32_t jno)
 {
+    (void)ctx;
     return GET_JOINT_ACTIVE_FLAG(&joints[jno]);
 }
 
-static int32_t gmi_mot_joint_get_inpos_flag(int32_t jno)
+static int32_t gmi_mot_joint_get_inpos_flag(void *ctx, int32_t jno)
 {
+    (void)ctx;
     return GET_JOINT_INPOS_FLAG(&joints[jno]);
 }
 
-static int32_t gmi_mot_joint_get_free_tp_active(int32_t jno)
+static int32_t gmi_mot_joint_get_free_tp_active(void *ctx, int32_t jno)
 {
+    (void)ctx;
     return joints[jno].free_tp.active;
 }
 
-static void gmi_mot_joint_set_free_tp_enable(int32_t jno, int32_t enable)
-{    joints[jno].free_tp.enable = enable;
+static void gmi_mot_joint_set_free_tp_enable(void *ctx, int32_t jno, int32_t enable)
+{    (void)ctx; joints[jno].free_tp.enable = enable;
 }
 
-static double gmi_mot_joint_get_free_tp_pos_cmd(int32_t jno)
+static double gmi_mot_joint_get_free_tp_pos_cmd(void *ctx, int32_t jno)
 {
+    (void)ctx;
     return joints[jno].free_tp.pos_cmd;
 }
 
-static void gmi_mot_joint_set_free_tp_pos_cmd(int32_t jno, double val)
-{    joints[jno].free_tp.pos_cmd = val;
+static void gmi_mot_joint_set_free_tp_pos_cmd(void *ctx, int32_t jno, double val)
+{    (void)ctx; joints[jno].free_tp.pos_cmd = val;
 }
 
-static double gmi_mot_joint_get_free_tp_curr_pos(int32_t jno)
+static double gmi_mot_joint_get_free_tp_curr_pos(void *ctx, int32_t jno)
 {
+    (void)ctx;
     return joints[jno].free_tp.curr_pos;
 }
 
-static void gmi_mot_joint_set_free_tp_curr_pos(int32_t jno, double val)
-{    joints[jno].free_tp.curr_pos = val;
+static void gmi_mot_joint_set_free_tp_curr_pos(void *ctx, int32_t jno, double val)
+{    (void)ctx; joints[jno].free_tp.curr_pos = val;
 }
 
-static void gmi_mot_joint_set_free_tp_max_vel(int32_t jno, double vel)
-{    joints[jno].free_tp.max_vel = vel;
+static void gmi_mot_joint_set_free_tp_max_vel(void *ctx, int32_t jno, double vel)
+{    (void)ctx; joints[jno].free_tp.max_vel = vel;
 }
 
-static double gmi_mot_joint_get_free_tp_max_vel(int32_t jno)
+static double gmi_mot_joint_get_free_tp_max_vel(void *ctx, int32_t jno)
 {
+    (void)ctx;
     return joints[jno].free_tp.max_vel;
 }
 
-static double gmi_mot_joint_get_pos_cmd(int32_t jno)
+static double gmi_mot_joint_get_pos_cmd(void *ctx, int32_t jno)
 {
+    (void)ctx;
     return joints[jno].pos_cmd;
 }
 
-static void gmi_mot_joint_set_pos_cmd(int32_t jno, double val)
-{    joints[jno].pos_cmd = val;
+static void gmi_mot_joint_set_pos_cmd(void *ctx, int32_t jno, double val)
+{    (void)ctx; joints[jno].pos_cmd = val;
 }
 
-static double gmi_mot_joint_get_pos_fb(int32_t jno)
+static double gmi_mot_joint_get_pos_fb(void *ctx, int32_t jno)
 {
+    (void)ctx;
     return joints[jno].pos_fb;
 }
 
-static void gmi_mot_joint_set_pos_fb(int32_t jno, double val)
-{    joints[jno].pos_fb = val;
+static void gmi_mot_joint_set_pos_fb(void *ctx, int32_t jno, double val)
+{    (void)ctx; joints[jno].pos_fb = val;
 }
 
-static double gmi_mot_joint_get_motor_pos_fb(int32_t jno)
+static double gmi_mot_joint_get_motor_pos_fb(void *ctx, int32_t jno)
 {
+    (void)ctx;
     return joints[jno].motor_pos_fb;
 }
 
-static double gmi_mot_joint_get_motor_offset(int32_t jno)
+static double gmi_mot_joint_get_motor_offset(void *ctx, int32_t jno)
 {
+    (void)ctx;
     return joints[jno].motor_offset;
 }
 
-static void gmi_mot_joint_set_motor_offset(int32_t jno, double val)
-{    joints[jno].motor_offset = val;
+static void gmi_mot_joint_set_motor_offset(void *ctx, int32_t jno, double val)
+{    (void)ctx; joints[jno].motor_offset = val;
 }
 
-static double gmi_mot_joint_get_backlash_filt(int32_t jno)
+static double gmi_mot_joint_get_backlash_filt(void *ctx, int32_t jno)
 {
+    (void)ctx;
     return joints[jno].backlash_filt;
 }
 
-static double gmi_mot_joint_get_vel_limit(int32_t jno)
+static double gmi_mot_joint_get_vel_limit(void *ctx, int32_t jno)
 {
+    (void)ctx;
     return joints[jno].vel_limit;
 }
 
-static double gmi_mot_joint_get_max_pos_limit(int32_t jno)
+static double gmi_mot_joint_get_max_pos_limit(void *ctx, int32_t jno)
 {
+    (void)ctx;
     return joints[jno].max_pos_limit;
 }
 
-static double gmi_mot_joint_get_min_pos_limit(int32_t jno)
+static double gmi_mot_joint_get_min_pos_limit(void *ctx, int32_t jno)
 {
+    (void)ctx;
     return joints[jno].min_pos_limit;
 }
 
-static int32_t gmi_mot_joint_get_on_pos_limit(int32_t jno)
+static int32_t gmi_mot_joint_get_on_pos_limit(void *ctx, int32_t jno)
 {
+    (void)ctx;
     return joints[jno].on_pos_limit;
 }
 
-static int32_t gmi_mot_joint_get_on_neg_limit(int32_t jno)
+static int32_t gmi_mot_joint_get_on_neg_limit(void *ctx, int32_t jno)
 {
+    (void)ctx;
     return joints[jno].on_neg_limit;
 }
 

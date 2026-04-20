@@ -95,7 +95,7 @@ static int makepins(inst_t *inst, int njoints)
 static int32_t gmi_home_init(void *ctx, int32_t comp_id, double servo_period,
     int32_t n_joints, int32_t n_extrajoints)
 {
-    struct inst *__comp_inst = (struct inst *)ctx;
+    inst_t *__comp_inst = (inst_t *)ctx;
     (void)comp_id; (void)servo_period; (void)n_extrajoints;
     return makepins(__comp_inst, n_joints);
 }

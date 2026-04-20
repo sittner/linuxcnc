@@ -49,7 +49,7 @@ author "David Mueller";
 //
 // With the ctx parameter, gmi_kins_* callbacks can access the
 // component instance by casting:
-//   struct inst *__comp_inst = (struct inst *)ctx;
+//   inst_t *__comp_inst = (inst_t *)ctx;
 // This enables use of HAL pin convenience macros.
 
 static int32_t switchkins_type;
@@ -68,7 +68,7 @@ static int32_t gmi_kins_switchable(void *ctx)
 
 static int32_t gmi_kins_switch(void *ctx, int32_t new_switchkins_type)
 {
-    struct inst *__comp_inst = (struct inst *)ctx;
+    inst_t *__comp_inst = (inst_t *)ctx;
     switchkins_type = new_switchkins_type;
     gomc_log_infof(__comp_inst->env->log, __comp_inst->name, "kinematicsSwitch(): type=%d", switchkins_type);
     switch (switchkins_type) {

@@ -9,9 +9,9 @@
 @rest_export true
 
 type ToolChangeState {
-    change: bool       # true when a tool change is requested
-    number: i32        # requested tool number (0 = remove tool)
-    changed: bool      # true when change has been confirmed
+    change_requested: bool  # true when a tool change is requested
+    tool_number: i32        # requested tool number (0 = remove tool)
+    change_confirmed: bool  # true when change has been confirmed
 }
 
 # Query current tool change state
