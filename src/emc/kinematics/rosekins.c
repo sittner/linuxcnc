@@ -34,10 +34,12 @@ static int  revolutions;
 // ─── Forward kinematics ───
 
 static int32_t rosekins_forward(
+    void *ctx,
     const double joints[KINS_MAX_JOINTS],
     kins_pose_t *world,
     uint64_t fflags, uint64_t *iflags)
 {
+    (void)ctx;
     (void)fflags; (void)iflags;
 
     double radius = joints[0];
@@ -56,10 +58,12 @@ static int32_t rosekins_forward(
 // ─── Inverse kinematics ───
 
 static int32_t rosekins_inverse(
+    void *ctx,
     const kins_pose_t *world,
     double joints[KINS_MAX_JOINTS],
     uint64_t iflags, uint64_t *fflags)
 {
+    (void)ctx;
     (void)iflags; (void)fflags;
 
     int nowquad = 0;
@@ -90,14 +94,16 @@ static int32_t rosekins_inverse(
     return 0;
 }
 
-static kins_kinematics_type_t rosekins_type(void) {
+static kins_kinematics_type_t rosekins_type(void *ctx) {
+    (void)ctx;
     return KINS_BOTH;
 }
-static int32_t rosekins_switchable(void) { return 0; }
-static int32_t rosekins_switch(int32_t t)
-    { (void)t; return -1; }
+static int32_t rosekins_switchable(void *ctx) { (void)ctx; return 0; }
+static int32_t rosekins_switch(void *ctx, int32_t t)
+    { (void)ctx; (void)t; return -1; }
 
 static kins_callbacks_t rosekins_callbacks = {
+    .ctx = NULL,
     .forward    = rosekins_forward,
     .inverse    = rosekins_inverse,
     .type       = rosekins_type,

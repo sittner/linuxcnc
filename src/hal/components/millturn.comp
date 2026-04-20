@@ -36,7 +36,6 @@ param r  float param_ro = 0 "example read-only parameter";
 pin out bit kinstype_is_0 = 1 "Indicates mill (type 0) kinematics active";
 pin out bit kinstype_is_1 = 0 "Indicates turn (type 1) kinematics active";
 function fdemo;
-option extra_setup yes;
 gmi_provide kins;
 license "GPL";
 author "David Mueller";
@@ -48,69 +47,56 @@ author "David Mueller";
 // modcompile wires them into the callbacks struct automatically
 // via the gmi_provide directive.
 //
-// Note: GMI kins callbacks are module-global (not per-instance).
-// HAL pins declared above are accessible in FUNCTION() bodies and
-// EXTRA_SETUP() but NOT directly in gmi_kins_* callbacks.
-// Use static pointers set during EXTRA_SETUP() for pin access
-// from kins callbacks.
-
-// Static pointers for HAL pin access and logging from kins callbacks.
-static gomc_hal_bit_t *kinstype_is_0_ptr;
-static gomc_hal_bit_t *kinstype_is_1_ptr;
-static const gomc_log_t *kins_log;
-static const char *kins_name;
-
-EXTRA_SETUP() {
-    // Save pointers to HAL pins for use in kins callbacks.
-    // &kinstype_is_0 expands to &(*(__comp_inst->hal->kinstype_is_0)),
-    // yielding the raw HAL shared-memory pointer.
-    kinstype_is_0_ptr = &kinstype_is_0;
-    kinstype_is_1_ptr = &kinstype_is_1;
-    kins_log = __comp_inst->env->log;
-    kins_name = __comp_inst->name;
-    return 0;
-}
+// With the ctx parameter, gmi_kins_* callbacks can access the
+// component instance by casting:
+//   struct inst *__comp_inst = (struct inst *)ctx;
+// This enables use of HAL pin convenience macros.
 
 static int32_t switchkins_type;
 
-static kins_kinematics_type_t gmi_kins_type(void)
+static kins_kinematics_type_t gmi_kins_type(void *ctx)
 {
+    (void)ctx;
     return KINS_BOTH;
 }
 
-static int32_t gmi_kins_switchable(void)
+static int32_t gmi_kins_switchable(void *ctx)
 {
+    (void)ctx;
     return 1;
 }
 
-static int32_t gmi_kins_switch(int32_t new_switchkins_type)
+static int32_t gmi_kins_switch(void *ctx, int32_t new_switchkins_type)
 {
+    struct inst *__comp_inst = (struct inst *)ctx;
     switchkins_type = new_switchkins_type;
-    gomc_log_infof(kins_log, kins_name, "kinematicsSwitch(): type=%d", switchkins_type);
+    gomc_log_infof(__comp_inst->env->log, __comp_inst->name, "kinematicsSwitch(): type=%d", switchkins_type);
     switch (switchkins_type) {
-        case 0: gomc_log_infof(kins_log, kins_name, "kinematicsSwitch:TYPE0");
-                *kinstype_is_0_ptr = 1;
-                *kinstype_is_1_ptr = 0;
+        case 0: gomc_log_infof(__comp_inst->env->log, __comp_inst->name, "kinematicsSwitch:TYPE0");
+                kinstype_is_0 = 1;
+                kinstype_is_1 = 0;
                 break;
-        case 1: gomc_log_infof(kins_log, kins_name, "kinematicsSwitch:TYPE1");
-                *kinstype_is_0_ptr = 0;
-                *kinstype_is_1_ptr = 1;
+        case 1: gomc_log_infof(__comp_inst->env->log, __comp_inst->name, "kinematicsSwitch:TYPE1");
+                kinstype_is_0 = 0;
+                kinstype_is_1 = 1;
                 break;
-       default: gomc_log_errorf(kins_log, kins_name, "kinematicsSwitch:BAD VALUE <%d>",
+       default: gomc_log_errorf(__comp_inst->env->log, __comp_inst->name, "kinematicsSwitch:BAD VALUE <%d>",
                 switchkins_type);
-                *kinstype_is_0_ptr = 0;
-                *kinstype_is_1_ptr = 0;
+                kinstype_is_0 = 0;
+                kinstype_is_1 = 0;
                 return -1; // FAIL
     }
     return 0;
 }
 
 static int32_t gmi_kins_forward(
+    void *ctx,
     const double joints[KINS_MAX_JOINTS],
     kins_pose_t *pos,
     uint64_t fflags,
     uint64_t *iflags)
 {
+    (void)ctx;
     (void)fflags;
     (void)iflags;
 
@@ -141,11 +127,13 @@ static int32_t gmi_kins_forward(
 }
 
 static int32_t gmi_kins_inverse(
+    void *ctx,
     const kins_pose_t *pos,
     double joints[KINS_MAX_JOINTS],
     uint64_t iflags,
     uint64_t *fflags)
 {
+    (void)ctx;
     (void)iflags;
     (void)fflags;
 

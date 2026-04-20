@@ -29,25 +29,9 @@ pin out bit changed "Tool change confirmed";
 
 function _ nofp;
 
-option extra_setup yes;
-
 gmi_provide manualtoolchange;
 license "GPL";
 ;;
-
-/* Static pointers for GMI callbacks (module-global, no __comp_inst access). */
-static gomc_hal_bit_t  *mtc_change;
-static gomc_hal_s32_t  *mtc_number;
-static gomc_hal_bit_t  *mtc_change_button;
-static gomc_hal_bit_t  *mtc_changed;
-
-EXTRA_SETUP() {
-    mtc_change        = &change;
-    mtc_number        = &number;
-    mtc_change_button = &change_button;
-    mtc_changed       = &changed;
-    return 0;
-}
 
 /* Thread function: handle change_button auto-confirm and
    reset changed when change goes low. */
@@ -60,19 +44,21 @@ FUNCTION(_) {
     }
 }
 
-/* GMI callbacks — use static pointers (not convenience macros) */
+/* GMI callbacks — ctx is inst_t*, enables convenience macros */
 
-static manualtoolchange_tool_change_state_t gmi_manualtoolchange_get_state(void) {
+static manualtoolchange_tool_change_state_t gmi_manualtoolchange_get_state(void *ctx) {
+    struct inst *__comp_inst = (struct inst *)ctx;
     manualtoolchange_tool_change_state_t state;
-    state.change  = *mtc_change;
-    state.number  = *mtc_number;
-    state.changed = *mtc_changed;
+    state.change  = change;
+    state.number  = number;
+    state.changed = changed;
     return state;
 }
 
-static bool gmi_manualtoolchange_confirm(void) {
-    if (*mtc_change && !*mtc_changed) {
-        *mtc_changed = 1;
+static bool gmi_manualtoolchange_confirm(void *ctx) {
+    struct inst *__comp_inst = (struct inst *)ctx;
+    if (change && !changed) {
+        changed = 1;
         return true;
     }
     return false;

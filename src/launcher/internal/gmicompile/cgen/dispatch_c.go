@@ -85,9 +85,9 @@ func (g *dispatchCGen) emitCallWrapper(fn ast.Func) {
 		retCType = toCTypeForAPI(apiName, *fn.Return)
 	}
 
-	// Build parameter list: fn pointer + same params as callback typedef
-	params := []string{fmt.Sprintf("%s fn", fnType)}
-	args := []string{}
+	// Build parameter list: fn pointer + ctx + same params as callback typedef
+	params := []string{fmt.Sprintf("%s fn", fnType), "void *ctx"}
+	args := []string{"ctx"}
 
 	for _, p := range fn.Params {
 		name := toSnakeCase(p.Name)
@@ -453,6 +453,7 @@ func (g *dispatchCGen) emitOneDispatch(fn ast.Func) {
 	// Convert Go params → C and build call args
 	var callArgs []string
 	callArgs = append(callArgs, "cb."+cgoFieldAccess(fnSnake))
+	callArgs = append(callArgs, "cb.ctx")
 
 	for _, p := range fn.Params {
 		cVar := "c" + toPascalCase(p.Name)

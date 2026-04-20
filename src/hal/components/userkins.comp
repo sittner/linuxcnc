@@ -59,33 +59,38 @@ author "Dewey Garrett";
 // modcompile wires them into the callbacks struct automatically
 // via the gmi_provide directive.
 //
-// Note: GMI kins callbacks are module-global (not per-instance).
-// HAL pins declared above are accessible in FUNCTION() bodies but
-// NOT directly in gmi_kins_* callbacks. Use a static pointer set
-// during extra_setup or FUNCTION() if kins need HAL pin access.
+// With the ctx parameter, gmi_kins_* callbacks can access the
+// component instance by casting:
+//   struct inst *__comp_inst = (struct inst *)ctx;
+// This enables use of HAL pin convenience macros.
 
-static kins_kinematics_type_t gmi_kins_type(void)
+static kins_kinematics_type_t gmi_kins_type(void *ctx)
 {
+    (void)ctx;
     return KINS_IDENTITY;
 }
 
-static int32_t gmi_kins_switchable(void)
+static int32_t gmi_kins_switchable(void *ctx)
 {
+    (void)ctx;
     return 0;
 }
 
-static int32_t gmi_kins_switch(int32_t switchkins_type)
+static int32_t gmi_kins_switch(void *ctx, int32_t switchkins_type)
 {
+    (void)ctx;
     (void)switchkins_type;
     return -1; // not switchable
 }
 
 static int32_t gmi_kins_forward(
+    void *ctx,
     const double joints[KINS_MAX_JOINTS],
     kins_pose_t *pos,
     uint64_t fflags,
     uint64_t *iflags)
 {
+    (void)ctx;
     (void)fflags;
     (void)iflags;
 
@@ -104,11 +109,13 @@ static int32_t gmi_kins_forward(
 }
 
 static int32_t gmi_kins_inverse(
+    void *ctx,
     const kins_pose_t *pos,
     double joints[KINS_MAX_JOINTS],
     uint64_t iflags,
     uint64_t *fflags)
 {
+    (void)ctx;
     (void)iflags;
     (void)fflags;
 

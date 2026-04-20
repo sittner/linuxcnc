@@ -199,14 +199,10 @@ func (g *serverGen) emitCallbackTypedefs() {
 		}
 		g.printf("typedef %s (*%s_%s_fn)(\n", retCType, g.api.Name, toSnakeCase(fn.Name))
 
-		// Parameters (no out-param appended)
-		params := []string{}
+		// First parameter is always void *ctx for instance context.
+		params := []string{"void *ctx"}
 		for _, p := range fn.Params {
 			params = append(params, g.paramDecl(p))
-		}
-
-		if len(params) == 0 {
-			params = append(params, "void")
 		}
 
 		for i, p := range params {
@@ -288,6 +284,7 @@ func (g *serverGen) emitCallbacksStruct() {
 	}
 	g.printf("// ─── Callbacks Struct ───\n\n")
 	g.printf("typedef struct {\n")
+	g.printf("    void *ctx;\n")
 	for _, fn := range g.api.Funcs {
 		fieldName := cSafeName(toSnakeCase(fn.Name))
 		g.printf("    %s_%s_fn %s;\n", g.api.Name, toSnakeCase(fn.Name), fieldName)
