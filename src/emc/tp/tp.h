@@ -74,17 +74,9 @@ int tpSetRunDir(TP_STRUCT * const tp, tc_direction_t dir);
 
 //---------------------------------------------------------------------
 // Module interface
-void tpMotFunctions(void(*pDioWrite)(int,char)
-                   ,void(*pAioWrite)(int,double)
-                   ,void(*pSetRotaryUnlock)(int,int)
-                   ,int( *pGetRotaryUnlock)(int)
-                   ,double(*paxis_get_vel_limit)(int)
-                   ,double(*paxis_get_acc_limit)(int)
-                   );
-
-void tpMotData(emcmot_status_t *
-              ,emcmot_config_t *
-              );
+// mot_callbacks_t is defined in mot_api.h (generated); tp.c includes it.
+// tp.h uses void* to avoid a build-system include-path dependency.
+void tpSetMotAPI(const void *api);
 //---------------------------------------------------------------------
 
 #endif				/* TP_H */

@@ -105,6 +105,12 @@ func status_get_spindle_speed_in(spindle: i32) -> f64
 @doc "Get spindle index-enable for a given spindle"
 func status_get_spindle_index_enable(spindle: i32) -> i32
 
+@doc "Get enables_new value"
+func status_get_enables_new() -> u8
+
+@doc "Get commanded spindle speed for a given spindle"
+func status_get_spindle_speed(spindle: i32) -> f64
+
 # ─── Status setters (emcmot_status_t fields, write) ───
 
 @doc "Set current velocity"

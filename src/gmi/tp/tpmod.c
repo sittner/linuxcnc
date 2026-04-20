@@ -32,53 +32,17 @@ static const gomc_api_t *tpmod_api;
 #define TP(ptr) ((TP_STRUCT *)(uintptr_t)(ptr))
 
 // ─── Mot API adapter functions ──────────────────────────────────────────────
-// tp.c expects legacy function-pointer signatures via tpMotFunctions().
-// These adapters bridge to the mot API callbacks looked up at Start() time.
+// tp.c now accepts the mot API directly via tpSetMotAPI().
 
 static const mot_callbacks_t *mot;
-
-static void adapt_dio_write(int index, char value)
-{
-    mot->dio_write(index, (int8_t)value);
-}
-
-static void adapt_aio_write(int index, double value)
-{
-    mot->aio_write(index, value);
-}
-
-static void adapt_set_rotary_unlock(int jnum, int unlock)
-{
-    mot->set_rotary_unlock(jnum, unlock);
-}
-
-static int adapt_get_rotary_unlock(int jnum)
-{
-    int32_t out;
-    mot->get_rotary_unlock(jnum, &out);
-    return out;
-}
-
-static double adapt_axis_get_vel_limit(int axis)
-{
-    double out;
-    mot->axis_get_vel_limit(axis, &out);
-    return out;
-}
-
-static double adapt_axis_get_acc_limit(int axis)
-{
-    double out;
-    mot->axis_get_acc_limit(axis, &out);
-    return out;
-}
 
 // ─── GMI callback wrappers ──────────────────────────────────────────────────
 
 static int gmi_tp_init(uint64_t status_ptr, uint64_t config_ptr, int32_t *out)
 {
-    tpMotData((emcmot_status_t *)(uintptr_t)status_ptr,
-              (emcmot_config_t *)(uintptr_t)config_ptr);
+    (void)status_ptr;
+    (void)config_ptr;
+    // tp.c now gets the mot API directly; status/config pointers are unused.
     *out = 0;
     return 0;
 }
@@ -318,13 +282,8 @@ static int tpmod_init(cmod_t *self)
     if (!mot)
         return -1;
 
-    /* Wire legacy tp.c function-pointer statics through mot API adapters. */
-    tpMotFunctions(adapt_dio_write,
-                   adapt_aio_write,
-                   adapt_set_rotary_unlock,
-                   adapt_get_rotary_unlock,
-                   adapt_axis_get_vel_limit,
-                   adapt_axis_get_acc_limit);
+    /* Pass the mot API directly to tp.c */
+    tpSetMotAPI(mot);
     return 0;
 }
 

@@ -313,6 +313,18 @@ static int gmi_mot_status_get_spindle_index_enable(int32_t spindle, int32_t *out
     return 0;
 }
 
+static int gmi_mot_status_get_enables_new(uint8_t *out)
+{
+    *out = emcmotStatus->enables_new;
+    return 0;
+}
+
+static int gmi_mot_status_get_spindle_speed(int32_t spindle, double *out)
+{
+    *out = emcmotStatus->spindle_status[spindle].speed;
+    return 0;
+}
+
 /* --- Status setters --- */
 
 static int gmi_mot_status_set_current_vel(double vel)
