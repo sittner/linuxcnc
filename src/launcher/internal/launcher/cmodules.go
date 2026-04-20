@@ -187,6 +187,11 @@ static int cmod_call_new(cmod_new_fn fn, const cmod_env_t *env,
     return fn(env, name, argc, argv, out);
 }
 
+static int cmod_call_init(cmod_t *m) {
+    if (!m->Init) return 0;
+    return m->Init(m);
+}
+
 static int cmod_call_start(cmod_t *m) {
     if (!m->Start) return 0;
     return m->Start(m);
@@ -316,6 +321,20 @@ func (l *Launcher) loadCPlugin(path string, name string, args []string) error {
 	l.cModules = append(l.cModules, cm)
 	l.logger.Debug("C plugin loaded and initialized", "path", path, "name", name)
 
+	return nil
+}
+
+// initCModules calls Init() on all loaded C plugin modules in load order.
+// Init() runs after all modules' New() have completed (all APIs registered)
+// but before HAL wiring commands and Start().  Modules use Init() to look up
+// other modules' APIs and perform cross-module initialization.
+func (l *Launcher) initCModules() error {
+	for _, cm := range l.cModules {
+		rc := C.cmod_call_init(cm.mod)
+		if rc != 0 {
+			return fmt.Errorf("C module %q Init() returned error code %d", cm.name, int(rc))
+		}
+	}
 	return nil
 }
 

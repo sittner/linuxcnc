@@ -747,9 +747,11 @@ static cmod_t motmod_cmod;
 /* Store the env pointer for Destroy(). */
 static const cmod_env_t *motmod_env;
 
-/* GMI API pointers — set in New(), used by bridge inlines */
+/* GMI API pointers — set in Init(), used by bridge inlines */
 const tp_callbacks_t   *motmod_tp_api;
 const home_callbacks_t *motmod_home_api;
+
+static int motmod_init(cmod_t *self);
 
 int New(const cmod_env_t *env, const char *name,
         int argc, const char **argv, cmod_t **out)
@@ -774,38 +776,11 @@ int New(const cmod_env_t *env, const char *name,
     }
 
     /* Register the mot reverse-callback API so tpmod/homemod can look it up
-       in their Start() functions. */
+       in their Init() functions. */
     retval = mot_api_register(env->api, "default", &motmod_mot_callbacks);
     if (retval != 0) {
 	rtapi_print_msg(RTAPI_MSG_ERR,
 	    _("MOTION: failed to register mot API: %d\n"), retval);
-	hal_exit(mot_comp_id);
-	return -1;
-    }
-
-    /* Look up the kinematics API registered by the kins module */
-    motmod_kins = kins_api_get(env->api, "kinematics");
-    if (!motmod_kins) {
-	rtapi_print_msg(RTAPI_MSG_ERR,
-	    _("MOTION: kinematics API not registered (is kins module loaded?)\n"));
-	hal_exit(mot_comp_id);
-	return -1;
-    }
-
-    /* Look up the trajectory planner API registered by the tp module */
-    motmod_tp_api = tp_api_get(env->api, "default");
-    if (!motmod_tp_api) {
-	rtapi_print_msg(RTAPI_MSG_ERR,
-	    _("MOTION: tp API not registered (is tp module loaded?)\n"));
-	hal_exit(mot_comp_id);
-	return -1;
-    }
-
-    /* Look up the homing API registered by the home module */
-    motmod_home_api = home_api_get(env->api, "default");
-    if (!motmod_home_api) {
-	rtapi_print_msg(RTAPI_MSG_ERR,
-	    _("MOTION: home API not registered (is home module loaded?)\n"));
 	hal_exit(mot_comp_id);
 	return -1;
     }
@@ -822,10 +797,6 @@ int New(const cmod_env_t *env, const char *name,
 	    _("\nMOTION: num_extrajoints is %d, must be between 0 and %d\n\n"), num_extrajoints, num_joints);
 	hal_exit(mot_comp_id);
 	return -1;
-    }
-    if ( (num_extrajoints > 0) && (kinematicsType() != KINEMATICS_BOTH) ) {
-	rtapi_print_msg(RTAPI_MSG_ERR, _("\nMOTION: nonzero num_extrajoints requires KINEMATICS_BOTH\n\n"));
-        return -1;
     }
     if (num_extrajoints > 0) {
 	rtapi_print_msg(RTAPI_MSG_ERR,
@@ -899,21 +870,88 @@ int New(const cmod_env_t *env, const char *name,
     return -1;
   }
 
-    /* initialize/export HAL pins and parameters */
-    retval = init_hal_io();
-    if (retval != 0) {
-	rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: init_hal_io() failed\n"));
-	hal_exit(mot_comp_id);
+    rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: New() complete\n");
+
+    /* Set up cmod interface */
+    motmod_cmod.Init    = motmod_init;
+    motmod_cmod.Start   = NULL;
+    motmod_cmod.Stop    = NULL;
+    motmod_cmod.Destroy = motmod_Destroy;
+    motmod_cmod.priv    = NULL;
+
+    *out = &motmod_cmod;
+    return 0;
+}
+
+/*
+ * motmod Init() — look up APIs registered by other modules during New(),
+ * then initialize the trajectory planner and homing subsystem.
+ *
+ * By the time Init() runs, all modules' New() have completed (APIs
+ * registered) and earlier-loaded modules' Init() have also completed
+ * (tpmod/homemod have wired their function pointers via the mot API).
+ */
+static int motmod_init(cmod_t *self)
+{
+    int retval;
+    (void)self;
+
+    rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: Init() starting...\n");
+
+    /* --- Cross-module API lookups (must come first) --- */
+
+    /* Look up the kinematics API registered by the kins module */
+    motmod_kins = kins_api_get(motmod_env->api, "kinematics");
+    if (!motmod_kins) {
+	rtapi_print_msg(RTAPI_MSG_ERR,
+	    _("MOTION: kinematics API not registered (is kins module loaded?)\n"));
 	return -1;
     }
 
-    /* allocate/initialize user space comm buffers (cmd/status/err) */
+    /* Look up the trajectory planner API registered by the tp module */
+    motmod_tp_api = tp_api_get(motmod_env->api, "default");
+    if (!motmod_tp_api) {
+	rtapi_print_msg(RTAPI_MSG_ERR,
+	    _("MOTION: tp API not registered (is tp module loaded?)\n"));
+	return -1;
+    }
+
+    /* Look up the homing API registered by the home module */
+    motmod_home_api = home_api_get(motmod_env->api, "default");
+    if (!motmod_home_api) {
+	rtapi_print_msg(RTAPI_MSG_ERR,
+	    _("MOTION: home API not registered (is home module loaded?)\n"));
+	return -1;
+    }
+
+    /* --- Validation (depends on kins) --- */
+
+    if ( (num_extrajoints > 0) && (kinematicsType() != KINEMATICS_BOTH) ) {
+	rtapi_print_msg(RTAPI_MSG_ERR, _("\nMOTION: nonzero num_extrajoints requires KINEMATICS_BOTH\n\n"));
+        return -1;
+    }
+
+    /* --- HAL pins, shared memory, RT function export --- */
+
+    retval = init_hal_io();
+    if (retval != 0) {
+	rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: init_hal_io() failed\n"));
+	return -1;
+    }
+
     retval = init_comm_buffers();
     if (retval != 0) {
 	rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: init_comm_buffers() failed\n"));
-	hal_exit(mot_comp_id);
 	return -1;
     }
+
+    retval = export_functions();
+    if (retval != 0) {
+	rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: export_functions() failed\n"));
+	return -1;
+    }
+
+    /* --- Subsystem initialization --- */
 
     if (module_intfc()) {
 	rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: module_intfc() failed\n"));
@@ -921,14 +959,6 @@ int New(const cmod_env_t *env, const char *name,
     }
     if (tp_init()) {
 	rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: tp_init() failed\n"));
-	return -1;
-    }
-
-    /* export realtime functions for the motion controller */
-    retval = export_functions();
-    if (retval != 0) {
-	rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: export_functions() failed\n"));
-	hal_exit(mot_comp_id);
 	return -1;
     }
 
@@ -943,25 +973,16 @@ int New(const cmod_env_t *env, const char *name,
                               &homing_rc);
         if (homing_rc != 0) {
             rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: homing init failed\n"));
-            hal_exit(mot_comp_id);
             return -1;
         }
     }
 
-    rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: New() complete\n");
-
-    hal_ready(mot_comp_id);
-
     old_handler = rtapi_get_msg_handler();
     rtapi_set_msg_handler(emc_message_handler);
 
-    /* Set up cmod interface */
-    motmod_cmod.Start   = NULL;
-    motmod_cmod.Stop    = NULL;
-    motmod_cmod.Destroy = motmod_Destroy;
-    motmod_cmod.priv    = NULL;
+    hal_ready(mot_comp_id);
 
-    *out = &motmod_cmod;
+    rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: Init() complete\n");
     return 0;
 }
 
@@ -1153,9 +1174,9 @@ static int init_hal_io(void)
     CALL_CHECK(hal_pin_float_newf(HAL_OUT, &(emcmot_hal_data->tooloffset_v), mot_comp_id, "motion.tooloffset.v"));
     CALL_CHECK(hal_pin_float_newf(HAL_OUT, &(emcmot_hal_data->tooloffset_w), mot_comp_id, "motion.tooloffset.w"));
 
-    if (kinematicsSwitchable()) {
-        CALL_CHECK(hal_pin_float_newf(HAL_IN, &(emcmot_hal_data->switchkins_type), mot_comp_id, "motion.switchkins-type"));
-    }
+    /* Always create switchkins-type pin; it's a no-op if kins isn't switchable. */
+    CALL_CHECK(hal_pin_float_newf(HAL_IN, &(emcmot_hal_data->switchkins_type), mot_comp_id, "motion.switchkins-type"));
+
     /* initialize machine wide pins and parameters */
     *(emcmot_hal_data->adaptive_feed) = 1.0;
     *(emcmot_hal_data->feed_hold) = 0;

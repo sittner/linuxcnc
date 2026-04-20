@@ -45,17 +45,6 @@ static int gmi_home_init(
     uint64_t joints_ptr,
     int32_t *out)
 {
-    /* Look up mot reverse-callback API (registered by motmod before calling
-       home init) and wire the legacy function pointers that homing.c needs.
-       This must happen before homing_init, not in Start(). */
-    home_mot = mot_api_get(homemod_api, "default");
-    if (!home_mot) {
-        *out = -1;
-        return 0;
-    }
-    homeMotFunctions(adapt_set_rotary_unlock,
-                     adapt_get_rotary_is_unlocked);
-
     *out = homing_init(comp_id, servo_period,
                        n_joints, n_extrajoints,
                        (emcmot_joint_t *)(uintptr_t)joints_ptr);
@@ -200,10 +189,18 @@ static cmod_t homemod_cmod;
 
 static void homemod_destroy(cmod_t *self) { (void)self; }
 
-static int homemod_start(cmod_t *self)
+static int homemod_init(cmod_t *self)
 {
     (void)self;
-    /* mot API + homeMotFunctions already wired in gmi_home_init(). */
+
+    /* Look up the mot reverse-callback API registered by motmod. */
+    home_mot = mot_api_get(homemod_api, "default");
+    if (!home_mot)
+        return -1;
+
+    /* Wire legacy homing.c function-pointer statics through mot API adapters. */
+    homeMotFunctions(adapt_set_rotary_unlock,
+                     adapt_get_rotary_is_unlocked);
     return 0;
 }
 
@@ -221,7 +218,8 @@ int New(const cmod_env_t *env, const char *name,
         return rc;
     }
 
-    homemod_cmod.Start   = homemod_start;
+    homemod_cmod.Init    = homemod_init;
+    homemod_cmod.Start   = NULL;
     homemod_cmod.Destroy = homemod_destroy;
     *out = &homemod_cmod;
     return 0;

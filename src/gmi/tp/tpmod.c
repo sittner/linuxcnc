@@ -79,22 +79,6 @@ static int gmi_tp_init(uint64_t status_ptr, uint64_t config_ptr, int32_t *out)
 {
     tpMotData((emcmot_status_t *)(uintptr_t)status_ptr,
               (emcmot_config_t *)(uintptr_t)config_ptr);
-
-    /* Look up mot reverse-callback API (registered by motmod before calling
-       tp init) and wire the legacy function pointers that tp.c needs.
-       This must happen here — before tpCreate/tpInit — not in Start(). */
-    mot = mot_api_get(tpmod_api, "default");
-    if (!mot) {
-        *out = -1;
-        return 0;
-    }
-    tpMotFunctions(adapt_dio_write,
-                   adapt_aio_write,
-                   adapt_set_rotary_unlock,
-                   adapt_get_rotary_unlock,
-                   adapt_axis_get_vel_limit,
-                   adapt_axis_get_acc_limit);
-
     *out = 0;
     return 0;
 }
@@ -325,10 +309,22 @@ static cmod_t tpmod_cmod;
 
 static void tpmod_destroy(cmod_t *self) { (void)self; }
 
-static int tpmod_start(cmod_t *self)
+static int tpmod_init(cmod_t *self)
 {
     (void)self;
-    /* mot API + tpMotFunctions already wired in gmi_tp_init(). */
+
+    /* Look up the mot reverse-callback API registered by motmod. */
+    mot = mot_api_get(tpmod_api, "default");
+    if (!mot)
+        return -1;
+
+    /* Wire legacy tp.c function-pointer statics through mot API adapters. */
+    tpMotFunctions(adapt_dio_write,
+                   adapt_aio_write,
+                   adapt_set_rotary_unlock,
+                   adapt_get_rotary_unlock,
+                   adapt_axis_get_vel_limit,
+                   adapt_axis_get_acc_limit);
     return 0;
 }
 
@@ -346,7 +342,8 @@ int New(const cmod_env_t *env, const char *name,
         return rc;
     }
 
-    tpmod_cmod.Start   = tpmod_start;
+    tpmod_cmod.Init    = tpmod_init;
+    tpmod_cmod.Start   = NULL;
     tpmod_cmod.Destroy = tpmod_destroy;
     *out = &tpmod_cmod;
     return 0;

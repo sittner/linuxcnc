@@ -369,6 +369,14 @@ func (l *Launcher) Run() (runErr error) {
 		l.logger.Warn("HAL loadrt error (continuing)", "error", err)
 	}
 
+	// Phase 1b: Initialize all plugin modules (Init phase).
+	// All modules' New() have completed and APIs are registered.  Init()
+	// looks up other modules' APIs and performs cross-module initialization
+	// (e.g. wiring function pointers, initializing subsystems).
+	if err := l.initCModules(); err != nil {
+		return fmt.Errorf("C module init failed: %w", err)
+	}
+
 	// Phase 2: Execute HAL wiring commands (net, addf, setp, etc.).
 	if err := halResult.Execute(); err != nil {
 		if !l.opts.ContinueOnError {

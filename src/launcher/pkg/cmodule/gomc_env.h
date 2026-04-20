@@ -54,6 +54,7 @@ typedef struct {
 // ---------------------------------------------------------------------------
 
 typedef struct cmod {
+    int  (*Init)(struct cmod *self);
     int  (*Start)(struct cmod *self);
     void (*Stop)(struct cmod *self);
     void (*Destroy)(struct cmod *self);
