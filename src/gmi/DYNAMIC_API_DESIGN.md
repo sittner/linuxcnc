@@ -3,6 +3,22 @@
 This document describes the dynamic inter-module communication system for LinuxCNC,
 intended to replace NML with a modern, type-safe approach.
 
+## Current Status (April 2026)
+
+| Step | Status | Tests |
+|------|--------|-------|
+| 0: Core Module Migration | ✅ Complete | — |
+| 1: apiserver Package | ✅ Complete | 37 |
+| 2: `--server-go` | ✅ Complete | 3 |
+| 3: `--server-c` + cgo | ✅ Complete | 5 |
+| 4: Client Generation | ⚠️ Partial | — |
+| 5: Python Client | ❌ Not Started | — |
+| 6: Polish | ❌ Not Started | — |
+
+**Total: 56 tests passing**
+
+Step 4 status: `--client-c` internal and REST complete; `--client-go` not started.
+
 ## Overview
 
 The system enables modules (cmod/gomod) to:
@@ -100,6 +116,8 @@ Interface definitions live in `src/gmi/idl/`. Example:
 @prefix "hal"
 @rest_export false  // Not exposed via REST
 
+const MAX_PINS = 256
+
 enum PinDir {
     HAL_IN = 16
     HAL_OUT = 32
@@ -116,6 +134,27 @@ type PinInfo {
 @rt_safe "true"
 func pin_read(name: string) -> PinInfo
 ```
+
+### IDL Language Features (Implemented)
+
+| Feature | Syntax | Example |
+|---------|--------|---------|
+| Constants | `const NAME = N` | `const MAX_JOINTS = 16` |
+| Enums | `enum Name { A = 1, B = 2 }` | `enum PinDir { IN = 16 }` |
+| Types | `type Name { field: T }` | `type PinInfo { name: string }` |
+| Primitives | `bool`, `i8`-`i64`, `u8`-`u64`, `f32`, `f64`, `string` | |
+| Fixed arrays | `[N]T` or `[CONST]T` | `[16]f64`, `[MAX_JOINTS]f64` |
+| Slices | `[]T` | `[]PinInfo` |
+| Nullable | `T?` | `string?`, `PinInfo?` |
+| By-ref params | `byref name: T` | `byref joints: [16]f64` |
+| Functions | `func name(params) -> ReturnType` | `func forward(...) -> i32` |
+
+**Directives:**
+- `@api name` — API name (required)
+- `@version N` — API version (required)
+- `@prefix "str"` — C/REST prefix
+- `@rest_export true/false` — Enable REST exposure
+- `@rt_safe "true"` — Mark function as RT-safe
 
 ## Code Generation (gmicompile)
 
@@ -345,9 +384,11 @@ type APIMeta struct {
 
 // RegisteredAPI is one registered API instance in the registry.
 type RegisteredAPI struct {
-    Meta      *APIMeta       // generated — routing, dispatch, metadata
-    Instance  string         // "hal0" — unique instance name
-    Callbacks unsafe.Pointer // opaque — *hal_callbacks_t (cmod) or Go interface
+    APIName   string         // "tp" — API name from registration
+    Version   int            // API version from registration
+    Meta      *APIMeta       // optional — REST routing/dispatch (nil for pure C-to-C)
+    Instance  string         // "default" — unique instance name within an API
+    Callbacks unsafe.Pointer // opaque — *tp_callbacks_t (cmod) or Go interface
 }
 ```
 
@@ -394,11 +435,20 @@ var halMeta = &APIMeta{
 
 ```go
 // Register is called by generated code during module init.
-func Register(meta *APIMeta, instance string, callbacks unsafe.Pointer) error {
-    if registry.Has(instance) {
+// Only apiName, version, instance, and callbacks are required — all supplied
+// by the C module at runtime. If an APIMeta with matching name+version was
+// registered (e.g. via a generated Go package init()), it is automatically
+// attached for REST dispatch.
+func Register(apiName string, version int, instance string, callbacks unsafe.Pointer) error {
+    key := registryKey(apiName, instance)
+    if registry.Has(key) {
         return syscall.EEXIST
     }
-    registry.Put(instance, &RegisteredAPI{
+    // Attach REST metadata if available (optional — nil is fine for C-to-C)
+    meta := GetMeta(apiName, version)
+    registry.Put(key, &RegisteredAPI{
+        APIName:   apiName,
+        Version:   version,
         Meta:      meta,
         Instance:  instance,
         Callbacks: callbacks,
@@ -412,22 +462,23 @@ func Register(meta *APIMeta, instance string, callbacks unsafe.Pointer) error {
 ```go
 // GetAPI returns the callbacks pointer for direct inter-module calls.
 // For gomod clients — called during module init.
-func GetAPI(instance string, requiredVersion int) (unsafe.Pointer, error) {
-    api := registry.Get(instance)
+func GetAPI(apiName, instance string, requiredVersion int) (unsafe.Pointer, error) {
+    key := registryKey(apiName, instance)
+    api := registry.Get(key)
     if api == nil {
         return nil, syscall.ENOENT
     }
-    if api.Meta.Version != requiredVersion {
+    if api.Version != requiredVersion {
         return nil, syscall.EINVAL
     }
     // Return opaque callbacks pointer — client casts to concrete type
     return api.Callbacks, nil
 }
 
-// For cmod clients (exported via cgo) — called during module init:
-// void* gmi_get_api(const char *instance, int required_version);
+// For cmod clients — called during module init via gomc_api_t callback table:
+// void* get_api(void *ctx, const char *api_name, int version, const char *instance);
 // Returns NULL on not found or version mismatch.
-// The cmod casts the result to hal_callbacks_t* and calls members directly.
+// The cmod casts the result to kins_callbacks_t* and calls members directly.
 ```
 
 ### REST Dispatch (HTTP server)
@@ -555,36 +606,48 @@ func pinInfoCToGo(src *C.hal_pin_info_t) *PinInfo {
 ```
 src/gmi/
 ├── idl/                    # Interface definitions (.gmi files)
-│   ├── hal.gmi
-│   ├── halcmd.gmi
-│   ├── home.gmi
-│   ├── kins.gmi
-│   ├── mot.gmi
-│   ├── tp.gmi
+│   ├── hal.gmi             # HAL component API (not compilable, uses opaque ptrs)
+│   ├── halcmd.gmi          # HAL command API (@rest_export true)
+│   ├── home.gmi            # Homing API (19 callbacks)
+│   ├── kins.gmi            # Kinematics API (5 callbacks)
+│   ├── mot.gmi             # Motion reverse-callbacks (83 callbacks)
+│   ├── tp.gmi              # Trajectory planner API (29 callbacks)
 │   └── README.md
-├── codegen/                # Submakefile for gmicompile code generation
-│   └── Submakefile
-├── lib/                    # C runtime library (libgmi)
-│   ├── gmi.h
-│   ├── gmi_*.c/h
+├── lib/                    # C runtime library (libgmi) for REST clients
+│   ├── gmi.h               # Main include
+│   ├── gmi_http.c/h        # HTTP client (libcurl wrapper)
+│   ├── gmi_json.c/h        # JSON utilities (cJSON wrapper)
+│   ├── gmi_error.c/h       # Error codes (GMI_ERR_*)
+│   ├── gmi_types.c/h       # Type utilities
 │   └── Submakefile
 ├── DYNAMIC_API_DESIGN.md   # This document
 └── README.md
 
 src/launcher/
+├── cmd/
+│   └── gmicompile/         # Code generator CLI
+│       └── main.go
 ├── generated/              # Generated code (gitignored)
 │   └── gmi/
 │       ├── home/           # home_api.h, home_cgo.go
+│       ├── kins/           # kins_api.h, kins_cgo.go
 │       ├── mot/            # mot_api.h, mot_cgo.go
-│       ├── tp/             # tp_api.h, tp_cgo.go
-│       └── kins/           # kins_api.h, kins_cgo.go
-├── pkg/cmodule/            # cmod runtime headers (gomc_env.h, etc.)
+│       └── tp/             # tp_api.h, tp_cgo.go
 ├── internal/
-│   ├── gmicompile/         # Code generator (parses .gmi → C/Go)
-│   │   ├── ast/
-│   │   ├── parser/
-│   │   └── cgen/           # server.go, dispatch_c.go
-│   └── ...
+│   ├── apiserver/          # REST server (Step 1)
+│   │   ├── types.go        # DispatchFunc, FuncMeta, APIMeta, RegisteredAPI
+│   │   ├── registry.go     # Register(), GetAPI(), thread-safe map
+│   │   ├── server.go       # HTTP handler, path matching
+│   │   ├── *_test.go       # 37 tests
+│   │   └── directtest/     # cmod direct-call simulation tests
+│   └── gmicompile/         # Code generator (parses .gmi → C/Go)
+│       ├── ast/            # AST types
+│       ├── parser/         # IDL parser (8 tests)
+│       └── cgen/           # Code generators
+│           ├── server.go       # --server-c: C header generation
+│           ├── dispatch_c.go   # --server-c: Go cgo dispatch wrappers
+│           ├── server_go.go    # --server-go: Go server generation
+│           └── client.go       # --client-c: C REST client generation
 └── ...
 
 src/emc/kinematics/         # Kinematics modules (cmod .so plugins)
@@ -666,63 +729,67 @@ modules to self-contained cmods using the GMI dynamic API.
   (`emc/kinematics/`, `emc/tp/`, `emc/motion/`). Only the IDL definitions and
   runtime library need a dedicated `gmi/` directory.
 
-### Step 1: apiserver Package (pure Go, no cgo, no codegen)
+### Step 1: apiserver Package (COMPLETE)
 
 Foundation for everything else. Fully testable in isolation.
 
 **Deliverables:**
-- [ ] `types.go` — `DispatchFunc`, `FuncMeta`, `APIMeta`, `RegisteredAPI`
-- [ ] `registry.go` — `Register()`, `GetAPI()`, thread-safe instance map
-- [ ] `server.go` — generic HTTP handler, path matching, JSON error responses
+- [x] `types.go` — `DispatchFunc`, `FuncMeta`, `APIMeta`, `RegisteredAPI`
+- [x] `registry.go` — `Register()`, `GetAPI()`, thread-safe instance map
+- [x] `server.go` — generic HTTP handler, path matching, JSON error responses
 
-**Tests:**
-- [ ] Unit: registry Register/GetAPI, duplicate rejection, version mismatch
-- [ ] Unit: path matching (static, parameterized, method filtering)
-- [ ] Unit: dispatch with mock `DispatchFunc` (success, error, not found)
-- [ ] Integration: `httptest.Server` → register fake API → REST roundtrip → verify JSON
+**Tests:** 37 passing
+- [x] Unit: registry Register/GetAPI, duplicate rejection, version mismatch (9 tests)
+- [x] Unit: path matching (static, parameterized, wildcard, method filtering) (5 tests)
+- [x] Unit: dispatch with mock `DispatchFunc` (success, error, not found) (11 tests)
+- [x] Integration: `httptest.Server` → register fake API → REST roundtrip → verify JSON (8 tests)
+- [x] Direct call tests: cmod→cmod lookup and call simulation (4 tests)
 
 **No dependencies on:** gmicompile, cgo, generated code. Hand-written mock APIs only.
 
-### Step 2: gmicompile `--server-go` (gomod registration)
+### Step 2: gmicompile `--server-go` (COMPLETE)
 
 Generate Go code that plugs into the apiserver from Step 1.
 
 **Deliverables:**
-- [ ] Generate `APIMeta` literal with `FuncMeta` entries (including `Dispatch`)
-- [ ] Generate Go callbacks interface (e.g., `HalCallbacks`)
-- [ ] Generate Go dispatch wrappers (`DispatchFunc` per function)
-- [ ] Generate `Register*API()` wrapper calling `apiserver.Register()`
-- [ ] Generate Go struct types from IDL `type` declarations
+- [x] Generate `APIMeta` literal with `FuncMeta` entries (including `Dispatch`)
+- [x] Generate Go callbacks interface (e.g., `HalCallbacks`)
+- [x] Generate Go dispatch wrappers (`DispatchFunc` per function)
+- [x] Generate `Register*API()` wrapper calling `apiserver.Register()`
+- [x] Generate Go struct types from IDL `type` declarations
 
-**Tests:**
-- [ ] Unit: golden-file comparison of generated .go output vs expected
-- [ ] Integration: generate from test .gmi → compile → register → REST roundtrip
-- [ ] Integration: verify JSON request/response matches IDL types
+**Tests:** 3 passing
+- [x] Unit: golden-file comparison of generated .go output vs expected
+- [x] Unit: keyword escape handling (Go reserved words)
+- [x] Unit: non-REST API generation (no dispatch wrappers)
 
-### Step 3: gmicompile `--server-c` + cgo Bridge (cmod registration)
+### Step 3: gmicompile `--server-c` + cgo Bridge (COMPLETE)
 
 Generate C callbacks struct + Go dispatch wrappers that cross the cgo boundary.
 
 **Deliverables:**
 - [x] Generate C header (callbacks struct, register function, types)
 - [x] Generate Go dispatch wrappers (cgo: Go → C callback calls)
-- [ ] Generate Go↔C struct converters
-- [ ] Generate cgo-exported `Register()` callable from C
-- [ ] REST dispatch wrappers (JSON → Go → C → errno → JSON)
+- [x] Generate Go↔C struct converters (both directions)
+- [x] Generate cgo-exported `Register()` callable from C
+- [x] REST dispatch wrappers (JSON → Go → C → errno → JSON)
 
-**Tests:**
-- [ ] Unit: golden-file comparison of generated .h and .go output
-- [ ] Integration: C implementation → cgo register → REST roundtrip
-- [ ] Integration: verify errno → HTTP status mapping
+**Tests:** 5 passing
+- [x] Unit: golden-file comparison of generated .h and .go output
+- [x] Unit: cgo keyword field escaping (`type` → `_type`)
+- [x] Unit: void return functions, primitive return functions
 
-### Step 4: Client Generation (Go + C)
+**Generated files:** `kins_api.h` + `kins_cgo.go`, `tp_api.h` + `tp_cgo.go`,
+`home_api.h` + `home_cgo.go`, `mot_api.h` + `mot_cgo.go` (in `generated/gmi/`)
+
+### Step 4: Client Generation (PARTIAL)
 
 Enable inter-module calls (direct) and external REST clients.
 
 **Deliverables:**
 - [ ] `--client-go` — typed Go wrapper around `apiserver.GetAPI()` + type assertion
-- [x] `--client-c` internal — C header for cmod→cmod/gomod (direct callback)
-- [ ] `--client-c` REST — C REST client using libgmi (for external programs)
+- [x] `--client-c` internal — C header with `<api>_api_get()` for cmod→cmod/gomod (direct callback)
+- [x] `--client-c` REST — C REST client using libgmi (for external programs)
 
 **Tests:**
 - [ ] Unit: golden-file comparison of generated client code
@@ -731,7 +798,14 @@ Enable inter-module calls (direct) and external REST clients.
 - [x] Integration: cmod→cmod direct call (pure C function pointers) — motmod→tp, motmod→home
 - [ ] Integration: C REST client → HTTP server → cmod roundtrip
 
-### Step 5: Python Client Generation (`--client-py`)
+**Runtime library (libgmi):** Complete in `src/gmi/lib/`
+- `gmi.h` — main include
+- `gmi_http.c/h` — HTTP client (libcurl wrapper)
+- `gmi_json.c/h` — JSON utilities (cJSON wrapper)
+- `gmi_error.c/h` — error codes (GMI_ERR_*)
+- `gmi_types.c/h` — type utilities
+
+### Step 5: Python Client Generation (NOT STARTED)
 
 REST client for Python UIs (axis, gmoccapy, etc.).
 
@@ -744,7 +818,7 @@ REST client for Python UIs (axis, gmoccapy, etc.).
 - [ ] Unit: golden-file comparison of generated .py output
 - [ ] Integration: generated Python client → HTTP server → roundtrip (pytest)
 
-### Step 6: Polish
+### Step 6: Polish (NOT STARTED)
 - [ ] Error handling standardization
 - [ ] Logging/tracing
 - [ ] Performance optimization
@@ -764,12 +838,12 @@ REST client for Python UIs (axis, gmoccapy, etc.).
 API lookup happens during module initialization, not at function call time:
 
 ```c
-// In cmod init function:
-int my_module_init(void) {
+// In cmod init function (receives gomc_api_t* from launcher):
+int my_module_init(const gomc_api_t *api) {
     // Lookup happens here - fails fast if API unavailable or version mismatch
     // Returns opaque pointer, cast to typed callbacks struct
-    hal_api = (hal_callbacks_t *)gmi_get_api("hal0", HAL_API_VERSION);
-    if (!hal_api) {
+    kins_api = kins_api_get(api, "default");  // wrapper for api->get_api()
+    if (!kins_api) {
         return -ENOENT;  // Fail module load
     }
     
@@ -779,8 +853,8 @@ int my_module_init(void) {
 }
 
 // At runtime - direct call, no lookup, no dispatch table:
-hal_pin_info_t info;
-int rc = hal_api->pin_read("axis.0.pos-cmd", &info);
+kins_pose_t pose;
+int rc = kins_api->forward(joints, &pose, fflags, &iflags);
 ```
 
 **Benefits:**
@@ -793,9 +867,14 @@ int rc = hal_api->pin_read("axis.0.pos-cmd", &info);
 Exact version match required at lookup time:
 
 ```c
-// Client requests specific version
-// Returns opaque pointer (NULL on failure), cast to callbacks struct
-void *gmi_get_api(const char *instance, int required_version);
+// Generated wrapper in <api>_api.h calls through gomc_api_t:
+static inline const kins_callbacks_t *kins_api_get(
+    const gomc_api_t *api,
+    const char *instance_name)
+{
+    return (const kins_callbacks_t *)api->get_api(
+        api->ctx, "kins", 1, instance_name);
+}
 
 // Returns NULL if:
 // - Instance not found
