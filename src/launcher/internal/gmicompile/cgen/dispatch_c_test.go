@@ -78,11 +78,9 @@ func TestGenerateDispatchC(t *testing.T) {
 	assertContains(t, out, `import "C"`)
 
 	// ── Static call wrappers ──
-	assertContains(t, out, "static int call_testapi_list_items(testapi_list_items_fn fn,")
-	assertContains(t, out, "testapi_item_t * *out, size_t *out_len)")
-	assertContains(t, out, "static int call_testapi_get_item(testapi_get_item_fn fn,")
-	assertContains(t, out, "testapi_item_t *out)")
-	assertContains(t, out, "static int call_testapi_delete_item(testapi_delete_item_fn fn,")
+	assertContains(t, out, "static testapi_item_t * call_testapi_list_items(testapi_list_items_fn fn,")
+	assertContains(t, out, "static testapi_item_t call_testapi_get_item(testapi_get_item_fn fn,")
+	assertContains(t, out, "static void call_testapi_delete_item(testapi_delete_item_fn fn,")
 
 	// ── Go imports ──
 	assertContains(t, out, `"encoding/json"`)
@@ -231,9 +229,9 @@ func TestGenerateDispatchCVoidReturn(t *testing.T) {
 
 	out := buf.String()
 
-	// No out param in call wrapper
-	assertContains(t, out, "static int call_voidapi_do_action(voidapi_do_action_fn fn, int32_t value)")
-	assertContains(t, out, "return fn(value);")
+	// No out param in call wrapper — void return
+	assertContains(t, out, "static void call_voidapi_do_action(voidapi_do_action_fn fn, int32_t value)")
+	assertContains(t, out, "fn(value);")
 
 	// Dispatch function returns nil, nil
 	assertContains(t, out, "return nil, nil")
@@ -262,9 +260,8 @@ func TestGenerateDispatchCPrimitiveReturn(t *testing.T) {
 
 	out := buf.String()
 
-	// Primitive return: out param as int32_t *out
-	assertContains(t, out, "static int call_primapi_get_count(primapi_get_count_fn fn, int32_t *out)")
-	assertContains(t, out, "var out C.int32_t")
+	// Primitive return: direct return
+	assertContains(t, out, "static int32_t call_primapi_get_count(primapi_get_count_fn fn")
 	assertContains(t, out, "int32(out)")
 	assertContains(t, out, "Version:    2")
 }

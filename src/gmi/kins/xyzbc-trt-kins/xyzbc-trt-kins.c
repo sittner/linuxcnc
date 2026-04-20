@@ -33,7 +33,7 @@ static struct haldata *haldata;
 
 // ─── BC forward ───
 
-static int xyzbc_forward(const double joints[KINS_MAX_JOINTS],
+static int32_t xyzbc_forward(const double joints[KINS_MAX_JOINTS],
                          kins_pose_t *world)
 {
     int JX = g_map.principal[0], JY = g_map.principal[1];
@@ -75,7 +75,7 @@ static int xyzbc_forward(const double joints[KINS_MAX_JOINTS],
 
 // ─── BC inverse ───
 
-static int xyzbc_inverse(const kins_pose_t *world,
+static int32_t xyzbc_inverse(const kins_pose_t *world,
                          double joints[KINS_MAX_JOINTS])
 {
     int JA = g_map.principal[3];
@@ -120,35 +120,36 @@ static int xyzbc_inverse(const kins_pose_t *world,
 
 // ─── Dispatch ───
 
-static int dispatch_forward(
+static int32_t dispatch_forward(
     const double joints[KINS_MAX_JOINTS], kins_pose_t *world,
-    uint64_t fflags, uint64_t *iflags, int32_t *out)
+    uint64_t fflags, uint64_t *iflags)
 {
     (void)fflags; (void)iflags;
     switch (g_sw.current_type) {
-        case 0:  *out = xyzbc_forward(joints, world); return 0;
+        case 0:  return xyzbc_forward(joints, world);
         default: sk_identity_forward(&g_map, joints, world);
-                 *out = 0; return 0;
+                 return 0;
     }
 }
 
-static int dispatch_inverse(
+static int32_t dispatch_inverse(
     const kins_pose_t *world, double joints[KINS_MAX_JOINTS],
-    uint64_t iflags, uint64_t *fflags, int32_t *out)
+    uint64_t iflags, uint64_t *fflags)
 {
     (void)iflags; (void)fflags;
     switch (g_sw.current_type) {
-        case 0:  *out = xyzbc_inverse(world, joints); return 0;
+        case 0:  return xyzbc_inverse(world, joints);
         default: sk_identity_inverse(&g_map, world, joints);
-                 *out = 0; return 0;
+                 return 0;
     }
 }
 
-static int dispatch_type(kins_kinematics_type_t *out)
-    { *out = KINS_BOTH; return 0; }
-static int dispatch_switchable(int32_t *out) { *out = 1; return 0; }
-static int dispatch_switch(int32_t t, int32_t *out)
-    { *out = sk_switch_to(&g_sw, t); return 0; }
+static kins_kinematics_type_t dispatch_type(void) {
+    return KINS_BOTH;
+}
+static int32_t dispatch_switchable(void) { return 1; }
+static int32_t dispatch_switch(int32_t t)
+    { return sk_switch_to(&g_sw, t); }
 
 static kins_callbacks_t xyzbc_callbacks = {
     .forward    = dispatch_forward,

@@ -29,12 +29,11 @@ static void compute_j1_cartesian_location(double j0,
 
 // ─── Forward/Inverse kinematics ───
 
-static int scorbotkins_forward(
+static int32_t scorbotkins_forward(
     const double joints[KINS_MAX_JOINTS],
     kins_pose_t *world,
     uint64_t fflags,
-    uint64_t *iflags,
-    int32_t *out)
+    uint64_t *iflags)
 {
     (void)fflags; (void)iflags;
     double j1x, j1y, j1z;
@@ -61,16 +60,14 @@ static int scorbotkins_forward(
     world->b = joints[4];
     world->c = 0; world->u = 0; world->v = 0; world->w = 0;
 
-    *out = 0;
     return 0;
 }
 
-static int scorbotkins_inverse(
+static int32_t scorbotkins_inverse(
     const kins_pose_t *world,
     double joints[KINS_MAX_JOINTS],
     uint64_t iflags,
-    uint64_t *fflags,
-    int32_t *out)
+    uint64_t *fflags)
 {
     (void)iflags; (void)fflags;
     double distance_to_cp, distance_to_center;
@@ -101,17 +98,15 @@ static int scorbotkins_inverse(
     joints[3] = world->a;
     joints[4] = world->b;
 
-    *out = 0;
     return 0;
 }
 
-static int scorbotkins_type(kins_kinematics_type_t *out) {
-    *out = KINS_BOTH;
-    return 0;
+static kins_kinematics_type_t scorbotkins_type(void) {
+    return KINS_BOTH;
 }
 
-static int scorbotkins_switchable(int32_t *out) { *out = 0; return 0; }
-static int scorbotkins_switch(int32_t t, int32_t *out) { (void)t; *out = -1; return 0; }
+static int32_t scorbotkins_switchable(void) { return 0; }
+static int32_t scorbotkins_switch(int32_t t) { (void)t; return -1; }
 
 static kins_callbacks_t scorbotkins_callbacks = {
     .forward    = scorbotkins_forward,

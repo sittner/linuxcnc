@@ -8,12 +8,11 @@
 
 // ─── Forward/Inverse kinematics ───
 
-static int corexykins_forward(
+static int32_t corexykins_forward(
     const double joints[KINS_MAX_JOINTS],
     kins_pose_t *world,
     uint64_t fflags,
-    uint64_t *iflags,
-    int32_t *out)
+    uint64_t *iflags)
 {
     (void)fflags; (void)iflags;
     world->x = 0.5 * (joints[0] + joints[1]);
@@ -25,16 +24,14 @@ static int corexykins_forward(
     world->u = joints[6];
     world->v = joints[7];
     world->w = joints[8];
-    *out = 0;
     return 0;
 }
 
-static int corexykins_inverse(
+static int32_t corexykins_inverse(
     const kins_pose_t *world,
     double joints[KINS_MAX_JOINTS],
     uint64_t iflags,
-    uint64_t *fflags,
-    int32_t *out)
+    uint64_t *fflags)
 {
     (void)iflags; (void)fflags;
     joints[0] = world->x + world->y;
@@ -46,17 +43,15 @@ static int corexykins_inverse(
     joints[6] = world->u;
     joints[7] = world->v;
     joints[8] = world->w;
-    *out = 0;
     return 0;
 }
 
-static int corexykins_type(kins_kinematics_type_t *out) {
-    *out = KINS_BOTH;
-    return 0;
+static kins_kinematics_type_t corexykins_type(void) {
+    return KINS_BOTH;
 }
 
-static int corexykins_switchable(int32_t *out) { *out = 0; return 0; }
-static int corexykins_switch(int32_t t, int32_t *out) { (void)t; *out = -1; return 0; }
+static int32_t corexykins_switchable(void) { return 0; }
+static int32_t corexykins_switch(int32_t t) { (void)t; return -1; }
 
 static kins_callbacks_t corexykins_callbacks = {
     .forward    = corexykins_forward,

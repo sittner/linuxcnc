@@ -79,6 +79,12 @@ func (g *dispatchCGen) emitCallWrapper(fn ast.Func) {
 	wrapperName := fmt.Sprintf("call_%s_%s", apiName, fnSnake)
 	fnType := fmt.Sprintf("%s_%s_fn", apiName, fnSnake)
 
+	// Determine return type: direct return or void
+	retCType := "void"
+	if fn.Return != nil {
+		retCType = toCTypeForAPI(apiName, *fn.Return)
+	}
+
 	// Build parameter list: fn pointer + same params as callback typedef
 	params := []string{fmt.Sprintf("%s fn", fnType)}
 	args := []string{}
@@ -93,25 +99,12 @@ func (g *dispatchCGen) emitCallWrapper(fn ast.Func) {
 		}
 	}
 
+	g.printf("static %s %s(%s) {\n", retCType, wrapperName, strings.Join(params, ", "))
 	if fn.Return != nil {
-		retType := toCTypeForAPI(g.api.Name, *fn.Return)
-		if fn.Return.Kind == ast.TypeSlice {
-			params = append(params, fmt.Sprintf("%s *out", retType))
-			params = append(params, "size_t *out_len")
-			args = append(args, "out", "out_len")
-		} else if fn.Return.Kind == ast.TypeArray {
-			elemType := toCTypeForAPI(g.api.Name, *fn.Return.Elem)
-			sizeStr := cgoArraySizeStr(apiName, *fn.Return)
-			params = append(params, fmt.Sprintf("%s out[%s]", elemType, sizeStr))
-			args = append(args, "out")
-		} else {
-			params = append(params, fmt.Sprintf("%s *out", retType))
-			args = append(args, "out")
-		}
+		g.printf("    return fn(%s);\n", strings.Join(args, ", "))
+	} else {
+		g.printf("    fn(%s);\n", strings.Join(args, ", "))
 	}
-
-	g.printf("static int %s(%s) {\n", wrapperName, strings.Join(params, ", "))
-	g.printf("    return fn(%s);\n", strings.Join(args, ", "))
 	g.printf("}\n\n")
 }
 
@@ -465,26 +458,12 @@ func (g *dispatchCGen) emitOneDispatch(fn ast.Func) {
 		callArgs = append(callArgs, g.paramCallArg(cVar, p)...)
 	}
 
-	// Add out params for return type
+	// Call C wrapper — direct return (no error code, no out-param)
 	if fn.Return != nil {
-		g.emitReturnSetup(fn)
-		if fn.Return.Kind == ast.TypeSlice {
-			callArgs = append(callArgs, "&outPtr", "&outLen")
-		} else {
-			callArgs = append(callArgs, "&out")
-		}
-	}
-
-	// Call C wrapper
-	g.printf("\trc := %s(%s)\n", wrapperName, strings.Join(callArgs, ", "))
-	g.printf("\tif rc != 0 {\n")
-	g.printf("\t\treturn nil, syscall.Errno(-rc)\n")
-	g.printf("\t}\n")
-
-	// Convert C result → Go and marshal
-	if fn.Return != nil {
+		g.printf("\tout := %s(%s)\n", wrapperName, strings.Join(callArgs, ", "))
 		g.emitReturnConvert(fn)
 	} else {
+		g.printf("\t%s(%s)\n", wrapperName, strings.Join(callArgs, ", "))
 		g.printf("\treturn nil, nil\n")
 	}
 
@@ -589,16 +568,8 @@ func (g *dispatchCGen) paramCallArg(cVar string, p ast.Param) []string {
 	return []string{cVar}
 }
 
+// emitReturnSetup is unused — kept as placeholder for slice-return APIs.
 func (g *dispatchCGen) emitReturnSetup(fn ast.Func) {
-	ret := fn.Return
-	if ret.Kind == ast.TypeSlice {
-		elemCType := cTypeForAPICgo(g.api.Name, *ret.Elem)
-		g.printf("\tvar outPtr *%s\n", elemCType)
-		g.printf("\tvar outLen C.size_t\n")
-	} else {
-		cType := cTypeForAPICgo(g.api.Name, *ret)
-		g.printf("\tvar out %s\n", cType)
-	}
 }
 
 func (g *dispatchCGen) emitReturnConvert(fn ast.Func) {

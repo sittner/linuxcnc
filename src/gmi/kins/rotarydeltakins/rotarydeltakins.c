@@ -38,11 +38,10 @@ static struct haldata *haldata;
 
 // ─── Forward kinematics ───
 
-static int rdelta_forward(
+static int32_t rdelta_forward(
     const double joints[KINS_MAX_JOINTS],
     kins_pose_t *world,
-    uint64_t fflags, uint64_t *iflags,
-    int32_t *out)
+    uint64_t fflags, uint64_t *iflags)
 {
     (void)fflags; (void)iflags;
     set_geometry(*haldata->pfr, *haldata->tl, *haldata->sl, *haldata->fr);
@@ -78,7 +77,7 @@ static int rdelta_forward(
                sq(denom) * (sq(z1) - sq(shinlength));
 
     double d = sq(b) - 4.0 * a * c;
-    if (d < 0) { *out = -1; return 0; }
+    if (d < 0) { return -1; }
 
     world->z = (-b - sqrt(d)) / (2.0 * a);
     world->x = (a1 * world->z + b1) / denom;
@@ -86,7 +85,6 @@ static int rdelta_forward(
     world->a = joints[3]; world->b = joints[4]; world->c = joints[5];
     world->u = joints[6]; world->v = joints[7]; world->w = joints[8];
 
-    *out = 0;
     return 0;
 }
 
@@ -112,41 +110,40 @@ static int inverse_j0(double x, double y, double z, double *theta) {
 
 // ─── Inverse kinematics ───
 
-static int rdelta_inverse(
+static int32_t rdelta_inverse(
     const kins_pose_t *world,
     double joints[KINS_MAX_JOINTS],
-    uint64_t iflags, uint64_t *fflags,
-    int32_t *out)
+    uint64_t iflags, uint64_t *fflags)
 {
     (void)iflags; (void)fflags;
     set_geometry(*haldata->pfr, *haldata->tl, *haldata->sl, *haldata->fr);
 
     double xr, yr;
     if (inverse_j0(world->x, world->y, world->z, &joints[0]))
-        { *out = -1; return 0; }
+        { return -1; }
 
     xr = world->x; yr = world->y;
     rotate_xy(&xr, &yr, -2.0 * M_PI / 3.0);
     if (inverse_j0(xr, yr, world->z, &joints[1]))
-        { *out = -1; return 0; }
+        { return -1; }
 
     xr = world->x; yr = world->y;
     rotate_xy(&xr, &yr, 2.0 * M_PI / 3.0);
     if (inverse_j0(xr, yr, world->z, &joints[2]))
-        { *out = -1; return 0; }
+        { return -1; }
 
     joints[3] = world->a; joints[4] = world->b; joints[5] = world->c;
     joints[6] = world->u; joints[7] = world->v; joints[8] = world->w;
 
-    *out = 0;
     return 0;
 }
 
-static int rdelta_type(kins_kinematics_type_t *out)
-    { *out = KINS_BOTH; return 0; }
-static int rdelta_switchable(int32_t *out) { *out = 0; return 0; }
-static int rdelta_switch(int32_t t, int32_t *out)
-    { (void)t; *out = -1; return 0; }
+static kins_kinematics_type_t rdelta_type(void) {
+    return KINS_BOTH;
+}
+static int32_t rdelta_switchable(void) { return 0; }
+static int32_t rdelta_switch(int32_t t)
+    { (void)t; return -1; }
 
 static kins_callbacks_t rdelta_callbacks = {
     .forward    = rdelta_forward,

@@ -214,11 +214,10 @@ static int InvKins(const double *coord, double *struts) {
 
 // ─── Forward kinematics ───
 
-static int pentakins_forward(
+static int32_t pentakins_forward(
     const double joints[KINS_MAX_JOINTS],
     kins_pose_t *world,
-    uint64_t fflags, uint64_t *iflags,
-    int32_t *out)
+    uint64_t fflags, uint64_t *iflags)
 {
     (void)fflags; (void)iflags;
 
@@ -233,7 +232,7 @@ static int pentakins_forward(
     read_hal_pins();
 
     for (int i = 0; i < NUM_STRUTS; i++)
-        if (joints[i] <= 0.0) { *out = -1; return 0; }
+        if (joints[i] <= 0.0) { return -1; }
 
     coord[0] = world->x; coord[1] = world->y; coord[2] = world->z;
     coord[3] = world->a * M_PI / 180.0;
@@ -242,11 +241,11 @@ static int pentakins_forward(
     while (iterate) {
         if (conv_err > *haldata->max_error ||
             conv_err < -*haldata->max_error)
-            { *out = -2; return 0; }
+            { return -2; }
 
         iteration++;
         if (iteration > (int)*haldata->iter_limit)
-            { *out = -5; return 0; }
+            { return -5; }
 
         InvKins(coord, InvKinStrutLength);
 
@@ -284,17 +283,15 @@ static int pentakins_forward(
     if (iteration > (int)*haldata->max_iter)
         *haldata->max_iter = iteration;
 
-    *out = 0;
     return 0;
 }
 
 // ─── Inverse kinematics ───
 
-static int pentakins_inverse(
+static int32_t pentakins_inverse(
     const kins_pose_t *world,
     double joints[KINS_MAX_JOINTS],
-    uint64_t iflags, uint64_t *fflags,
-    int32_t *out)
+    uint64_t iflags, uint64_t *fflags)
 {
     (void)iflags; (void)fflags;
     double coord[NUM_STRUTS];
@@ -305,16 +302,16 @@ static int pentakins_inverse(
     coord[3] = world->a * M_PI / 180.0;
     coord[4] = world->b * M_PI / 180.0;
 
-    if (InvKins(coord, joints) != 0) { *out = -1; return 0; }
-    *out = 0;
+    if (InvKins(coord, joints) != 0) { return -1; }
     return 0;
 }
 
-static int pentakins_type(kins_kinematics_type_t *out)
-    { *out = KINS_BOTH; return 0; }
-static int pentakins_switchable(int32_t *out) { *out = 0; return 0; }
-static int pentakins_switch(int32_t t, int32_t *out)
-    { (void)t; *out = -1; return 0; }
+static kins_kinematics_type_t pentakins_type(void) {
+    return KINS_BOTH;
+}
+static int32_t pentakins_switchable(void) { return 0; }
+static int32_t pentakins_switch(int32_t t)
+    { (void)t; return -1; }
 
 static kins_callbacks_t pentakins_callbacks = {
     .forward    = pentakins_forward,

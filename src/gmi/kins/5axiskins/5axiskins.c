@@ -42,7 +42,7 @@ static vec3_t s2r(double r, double t, double p) {
 
 // ─── Module-specific forward/inverse ───
 
-static int fiveaxis_forward(const double joints[KINS_MAX_JOINTS],
+static int32_t fiveaxis_forward(const double joints[KINS_MAX_JOINTS],
                             kins_pose_t *world)
 {
     int JX = g_map.principal[0], JY = g_map.principal[1];
@@ -66,7 +66,7 @@ static int fiveaxis_forward(const double joints[KINS_MAX_JOINTS],
     return 0;
 }
 
-static int fiveaxis_inverse(const kins_pose_t *world,
+static int32_t fiveaxis_inverse(const kins_pose_t *world,
                             double joints[KINS_MAX_JOINTS])
 {
     vec3_t r = s2r(*(haldata->pivot_length) + world->w,
@@ -91,11 +91,10 @@ static int fiveaxis_inverse(const kins_pose_t *world,
 
 // ─── kins_callbacks_t dispatch ───
 
-static int dispatch_forward(
+static int32_t dispatch_forward(
     const double joints[KINS_MAX_JOINTS],
     kins_pose_t *world,
-    uint64_t fflags, uint64_t *iflags,
-    int32_t *out)
+    uint64_t fflags, uint64_t *iflags)
 {
     (void)fflags; (void)iflags;
     int rc;
@@ -103,15 +102,13 @@ static int dispatch_forward(
         case 0:  rc = fiveaxis_forward(joints, world); break;
         default: sk_identity_forward(&g_map, joints, world); rc = 0; break;
     }
-    *out = rc;
-    return 0;
+    return rc;
 }
 
-static int dispatch_inverse(
+static int32_t dispatch_inverse(
     const kins_pose_t *world,
     double joints[KINS_MAX_JOINTS],
-    uint64_t iflags, uint64_t *fflags,
-    int32_t *out)
+    uint64_t iflags, uint64_t *fflags)
 {
     (void)iflags; (void)fflags;
     int rc;
@@ -119,15 +116,15 @@ static int dispatch_inverse(
         case 0:  rc = fiveaxis_inverse(world, joints); break;
         default: sk_identity_inverse(&g_map, world, joints); rc = 0; break;
     }
-    *out = rc;
-    return 0;
+    return rc;
 }
 
-static int dispatch_type(kins_kinematics_type_t *out)
-    { *out = KINS_BOTH; return 0; }
-static int dispatch_switchable(int32_t *out) { *out = 1; return 0; }
-static int dispatch_switch(int32_t t, int32_t *out)
-    { *out = sk_switch_to(&g_sw, t); return 0; }
+static kins_kinematics_type_t dispatch_type(void) {
+    return KINS_BOTH;
+}
+static int32_t dispatch_switchable(void) { return 1; }
+static int32_t dispatch_switch(int32_t t)
+    { return sk_switch_to(&g_sw, t); }
 
 static kins_callbacks_t fiveaxis_callbacks = {
     .forward    = dispatch_forward,

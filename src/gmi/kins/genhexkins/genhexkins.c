@@ -233,7 +233,7 @@ static int StrutLengthCorrection(const PmCartesian *StrutVectUnit,
 
 // ─── Forward kinematics (Newton-Raphson iterative) ───
 
-static int genhex_forward(const double *joints, kins_pose_t *pos)
+static int32_t genhex_forward(const double *joints, kins_pose_t *pos)
 {
     PmCartesian aw, InvKinStrutVect, InvKinStrutVectUnit;
     PmCartesian q_trans, RMatrix_a, RMatrix_a_cross_Strut;
@@ -350,7 +350,7 @@ static int genhex_forward(const double *joints, kins_pose_t *pos)
 
 // ─── Inverse kinematics (closed-form) ───
 
-static int genhex_inverse(const kins_pose_t *pos, double *joints)
+static int32_t genhex_inverse(const kins_pose_t *pos, double *joints)
 {
     PmCartesian aw, temp;
     PmCartesian InvKinStrutVect, InvKinStrutVectUnit;
@@ -392,37 +392,38 @@ static int genhex_inverse(const kins_pose_t *pos, double *joints)
 
 // ─── Dispatch (switchkins) ───
 
-static int dispatch_forward(
+static int32_t dispatch_forward(
     const double joints[KINS_MAX_JOINTS], kins_pose_t *pos,
-    uint64_t fflags, uint64_t *iflags, int32_t *out)
+    uint64_t fflags, uint64_t *iflags)
 {
     (void)fflags; (void)iflags;
     switch (g_sw.current_type) {
-    case 0:  *out = genhex_forward(joints, pos); return 0;
+    case 0:  return genhex_forward(joints, pos);
     case 1:  sk_identity_forward(&g_map, joints, pos);
-             *out = 0; return 0;
+             return 0;
     default: return -1;
     }
 }
 
-static int dispatch_inverse(
+static int32_t dispatch_inverse(
     const kins_pose_t *pos, double joints[KINS_MAX_JOINTS],
-    uint64_t iflags, uint64_t *fflags, int32_t *out)
+    uint64_t iflags, uint64_t *fflags)
 {
     (void)iflags; (void)fflags;
     switch (g_sw.current_type) {
-    case 0:  *out = genhex_inverse(pos, joints); return 0;
+    case 0:  return genhex_inverse(pos, joints);
     case 1:  sk_identity_inverse(&g_map, pos, joints);
-             *out = 0; return 0;
+             return 0;
     default: return -1;
     }
 }
 
-static int dispatch_type(kins_kinematics_type_t *out)
-    { *out = KINS_BOTH; return 0; }
-static int dispatch_switchable(int32_t *out) { *out = 1; return 0; }
-static int dispatch_switch(int32_t t, int32_t *out)
-    { *out = sk_switch_to(&g_sw, t); return 0; }
+static kins_kinematics_type_t dispatch_type(void) {
+    return KINS_BOTH;
+}
+static int32_t dispatch_switchable(void) { return 1; }
+static int32_t dispatch_switch(int32_t t)
+    { return sk_switch_to(&g_sw, t); }
 
 static kins_callbacks_t genhex_callbacks = {
     .forward    = dispatch_forward,

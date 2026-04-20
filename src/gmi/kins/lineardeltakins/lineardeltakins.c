@@ -44,11 +44,10 @@ static struct haldata *haldata;
 
 // ─── Forward kinematics ───
 
-static int lineardelta_forward(
+static int32_t lineardelta_forward(
     const double joints[KINS_MAX_JOINTS],
     kins_pose_t *world,
-    uint64_t fflags, uint64_t *iflags,
-    int32_t *out)
+    uint64_t fflags, uint64_t *iflags)
 {
     (void)fflags; (void)iflags;
     set_geometry(*haldata->r, *haldata->l);
@@ -72,7 +71,7 @@ static int lineardelta_forward(
                b1 * b1 + den * den * (q1 * q1 - geo_L * geo_L);
 
     double discr = b * b - 4.0 * a * c;
-    if (discr < 0) { *out = -1; return 0; }
+    if (discr < 0) { return -1; }
 
     double z = -0.5 * (b + sqrt(discr)) / a;
     world->z = z;
@@ -81,17 +80,15 @@ static int lineardelta_forward(
     world->a = joints[3]; world->b = joints[4]; world->c = joints[5];
     world->u = joints[6]; world->v = joints[7]; world->w = joints[8];
 
-    *out = 0;
     return 0;
 }
 
 // ─── Inverse kinematics ───
 
-static int lineardelta_inverse(
+static int32_t lineardelta_inverse(
     const kins_pose_t *world,
     double joints[KINS_MAX_JOINTS],
-    uint64_t iflags, uint64_t *fflags,
-    int32_t *out)
+    uint64_t iflags, uint64_t *fflags)
 {
     (void)iflags; (void)fflags;
     set_geometry(*haldata->r, *haldata->l);
@@ -104,15 +101,15 @@ static int lineardelta_inverse(
     joints[6] = world->u; joints[7] = world->v; joints[8] = world->w;
 
     int bad = isnan(joints[0]) || isnan(joints[1]) || isnan(joints[2]);
-    *out = bad ? -1 : 0;
-    return 0;
+    return bad ? -1 : 0;
 }
 
-static int lineardelta_type(kins_kinematics_type_t *out)
-    { *out = KINS_BOTH; return 0; }
-static int lineardelta_switchable(int32_t *out) { *out = 0; return 0; }
-static int lineardelta_switch(int32_t t, int32_t *out)
-    { (void)t; *out = -1; return 0; }
+static kins_kinematics_type_t lineardelta_type(void) {
+    return KINS_BOTH;
+}
+static int32_t lineardelta_switchable(void) { return 0; }
+static int32_t lineardelta_switch(int32_t t)
+    { (void)t; return -1; }
 
 static kins_callbacks_t lineardelta_callbacks = {
     .forward    = lineardelta_forward,

@@ -9,21 +9,21 @@ package kinstest
 // #include "gomc_env.h"
 //
 // // Helpers to call through function pointers (cgo can't do it directly).
-// static int call_forward(kins_forward_fn fn,
+// static int32_t call_forward(kins_forward_fn fn,
 //     const double joints[KINS_MAX_JOINTS], kins_pose_t *world,
-//     uint64_t fflags, uint64_t *iflags, int32_t *out) {
-//     return fn(joints, world, fflags, iflags, out);
+//     uint64_t fflags, uint64_t *iflags) {
+//     return fn(joints, world, fflags, iflags);
 // }
-// static int call_inverse(kins_inverse_fn fn,
+// static int32_t call_inverse(kins_inverse_fn fn,
 //     const kins_pose_t *world, double joints[KINS_MAX_JOINTS],
-//     uint64_t iflags, uint64_t *fflags, int32_t *out) {
-//     return fn(world, joints, iflags, fflags, out);
+//     uint64_t iflags, uint64_t *fflags) {
+//     return fn(world, joints, iflags, fflags);
 // }
-// static int call_type(kins_type_fn fn, kins_kinematics_type_t *out) {
-//     return fn(out);
+// static kins_kinematics_type_t call_type(kins_type_fn fn) {
+//     return fn();
 // }
-// static int call_switchable(kins_switchable_fn fn, int32_t *out) {
-//     return fn(out);
+// static int32_t call_switchable(kins_switchable_fn fn) {
+//     return fn();
 // }
 //
 // // --- Stub sub-APIs for testing ---
@@ -215,8 +215,7 @@ func callForward(cbs *C.kins_callbacks_t, joints [16]float64) (C.kins_pose_t, in
 	}
 	var world C.kins_pose_t
 	var fflags, iflags C.uint64_t
-	var out C.int32_t
-	C.call_forward(cbs.forward, &cJoints[0], &world, fflags, &iflags, &out)
+	out := C.call_forward(cbs.forward, &cJoints[0], &world, fflags, &iflags)
 	return world, int32(out)
 }
 
@@ -224,8 +223,7 @@ func callForward(cbs *C.kins_callbacks_t, joints [16]float64) (C.kins_pose_t, in
 func callInverse(cbs *C.kins_callbacks_t, world C.kins_pose_t) ([16]float64, int32) {
 	var cJoints [16]C.double
 	var iflags, fflags C.uint64_t
-	var out C.int32_t
-	C.call_inverse(cbs.inverse, &world, &cJoints[0], iflags, &fflags, &out)
+	out := C.call_inverse(cbs.inverse, &world, &cJoints[0], iflags, &fflags)
 	var joints [16]float64
 	for i := 0; i < 16; i++ {
 		joints[i] = float64(cJoints[i])
@@ -235,14 +233,12 @@ func callInverse(cbs *C.kins_callbacks_t, world C.kins_pose_t) ([16]float64, int
 
 // callType retrieves the kinematics type.
 func callType(cbs *C.kins_callbacks_t) (int, int32) {
-	var out C.kins_kinematics_type_t
-	C.call_type(cbs._type, &out)
+	out := C.call_type(cbs._type)
 	return int(out), 0
 }
 
 // callSwitchable checks if kinematics are switchable.
 func callSwitchable(cbs *C.kins_callbacks_t) int32 {
-	var out C.int32_t
-	C.call_switchable(cbs.switchable, &out)
+	out := C.call_switchable(cbs.switchable)
 	return int32(out)
 }

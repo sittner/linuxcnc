@@ -183,30 +183,17 @@ func (g *serverGen) emitCallbackTypedefs() {
 	}
 	g.printf("// ─── Callback Typedefs ───\n\n")
 	for _, fn := range g.api.Funcs {
-		g.printf("typedef int (*%s_%s_fn)(\n", g.api.Name, toSnakeCase(fn.Name))
+		// Direct return: function returns the declared type (or void).
+		retCType := "void"
+		if fn.Return != nil {
+			retCType = g.toCType(*fn.Return)
+		}
+		g.printf("typedef %s (*%s_%s_fn)(\n", retCType, g.api.Name, toSnakeCase(fn.Name))
 
-		// Parameters
+		// Parameters (no out-param appended)
 		params := []string{}
 		for _, p := range fn.Params {
 			params = append(params, g.paramDecl(p))
-		}
-
-		// Return value as out parameter
-		if fn.Return != nil {
-			retType := g.toCType(*fn.Return)
-			if fn.Return.Kind == ast.TypeSlice {
-				// Slice: pointer + out length
-				params = append(params, fmt.Sprintf("%s *out", retType))
-				params = append(params, "size_t *out_len")
-			} else if fn.Return.Kind == ast.TypeArray {
-				elemType := g.toCType(*fn.Return.Elem)
-				sizeStr := g.arraySizeStr(*fn.Return)
-				params = append(params, fmt.Sprintf("%s out[%s]", elemType, sizeStr))
-			} else if fn.Return.Kind == ast.TypeNamed {
-				params = append(params, fmt.Sprintf("%s *out", retType))
-			} else {
-				params = append(params, fmt.Sprintf("%s *out", retType))
-			}
 		}
 
 		if len(params) == 0 {

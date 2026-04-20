@@ -25,9 +25,6 @@ static const mot_callbacks_t *_mot;
 static int all_joints;     // motmod num_joints (typ ini file: [KINS]JOINTS)
 static int extra_joints;   // motmod num_extrajoints
 
-/* Compact getter macros — eliminate GCC statement-expression boilerplate */
-#define GET_INT(fn, j) ({ int32_t _r; _mot->fn((j), &_r); _r; })
-#define GET_DBL(fn, j) ({ double  _r; _mot->fn((j), &_r); _r; })
 
 #define ABS(x) (((x) < 0) ? -(x) : (x))
 
@@ -158,18 +155,18 @@ static void home_start_move(int jno, double vel)
     double joint_range;
 
     /* set up a long move */
-    { double __max, __min; _mot->joint_get_max_pos_limit(jno, &__max); _mot->joint_get_min_pos_limit(jno, &__min); joint_range = __max - __min; }
+    joint_range = _mot->joint_get_max_pos_limit(jno) - _mot->joint_get_min_pos_limit(jno);
     if (vel > 0.0) {
-        { double __pc; _mot->joint_get_pos_cmd(jno, &__pc); _mot->joint_set_free_tp_pos_cmd(jno, __pc + 2.0 * joint_range); }
+        _mot->joint_set_free_tp_pos_cmd(jno, _mot->joint_get_pos_cmd(jno) + 2.0 * joint_range);
     } else {
-        { double __pc; _mot->joint_get_pos_cmd(jno, &__pc); _mot->joint_set_free_tp_pos_cmd(jno, __pc - 2.0 * joint_range); }
+        _mot->joint_set_free_tp_pos_cmd(jno, _mot->joint_get_pos_cmd(jno) - 2.0 * joint_range);
     }
-    { double __vl; _mot->joint_get_vel_limit(jno, &__vl); if (fabs(vel) < __vl) {
+    if (fabs(vel) < _mot->joint_get_vel_limit(jno)) {
         _mot->joint_set_free_tp_max_vel(jno, fabs(vel));
     } else {
         /* clamp on max vel for this joint */
-        _mot->joint_set_free_tp_max_vel(jno, __vl);
-    } }
+        _mot->joint_set_free_tp_max_vel(jno, _mot->joint_get_vel_limit(jno));
+    }
     /* start the move */
     _mot->joint_set_free_tp_enable(jno, 1);
 } // home_start_move()
@@ -182,7 +179,7 @@ static void home_start_move(int jno, double vel)
 static bool home_do_moving_checks(int jno)
 {
     /* check for limit switches */
-    if ( GET_INT(joint_get_on_pos_limit, jno) ||  GET_INT(joint_get_on_neg_limit, jno)) {
+    if ( _mot->joint_get_on_pos_limit(jno) ||  _mot->joint_get_on_neg_limit(jno)) {
         /* on limit, check to see if we should trip */
         if (!(H[jno].home_flags & HOME_IGNORE_LIMITS)) {
             /* not ignoring limits, time to quit */
@@ -192,7 +189,7 @@ static bool home_do_moving_checks(int jno)
         }
     }
     /* check for reached end of move */
-    if (! GET_INT(joint_get_free_tp_active, jno)) {
+    if (! _mot->joint_get_free_tp_active(jno)) {
         /* reached end of move without hitting switch */
          _mot->joint_set_free_tp_enable(jno, 0);
         rtapi_print_msg(RTAPI_MSG_ERR,_("j%d end of move in home state %d"),jno, H[jno].home_state);
@@ -292,13 +289,13 @@ static void set_all_unhomed(int unhome_method, motion_state_t motstate)
      * but, let's only report the first error.  There might be several,
      * for instance if a homing sequence is running. */
     for (jno = 0; jno < all_joints; jno++) {
-        if(GET_INT(joint_get_active_flag, jno)) {
+        if(_mot->joint_get_active_flag(jno)) {
             if (get_homing(jno)) {
                 rtapi_print_msg(RTAPI_MSG_ERR,
                      _("Cannot unhome while homing, joint %d"), jno);
                 return;
             }
-            if (!GET_INT(joint_get_inpos_flag, jno)) {
+            if (!_mot->joint_get_inpos_flag(jno)) {
                 rtapi_print_msg(RTAPI_MSG_ERR,
                      _("Cannot unhome while moving, joint %d"), jno);
                 return;
@@ -313,7 +310,7 @@ static void set_all_unhomed(int unhome_method, motion_state_t motstate)
     }
     /* we made it through the checks, so unhome them all per unhome_method */
     for (jno = 0; jno < all_joints; jno++) {
-        if(GET_INT(joint_get_active_flag, jno)) {
+        if(_mot->joint_get_active_flag(jno)) {
             if (     (unhome_method == -1)
                 || ( (unhome_method == -2) && (H[jno].volatile_home) )
                ) {
@@ -574,13 +571,13 @@ static void base_set_unhomed(int jno, motion_state_t motstate) {
              _("Cannot unhome extrajoint <%d> with motion enabled\n"), jno);
         return;
     }
-    if(GET_INT(joint_get_active_flag, jno) ) {
+    if(_mot->joint_get_active_flag(jno) ) {
         if (get_homing(jno) ) {
             rtapi_print_msg(RTAPI_MSG_ERR,
                  _("Cannot unhome while homing, joint %d\n"), jno);
             return;
         }
-        if (!GET_INT(joint_get_inpos_flag, jno) ) {
+        if (!_mot->joint_get_inpos_flag(jno) ) {
             rtapi_print_msg(RTAPI_MSG_ERR,
                  _("Cannot unhome while moving, joint %d\n"), jno);
             return;
@@ -630,7 +627,7 @@ static bool base_get_allhomed(void) {
     int joint_num;
 
     for (joint_num = 0; joint_num < all_joints; joint_num++) {
-        if (!GET_INT(joint_get_active_flag, joint_num)) {
+        if (!_mot->joint_get_active_flag(joint_num)) {
             /* if joint is not active, don't even look at its limits */
             continue;
         }
@@ -784,7 +781,7 @@ static int base_1joint_state_machine(int joint_num)
         case HOME_UNLOCK_WAIT:
             // if not yet unlocked, continue waiting
             if ((H[joint_num].home_flags & HOME_UNLOCK_FIRST) &&
-                !({ int32_t __ru; _mot->get_rotary_unlock(joint_num, &__ru); __ru; })) break;
+                !_mot->get_rotary_unlock(joint_num)) break;
 
             // either we got here without an unlock needed, or the
             // unlock is now complete.
@@ -820,7 +817,7 @@ static int base_1joint_state_machine(int joint_num)
                location where the home switch is already tripped. It
                starts a move away from the switch. */
             /* is the joint still moving? */
-            if (GET_INT(joint_get_free_tp_active, joint_num)) {
+            if (_mot->joint_get_free_tp_active(joint_num)) {
                 /* yes, reset delay, wait until joint stops */
                 H[joint_num].pause_timer = 0;
                 break;
@@ -861,7 +858,7 @@ static int base_1joint_state_machine(int joint_num)
                fairly fast, because once the switch is found another
                slower move will be used to set the exact home position. */
             /* is the joint already moving? */
-            if (GET_INT(joint_get_free_tp_active, joint_num)) {
+            if (_mot->joint_get_free_tp_active(joint_num)) {
                 /* yes, reset delay, wait until joint stops */
                 H[joint_num].pause_timer = 0;
                 break;
@@ -911,13 +908,13 @@ static int base_1joint_state_machine(int joint_num)
                error comp will be appropriate for this portion of the
                screw (previously we didn't know where we were at all). */
             /* set the current position to 'home_offset' */
-            offset = H[joint_num].home_offset - GET_DBL(joint_get_pos_fb, joint_num);
+            offset = H[joint_num].home_offset - _mot->joint_get_pos_fb(joint_num);
             /* this moves the internal position but does not affect the
                motor position */
-            { double __pc; _mot->joint_get_pos_cmd(joint_num, &__pc); _mot->joint_set_pos_cmd(joint_num, __pc + (offset)); }
-            { double __pf; _mot->joint_get_pos_fb(joint_num, &__pf); _mot->joint_set_pos_fb(joint_num, __pf + (offset)); }
-            { double __cp; _mot->joint_get_free_tp_curr_pos(joint_num, &__cp); _mot->joint_set_free_tp_curr_pos(joint_num, __cp + (offset)); }
-            { double __mo; _mot->joint_get_motor_offset(joint_num, &__mo); _mot->joint_set_motor_offset(joint_num, __mo - (offset)); }
+            _mot->joint_set_pos_cmd(joint_num, _mot->joint_get_pos_cmd(joint_num) + (offset));
+            _mot->joint_set_pos_fb(joint_num, _mot->joint_get_pos_fb(joint_num) + (offset));
+            _mot->joint_set_free_tp_curr_pos(joint_num, _mot->joint_get_free_tp_curr_pos(joint_num) + (offset));
+            _mot->joint_set_motor_offset(joint_num, _mot->joint_get_motor_offset(joint_num) - (offset));
             /* The next state depends on the signs of 'search_vel' and
                'latch_vel'.  If they are the same, that means we must
                back up, then do the final homing moving the same
@@ -942,7 +939,7 @@ static int base_1joint_state_machine(int joint_num)
                move that will back off of the switch in preparation for a
                final slow move that captures the exact switch location. */
             /* is the joint already moving? */
-            if (GET_INT(joint_get_free_tp_active, joint_num)) {
+            if (_mot->joint_get_free_tp_active(joint_num)) {
                 /* yes, reset delay, wait until joint stops */
                 H[joint_num].pause_timer = 0;
                 break;
@@ -991,7 +988,7 @@ static int base_1joint_state_machine(int joint_num)
                point where the home switch trips.  It moves at
                'latch_vel' and looks for a rising edge on the switch */
             /* is the joint already moving? */
-            if (GET_INT(joint_get_free_tp_active, joint_num)) {
+            if (_mot->joint_get_free_tp_active(joint_num)) {
                 /* yes, reset delay, wait until joint stops */
                 H[joint_num].pause_timer = 0;
                 break;
@@ -1047,7 +1044,7 @@ static int base_1joint_state_machine(int joint_num)
                point where the home switch releases.  It moves at
                'latch_vel' and looks for a falling edge on the switch */
             /* is the joint already moving? */
-            if (GET_INT(joint_get_free_tp_active, joint_num)) {
+            if (_mot->joint_get_free_tp_active(joint_num)) {
                 /* yes, reset delay, wait until joint stops */
                 H[joint_num].pause_timer = 0;
                 break;
@@ -1108,14 +1105,14 @@ static int base_1joint_state_machine(int joint_num)
             if (H[joint_num].home_flags & HOME_ABSOLUTE_ENCODER) {
                 offset = H[joint_num].home_offset;
             } else {
-                offset = H[joint_num].home_offset - GET_DBL(joint_get_pos_fb, joint_num);
+                offset = H[joint_num].home_offset - _mot->joint_get_pos_fb(joint_num);
             }
             /* this moves the internal position but does not affect the
                motor position */
-            { double __pc; _mot->joint_get_pos_cmd(joint_num, &__pc); _mot->joint_set_pos_cmd(joint_num, __pc + (offset)); }
-            { double __pf; _mot->joint_get_pos_fb(joint_num, &__pf); _mot->joint_set_pos_fb(joint_num, __pf + (offset)); }
-            { double __cp; _mot->joint_get_free_tp_curr_pos(joint_num, &__cp); _mot->joint_set_free_tp_curr_pos(joint_num, __cp + (offset)); }
-            { double __mo; _mot->joint_get_motor_offset(joint_num, &__mo); _mot->joint_set_motor_offset(joint_num, __mo - (offset)); }
+            _mot->joint_set_pos_cmd(joint_num, _mot->joint_get_pos_cmd(joint_num) + (offset));
+            _mot->joint_set_pos_fb(joint_num, _mot->joint_get_pos_fb(joint_num) + (offset));
+            _mot->joint_set_free_tp_curr_pos(joint_num, _mot->joint_get_free_tp_curr_pos(joint_num) + (offset));
+            _mot->joint_set_motor_offset(joint_num, _mot->joint_get_motor_offset(joint_num) - (offset));
             if (H[joint_num].home_flags & HOME_ABSOLUTE_ENCODER) {
                 if (H[joint_num].home_flags & HOME_NO_FINAL_MOVE) {
                     H[joint_num].home_state = HOME_FINISHED;
@@ -1137,7 +1134,7 @@ static int base_1joint_state_machine(int joint_num)
                reset its counter to zero and clear the enable when the
                next index pulse arrives. */
             /* is the joint already moving? */
-            if (GET_INT(joint_get_free_tp_active, joint_num)) {
+            if (_mot->joint_get_free_tp_active(joint_num)) {
                 /* yes, reset delay, wait until joint stops */
                 H[joint_num].pause_timer = 0;
                 break;
@@ -1154,13 +1151,13 @@ static int base_1joint_state_machine(int joint_num)
                comp will be appropriate for this portion of the screw
                (previously we didn't know where we were at all). */
             /* set the current position to 'home_offset' */
-            offset = H[joint_num].home_offset - GET_DBL(joint_get_pos_fb, joint_num);
+            offset = H[joint_num].home_offset - _mot->joint_get_pos_fb(joint_num);
             /* this moves the internal position but does not affect the
                motor position */
-            { double __pc; _mot->joint_get_pos_cmd(joint_num, &__pc); _mot->joint_set_pos_cmd(joint_num, __pc + (offset)); }
-            { double __pf; _mot->joint_get_pos_fb(joint_num, &__pf); _mot->joint_set_pos_fb(joint_num, __pf + (offset)); }
-            { double __cp; _mot->joint_get_free_tp_curr_pos(joint_num, &__cp); _mot->joint_set_free_tp_curr_pos(joint_num, __cp + (offset)); }
-            { double __mo; _mot->joint_get_motor_offset(joint_num, &__mo); _mot->joint_set_motor_offset(joint_num, __mo - (offset)); }
+            _mot->joint_set_pos_cmd(joint_num, _mot->joint_get_pos_cmd(joint_num) + (offset));
+            _mot->joint_set_pos_fb(joint_num, _mot->joint_get_pos_fb(joint_num) + (offset));
+            _mot->joint_set_free_tp_curr_pos(joint_num, _mot->joint_get_free_tp_curr_pos(joint_num) + (offset));
+            _mot->joint_set_motor_offset(joint_num, _mot->joint_get_motor_offset(joint_num) - (offset));
             /* set the index enable */
             H[joint_num].index_enable = 1;
             /* set up a move at 'latch_vel' to find the index pulse */
@@ -1210,25 +1207,23 @@ static int base_1joint_state_machine(int joint_num)
                index pulse in joint coordinates. */
             /* set the current position to 'home_offset' */
             _mot->joint_set_motor_offset(joint_num, - H[joint_num].home_offset);
-            { double __mpf, __bf, __mo, __pf;
-              _mot->joint_get_motor_pos_fb(joint_num, &__mpf);
-              _mot->joint_get_backlash_filt(joint_num, &__bf);
-              _mot->joint_get_motor_offset(joint_num, &__mo);
-              __pf = __mpf - (__bf + __mo);
-              _mot->joint_set_pos_fb(joint_num, __pf);
-              _mot->joint_set_pos_cmd(joint_num, __pf);
-              _mot->joint_set_free_tp_curr_pos(joint_num, __pf);
+            { double pf = _mot->joint_get_motor_pos_fb(joint_num)
+                        - (_mot->joint_get_backlash_filt(joint_num)
+                         + _mot->joint_get_motor_offset(joint_num));
+              _mot->joint_set_pos_fb(joint_num, pf);
+              _mot->joint_set_pos_cmd(joint_num, pf);
+              _mot->joint_set_free_tp_curr_pos(joint_num, pf);
             }
 
             if (H[joint_num].home_flags & HOME_INDEX_NO_ENCODER_RESET) {
                /* Special case: encoder does not reset on index pulse.
                   This moves the internal position but does not affect
                   the motor position */
-               offset = H[joint_num].home_offset - GET_DBL(joint_get_pos_fb, joint_num);
-               { double __pc; _mot->joint_get_pos_cmd(joint_num, &__pc); _mot->joint_set_pos_cmd(joint_num, __pc + (offset)); }
-               { double __pf; _mot->joint_get_pos_fb(joint_num, &__pf); _mot->joint_set_pos_fb(joint_num, __pf + (offset)); }
-               { double __cp; _mot->joint_get_free_tp_curr_pos(joint_num, &__cp); _mot->joint_set_free_tp_curr_pos(joint_num, __cp + (offset)); }
-               { double __mo; _mot->joint_get_motor_offset(joint_num, &__mo); _mot->joint_set_motor_offset(joint_num, __mo - (offset)); }
+               offset = H[joint_num].home_offset - _mot->joint_get_pos_fb(joint_num);
+               _mot->joint_set_pos_cmd(joint_num, _mot->joint_get_pos_cmd(joint_num) + (offset));
+               _mot->joint_set_pos_fb(joint_num, _mot->joint_get_pos_fb(joint_num) + (offset));
+               _mot->joint_set_free_tp_curr_pos(joint_num, _mot->joint_get_free_tp_curr_pos(joint_num) + (offset));
+               _mot->joint_set_motor_offset(joint_num, _mot->joint_get_motor_offset(joint_num) - (offset));
             }
 
             /* next state */
@@ -1242,7 +1237,7 @@ static int base_1joint_state_machine(int joint_num)
                which is not necessarily the position of the home switch
                or index pulse. */
             /* is the joint already moving? */
-            if (GET_INT(joint_get_free_tp_active, joint_num)) {
+            if (_mot->joint_get_free_tp_active(joint_num)) {
                 /* yes, reset delay, wait until joint stops */
                 H[joint_num].pause_timer = 0;
                 break;
@@ -1266,17 +1261,12 @@ static int base_1joint_state_machine(int joint_num)
             if (H[joint_num].home_final_vel > 0) {
                 _mot->joint_set_free_tp_max_vel(joint_num, fabs(H[joint_num].home_final_vel));
                 /* clamp on max vel for this joint */
-                {
-                    double __mv, __vl;
-                    _mot->joint_get_free_tp_max_vel(joint_num, &__mv);
-                    _mot->joint_get_vel_limit(joint_num, &__vl);
-                    if (__mv > __vl)
-                        _mot->joint_set_free_tp_max_vel(joint_num, __vl);
+                { double vl = _mot->joint_get_vel_limit(joint_num);
+                    if (_mot->joint_get_free_tp_max_vel(joint_num) > vl)
+                        _mot->joint_set_free_tp_max_vel(joint_num, vl);
                 }
             } else {
-                double __vl;
-                _mot->joint_get_vel_limit(joint_num, &__vl);
-                _mot->joint_set_free_tp_max_vel(joint_num, __vl);
+                _mot->joint_set_free_tp_max_vel(joint_num, _mot->joint_get_vel_limit(joint_num));
             }
             /* start the move */
             _mot->joint_set_free_tp_enable(joint_num, 1);
@@ -1296,7 +1286,7 @@ static int base_1joint_state_machine(int joint_num)
             }
 
             /* have we arrived (and stopped) at home? */
-            if (!GET_INT(joint_get_free_tp_active, joint_num)) {
+            if (!_mot->joint_get_free_tp_active(joint_num)) {
                 /* yes, stop motion */
                 _mot->joint_set_free_tp_enable(joint_num, 0);
                 /* we're finally done */
@@ -1304,7 +1294,7 @@ static int base_1joint_state_machine(int joint_num)
                 immediate_state = 1;
                 break;
             }
-            if (GET_INT(joint_get_on_pos_limit, joint_num) || GET_INT(joint_get_on_neg_limit, joint_num)) {
+            if (_mot->joint_get_on_pos_limit(joint_num) || _mot->joint_get_on_neg_limit(joint_num)) {
                 /* on limit, check to see if we should trip */
                 if (!(H[joint_num].home_flags & HOME_IGNORE_LIMITS)) {
                     /* not ignoring limits, time to quit */
@@ -1328,7 +1318,7 @@ static int base_1joint_state_machine(int joint_num)
         case HOME_LOCK_WAIT:
             // if not yet locked, continue waiting
             if ((H[joint_num].home_flags & HOME_UNLOCK_FIRST) &&
-                ({ int32_t __ru; _mot->get_rotary_unlock(joint_num, &__ru); __ru; })) break;
+                _mot->get_rotary_unlock(joint_num)) break;
 
             // either we got here without a lock needed, or the
             // lock is now complete.
@@ -1380,7 +1370,7 @@ static bool base_do_homing(void)
     /* loop thru joints, treat each one individually */
     for (joint_num = 0; joint_num < all_joints; joint_num++) {
         if (!H[joint_num].joint_in_sequence)            { continue; }
-        if (!GET_INT(joint_get_active_flag, joint_num)) { continue; }
+        if (!_mot->joint_get_active_flag(joint_num)) { continue; }
         // DEFAULT joint homing state machine:
         homing_flag += base_1joint_state_machine(joint_num);
     }

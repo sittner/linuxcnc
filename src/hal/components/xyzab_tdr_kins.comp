@@ -89,19 +89,17 @@ EXTRA_SETUP() {
 
 static int32_t switchkins_type;
 
-static int gmi_kins_type(kins_kinematics_type_t *ktype)
+static kins_kinematics_type_t gmi_kins_type(void)
 {
-    *ktype = KINS_BOTH;
-    return 0;
+    return KINS_BOTH;
 }
 
-static int gmi_kins_switchable(int32_t *result)
+static int32_t gmi_kins_switchable(void)
 {
-    *result = 1;
-    return 0;
+    return 1;
 }
 
-static int gmi_kins_switch(int32_t new_switchkins_type, int32_t *result)
+static int32_t gmi_kins_switch(int32_t new_switchkins_type)
 {
     switchkins_type = new_switchkins_type;
     gomc_log_infof(kins_log, kins_name, "kinematicsSwitch(): type=%d", switchkins_type);
@@ -118,19 +116,16 @@ static int gmi_kins_switch(int32_t new_switchkins_type, int32_t *result)
                 switchkins_type);
                 *kins_kinstype_is_0 = 0;
                 *kins_kinstype_is_1 = 0;
-                *result = -1;
                 return -1; // FAIL
     }
-    *result = 0;
     return 0;
 }
 
-static int gmi_kins_forward(
+static int32_t gmi_kins_forward(
     const double joints[KINS_MAX_JOINTS],
     kins_pose_t *pos,
     uint64_t fflags,
-    uint64_t *iflags,
-    int32_t *result)
+    uint64_t *iflags)
 {
     (void)fflags;
     (void)iflags;
@@ -180,17 +175,14 @@ static int gmi_kins_forward(
     pos->u = 0;
     pos->v = 0;
     pos->w = 0;
-
-    *result = 0;
     return 0;
 }
 
-static int gmi_kins_inverse(
+static int32_t gmi_kins_inverse(
     const kins_pose_t *pos,
     double joints[KINS_MAX_JOINTS],
     uint64_t iflags,
-    uint64_t *fflags,
-    int32_t *result)
+    uint64_t *fflags)
 {
     (void)iflags;
     (void)fflags;
@@ -236,7 +228,5 @@ static int gmi_kins_inverse(
             joints[4] = pos->b;
             break;
     }
-
-    *result = 0;
     return 0;
 }

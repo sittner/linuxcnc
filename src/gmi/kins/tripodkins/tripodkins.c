@@ -23,11 +23,10 @@ static struct haldata *haldata;
 
 // ─── Forward kinematics ───
 
-static int tripodkins_forward(
+static int32_t tripodkins_forward(
     const double joints[KINS_MAX_JOINTS],
     kins_pose_t *world,
-    uint64_t fflags, uint64_t *iflags,
-    int32_t *out)
+    uint64_t fflags, uint64_t *iflags)
 {
     (void)iflags;
     double AD = joints[0], BD = joints[1], CD = joints[2];
@@ -40,13 +39,13 @@ static int tripodkins_forward(
     t = -2.0 * Cx;
     u = -2.0 * Cy;
 
-    if (s == 0.0) { *out = -1; return 0; }
+    if (s == 0.0) { return -1; }
     Dx = (Q - P) / s;
 
-    if (u == 0.0) { *out = -1; return 0; }
+    if (u == 0.0) { return -1; }
     Dy = (R - Q - (t - s) * Dx) / u;
     Dz = P - sq(Dx) - sq(Dy);
-    if (Dz < 0.0) { *out = -1; return 0; }
+    if (Dz < 0.0) { return -1; }
     Dz = sqrt(Dz);
     if (fflags) Dz = -Dz;
 
@@ -56,17 +55,15 @@ static int tripodkins_forward(
     world->a = 0.0; world->b = 0.0; world->c = 0.0;
     world->u = 0.0; world->v = 0.0; world->w = 0.0;
 
-    *out = 0;
     return 0;
 }
 
 // ─── Inverse kinematics ───
 
-static int tripodkins_inverse(
+static int32_t tripodkins_inverse(
     const kins_pose_t *world,
     double joints[KINS_MAX_JOINTS],
-    uint64_t iflags, uint64_t *fflags,
-    int32_t *out)
+    uint64_t iflags, uint64_t *fflags)
 {
     (void)iflags;
 
@@ -79,15 +76,15 @@ static int tripodkins_inverse(
         if (world->z < 0.0) *fflags = 1;
     }
 
-    *out = 0;
     return 0;
 }
 
-static int tripodkins_type(kins_kinematics_type_t *out)
-    { *out = KINS_BOTH; return 0; }
-static int tripodkins_switchable(int32_t *out) { *out = 0; return 0; }
-static int tripodkins_switch(int32_t t, int32_t *out)
-    { (void)t; *out = -1; return 0; }
+static kins_kinematics_type_t tripodkins_type(void) {
+    return KINS_BOTH;
+}
+static int32_t tripodkins_switchable(void) { return 0; }
+static int32_t tripodkins_switch(int32_t t)
+    { (void)t; return -1; }
 
 static kins_callbacks_t tripodkins_callbacks = {
     .forward    = tripodkins_forward,

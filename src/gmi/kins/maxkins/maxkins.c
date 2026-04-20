@@ -24,11 +24,10 @@ static struct haldata *haldata;
 
 // ─── Forward kinematics ───
 
-static int maxkins_forward(
+static int32_t maxkins_forward(
     const double joints[KINS_MAX_JOINTS],
     kins_pose_t *world,
-    uint64_t fflags, uint64_t *iflags,
-    int32_t *out)
+    uint64_t fflags, uint64_t *iflags)
 {
     (void)fflags; (void)iflags;
 
@@ -55,17 +54,15 @@ static int maxkins_forward(
     world->v = joints[7];
     world->w = joints[8];
 
-    *out = 0;
     return 0;
 }
 
 // ─── Inverse kinematics ───
 
-static int maxkins_inverse(
+static int32_t maxkins_inverse(
     const kins_pose_t *world,
     double joints[KINS_MAX_JOINTS],
-    uint64_t iflags, uint64_t *fflags,
-    int32_t *out)
+    uint64_t iflags, uint64_t *fflags)
 {
     (void)iflags; (void)fflags;
 
@@ -92,15 +89,15 @@ static int maxkins_inverse(
     joints[7] = world->v;
     joints[8] = world->w;
 
-    *out = 0;
     return 0;
 }
 
-static int maxkins_type(kins_kinematics_type_t *out)
-    { *out = KINS_BOTH; return 0; }
-static int maxkins_switchable(int32_t *out) { *out = 0; return 0; }
-static int maxkins_switch(int32_t t, int32_t *out)
-    { (void)t; *out = -1; return 0; }
+static kins_kinematics_type_t maxkins_type(void) {
+    return KINS_BOTH;
+}
+static int32_t maxkins_switchable(void) { return 0; }
+static int32_t maxkins_switch(int32_t t)
+    { (void)t; return -1; }
 
 static kins_callbacks_t maxkins_callbacks = {
     .forward    = maxkins_forward,

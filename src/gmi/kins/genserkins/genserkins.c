@@ -236,7 +236,7 @@ static int genser_kin_fwd(const go_real *joints, go_pose *pos)
     return GO_RESULT_OK;
 }
 
-static int genser_forward(const double *joint, kins_pose_t *world)
+static int32_t genser_forward(const double *joint, kins_pose_t *world)
 {
     go_pose *pos;
     go_rpy rpy;
@@ -281,7 +281,7 @@ static int genser_forward(const double *joint, kins_pose_t *world)
 
 // ─── Inverse kinematics (Newton-Raphson via Jacobian) ───
 
-static int genser_inverse(const kins_pose_t *world, double *joints)
+static int32_t genser_inverse(const kins_pose_t *world, double *joints)
 {
     genser_struct *genser = KINS_PTR;
     GO_MATRIX_DECLARE(Jfwd, Jfwd_stg, 6, GENSER_MAX_JOINTS);
@@ -380,37 +380,38 @@ static int genser_inverse(const kins_pose_t *world, double *joints)
 
 // ─── Dispatch (switchkins) ───
 
-static int dispatch_forward(
+static int32_t dispatch_forward(
     const double joints[KINS_MAX_JOINTS], kins_pose_t *pos,
-    uint64_t fflags, uint64_t *iflags, int32_t *out)
+    uint64_t fflags, uint64_t *iflags)
 {
     (void)fflags; (void)iflags;
     switch (g_sw.current_type) {
-    case 0:  *out = genser_forward(joints, pos); return 0;
+    case 0:  return genser_forward(joints, pos);
     case 1:  sk_identity_forward(&g_map, joints, pos);
-             *out = 0; return 0;
+             return 0;
     default: return -1;
     }
 }
 
-static int dispatch_inverse(
+static int32_t dispatch_inverse(
     const kins_pose_t *pos, double joints[KINS_MAX_JOINTS],
-    uint64_t iflags, uint64_t *fflags, int32_t *out)
+    uint64_t iflags, uint64_t *fflags)
 {
     (void)iflags; (void)fflags;
     switch (g_sw.current_type) {
-    case 0:  *out = genser_inverse(pos, joints); return 0;
+    case 0:  return genser_inverse(pos, joints);
     case 1:  sk_identity_inverse(&g_map, pos, joints);
-             *out = 0; return 0;
+             return 0;
     default: return -1;
     }
 }
 
-static int dispatch_type(kins_kinematics_type_t *out)
-    { *out = KINS_BOTH; return 0; }
-static int dispatch_switchable(int32_t *out) { *out = 1; return 0; }
-static int dispatch_switch(int32_t t, int32_t *out)
-    { *out = sk_switch_to(&g_sw, t); return 0; }
+static kins_kinematics_type_t dispatch_type(void) {
+    return KINS_BOTH;
+}
+static int32_t dispatch_switchable(void) { return 1; }
+static int32_t dispatch_switch(int32_t t)
+    { return sk_switch_to(&g_sw, t); }
 
 static kins_callbacks_t genser_callbacks = {
     .forward    = dispatch_forward,
