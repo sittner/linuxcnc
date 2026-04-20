@@ -60,8 +60,8 @@ enum Direction {
 
 # --- Initialization ---
 
-@doc "Initialize the trajectory planner with shared status/config pointers"
-func init(status_ptr: u64, config_ptr: u64) -> i32
+@doc "Initialize the trajectory planner"
+func init() -> i32
 
 @doc "Create and initialize the trajectory planner queue"
 func create(tp_ptr: u64, queue_size: i32, comp_id: i32) -> i32

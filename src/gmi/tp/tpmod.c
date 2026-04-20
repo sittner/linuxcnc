@@ -38,11 +38,8 @@ static const mot_callbacks_t *mot;
 
 // ─── GMI callback wrappers ──────────────────────────────────────────────────
 
-static int gmi_tp_init(uint64_t status_ptr, uint64_t config_ptr, int32_t *out)
+static int gmi_tp_init(int32_t *out)
 {
-    (void)status_ptr;
-    (void)config_ptr;
-    // tp.c now gets the mot API directly; status/config pointers are unused.
     *out = 0;
     return 0;
 }

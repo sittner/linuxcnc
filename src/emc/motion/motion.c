@@ -640,9 +640,8 @@ int count_names(char *names[]){
 }
 
 static int module_intfc() {
-    /* Wire status/config pointers into tp via GMI init */
     int32_t out;
-    motmod_tp_api->init((uintptr_t)emcmotStatus, (uintptr_t)emcmotConfig, &out);
+    motmod_tp_api->init(&out);
     return 0;
 }
 
