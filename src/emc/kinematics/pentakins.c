@@ -6,6 +6,7 @@
 #include <string.h>
 #include "gomc_env.h"
 #include "kins_api.h"
+#include "posemath.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -13,53 +14,7 @@
 
 #define NUM_STRUTS 5
 
-// ─── Inline posemath helpers ───
-
-typedef struct { double x, y, z; } pm_cart_t;
-
-typedef struct { double x[3][3]; } pm_mat_t;
-
-typedef struct { double r, p, y; } pm_rpy_t;
-
 static double sqr(double x) { return x * x; }
-
-static void pm_cart_sub(const pm_cart_t *a, const pm_cart_t *b, pm_cart_t *c) {
-    c->x = a->x - b->x;
-    c->y = a->y - b->y;
-    c->z = a->z - b->z;
-}
-
-// R = Rz(yaw) * Ry(pitch) * Rx(roll), row-major 2D array: m[row][col].
-// Matches posemath pmRpyMatConvert with: r=roll(about X), p=pitch(about Y), y=yaw(about Z).
-static void pm_rpy_to_mat(const pm_rpy_t *rpy, pm_mat_t *m) {
-    double sr = sin(rpy->r), cr = cos(rpy->r);  // roll
-    double sp = sin(rpy->p), cp = cos(rpy->p);  // pitch
-    double sy = sin(rpy->y), cy = cos(rpy->y);  // yaw
-    m->x[0][0] = cy * cp;
-    m->x[0][1] = cy * sp * sr - sy * cr;
-    m->x[0][2] = cy * sp * cr + sy * sr;
-    m->x[1][0] = sy * cp;
-    m->x[1][1] = sy * sp * sr + cy * cr;
-    m->x[1][2] = sy * sp * cr - cy * sr;
-    m->x[2][0] = -sp;
-    m->x[2][1] = cp * sr;
-    m->x[2][2] = cp * cr;
-}
-
-static void pm_mat_inv(const pm_mat_t *m, pm_mat_t *inv) {
-    // rotation matrix inverse is transpose
-    for (int i = 0; i < 3; i++)
-        for (int j = 0; j < 3; j++)
-            inv->x[i][j] = m->x[j][i];
-}
-
-static void pm_mat_cart_mult(const pm_mat_t *m, const pm_cart_t *v,
-                             pm_cart_t *out)
-{
-    out->x = m->x[0][0] * v->x + m->x[0][1] * v->y + m->x[0][2] * v->z;
-    out->y = m->x[1][0] * v->x + m->x[1][1] * v->y + m->x[1][2] * v->z;
-    out->z = m->x[2][0] * v->x + m->x[2][1] * v->y + m->x[2][2] * v->z;
-}
 
 // ─── Defaults from pentakins.h ───
 
@@ -115,7 +70,7 @@ static struct haldata *haldata;
 
 // ─── Geometry arrays ───
 
-static pm_cart_t base[NUM_STRUTS];
+static PmCartesian base[NUM_STRUTS];
 static double za[NUM_STRUTS], ra[NUM_STRUTS];
 
 static void read_hal_pins(void) {
@@ -196,18 +151,18 @@ static void MatMult5(double J[][5], const double x[], double Ans[]) {
 // ─── InvKins ───
 
 static int InvKins(const double *coord, double *struts) {
-    pm_cart_t pmcoord, xyz, temp;
-    pm_mat_t RMatrix, InvRMatrix;
-    pm_rpy_t rpy;
+    PmCartesian pmcoord, xyz, temp;
+    PmRotationMatrix RMatrix, InvRMatrix;
+    PmRpy rpy;
 
     pmcoord.x = coord[0]; pmcoord.y = coord[1]; pmcoord.z = coord[2];
     rpy.r = coord[3]; rpy.p = coord[4]; rpy.y = 0;
-    pm_rpy_to_mat(&rpy, &RMatrix);
+    pmRpyMatConvert(&rpy, &RMatrix);
 
     for (int i = 0; i < NUM_STRUTS; i++) {
-        pm_cart_sub(&base[i], &pmcoord, &temp);
-        pm_mat_inv(&RMatrix, &InvRMatrix);
-        pm_mat_cart_mult(&InvRMatrix, &temp, &xyz);
+        pmCartCartSub(&base[i], &pmcoord, &temp);
+        pmMatInv(&RMatrix, &InvRMatrix);
+        pmMatCartMult(&InvRMatrix, &temp, &xyz);
         struts[i] = sqrt(sqr(xyz.z - za[i]) +
                          sqr(sqrt(sqr(xyz.x) + sqr(xyz.y)) - ra[i]));
     }

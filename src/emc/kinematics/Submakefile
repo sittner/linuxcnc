@@ -68,16 +68,14 @@ $(eval $(call GMI_KINS_BUILD,rotarydeltakins,emc/kinematics))
 $(eval $(call GMI_KINS_BUILD,maxkins,emc/kinematics))
 $(eval $(call GMI_KINS_BUILD,rosekins,emc/kinematics))
 $(eval $(call GMI_KINS_BUILD,tripodkins,emc/kinematics))
-$(eval $(call GMI_KINS_BUILD,pentakins,emc/kinematics))
 
 # --- Group C: switchkins-based ---
 $(eval $(call GMI_KINS_BUILD,5axiskins,emc/kinematics))
 $(eval $(call GMI_KINS_BUILD,xyzac-trt-kins,emc/kinematics))
 $(eval $(call GMI_KINS_BUILD,xyzbc-trt-kins,emc/kinematics))
 $(eval $(call GMI_KINS_BUILD,scarakins,emc/kinematics))
-$(eval $(call GMI_KINS_BUILD,pumakins,emc/kinematics))
 
-# --- Group D: switchkins-based with posemath linkage ---
+# --- Group D: with posemath linkage ---
 GMI_POSEMATH_INCDIR := libnml/posemath
 
 define GMI_KINS_POSEMATH_BUILD
@@ -91,5 +89,7 @@ endef
 
 $(eval $(call GMI_KINS_POSEMATH_BUILD,genhexkins,emc/kinematics))
 $(eval $(call GMI_KINS_POSEMATH_BUILD,genserkins,emc/kinematics))
+$(eval $(call GMI_KINS_POSEMATH_BUILD,pumakins,emc/kinematics))
+$(eval $(call GMI_KINS_POSEMATH_BUILD,pentakins,emc/kinematics))
 
 endif # BUILD_GOLANG

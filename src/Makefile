@@ -1078,9 +1078,7 @@ TPMOD_CMOD_SRCS := \
     emc/tp/tcq.c \
     emc/tp/spherical_arc.c \
     emc/tp/blendmath.c \
-    emc/nml_intf/emcpose.c \
-    libnml/posemath/_posemath.c \
-    libnml/posemath/sincos.c
+    emc/nml_intf/emcpose.c
 
 TPMOD_CMOD_CFLAGS := \
     -fPIC -Os -Wall -Wextra \
@@ -1102,12 +1100,12 @@ TPMOD_CMOD_DEPS := \
     $(wildcard emc/tp/*.h) \
     $(wildcard emc/motion/motion.h)
 
-../cmod/tpmod.so: $(TPMOD_CMOD_SRCS) $(TPMOD_CMOD_DEPS) | headers ../lib/liblinuxcnchal.so
+../cmod/tpmod.so: $(TPMOD_CMOD_SRCS) $(TPMOD_CMOD_DEPS) | headers ../lib/liblinuxcnchal.so ../lib/libposemath.so
 	$(ECHO) "Compiling cmod tpmod.so"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(TPMOD_CMOD_CFLAGS) \
 	    -o $@ $(TPMOD_CMOD_SRCS) \
-	    -L../lib -llinuxcnchal -lm
+	    -L../lib -llinuxcnchal -lposemath -lm
 
 TARGETS += ../cmod/tpmod.so
 modules: ../cmod/tpmod.so

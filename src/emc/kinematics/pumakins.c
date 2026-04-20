@@ -5,6 +5,7 @@
 #include <string.h>
 #include "gomc_env.h"
 #include "switchkins_cmod.h"
+#include "posemath.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -28,31 +29,6 @@
 #define PUMA_WRIST_FLIP     0x04
 #define PUMA_SINGULAR       0x08
 #define PUMA_REACH          0x01
-
-// ─── Inline rotation matrix helpers ───
-// Convention: R = Rz(yaw) * Ry(pitch) * Rx(roll) (ZYX Euler)
-// Storage:    R.AB = column A, row B (matches PmRotationMatrix: m->A.B)
-// RPY:        r=roll(about X)→a, p=pitch(about Y)→b, y=yaw(about Z)→c
-
-typedef struct { double xx,xy,xz, yx,yy,yz, zx,zy,zz; } rot3_t;
-
-static void rpy_to_rot(double r, double p, double y, rot3_t *R) {
-    double sr = sin(r), cr = cos(r);
-    double sp = sin(p), cp = cos(p);
-    double sy = sin(y), cy = cos(y);
-    // Column 0 (m->x):
-    R->xx = cy*cp;          R->xy = sy*cp;          R->xz = -sp;
-    // Column 1 (m->y):
-    R->yx = cy*sp*sr-sy*cr; R->yy = sy*sp*sr+cy*cr; R->yz = cp*sr;
-    // Column 2 (m->z):
-    R->zx = cy*sp*cr+sy*sr; R->zy = sy*sp*cr-cy*sr; R->zz = cp*cr;
-}
-
-static void rot_to_rpy(const rot3_t *R, double *roll, double *pitch, double *yaw) {
-    *pitch = atan2(-R->xz, sqrt(R->xx * R->xx + R->xy * R->xy));
-    *roll  = atan2(R->yz, R->zz);
-    *yaw   = atan2(R->xy, R->xx);
-}
 
 // ─── Module state ───
 
@@ -81,7 +57,8 @@ static int32_t puma_forward(const double joints[KINS_MAX_JOINTS],
     double c1, c2, c3, c4, c5, c6;
     double s23, c23;
     double t1, t2, t3, t4;
-    rot3_t R;
+    PmRotationMatrix R;
+    PmRpy rpy;
     double tx, ty, tz;
 
     s1 = sin(joints[0]*M_PI/180); c1 = cos(joints[0]*M_PI/180);
@@ -99,24 +76,24 @@ static int32_t puma_forward(const double joints[KINS_MAX_JOINTS],
     t2 = s23*s5*c6;
     t3 = s4*c5*c6 + c4*s6;
     t4 = c23*t1 - t2;
-    R.xx = c1*t4 + s1*t3;
-    R.xy = s1*t4 - c1*t3; // actually row x col y
-    R.xz = -s23*t1 - c23*s5*c6;
+    R.x.x = c1*t4 + s1*t3;
+    R.x.y = s1*t4 - c1*t3;
+    R.x.z = -s23*t1 - c23*s5*c6;
 
     // Second column
     t1 = -c4*c5*s6 - s4*c6;
     t2 = s23*s5*s6;
     t3 = c4*c6 - s4*c5*s6;
     t4 = c23*t1 + t2;
-    R.yx = c1*t4 + s1*t3;
-    R.yy = s1*t4 - c1*t3;
-    R.yz = -s23*t1 + c23*s5*s6;
+    R.y.x = c1*t4 + s1*t3;
+    R.y.y = s1*t4 - c1*t3;
+    R.y.z = -s23*t1 + c23*s5*s6;
 
     // Third column
     t1 = c23*c4*s5 + s23*c5;
-    R.zx = -c1*t1 - s1*s4*s5;
-    R.zy = -s1*t1 + c1*s4*s5;
-    R.zz = s23*c4*s5 - c23*c5;
+    R.z.x = -c1*t1 - s1*s4*s5;
+    R.z.y = -s1*t1 + c1*s4*s5;
+    R.z.z = s23*c4*s5 - c23*c5;
 
     // Position
     t1 = PUMA_A2*c2 + PUMA_A3*c23 - PUMA_D4*s23;
@@ -125,23 +102,18 @@ static int32_t puma_forward(const double joints[KINS_MAX_JOINTS],
     tz = -PUMA_A3*s23 - PUMA_A2*s2 - PUMA_D4*c23;
 
     // D6 effect
-    tx += R.zx * PUMA_D6;
-    ty += R.zy * PUMA_D6;
-    tz += R.zz * PUMA_D6;
+    tx += R.z.x * PUMA_D6;
+    ty += R.z.y * PUMA_D6;
+    tz += R.z.z * PUMA_D6;
 
     world->x = tx;
     world->y = ty;
     world->z = tz;
 
-    // Storage convention: R.AB = column A, row B (posemath layout).
-    //   R.{xx,xy,xz} = column 0 = hom.rot.x.{x,y,z}
-    //   R.{yx,yy,yz} = column 1 = hom.rot.y.{x,y,z}
-    //   R.{zx,zy,zz} = column 2 = hom.rot.z.{x,y,z}
-    double roll, pitch, yaw;
-    rot_to_rpy(&R, &roll, &pitch, &yaw);
-    world->a = roll  * 180.0 / M_PI;
-    world->b = pitch * 180.0 / M_PI;
-    world->c = yaw   * 180.0 / M_PI;
+    pmMatRpyConvert(&R, &rpy);
+    world->a = rpy.r * 180.0 / M_PI;
+    world->b = rpy.p * 180.0 / M_PI;
+    world->c = rpy.y * 180.0 / M_PI;
 
     world->u = 0; world->v = 0; world->w = 0;
     return 0;
@@ -152,22 +124,23 @@ static int32_t puma_forward(const double joints[KINS_MAX_JOINTS],
 static int32_t puma_inverse(const kins_pose_t *world,
                         double joints[KINS_MAX_JOINTS])
 {
-    rot3_t R;
+    PmRotationMatrix R;
+    PmRpy rpy;
     double t1, t2, t3, k, sumSq;
     double th1, th2, th3, th23, th4, th5, th6;
     double s1, c1, s3, c3, s23, c23, s4, c4, s5, c5, s6, c6;
     double px, py, pz;
 
     // RPY → rotation matrix
-    double roll  = world->a * M_PI / 180.0;
-    double pitch = world->b * M_PI / 180.0;
-    double yaw   = world->c * M_PI / 180.0;
-    rpy_to_rot(roll, pitch, yaw, &R);
+    rpy.r = world->a * M_PI / 180.0;
+    rpy.p = world->b * M_PI / 180.0;
+    rpy.y = world->c * M_PI / 180.0;
+    pmRpyMatConvert(&rpy, &R);
 
     // Remove D6 effect
-    px = world->x - PUMA_D6 * R.zx;
-    py = world->y - PUMA_D6 * R.zy;
-    pz = world->z - PUMA_D6 * R.zz;
+    px = world->x - PUMA_D6 * R.z.x;
+    py = world->y - PUMA_D6 * R.z.y;
+    pz = world->z - PUMA_D6 * R.z.z;
 
     // Joint 1
     sumSq = px*px + py*py - PUMA_D3*PUMA_D3;
@@ -198,8 +171,8 @@ static int32_t puma_inverse(const kins_pose_t *world,
     s23 = t1/t3; c23 = t2/t3;
 
     // Joint 4
-    t1 = -R.zx*s1 + R.zy*c1;
-    t2 = -R.zx*c1*c23 - R.zy*s1*c23 + R.zz*s23;
+    t1 = -R.z.x*s1 + R.z.y*c1;
+    t2 = -R.z.x*c1*c23 - R.z.y*s1*c23 + R.z.z*s23;
     if (fabs(t1) < SINGULAR_FUZZ && fabs(t2) < SINGULAR_FUZZ)
         th4 = joints[3]*M_PI/180; // singular: keep current
     else
@@ -208,38 +181,17 @@ static int32_t puma_inverse(const kins_pose_t *world,
     s4 = sin(th4); c4 = cos(th4);
 
     // Joint 5
-    s5 = R.zz*(s23*c4) - R.zx*(c1*c23*c4 + s1*s4)
-                        - R.zy*(s1*c23*c4 - c1*s4);
-    c5 = -R.zx*(c1*s23) - R.zy*(s1*s23) - R.zz*c23;
+    s5 = R.z.z*(s23*c4) - R.z.x*(c1*c23*c4 + s1*s4)
+                        - R.z.y*(s1*c23*c4 - c1*s4);
+    c5 = -R.z.x*(c1*s23) - R.z.y*(s1*s23) - R.z.z*c23;
     th5 = atan2(s5, c5);
 
     // Joint 6
-    s6 = R.xx*(s23*s4) - R.xx*(c1*c23*s4 - s1*c4)
-                        - R.xy*(s1*c23*s4 + c1*c4);
-    // Wait, legacy code uses hom.rot.x.z for s6 and hom.rot.x.x for c6
-    // Let me recopy exactly from legacy:
-
-    // Actually: in legacy code, hom.rot.{x,y,z} are the ROWS of the rotation matrix
-    // hom.rot.x = first row  →  R.xx, R.xy, R.xz  (our naming)
-    // But wait, legacy builds the rotation matrix differently. Let me re-examine.
-    //
-    // Legacy builds: hom.rot.x.x, hom.rot.x.y, hom.rot.x.z = first ROW
-    //                hom.rot.y.x, hom.rot.y.y, hom.rot.y.z = second ROW
-    //                hom.rot.z.x, hom.rot.z.y, hom.rot.z.z = third ROW
-    //
-    // Joint 6 in legacy:
-    //   s6 = hom.rot.x.z*(s23*s4) - hom.rot.x.x*(c1*c23*s4 - s1*c4)
-    //                               - hom.rot.x.y*(s1*c23*s4 + c1*c4)
-    // where hom.rot.x = first row of R
-    //   hom.rot.x.x = R[0][0] = our R.xx
-    //   hom.rot.x.y = R[0][1] = our R.xy
-    //   hom.rot.x.z = R[0][2] = our R.xz
-
-    s6 = R.xz*(s23*s4) - R.xx*(c1*c23*s4 - s1*c4)
-                        - R.xy*(s1*c23*s4 + c1*c4);
-    c6 = R.xx*((c1*c23*c4 + s1*s4)*c5 - c1*s23*s5) +
-         R.xy*((s1*c23*c4 - c1*s4)*c5 - s1*s23*s5) -
-         R.xz*(s23*c4*c5 + c23*s5);
+    s6 = R.x.z*(s23*s4) - R.x.x*(c1*c23*s4 - s1*c4)
+                        - R.x.y*(s1*c23*s4 + c1*c4);
+    c6 = R.x.x*((c1*c23*c4 + s1*s4)*c5 - c1*s23*s5) +
+         R.x.y*((s1*c23*c4 - c1*s4)*c5 - s1*s23*s5) -
+         R.x.z*(s23*c4*c5 + c23*s5);
     th6 = atan2(s6, c6);
 
     joints[0] = th1*180.0/M_PI;
