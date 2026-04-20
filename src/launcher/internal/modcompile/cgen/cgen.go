@@ -36,7 +36,7 @@ func (g *generator) generate() error {
 	g.emitConvenienceDefines()
 	g.emitUserCodeBody() // Emit rest of user code (without includes)
 	g.emitUndefConvenience()
-	g.emitStartStopDestroy()
+	g.emitInitStartStopDestroy()
 	g.emitNew()
 	return g.err
 }
@@ -644,7 +644,7 @@ func (g *generator) emitUndefConvenience() {
 }
 
 // emitConsumeAPILookups emits api_get() calls for each gmi_consume API.
-// Called from inst_start() so that all providers have completed New()
+// Called from inst_init() so that all providers have completed New()
 // (and thus api_register) before any consumer looks them up.
 func (g *generator) emitConsumeAPILookups() {
 	for _, api := range g.comp.GMIConsume {
@@ -654,10 +654,19 @@ func (g *generator) emitConsumeAPILookups() {
 	}
 }
 
-func (g *generator) emitStartStopDestroy() {
+func (g *generator) emitInitStartStopDestroy() {
 	g.printf("/* ---------------------------------------------------------------------------\n")
-	g.printf(" * Lifecycle: Start / Stop / Destroy\n")
+	g.printf(" * Lifecycle: Init / Start / Stop / Destroy\n")
 	g.printf(" * ------------------------------------------------------------------------- */\n\n")
+
+	// Init: look up consumed APIs (cross-module lookups happen here).
+	if len(g.comp.GMIConsume) > 0 {
+		g.printf("static int inst_init(cmod_t *self) {\n")
+		g.printf("    inst_t *inst = (inst_t *)self;\n")
+		g.emitConsumeAPILookups()
+		g.printf("    return 0;\n")
+		g.printf("}\n\n")
+	}
 
 	if g.hasUserMainloop() {
 		// Thread entry point: sets __comp_inst_ptr and calls user_mainloop.
@@ -667,10 +676,9 @@ func (g *generator) emitStartStopDestroy() {
 		g.printf("    return NULL;\n")
 		g.printf("}\n\n")
 
-		// Start: look up consumed APIs, then spawn the user_mainloop thread.
+		// Start: spawn the user_mainloop thread.
 		g.printf("static int inst_start(cmod_t *self) {\n")
 		g.printf("    inst_t *inst = (inst_t *)self;\n")
-		g.emitConsumeAPILookups()
 		g.printf("    return pthread_create(&inst->thread, NULL, userspace_thread, inst);\n")
 		g.printf("}\n\n")
 
@@ -682,12 +690,7 @@ func (g *generator) emitStartStopDestroy() {
 		g.printf("}\n\n")
 	} else {
 		g.printf("static int inst_start(cmod_t *self) {\n")
-		if len(g.comp.GMIConsume) > 0 {
-			g.printf("    inst_t *inst = (inst_t *)self;\n")
-			g.emitConsumeAPILookups()
-		} else {
-			g.printf("    (void)self;\n")
-		}
+		g.printf("    (void)self;\n")
 		g.printf("    return 0;\n")
 		g.printf("}\n\n")
 
@@ -739,6 +742,9 @@ func (g *generator) emitNew() {
 	g.printf("    if (!inst) return -1;\n\n")
 
 	// Wire vtable.
+	if len(g.comp.GMIConsume) > 0 {
+		g.printf("    inst->base.Init    = inst_init;\n")
+	}
 	g.printf("    inst->base.Start   = inst_start;\n")
 	g.printf("    inst->base.Stop    = inst_stop;\n")
 	g.printf("    inst->base.Destroy = inst_destroy;\n")
