@@ -56,7 +56,7 @@ enum Direction {
 
 # ─── Functions ───
 # TP_STRUCT * is passed as opaque u64 (tp_ptr) — allocated by motmod in shmem.
-# ctx_ptr is an opaque u64 to tp_ctx_t carrying reverse callbacks + data pointers.
+# Reverse callbacks (spindle sync, DTG, etc.) live in the mot API.
 
 # --- Initialization ---
 

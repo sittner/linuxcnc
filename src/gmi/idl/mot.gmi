@@ -1,8 +1,7 @@
 # Motion Controller Reverse-Callback API
 #
 # Provided by motmod, consumed by tpmod and homemod.
-# Replaces the opaque ctx_ptr / tp_ctx_t / home_ctx_t pattern
-# with a proper GMI API looked up via get_api() at Start() time.
+# Looked up via get_api() at Start() time.
 
 @api mot
 @version 1
@@ -144,7 +143,6 @@ func status_set_spindle_speed(spindle: i32, speed: f64)
 func status_set_spindle_index_enable(spindle: i32, enable: i32)
 
 # ─── Joint access (for homing subsystem) ───
-# These replace the opaque joints_ptr passed to home_api.init().
 
 @doc "Get number of joints"
 func get_num_joints() -> i32
