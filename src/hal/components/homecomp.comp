@@ -325,8 +325,6 @@ void update_joint_homing_params(int    jno,
 //           end   CUSTOM example
 //=====================================================================
 #else // } { begin SKELETON example minimal api implementation
-static emcmot_joint_t  *joints;
-
 // data for per-joint homing-specific hal pins:
 typedef struct {
     hal_bit_t *home_sw;      // home switch input
