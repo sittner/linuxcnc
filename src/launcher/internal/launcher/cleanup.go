@@ -57,6 +57,10 @@ func (l *Launcher) doCleanup() {
 	l.logger.Info("shutting down and cleaning up LinuxCNC...")
 
 	// Step 1 — Stop tracked application processes (reverse of startApplications).
+	// Step 0 — Stop REST API server (reverse of startAPIServer).
+	l.logger.Debug("stopping REST API server")
+	l.stopAPIServer()
+
 	l.logger.Debug("stopping application processes")
 	l.stopApplications()
 

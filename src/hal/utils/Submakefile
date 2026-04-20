@@ -1,3 +1,5 @@
+# Legacy halcmd/halrmt - disabled when BUILD_GOLANG=yes (replaced by Go REST halcmd)
+ifneq ($(BUILD_GOLANG),yes)
 HALCMDSRCS := hal/utils/halcmd.c hal/utils/halcmd_commands.cc hal/utils/halcmd_main.c
 HALSHSRCS := hal/utils/halcmd.c hal/utils/halcmd_commands.cc hal/utils/halsh.c
 
@@ -25,6 +27,7 @@ USERSRCS += $(HALRMTSRCS)
 	$(ECHO) Linking $(notdir $@)
 	$(Q)$(CC) $(LDFLAGS) -o $@ $^ -lpthread
 TARGETS += ../bin/halrmt
+endif # BUILD_GOLANG
 
 ifneq ($(GTK_VERSION),)
 HALMETERSRCS := \
