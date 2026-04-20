@@ -97,9 +97,9 @@ static int32_t gmi_tp_set_spindle_sync(int32_t spindle,
     return tpSetSpindleSync(g_tp, spindle, sync, wait);
 }
 
-static int32_t gmi_tp_set_run_dir(const tp_direction_t *dir)
+static int32_t gmi_tp_set_run_dir(tp_direction_t dir)
 {
-    return tpSetRunDir(g_tp, (tc_direction_t)*dir);
+    return tpSetRunDir(g_tp, (tc_direction_t)dir);
 }
 
 // --- Motion segment addition ---

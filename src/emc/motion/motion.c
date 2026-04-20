@@ -22,9 +22,14 @@
 #include "motion_struct.h"
 #include "mot_priv.h"
 #include "tp_types.h"
-#include "motmod_gmi_bridge.h"
+#include "tp_api.h"
+#include "home_api.h"
 #include "rtapi_math.h"
 #include "axis.h"
+
+// Forward declarations (defined later in this file)
+extern const tp_callbacks_t   *motmod_tp_api;
+extern const home_callbacks_t *motmod_home_api;
 
 // Mark strings for translation, but defer translation to userspace
 #define _(s) (s)
@@ -497,7 +502,7 @@ void switch_to_teleop_mode(void) {
     emcmot_joint_t *joint;
 
     if (emcmotConfig->kinType != KINEMATICS_IDENTITY) {
-        if (!get_allhomed()) {
+        if (!motmod_home_api->get_allhomed()) {
             reportError(_("all joints must be homed before going into teleop mode"));
             return;
         }
@@ -563,16 +568,16 @@ static int module_intfc() {
 }
 
 static int tp_init() {
-    if (-1 == tpCreate(DEFAULT_TC_QUEUE_SIZE,mot_comp_id)) {
+    if (-1 == motmod_tp_api->create(DEFAULT_TC_QUEUE_SIZE,mot_comp_id)) {
         rtapi_print_msg(RTAPI_MSG_ERR,
-            "MOTION: tpCreate failed\n");
+            "MOTION: motmod_tp_api->create failed\n");
         return -1;
     }
-    // tpInit is called from tpCreate
-    tpSetCycleTime(emcmotConfig->trajCycleTime);
-    tpSetVmax(emcmotStatus->vel, emcmotStatus->vel);
-    tpSetAmax(emcmotStatus->acc);
-    tpSetPos(&emcmotStatus->carte_pos_cmd);
+    // tpInit is called from motmod_tp_api->create
+    motmod_tp_api->set_cycle_time(emcmotConfig->trajCycleTime);
+    motmod_tp_api->set_vmax(emcmotStatus->vel, emcmotStatus->vel);
+    motmod_tp_api->set_amax(emcmotStatus->acc);
+    motmod_tp_api->set_pos((tp_pose_t *)&emcmotStatus->carte_pos_cmd);
     return 0;
 }
 
@@ -1573,7 +1578,7 @@ static int setTrajCycleTime(double secs)
         emcmotConfig->interpolationRate = 1;
 
     /* set traj planner */
-    tpSetCycleTime(secs);
+    motmod_tp_api->set_cycle_time(secs);
 
     /* set the free planners, cubic interpolation rate and segment time */
     for (t = 0; t < ALL_JOINTS; t++) {

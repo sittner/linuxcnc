@@ -89,6 +89,15 @@ func (g *serverGen) emitEnums() {
 	}
 }
 
+func (g *serverGen) isEnum(name string) bool {
+	for _, e := range g.api.Enums {
+		if e.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 func (g *serverGen) emitTypes() {
 	if len(g.api.Types) == 0 {
 		return
@@ -248,6 +257,9 @@ func (g *serverGen) paramDecl(p ast.Param) string {
 		cType := g.toCType(p.Type)
 		if p.ByRef {
 			return fmt.Sprintf("%s *%s", cType, name)
+		}
+		if g.isEnum(p.Type.Name) {
+			return fmt.Sprintf("%s %s", cType, name)
 		}
 		return fmt.Sprintf("const %s *%s", cType, name)
 

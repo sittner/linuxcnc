@@ -91,7 +91,7 @@ func (g *dispatchCGen) emitCallWrapper(fn ast.Func) {
 
 	for _, p := range fn.Params {
 		name := toSnakeCase(p.Name)
-		params = append(params, cgoParamDecl(apiName, p))
+		params = append(params, g.cgoParamDecl(apiName, p))
 		args = append(args, name)
 		// Slice params also pass a length arg
 		if p.Type.Kind == ast.TypeSlice {
@@ -109,7 +109,7 @@ func (g *dispatchCGen) emitCallWrapper(fn ast.Func) {
 }
 
 // cgoParamDecl returns the C parameter declaration for use in cgo preamble wrappers.
-func cgoParamDecl(apiName string, p ast.Param) string {
+func (g *dispatchCGen) cgoParamDecl(apiName string, p ast.Param) string {
 	name := toSnakeCase(p.Name)
 
 	// ptr qualifier: pass-through typed pointer, no marshaling.
@@ -135,6 +135,9 @@ func cgoParamDecl(apiName string, p ast.Param) string {
 		cType := fmt.Sprintf("%s_%s_t", apiName, toSnakeCase(p.Type.Name))
 		if p.ByRef {
 			return fmt.Sprintf("%s *%s", cType, name)
+		}
+		if g.isEnum(p.Type.Name) {
+			return fmt.Sprintf("%s %s", cType, name)
 		}
 		return fmt.Sprintf("const %s *%s", cType, name)
 
@@ -557,7 +560,13 @@ func (g *dispatchCGen) paramCallArg(cVar string, p ast.Param) []string {
 		}
 		return []string{cVar}
 	case ast.TypeNamed:
-		// Structs always pass by pointer (const or mutable).
+		// Enums pass by value; structs pass by pointer (const or mutable).
+		if g.isEnum(p.Type.Name) {
+			if p.ByRef {
+				return []string{"&" + cVar}
+			}
+			return []string{cVar}
+		}
 		return []string{"&" + cVar}
 	case ast.TypeArray:
 		// Arrays pass pointer to first element.

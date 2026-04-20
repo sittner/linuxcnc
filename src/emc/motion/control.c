@@ -30,8 +30,12 @@
 #include "simple_tp.h"
 #include "config.h"
 #include "motion_types.h"
-#include "motmod_gmi_bridge.h"
+#include "tp_api.h"
+#include "home_api.h"
 #include "axis.h"
+
+extern const tp_callbacks_t   *motmod_tp_api;
+extern const home_callbacks_t *motmod_home_api;
 
 // Mark strings for translation, but defer translation to userspace
 #define _(s) (s)
@@ -139,7 +143,7 @@ static void handle_jjogwheels(void);
    no prototype here, implemented in homing.c, proto in mot_priv.h
 */
 
-/* 'do_homing()' looks at the home_state field of each joint struct
+/* 'motmod_home_api->do_homing()' looks at the home_state field of each joint struct
     to decide what, if anything, needs to be done related to homing
     the joint.  Homing is implemented as a state machine, the exact
     sequence of states depends on the machine configuration.  It
@@ -242,7 +246,7 @@ void emcmotController(void *arg, long period)
     emcmotStatus->head++;
     /* here begins the core of the controller */
 
-    read_homing_in_pins(ALL_JOINTS);
+    motmod_home_api->read_in_pins(ALL_JOINTS);
     handle_kinematicsSwitch();
     process_inputs();
     do_forward_kins();
@@ -253,18 +257,18 @@ void emcmotController(void *arg, long period)
         handle_jjogwheels();
     }
     if (!emcmotStatus->on_soft_limit && !*emcmot_hal_data->jog_inhibit) {  // change from teleop to move off joint soft limit
-        axis_handle_jogwheels(GET_MOTION_TELEOP_FLAG(), GET_MOTION_ENABLE_FLAG(), get_homing_is_active());
+        axis_handle_jogwheels(GET_MOTION_TELEOP_FLAG(), GET_MOTION_ENABLE_FLAG(), motmod_home_api->get_is_active());
     }
     if (   (emcmotStatus->motion_state == EMCMOT_MOTION_FREE)
-        && do_homing()) {
+        && motmod_home_api->do_homing()) {
         switch_to_teleop_mode();
     }
 
     get_pos_cmds(period);
     compute_screw_comp();
-    *(emcmot_hal_data->eoffset_active) = axis_plan_external_offsets(servo_period, GET_MOTION_ENABLE_FLAG(), get_allhomed());
+    *(emcmot_hal_data->eoffset_active) = axis_plan_external_offsets(servo_period, GET_MOTION_ENABLE_FLAG(), motmod_home_api->get_allhomed());
     output_to_hal();
-    write_homing_out_pins(ALL_JOINTS);
+    motmod_home_api->write_out_pins(ALL_JOINTS);
     update_status();
     /* here ends the core of the controller */
     emcmotStatus->heartbeat++;
@@ -337,7 +341,7 @@ static void handle_kinematicsSwitch(void) {
                ,anum,beforePose[anum],*pcmd_p[anum],*pcmd_p[anum]-beforePose[anum]);
     }
 #endif
-    tpSetPos(&emcmotStatus->carte_pos_cmd);
+    motmod_tp_api->set_pos((tp_pose_t *)&emcmotStatus->carte_pos_cmd);
 } //handle_kinematicsSwitch()
 
 static void process_inputs(void)
@@ -387,15 +391,15 @@ static void process_inputs(void)
         // Actual scale factor is always positive by default
         double adaptive_feed_out = fabs(adaptive_feed_in);
         // Case 1: positive to negative direction change
-        if ( adaptive_feed_in < 0.0 && tpGetRunDir() == TC_DIR_FORWARD) {
+        if ( adaptive_feed_in < 0.0 && motmod_tp_api->get_run_dir() == TP_FORWARD) {
             // User commands feed in reverse direction, but we're not running in reverse yet
-            if (tpSetRunDir(TC_DIR_REVERSE) != TP_ERR_OK) {
+            if (motmod_tp_api->set_run_dir(TP_REVERSE) != TP_ERR_OK) {
                 // Need to decelerate to a stop first
                 adaptive_feed_out = 0.0;
             }
-        } else if (adaptive_feed_in > 0.0 && tpGetRunDir() == TC_DIR_REVERSE ) {
+        } else if (adaptive_feed_in > 0.0 && motmod_tp_api->get_run_dir() == TP_REVERSE ) {
             // User commands feed in forward direction, but we're running in reverse
-            if (tpSetRunDir(TC_DIR_FORWARD) != TP_ERR_OK) {
+            if (motmod_tp_api->set_run_dir(TP_FORWARD) != TP_ERR_OK) {
                 // Need to decelerate to a stop first
                 adaptive_feed_out = 0.0;
             }
@@ -443,8 +447,8 @@ static void process_inputs(void)
 	/* copy data from HAL to joint structure */
 	joint->motor_pos_fb = *(joint_data->motor_pos_fb);
 	/* calculate pos_fb */
-	if (( get_homing_at_index_search_wait(joint_num) ) &&
-	    ( get_index_enable(joint_num) == 0 )) {
+	if (( motmod_home_api->get_at_index_search_wait(joint_num) ) &&
+	    ( motmod_home_api->get_index_enable(joint_num) == 0 )) {
 	    /* special case - we're homing the joint, and it just
 	       hit the index.  The encoder count might have made a
 	       step change.  The homing code will correct for it
@@ -457,7 +461,7 @@ static void process_inputs(void)
 		(joint->backlash_filt + joint->motor_offset);
 	}
 	/* calculate following error */
-	if ( IS_EXTRA_JOINT(joint_num) && get_homed(joint_num) ) {
+	if ( IS_EXTRA_JOINT(joint_num) && motmod_home_api->get_homed(joint_num) ) {
 	    joint->ferror = 0; // not relevant for homed extrajoints
 	} else {
 	    joint->ferror = joint->pos_cmd - joint->pos_fb;
@@ -523,7 +527,7 @@ static void process_inputs(void)
 				reportError(_("fault %d during orient in progress"),
 						emcmotStatus->spindle_status[spindle_num].orient_fault);
 				emcmotStatus->commandStatus = EMCMOT_COMMAND_INVALID_COMMAND;
-				tpAbort();
+				motmod_tp_api->abort();
 				SET_MOTION_ERROR_FLAG(1);
 			} else if (*(emcmot_hal_data->spindle[spindle_num].spindle_is_oriented)) {
 				*(emcmot_hal_data->spindle[spindle_num].spindle_orient) = 0;
@@ -624,7 +628,7 @@ static void do_forward_kins(void)
     case KINEMATICS_IDENTITY:
 	kinematicsForward(joint_pos, &emcmotStatus->carte_pos_fb, &fflags,
 	    &iflags);
-	if (get_allhomed()) {
+	if (motmod_home_api->get_allhomed()) {
 	    emcmotStatus->carte_pos_fb_ok = 1;
 	} else {
 	    emcmotStatus->carte_pos_fb_ok = 0;
@@ -632,7 +636,7 @@ static void do_forward_kins(void)
 	break;
 
     case KINEMATICS_BOTH:
-	if (get_allhomed()) {
+	if (motmod_home_api->get_allhomed()) {
 	    /* is previous value suitable for use as initial guess? */
 	    if (!emcmotStatus->carte_pos_fb_ok) {
 		/* no, use home position as initial guess */
@@ -693,9 +697,9 @@ static void process_probe_inputs(void)
             /* stop! */
             emcmotStatus->probing = 0;
             emcmotStatus->probeTripped = 1;
-            tpAbort();
+            motmod_tp_api->abort();
         /* check if the probe hasn't tripped, but the move finished */
-        } else if (GET_MOTION_INPOS_FLAG() && tpQueueDepth() == 0) {
+        } else if (GET_MOTION_INPOS_FLAG() && motmod_tp_api->queue_depth() == 0) {
             /* we are already stopped, but we need to remember the current
                position here, because it will still be queried */
             emcmotStatus->probedPos = emcmotStatus->carte_pos_fb;
@@ -714,10 +718,10 @@ static void process_probe_inputs(void)
         // not probing, but we have a rising edge on the probe.
         // this could be expensive if we don't stop.
 
-        if(!GET_MOTION_INPOS_FLAG() && tpQueueDepth()) {
+        if(!GET_MOTION_INPOS_FLAG() && motmod_tp_api->queue_depth()) {
             // running an command
             if (emcmotStatus->motionType != EMC_MOTION_TYPE_PROBING) {
-                tpAbort();
+                motmod_tp_api->abort();
                 reportError(_("Probe tripped during non-probe move."));
                 SET_MOTION_ERROR_FLAG(1);
             }
@@ -737,8 +741,8 @@ static void process_probe_inputs(void)
                 // inhibit_probe_home_error is set by [TRAJ]->NO_PROBE_HOME_ERROR in the ini file
                 if (!emcmotConfig->inhibit_probe_home_error) {
                     // abort any homing
-                    if(get_homing(i)) {
-                        do_cancel_homing(i);
+                    if(motmod_home_api->get_homing(i)) {
+                        motmod_home_api->do_cancel(i);
                         aborted=1;
                     }
                 }
@@ -809,7 +813,7 @@ static void check_for_faults(void)
 	    if ((GET_JOINT_PHL_FLAG(joint) && ! pos_limit_override ) ||
 		(GET_JOINT_NHL_FLAG(joint) && ! neg_limit_override )) {
 		/* joint is on limit switch, should we trip? */
-		if (get_homing(joint_num)) {
+		if (motmod_home_api->get_homing(joint_num)) {
 		    /* no, ignore limits */
 		} else {
 		    /* trip on limits */
@@ -864,7 +868,7 @@ static void set_operating_mode(void)
     /* check for disabling */
     if (!emcmotInternal->enabling && GET_MOTION_ENABLE_FLAG()) {
 	/* clear out the motion emcmotInternal->coord_tp and interpolators */
-	tpClear();
+	motmod_tp_api->clear();
 	for (joint_num = 0; joint_num < ALL_JOINTS; joint_num++) {
 	    /* point to joint data */
 	    joint = &joints[joint_num];
@@ -876,7 +880,7 @@ static void set_operating_mode(void)
 	    if (GET_JOINT_ACTIVE_FLAG(joint)) {
 		SET_JOINT_INPOS_FLAG(joint, 1);
 		SET_JOINT_ENABLE_FLAG(joint, 0);
-		do_cancel_homing(joint_num);
+		motmod_home_api->do_cancel(joint_num);
 	    }
 	    /* don't clear the joint error flag, since that may signify why
 	       we just went into disabled state */
@@ -897,14 +901,14 @@ static void set_operating_mode(void)
             *(emcmot_hal_data->eoffset_limited) = 0;
         }
         axis_initialize_external_offsets();
-        tpSetPos(&emcmotStatus->carte_pos_cmd);
+        motmod_tp_api->set_pos((tp_pose_t *)&emcmotStatus->carte_pos_cmd);
 	for (joint_num = 0; joint_num < ALL_JOINTS; joint_num++) {
 	    /* point to joint data */
 	    joint = &joints[joint_num];
 	    joint->free_tp.curr_pos = joint->pos_cmd;
 	    if (GET_JOINT_ACTIVE_FLAG(joint)) {
 		SET_JOINT_ENABLE_FLAG(joint, 1);
-		do_cancel_homing(joint_num);
+		motmod_home_api->do_cancel(joint_num);
 	    }
 	    /* clear any outstanding joint errors when going into enabled
 	       state */
@@ -925,7 +929,7 @@ static void set_operating_mode(void)
 	if (GET_MOTION_INPOS_FLAG()) {
 
 	    /* update coordinated emcmotInternal->coord_tp position */
-	    tpSetPos(&emcmotStatus->carte_pos_cmd);
+	    motmod_tp_api->set_pos((tp_pose_t *)&emcmotStatus->carte_pos_cmd);
 	    /* drain the cubics so they'll synch up */
 	    for (joint_num = 0; joint_num < EMCMOT_MAX_JOINTS; joint_num++) {
 		if (joint_num < NO_OF_KINS_JOINTS) {
@@ -977,7 +981,7 @@ static void set_operating_mode(void)
                 // subtract at coord mode start
                 axis_apply_ext_offsets_to_carte_pos(-1, pcmd_p);
 
-		tpSetPos(&emcmotStatus->carte_pos_cmd);
+		motmod_tp_api->set_pos((tp_pose_t *)&emcmotStatus->carte_pos_cmd);
 		/* drain the cubics so they'll synch up */
 		for (joint_num = 0; joint_num < NO_OF_KINS_JOINTS; joint_num++) {
 		    /* point to joint data */
@@ -1086,7 +1090,7 @@ static void handle_jjogwheels(void)
 	    continue;
 	}
 	/* must not be homing */
-	if (get_homing_is_active() ) {
+	if (motmod_home_api->get_is_active() ) {
 	    continue;
 	}
 	/* must not be doing a keyboard jog */
@@ -1097,20 +1101,20 @@ static void handle_jjogwheels(void)
 	    /* don't jog if feedhold is on or if feed override is zero */
 	    break;
 	}
-        if (get_home_needs_unlock_first(joint_num) ) {
+        if (motmod_home_api->get_needs_unlock_first(joint_num) ) {
             reportError("Can't wheel jog locking joint_num=%d",joint_num);
             continue;
         }
-        if (get_home_is_synchronized(joint_num)) {
+        if (motmod_home_api->get_is_synchronized(joint_num)) {
             if (emcmotConfig->kinType == KINEMATICS_IDENTITY) {
                 rtapi_print_msg(RTAPI_MSG_ERR,
                 "Homing is REQUIRED to wheel jog requested coordinate\n"
                 "because joint (%d) home_sequence is synchronized (%d)\n"
-                ,joint_num,get_home_sequence(joint_num) );
+                ,joint_num,motmod_home_api->get_sequence(joint_num) );
             } else {
                 rtapi_print_msg(RTAPI_MSG_ERR,
                 "Cannot wheel jog joint %d because home_sequence synchronized (%d)\n"
-                ,joint_num,get_home_sequence(joint_num) );
+                ,joint_num,motmod_home_api->get_sequence(joint_num) );
             }
             continue;
         }
@@ -1211,13 +1215,13 @@ static void get_pos_cmds(long period)
 	        continue;
             }
             // extra joint is not managed herein after homing:
-            if (IS_EXTRA_JOINT(joint_num) && get_homed(joint_num)) continue;
+            if (IS_EXTRA_JOINT(joint_num) && motmod_home_api->get_homed(joint_num)) continue;
 
 	    if(joint->acc_limit > emcmotStatus->acc)
 		joint->acc_limit = emcmotStatus->acc;
 	    /* compute joint velocity limit */
             if (   (emcmotStatus->motion_state != EMCMOT_MOTION_FREE)
-                && get_home_is_idle(joint_num) ) {
+                && motmod_home_api->get_is_idle(joint_num) ) {
                 /* velocity limit = joint limit * global scale factor */
                 /* the global factor is used for feedrate override */
                 vel_lim = joint->vel_limit * emcmotStatus->net_feed_scale;
@@ -1229,7 +1233,7 @@ static void get_pos_cmds(long period)
                if (vel_lim < joint->free_tp.max_vel)
                    joint->free_tp.max_vel = vel_lim;
             } else {
-                /* except if homing, when we set free_tp max vel in do_homing */
+                /* except if homing, when we set free_tp max vel in motmod_home_api->do_homing */
             }
             /* set acc limit in free TP */
             /* execute free TP */
@@ -1283,7 +1287,7 @@ static void get_pos_cmds(long period)
 
 	case KINEMATICS_IDENTITY:
 	    kinematicsForward(positions, &emcmotStatus->carte_pos_cmd, &fflags, &iflags);
-	    if (get_allhomed()) {
+	    if (motmod_home_api->get_allhomed()) {
 		emcmotStatus->carte_pos_cmd_ok = 1;
 	    } else {
 		emcmotStatus->carte_pos_cmd_ok = 0;
@@ -1291,7 +1295,7 @@ static void get_pos_cmds(long period)
 	    break;
 
 	case KINEMATICS_BOTH:
-	    if (get_allhomed()) {
+	    if (motmod_home_api->get_allhomed()) {
 		/* is previous value suitable for use as initial guess? */
 		if (!emcmotStatus->carte_pos_cmd_ok) {
 		    /* no, use home position as initial guess */
@@ -1333,9 +1337,9 @@ static void get_pos_cmds(long period)
 	    /* they're empty, pull next point(s) off Cartesian planner */
 	    /* run coordinated trajectory planning cycle */
 
-	    tpRunCycle(period);
+	    motmod_tp_api->run_cycle((int64_t)period);
             /* get new commanded traj pos */
-            tpGetPos(&emcmotStatus->carte_pos_cmd);
+            motmod_tp_api->get_pos((tp_pose_t *)&emcmotStatus->carte_pos_cmd);
 
             if (axis_update_coord_with_bound(pcmd_p, servo_period)) {
                 ext_offset_coord_limit = 1;
@@ -1387,7 +1391,7 @@ static void get_pos_cmds(long period)
 	}
 	/* report motion status */
 	SET_MOTION_INPOS_FLAG(0);
-	if (tpIsDone()) {
+	if (motmod_tp_api->is_done()) {
 	    SET_MOTION_INPOS_FLAG(1);
 	}
 	break;
@@ -1492,7 +1496,7 @@ static void get_pos_cmds(long period)
 	joint_limit[joint_num][1] = 0;
 	
 	/* skip inactive or unhomed axes */
-	if ((!GET_JOINT_ACTIVE_FLAG(joint)) || (!get_homed(joint_num))) {
+	if ((!GET_JOINT_ACTIVE_FLAG(joint)) || (!motmod_home_api->get_homed(joint_num))) {
 	    continue;
         }
 
@@ -2047,7 +2051,7 @@ static void output_to_hal(void)
              *(joint_data->unlock) = 0;
         }
 
-	if (IS_EXTRA_JOINT(joint_num) && get_homed(joint_num)) {
+	if (IS_EXTRA_JOINT(joint_num) && motmod_home_api->get_homed(joint_num)) {
 	    // passthru posthome_cmd with motor_offset
 	    // to hal pin: joint.N.motor-pos-cmd
 	    extrajoint_hal_t *ejoint_data;
@@ -2092,8 +2096,8 @@ static void update_status(void)
 	}
 #endif
 	joint_status->flag = joint->flag;
-	joint_status->homing = get_homing(joint_num);
-	joint_status->homed  = get_homed(joint_num);
+	joint_status->homing = motmod_home_api->get_homing(joint_num);
+	joint_status->homed  = motmod_home_api->get_homed(joint_num);
 	joint_status->pos_cmd = joint->pos_cmd;
 	joint_status->pos_fb = joint->pos_fb;
 	joint_status->vel_cmd = joint->vel_cmd;
@@ -2106,7 +2110,7 @@ static void update_status(void)
 	joint_status->min_ferror = joint->min_ferror;
 	joint_status->max_ferror = joint->max_ferror;
     }
-    if (get_allhomed()) {
+    if (motmod_home_api->get_allhomed()) {
         *emcmot_hal_data->is_all_homed = 1;
     } else {
         *emcmot_hal_data->is_all_homed = 0;
@@ -2155,20 +2159,20 @@ static void update_status(void)
     */
 
     /* motion emcmotInternal->coord_tp status */
-    emcmotStatus->depth = tpQueueDepth();
-    emcmotStatus->activeDepth = tpActiveDepth();
-    emcmotStatus->id = tpGetExecId();
+    emcmotStatus->depth = motmod_tp_api->queue_depth();
+    emcmotStatus->activeDepth = motmod_tp_api->active_depth();
+    emcmotStatus->id = motmod_tp_api->get_exec_id();
     //KLUDGE add an API call for this
-    emcmotStatus->reverse_run = tpGetRunDir();
-    emcmotStatus->tag = tpGetExecTag();
-    emcmotStatus->motionType = tpGetMotionType();
-    emcmotStatus->queueFull = tpQueueFull();
+    emcmotStatus->reverse_run = motmod_tp_api->get_run_dir();
+    motmod_tp_api->get_exec_tag((tp_state_tag_t *)&emcmotStatus->tag);
+    emcmotStatus->motionType = motmod_tp_api->get_motion_type();
+    emcmotStatus->queueFull = motmod_tp_api->queue_full();
 
     /* check to see if we should pause in order to implement
        single emcmotStatus->stepping */
 
     if (emcmotStatus->stepping && emcmotInternal->idForStep != emcmotStatus->id) {
-      tpPause();
+      motmod_tp_api->pause();
       emcmotStatus->stepping = 0;
       emcmotStatus->paused = 1;
     }

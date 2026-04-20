@@ -75,8 +75,8 @@ static int32_t gmi_home_do_cancel(int32_t jno)
     return 0;
 }
 
-static int32_t gmi_home_set_unhomed(int32_t jno, const home_motion_state_t *motstate)
-{    set_unhomed(jno, (motion_state_t)*motstate);
+static int32_t gmi_home_set_unhomed(int32_t jno, home_motion_state_t motstate)
+{    set_unhomed(jno, (motion_state_t)motstate);
     return 0;
 }
 
