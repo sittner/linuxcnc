@@ -41,7 +41,6 @@ pin in float z_rot_point = 0 "Z rotation point";
 // Switch state output pins:
 pin out bit kinstype_is_0 = 1 "Indicates identity (type 0) kinematics active";
 pin out bit kinstype_is_1 = 0 "Indicates TCP (type 1) kinematics active";
-option extra_setup yes;
 gmi_provide kins;
 license "GPL";
 author "David Mueller";
@@ -53,88 +52,64 @@ author "David Mueller";
 #define TO_RAD (M_PI / 180.0)
 #endif
 
-// ─── Static pointers for HAL pin access from kins callbacks ───
-//
-// GMI kins callbacks are module-global (no __comp_inst).
-// We save raw pointers to HAL shared memory in EXTRA_SETUP()
-// so the kins functions can read offsets and update switch state.
-
-static gomc_hal_float_t *kins_tool_offset_z;
-static gomc_hal_float_t *kins_x_offset;
-static gomc_hal_float_t *kins_z_offset;
-static gomc_hal_float_t *kins_x_rot_point;
-static gomc_hal_float_t *kins_y_rot_point;
-static gomc_hal_float_t *kins_z_rot_point;
-static gomc_hal_bit_t   *kins_kinstype_is_0;
-static gomc_hal_bit_t   *kins_kinstype_is_1;
-
-static const gomc_log_t *kins_log;
-static const char *kins_name;
-
-EXTRA_SETUP() {
-    // &pin_name expands to &(*(__comp_inst->hal->pin_name)),
-    // yielding the raw HAL shared-memory pointer.
-    kins_tool_offset_z = &tool_offset_z;
-    kins_x_offset      = &x_offset;
-    kins_z_offset      = &z_offset;
-    kins_x_rot_point   = &x_rot_point;
-    kins_y_rot_point   = &y_rot_point;
-    kins_z_rot_point   = &z_rot_point;
-    kins_kinstype_is_0 = &kinstype_is_0;
-    kins_kinstype_is_1 = &kinstype_is_1;
-    kins_log  = __comp_inst->env->log;
-    kins_name = __comp_inst->name;
-    return 0;
-}
+// With the ctx parameter, gmi_kins_* callbacks can access the
+// component instance by casting:
+//   struct inst *__comp_inst = (struct inst *)ctx;
+// This enables use of HAL pin convenience macros.
 
 static int32_t switchkins_type;
 
-static kins_kinematics_type_t gmi_kins_type(void)
+static kins_kinematics_type_t gmi_kins_type(void *ctx)
 {
+    (void)ctx;
     return KINS_BOTH;
 }
 
-static int32_t gmi_kins_switchable(void)
+static int32_t gmi_kins_switchable(void *ctx)
 {
+    (void)ctx;
     return 1;
 }
 
-static int32_t gmi_kins_switch(int32_t new_switchkins_type)
+static int32_t gmi_kins_switch(void *ctx, int32_t new_switchkins_type)
 {
+    struct inst *__comp_inst = (struct inst *)ctx;
     switchkins_type = new_switchkins_type;
-    gomc_log_infof(kins_log, kins_name, "kinematicsSwitch(): type=%d", switchkins_type);
+    gomc_log_infof(__comp_inst->env->log, __comp_inst->name, "kinematicsSwitch(): type=%d", switchkins_type);
     switch (switchkins_type) {
-        case 0: gomc_log_infof(kins_log, kins_name, "kinematicsSwitch:TYPE0");
-                *kins_kinstype_is_0 = 1;
-                *kins_kinstype_is_1 = 0;
+        case 0: gomc_log_infof(__comp_inst->env->log, __comp_inst->name, "kinematicsSwitch:TYPE0");
+                kinstype_is_0 = 1;
+                kinstype_is_1 = 0;
                 break;
-        case 1: gomc_log_infof(kins_log, kins_name, "kinematicsSwitch:TYPE1");
-                *kins_kinstype_is_0 = 0;
-                *kins_kinstype_is_1 = 1;
+        case 1: gomc_log_infof(__comp_inst->env->log, __comp_inst->name, "kinematicsSwitch:TYPE1");
+                kinstype_is_0 = 0;
+                kinstype_is_1 = 1;
                 break;
-       default: gomc_log_errorf(kins_log, kins_name, "kinematicsSwitch:BAD VALUE <%d>",
+       default: gomc_log_errorf(__comp_inst->env->log, __comp_inst->name, "kinematicsSwitch:BAD VALUE <%d>",
                 switchkins_type);
-                *kins_kinstype_is_0 = 0;
-                *kins_kinstype_is_1 = 0;
+                kinstype_is_0 = 0;
+                kinstype_is_1 = 0;
                 return -1; // FAIL
     }
     return 0;
 }
 
 static int32_t gmi_kins_forward(
+    void *ctx,
     const double joints[KINS_MAX_JOINTS],
     kins_pose_t *pos,
     uint64_t fflags,
     uint64_t *iflags)
 {
+    struct inst *__comp_inst = (struct inst *)ctx;
     (void)fflags;
     (void)iflags;
 
-    double xrp = *kins_x_rot_point;
-    double yrp = *kins_y_rot_point;
-    double zrp = *kins_z_rot_point;
-    double dz  = *kins_z_offset;
-    double dt  = *kins_tool_offset_z;
+    double xrp = x_rot_point;
+    double yrp = y_rot_point;
+    double zrp = z_rot_point;
+    double dz  = z_offset;
+    double dt  = tool_offset_z;
 
     // degree -> radians angle conversion
     double sa = sin(joints[3] * TO_RAD);
@@ -179,20 +154,22 @@ static int32_t gmi_kins_forward(
 }
 
 static int32_t gmi_kins_inverse(
+    void *ctx,
     const kins_pose_t *pos,
     double joints[KINS_MAX_JOINTS],
     uint64_t iflags,
     uint64_t *fflags)
 {
+    struct inst *__comp_inst = (struct inst *)ctx;
     (void)iflags;
     (void)fflags;
 
-    double xrp = *kins_x_rot_point;
-    double yrp = *kins_y_rot_point;
-    double zrp = *kins_z_rot_point;
-    double dx  = *kins_x_offset;
-    double dz  = *kins_z_offset;
-    double dt  = *kins_tool_offset_z;
+    double xrp = x_rot_point;
+    double yrp = y_rot_point;
+    double zrp = z_rot_point;
+    double dx  = x_offset;
+    double dz  = z_offset;
+    double dt  = tool_offset_z;
 
     // degree -> radians angle conversion
     double sa = sin(pos->a * TO_RAD);

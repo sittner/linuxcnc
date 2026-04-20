@@ -502,7 +502,7 @@ void switch_to_teleop_mode(void) {
     emcmot_joint_t *joint;
 
     if (emcmotConfig->kinType != KINEMATICS_IDENTITY) {
-        if (!motmod_home_api->get_allhomed()) {
+        if (!motmod_home_api->get_allhomed(motmod_home_api->ctx)) {
             reportError(_("all joints must be homed before going into teleop mode"));
             return;
         }
@@ -563,21 +563,21 @@ int count_names(char *names[]){
 }
 
 static int module_intfc() {
-    motmod_tp_api->init();
+    motmod_tp_api->init(motmod_tp_api->ctx);
     return 0;
 }
 
 static int tp_init() {
-    if (-1 == motmod_tp_api->create(DEFAULT_TC_QUEUE_SIZE,mot_comp_id)) {
+    if (-1 == motmod_tp_api->create(motmod_tp_api->ctx, DEFAULT_TC_QUEUE_SIZE,mot_comp_id)) {
         rtapi_print_msg(RTAPI_MSG_ERR,
             "MOTION: motmod_tp_api->create failed\n");
         return -1;
     }
     // tpInit is called from motmod_tp_api->create
-    motmod_tp_api->set_cycle_time(emcmotConfig->trajCycleTime);
-    motmod_tp_api->set_vmax(emcmotStatus->vel, emcmotStatus->vel);
-    motmod_tp_api->set_amax(emcmotStatus->acc);
-    motmod_tp_api->set_pos((tp_pose_t *)&emcmotStatus->carte_pos_cmd);
+    motmod_tp_api->set_cycle_time(motmod_tp_api->ctx, emcmotConfig->trajCycleTime);
+    motmod_tp_api->set_vmax(motmod_tp_api->ctx, emcmotStatus->vel, emcmotStatus->vel);
+    motmod_tp_api->set_amax(motmod_tp_api->ctx, emcmotStatus->acc);
+    motmod_tp_api->set_pos(motmod_tp_api->ctx, (tp_pose_t *)&emcmotStatus->carte_pos_cmd);
     return 0;
 }
 
@@ -896,7 +896,7 @@ static int motmod_init(cmod_t *self)
     }
 
     /* Initialize homing via GMI home API */
-    if (motmod_home_api->init(mot_comp_id,
+    if (motmod_home_api->init(motmod_home_api->ctx, mot_comp_id,
                               emcmotConfig->servoCycleTime,
                               num_joints,
                               num_extrajoints) != 0) {
@@ -1578,7 +1578,7 @@ static int setTrajCycleTime(double secs)
         emcmotConfig->interpolationRate = 1;
 
     /* set traj planner */
-    motmod_tp_api->set_cycle_time(secs);
+    motmod_tp_api->set_cycle_time(motmod_tp_api->ctx, secs);
 
     /* set the free planners, cubic interpolation rate and segment time */
     for (t = 0; t < ALL_JOINTS; t++) {

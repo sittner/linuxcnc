@@ -1397,67 +1397,73 @@ static bool base_do_homing(void)
 // GMI cmod interface — direct implementation, no wrapper layer
 // ═══════════════════════════════════════════════════════════════════════════
 
-static int32_t gmi_home_init(int32_t comp_id, double servo_period,
+static int32_t gmi_home_init(void *ctx, int32_t comp_id, double servo_period,
     int32_t n_joints, int32_t n_extrajoints)
 {
+    (void)ctx;
     return base_homing_init(comp_id, servo_period, n_joints, n_extrajoints);
 }
 
-static int32_t gmi_home_set_joint_params(int32_t jno, double offset, double home,
+static int32_t gmi_home_set_joint_params(void *ctx, int32_t jno, double offset, double home,
     double home_final_vel, double home_search_vel,
     double home_latch_vel, int32_t home_flags,
     int32_t home_sequence, int32_t volatile_home)
 {
+    (void)ctx;
     base_set_joint_homing_params(jno, offset, home,
         home_final_vel, home_search_vel, home_latch_vel,
         home_flags, home_sequence, (bool)volatile_home);
     return 0;
 }
 
-static int32_t gmi_home_update_joint_params(int32_t jno, double home_offset,
+static int32_t gmi_home_update_joint_params(void *ctx, int32_t jno, double home_offset,
     double home_home, int32_t home_sequence)
 {
+    (void)ctx;
     base_update_joint_homing_params(jno, home_offset, home_home, home_sequence);
     return 0;
 }
 
-static int32_t gmi_home_read_in_pins(int32_t njoints)
+static int32_t gmi_home_read_in_pins(void *ctx, int32_t njoints)
 {
+    (void)ctx;
     base_read_homing_in_pins(njoints);
     return 0;
 }
 
-static int32_t gmi_home_do_homing(void) { return (int32_t)base_do_homing(); }
+static int32_t gmi_home_do_homing(void *ctx) { (void)ctx; return (int32_t)base_do_homing(); }
 
-static int32_t gmi_home_write_out_pins(int32_t njoints)
+static int32_t gmi_home_write_out_pins(void *ctx, int32_t njoints)
 {
+    (void)ctx;
     base_write_homing_out_pins(njoints);
     return 0;
 }
 
-static int32_t gmi_home_do_home_joint(int32_t jno) { base_do_home_joint(jno); return 0; }
-static int32_t gmi_home_do_cancel(int32_t jno) { base_do_cancel_homing(jno); return 0; }
+static int32_t gmi_home_do_home_joint(void *ctx, int32_t jno) { (void)ctx; base_do_home_joint(jno); return 0; }
+static int32_t gmi_home_do_cancel(void *ctx, int32_t jno) { (void)ctx; base_do_cancel_homing(jno); return 0; }
 
-static int32_t gmi_home_set_unhomed(int32_t jno, home_motion_state_t motstate)
+static int32_t gmi_home_set_unhomed(void *ctx, int32_t jno, home_motion_state_t motstate)
 {
+    (void)ctx;
     base_set_unhomed(jno, (motion_state_t)motstate);
     return 0;
 }
 
-static int32_t gmi_home_get_allhomed(void) { return (int32_t)base_get_allhomed(); }
-static int32_t gmi_home_get_is_active(void) { return (int32_t)base_get_homing_is_active(); }
-static int32_t gmi_home_get_sequence(int32_t jno) { return base_get_home_sequence(jno); }
-static int32_t gmi_home_get_homing(int32_t jno) { return (int32_t)base_get_homing(jno); }
-static int32_t gmi_home_get_homed(int32_t jno) { return (int32_t)base_get_homed(jno); }
-static int32_t gmi_home_get_index_enable(int32_t jno) { return (int32_t)base_get_index_enable(jno); }
-static int32_t gmi_home_get_needs_unlock_first(int32_t jno) { return (int32_t)base_get_home_needs_unlock_first(jno); }
-static int32_t gmi_home_get_is_idle(int32_t jno) { return (int32_t)base_get_home_is_idle(jno); }
-static int32_t gmi_home_get_is_synchronized(int32_t jno) { return (int32_t)base_get_home_is_synchronized(jno); }
-static int32_t gmi_home_get_at_index_search_wait(int32_t jno) { return (int32_t)base_get_homing_at_index_search_wait(jno); }
+static int32_t gmi_home_get_allhomed(void *ctx) { (void)ctx; return (int32_t)base_get_allhomed(); }
+static int32_t gmi_home_get_is_active(void *ctx) { (void)ctx; return (int32_t)base_get_homing_is_active(); }
+static int32_t gmi_home_get_sequence(void *ctx, int32_t jno) { (void)ctx; return base_get_home_sequence(jno); }
+static int32_t gmi_home_get_homing(void *ctx, int32_t jno) { (void)ctx; return (int32_t)base_get_homing(jno); }
+static int32_t gmi_home_get_homed(void *ctx, int32_t jno) { (void)ctx; return (int32_t)base_get_homed(jno); }
+static int32_t gmi_home_get_index_enable(void *ctx, int32_t jno) { (void)ctx; return (int32_t)base_get_index_enable(jno); }
+static int32_t gmi_home_get_needs_unlock_first(void *ctx, int32_t jno) { (void)ctx; return (int32_t)base_get_home_needs_unlock_first(jno); }
+static int32_t gmi_home_get_is_idle(void *ctx, int32_t jno) { (void)ctx; return (int32_t)base_get_home_is_idle(jno); }
+static int32_t gmi_home_get_is_synchronized(void *ctx, int32_t jno) { (void)ctx; return (int32_t)base_get_home_is_synchronized(jno); }
+static int32_t gmi_home_get_at_index_search_wait(void *ctx, int32_t jno) { (void)ctx; return (int32_t)base_get_homing_at_index_search_wait(jno); }
 
 // ─── Callbacks table ────────────────────────────────────────────────────
 
-static const home_callbacks_t home_cmod_callbacks = GMI_HOME_CALLBACKS;
+static home_callbacks_t home_cmod_callbacks = GMI_HOME_CALLBACKS;
 
 // ─── cmod lifecycle ─────────────────────────────────────────────────────
 
@@ -1481,6 +1487,7 @@ int New(const cmod_env_t *env, const char *name,
     (void)argc; (void)argv;
     home_cmod_api = env->api;
 
+    home_cmod_callbacks.ctx = NULL;
     int rc = home_api_register(env->api, "default", &home_cmod_callbacks);
     if (rc != 0) {
         gomc_log_errorf(env->log, name,

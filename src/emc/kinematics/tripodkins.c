@@ -24,10 +24,12 @@ static struct haldata *haldata;
 // ─── Forward kinematics ───
 
 static int32_t tripodkins_forward(
+    void *ctx,
     const double joints[KINS_MAX_JOINTS],
     kins_pose_t *world,
     uint64_t fflags, uint64_t *iflags)
 {
+    (void)ctx;
     (void)iflags;
     double AD = joints[0], BD = joints[1], CD = joints[2];
     double P, Q, R, s, t, u, Dx, Dy, Dz;
@@ -61,10 +63,12 @@ static int32_t tripodkins_forward(
 // ─── Inverse kinematics ───
 
 static int32_t tripodkins_inverse(
+    void *ctx,
     const kins_pose_t *world,
     double joints[KINS_MAX_JOINTS],
     uint64_t iflags, uint64_t *fflags)
 {
+    (void)ctx;
     (void)iflags;
 
     joints[0] = sqrt(sq(world->x) + sq(world->y) + sq(world->z));
@@ -79,14 +83,16 @@ static int32_t tripodkins_inverse(
     return 0;
 }
 
-static kins_kinematics_type_t tripodkins_type(void) {
+static kins_kinematics_type_t tripodkins_type(void *ctx) {
+    (void)ctx;
     return KINS_BOTH;
 }
-static int32_t tripodkins_switchable(void) { return 0; }
-static int32_t tripodkins_switch(int32_t t)
-    { (void)t; return -1; }
+static int32_t tripodkins_switchable(void *ctx) { (void)ctx; return 0; }
+static int32_t tripodkins_switch(void *ctx, int32_t t)
+    { (void)ctx; (void)t; return -1; }
 
 static kins_callbacks_t tripodkins_callbacks = {
+    .ctx = NULL,
     .forward    = tripodkins_forward,
     .inverse    = tripodkins_inverse,
     .type       = tripodkins_type,

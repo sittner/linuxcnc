@@ -206,9 +206,11 @@ static int32_t puma_inverse(const kins_pose_t *world,
 // ─── Dispatch ───
 
 static int32_t dispatch_forward(
+    void *ctx,
     const double joints[KINS_MAX_JOINTS], kins_pose_t *world,
     uint64_t fflags, uint64_t *iflags)
 {
+    (void)ctx;
     (void)fflags; (void)iflags;
     switch (g_sw.current_type) {
         case 0:  return puma_forward(joints, world);
@@ -218,9 +220,11 @@ static int32_t dispatch_forward(
 }
 
 static int32_t dispatch_inverse(
+    void *ctx,
     const kins_pose_t *world, double joints[KINS_MAX_JOINTS],
     uint64_t iflags, uint64_t *fflags)
 {
+    (void)ctx;
     (void)iflags; (void)fflags;
     switch (g_sw.current_type) {
         case 0:  return puma_inverse(world, joints);
@@ -229,14 +233,16 @@ static int32_t dispatch_inverse(
     }
 }
 
-static kins_kinematics_type_t dispatch_type(void) {
+static kins_kinematics_type_t dispatch_type(void *ctx) {
+    (void)ctx;
     return KINS_BOTH;
 }
-static int32_t dispatch_switchable(void) { return 1; }
-static int32_t dispatch_switch(int32_t t)
-    { return sk_switch_to(&g_sw, t); }
+static int32_t dispatch_switchable(void *ctx) { (void)ctx; return 1; }
+static int32_t dispatch_switch(void *ctx, int32_t t)
+    { (void)ctx; return sk_switch_to(&g_sw, t); }
 
 static kins_callbacks_t puma_callbacks = {
+    .ctx = NULL,
     .forward    = dispatch_forward,
     .inverse    = dispatch_inverse,
     .type       = dispatch_type,

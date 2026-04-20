@@ -14,11 +14,13 @@
 // ─── Forward/Inverse kinematics ───
 
 static int32_t rotatekins_forward(
+    void *ctx,
     const double joints[KINS_MAX_JOINTS],
     kins_pose_t *world,
     uint64_t fflags,
     uint64_t *iflags)
 {
+    (void)ctx;
     (void)fflags; (void)iflags;
     double c_rad = -joints[5] * M_PI / 180.0;
     world->x = joints[0] * cos(c_rad) - joints[1] * sin(c_rad);
@@ -34,11 +36,13 @@ static int32_t rotatekins_forward(
 }
 
 static int32_t rotatekins_inverse(
+    void *ctx,
     const kins_pose_t *world,
     double joints[KINS_MAX_JOINTS],
     uint64_t iflags,
     uint64_t *fflags)
 {
+    (void)ctx;
     (void)iflags; (void)fflags;
     double c_rad = world->c * M_PI / 180.0;
     joints[0] = world->x * cos(c_rad) - world->y * sin(c_rad);
@@ -53,14 +57,16 @@ static int32_t rotatekins_inverse(
     return 0;
 }
 
-static kins_kinematics_type_t rotatekins_type(void) {
+static kins_kinematics_type_t rotatekins_type(void *ctx) {
+    (void)ctx;
     return KINS_BOTH;
 }
 
-static int32_t rotatekins_switchable(void) { return 0; }
-static int32_t rotatekins_switch(int32_t t) { (void)t; return -1; }
+static int32_t rotatekins_switchable(void *ctx) { (void)ctx; return 0; }
+static int32_t rotatekins_switch(void *ctx, int32_t t) { (void)ctx; (void)t; return -1; }
 
 static kins_callbacks_t rotatekins_callbacks = {
+    .ctx = NULL,
     .forward    = rotatekins_forward,
     .inverse    = rotatekins_inverse,
     .type       = rotatekins_type,

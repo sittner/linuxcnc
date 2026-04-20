@@ -39,10 +39,12 @@ static struct haldata *haldata;
 // ─── Forward kinematics ───
 
 static int32_t rdelta_forward(
+    void *ctx,
     const double joints[KINS_MAX_JOINTS],
     kins_pose_t *world,
     uint64_t fflags, uint64_t *iflags)
 {
+    (void)ctx;
     (void)fflags; (void)iflags;
     set_geometry(*haldata->pfr, *haldata->tl, *haldata->sl, *haldata->fr);
 
@@ -111,10 +113,12 @@ static int inverse_j0(double x, double y, double z, double *theta) {
 // ─── Inverse kinematics ───
 
 static int32_t rdelta_inverse(
+    void *ctx,
     const kins_pose_t *world,
     double joints[KINS_MAX_JOINTS],
     uint64_t iflags, uint64_t *fflags)
 {
+    (void)ctx;
     (void)iflags; (void)fflags;
     set_geometry(*haldata->pfr, *haldata->tl, *haldata->sl, *haldata->fr);
 
@@ -138,14 +142,16 @@ static int32_t rdelta_inverse(
     return 0;
 }
 
-static kins_kinematics_type_t rdelta_type(void) {
+static kins_kinematics_type_t rdelta_type(void *ctx) {
+    (void)ctx;
     return KINS_BOTH;
 }
-static int32_t rdelta_switchable(void) { return 0; }
-static int32_t rdelta_switch(int32_t t)
-    { (void)t; return -1; }
+static int32_t rdelta_switchable(void *ctx) { (void)ctx; return 0; }
+static int32_t rdelta_switch(void *ctx, int32_t t)
+    { (void)ctx; (void)t; return -1; }
 
 static kins_callbacks_t rdelta_callbacks = {
+    .ctx = NULL,
     .forward    = rdelta_forward,
     .inverse    = rdelta_inverse,
     .type       = rdelta_type,

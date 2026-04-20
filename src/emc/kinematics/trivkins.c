@@ -44,11 +44,13 @@ static int axis_index(char c) {
 // ─── Kinematics callbacks ───
 
 static int32_t trivkins_forward(
+    void *ctx,
     const double joints[KINS_MAX_JOINTS],
     kins_pose_t *world,
     uint64_t fflags,
     uint64_t *iflags)
 {
+    (void)ctx;
     (void)fflags;
     (void)iflags;
 
@@ -70,11 +72,13 @@ static int32_t trivkins_forward(
 }
 
 static int32_t trivkins_inverse(
+    void *ctx,
     const kins_pose_t *world,
     double joints[KINS_MAX_JOINTS],
     uint64_t iflags,
     uint64_t *fflags)
 {
+    (void)ctx;
     (void)iflags;
     (void)fflags;
 
@@ -89,7 +93,8 @@ static int32_t trivkins_inverse(
     return 0;
 }
 
-static kins_kinematics_type_t trivkins_type(void) {
+static kins_kinematics_type_t trivkins_type(void *ctx) {
+    (void)ctx;
     // We store ktype in thread-local? No — we need the instance.
     // Since there's only one kinematics instance, use a file-static.
     // (The module pointer is set during New.)
@@ -97,11 +102,14 @@ static kins_kinematics_type_t trivkins_type(void) {
     return g_trivkins->ktype;
 }
 
-static int32_t trivkins_switchable(void) {
+static int32_t trivkins_switchable(void *ctx) {
+    (void)ctx;
     return 0;
 }
 
-static int32_t trivkins_switch(int32_t switchkins_type) {
+static int32_t trivkins_switch(void *ctx, int32_t switchkins_type) {
+    (void)ctx;
+
     (void)switchkins_type;
     return -1; // not supported
 }
@@ -111,6 +119,7 @@ static int32_t trivkins_switch(int32_t switchkins_type) {
 trivkins_t *g_trivkins = NULL;
 
 static kins_callbacks_t trivkins_callbacks = {
+    .ctx = NULL,
     .forward    = trivkins_forward,
     .inverse    = trivkins_inverse,
     .type       = trivkins_type,

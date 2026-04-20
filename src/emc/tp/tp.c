@@ -3743,55 +3743,61 @@ static TP_STRUCT *g_tp;
 
 // ─── GMI callback implementations ──────────────────────────────────────
 
-static int32_t gmi_tp_init(void) { return 0; }
+static int32_t gmi_tp_init(void *ctx) { (void)ctx; return 0; }
 
-static int32_t gmi_tp_create(int32_t queue_size, int32_t comp_id)
+static int32_t gmi_tp_create(void *ctx, int32_t queue_size, int32_t comp_id)
 {
+    (void)ctx;
     g_tp = calloc(1, sizeof(TP_STRUCT));
     if (!g_tp) return -1;
     return tpCreate(g_tp, queue_size, comp_id);
 }
 
-static int32_t gmi_tp_clear(void) { return tpClear(g_tp); }
-static int32_t gmi_tp_set_cycle_time(double secs) { return tpSetCycleTime(g_tp, secs); }
-static int32_t gmi_tp_set_vmax(double vmax, double ini_maxvel) { return tpSetVmax(g_tp, vmax, ini_maxvel); }
-static int32_t gmi_tp_set_vlimit(double limit) { return tpSetVlimit(g_tp, limit); }
-static int32_t gmi_tp_set_amax(double amax) { return tpSetAmax(g_tp, amax); }
-static int32_t gmi_tp_set_id(int32_t id) { return tpSetId(g_tp, id); }
-static int32_t gmi_tp_set_pos(tp_pose_t *pos) { return tpSetPos(g_tp, (EmcPose const *)pos); }
+static int32_t gmi_tp_clear(void *ctx) { (void)ctx; return tpClear(g_tp); }
+static int32_t gmi_tp_set_cycle_time(void *ctx, double secs) { (void)ctx; return tpSetCycleTime(g_tp, secs); }
+static int32_t gmi_tp_set_vmax(void *ctx, double vmax, double ini_maxvel) { (void)ctx; return tpSetVmax(g_tp, vmax, ini_maxvel); }
+static int32_t gmi_tp_set_vlimit(void *ctx, double limit) { (void)ctx; return tpSetVlimit(g_tp, limit); }
+static int32_t gmi_tp_set_amax(void *ctx, double amax) { (void)ctx; return tpSetAmax(g_tp, amax); }
+static int32_t gmi_tp_set_id(void *ctx, int32_t id) { (void)ctx; return tpSetId(g_tp, id); }
+static int32_t gmi_tp_set_pos(void *ctx, tp_pose_t *pos) { (void)ctx; return tpSetPos(g_tp, (EmcPose const *)pos); }
 
-static int32_t gmi_tp_set_term_cond(int32_t cond, double tolerance)
+static int32_t gmi_tp_set_term_cond(void *ctx, int32_t cond, double tolerance)
 {
+    (void)ctx;
     return tpSetTermCond(g_tp, cond, tolerance);
 }
 
-static int32_t gmi_tp_set_spindle_sync(int32_t spindle, double sync, int32_t wait)
+static int32_t gmi_tp_set_spindle_sync(void *ctx, int32_t spindle, double sync, int32_t wait)
 {
+    (void)ctx;
     return tpSetSpindleSync(g_tp, spindle, sync, wait);
 }
 
-static int32_t gmi_tp_set_run_dir(tp_direction_t dir)
+static int32_t gmi_tp_set_run_dir(void *ctx, tp_direction_t dir)
 {
+    (void)ctx;
     return tpSetRunDir(g_tp, (tc_direction_t)dir);
 }
 
-static int32_t gmi_tp_add_line(const tp_pose_t *end,
+static int32_t gmi_tp_add_line(void *ctx, const tp_pose_t *end,
     int32_t canon_motion_type, double vel, double ini_maxvel,
     double acc, uint8_t enables, int8_t atspeed,
     int32_t indexrotary, const tp_state_tag_t *tag)
 {
+    (void)ctx;
     return tpAddLine(g_tp, *(EmcPose *)end,
                      canon_motion_type, vel, ini_maxvel, acc,
                      enables, (char)atspeed, indexrotary,
                      *(struct state_tag_t *)tag);
 }
 
-static int32_t gmi_tp_add_circle(const tp_pose_t *end,
+static int32_t gmi_tp_add_circle(void *ctx, const tp_pose_t *end,
     const tp_cartesian_t *center, const tp_cartesian_t *normal,
     int32_t turn, int32_t canon_motion_type,
     double vel, double ini_maxvel, double acc,
     uint8_t enables, int8_t atspeed, const tp_state_tag_t *tag)
 {
+    (void)ctx;
     return tpAddCircle(g_tp, *(EmcPose *)end,
                        *(PmCartesian *)center, *(PmCartesian *)normal,
                        turn, canon_motion_type,
@@ -3800,50 +3806,54 @@ static int32_t gmi_tp_add_circle(const tp_pose_t *end,
                        *(struct state_tag_t *)tag);
 }
 
-static int32_t gmi_tp_add_rigid_tap(const tp_pose_t *end,
+static int32_t gmi_tp_add_rigid_tap(void *ctx, const tp_pose_t *end,
     double vel, double ini_maxvel, double acc,
     uint8_t enables, double scale, const tp_state_tag_t *tag)
 {
+    (void)ctx;
     return tpAddRigidTap(g_tp, *(EmcPose *)end,
                          vel, ini_maxvel, acc,
                          enables, scale,
                          *(struct state_tag_t *)tag);
 }
 
-static int32_t gmi_tp_set_aout(uint8_t index, double start_val, double end_val)
+static int32_t gmi_tp_set_aout(void *ctx, uint8_t index, double start_val, double end_val)
 {
+    (void)ctx;
     return tpSetAout(g_tp, index, start_val, end_val);
 }
 
-static int32_t gmi_tp_set_dout(int32_t index, uint8_t start_val, uint8_t end_val)
+static int32_t gmi_tp_set_dout(void *ctx, int32_t index, uint8_t start_val, uint8_t end_val)
 {
+    (void)ctx;
     return tpSetDout(g_tp, index, start_val, end_val);
 }
 
-static int32_t gmi_tp_run_cycle(int64_t period) { return tpRunCycle(g_tp, (long)period); }
-static int32_t gmi_tp_pause(void) { return tpPause(g_tp); }
-static int32_t gmi_tp_resume(void) { return tpResume(g_tp); }
-static int32_t gmi_tp_abort(void) { return tpAbort(g_tp); }
-static int32_t gmi_tp_get_exec_id(void) { return tpGetExecId(g_tp); }
+static int32_t gmi_tp_run_cycle(void *ctx, int64_t period) { (void)ctx; return tpRunCycle(g_tp, (long)period); }
+static int32_t gmi_tp_pause(void *ctx) { (void)ctx; return tpPause(g_tp); }
+static int32_t gmi_tp_resume(void *ctx) { (void)ctx; return tpResume(g_tp); }
+static int32_t gmi_tp_abort(void *ctx) { (void)ctx; return tpAbort(g_tp); }
+static int32_t gmi_tp_get_exec_id(void *ctx) { (void)ctx; return tpGetExecId(g_tp); }
 
-static int32_t gmi_tp_get_exec_tag(tp_state_tag_t *tag)
+static int32_t gmi_tp_get_exec_tag(void *ctx, tp_state_tag_t *tag)
 {
+    (void)ctx;
     struct state_tag_t t = tpGetExecTag(g_tp);
     memcpy(tag, &t, sizeof(t));
     return 0;
 }
 
-static int32_t gmi_tp_get_pos(tp_pose_t *pos) { return tpGetPos(g_tp, (EmcPose *)pos); }
-static int32_t gmi_tp_is_done(void) { return tpIsDone(g_tp); }
-static int32_t gmi_tp_queue_depth(void) { return tpQueueDepth(g_tp); }
-static int32_t gmi_tp_active_depth(void) { return tpActiveDepth(g_tp); }
-static int32_t gmi_tp_get_motion_type(void) { return tpGetMotionType(g_tp); }
-static int32_t gmi_tp_queue_full(void) { return tcqFull(&g_tp->queue); }
-static int32_t gmi_tp_get_run_dir(void) { return g_tp->reverse_run; }
+static int32_t gmi_tp_get_pos(void *ctx, tp_pose_t *pos) { (void)ctx; return tpGetPos(g_tp, (EmcPose *)pos); }
+static int32_t gmi_tp_is_done(void *ctx) { (void)ctx; return tpIsDone(g_tp); }
+static int32_t gmi_tp_queue_depth(void *ctx) { (void)ctx; return tpQueueDepth(g_tp); }
+static int32_t gmi_tp_active_depth(void *ctx) { (void)ctx; return tpActiveDepth(g_tp); }
+static int32_t gmi_tp_get_motion_type(void *ctx) { (void)ctx; return tpGetMotionType(g_tp); }
+static int32_t gmi_tp_queue_full(void *ctx) { (void)ctx; return tcqFull(&g_tp->queue); }
+static int32_t gmi_tp_get_run_dir(void *ctx) { (void)ctx; return g_tp->reverse_run; }
 
 // ─── Callbacks table ────────────────────────────────────────────────────
 
-static const tp_callbacks_t tp_cmod_callbacks = GMI_TP_CALLBACKS;
+static tp_callbacks_t tp_cmod_callbacks = GMI_TP_CALLBACKS;
 
 // ─── cmod lifecycle ─────────────────────────────────────────────────────
 
@@ -3871,6 +3881,7 @@ int New(const cmod_env_t *env, const char *name,
     (void)argc; (void)argv;
     tp_cmod_api = env->api;
 
+    tp_cmod_callbacks.ctx = NULL;
     int rc = tp_api_register(env->api, "default", &tp_cmod_callbacks);
     if (rc != 0) {
         gomc_log_errorf(env->log, name,

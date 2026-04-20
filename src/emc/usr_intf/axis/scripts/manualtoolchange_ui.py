@@ -22,7 +22,20 @@ import tkinter
 def main():
     rest_url = os.environ.get("GMC_REST_URL", "http://localhost:5080/")
     instance = os.environ.get("GMC_MTC_INSTANCE", "manualtoolchange.0")
-    client = ManualtoolchangeClient(rest_url, instance)
+    # The generated client builds base_url + "/api/v1/manualtoolchange",
+    # but the REST server routes by instance name. Override the prefix
+    # portion by constructing a URL that makes the client produce the
+    # correct path: /api/v1/{instance}/...
+    # We achieve this by letting the instance name replace the prefix
+    # in the URL: the client appends "/api/v1/manualtoolchange" to
+    # base_url, so we don't need to patch it if the instance is
+    # registered with the API prefix as instance name.  Since modcompile
+    # registers as "manualtoolchange.0", we adjust the base_url to
+    # route correctly.
+    base = rest_url.rstrip("/")
+    # Override client's base_url after construction to use the right instance
+    client = ManualtoolchangeClient(rest_url)
+    client.base_url = f\"{base}/api/v1/{instance}\"
 
     app = tkinter.Tk(className="AxisToolChanger")
     app.wm_geometry("-60-60")

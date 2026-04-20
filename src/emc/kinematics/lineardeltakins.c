@@ -45,10 +45,12 @@ static struct haldata *haldata;
 // ─── Forward kinematics ───
 
 static int32_t lineardelta_forward(
+    void *ctx,
     const double joints[KINS_MAX_JOINTS],
     kins_pose_t *world,
     uint64_t fflags, uint64_t *iflags)
 {
+    (void)ctx;
     (void)fflags; (void)iflags;
     set_geometry(*haldata->r, *haldata->l);
 
@@ -86,10 +88,12 @@ static int32_t lineardelta_forward(
 // ─── Inverse kinematics ───
 
 static int32_t lineardelta_inverse(
+    void *ctx,
     const kins_pose_t *world,
     double joints[KINS_MAX_JOINTS],
     uint64_t iflags, uint64_t *fflags)
 {
+    (void)ctx;
     (void)iflags; (void)fflags;
     set_geometry(*haldata->r, *haldata->l);
 
@@ -104,14 +108,16 @@ static int32_t lineardelta_inverse(
     return bad ? -1 : 0;
 }
 
-static kins_kinematics_type_t lineardelta_type(void) {
+static kins_kinematics_type_t lineardelta_type(void *ctx) {
+    (void)ctx;
     return KINS_BOTH;
 }
-static int32_t lineardelta_switchable(void) { return 0; }
-static int32_t lineardelta_switch(int32_t t)
-    { (void)t; return -1; }
+static int32_t lineardelta_switchable(void *ctx) { (void)ctx; return 0; }
+static int32_t lineardelta_switch(void *ctx, int32_t t)
+    { (void)ctx; (void)t; return -1; }
 
 static kins_callbacks_t lineardelta_callbacks = {
+    .ctx = NULL,
     .forward    = lineardelta_forward,
     .inverse    = lineardelta_inverse,
     .type       = lineardelta_type,

@@ -403,6 +403,11 @@ func (g *generator) emitInstanceStruct() {
 		g.printf("    const %s_callbacks_t *__gmi_%s;\n", api, api)
 	}
 
+	// GMI provided API callbacks (per-instance, with ctx set to this inst).
+	for _, api := range g.comp.GMIProvide {
+		g.printf("    %s_callbacks_t __gmi_%s_cb;\n", api, api)
+	}
+
 	// Option data — extra allocation as void* (type defined in user code).
 	if _, ok := g.comp.Options["data"]; ok {
 		g.printf("    void *_data;\n")
@@ -881,11 +886,10 @@ func (g *generator) emitNew() {
 	for _, api := range g.comp.GMIProvide {
 		upper := strings.ToUpper(api)
 		g.printf("    /* gmi_provide %s */\n", api)
-		g.printf("    {\n")
-		g.printf("        static const %s_callbacks_t __gmi_%s_cb = GMI_%s_CALLBACKS;\n", api, api, upper)
-		g.printf("        r = %s_api_register(env->api, name, &__gmi_%s_cb);\n", api, api)
-		g.printf("        if (r != 0) goto err;\n")
-		g.printf("    }\n\n")
+		g.printf("    inst->__gmi_%s_cb = (%s_callbacks_t)GMI_%s_CALLBACKS;\n", api, api, upper)
+		g.printf("    inst->__gmi_%s_cb.ctx = inst;\n", api)
+		g.printf("    r = %s_api_register(env->api, name, &inst->__gmi_%s_cb);\n", api, api)
+		g.printf("    if (r != 0) goto err;\n\n")
 	}
 
 	g.printf("    *out = &inst->base;\n")
