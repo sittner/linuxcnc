@@ -163,6 +163,8 @@ SUBDIRS := \
     libnml/linklist libnml/cms libnml/rcs libnml/inifile libnml/os_intf \
     libnml/nml libnml/buffer libnml/posemath libnml \
     \
+    gmi/lib \
+    \
     rtapi \
     \
     hal/components hal/drivers hal/drivers/mesa-hostmot2 \
@@ -175,6 +177,7 @@ SUBDIRS := \
 	hal/hal-ads-server \
 	hal/proto/ethercat \
 	launcher \
+	gmi/codegen \
     \
     emc/usr_intf/axis emc/usr_intf/touchy emc/usr_intf/stepconf emc/usr_intf/pncconf \
     emc/usr_intf/gremlin emc/usr_intf/gscreen emc/usr_intf/pyui emc/usr_intf/qtvcp \
@@ -343,7 +346,6 @@ SRCHEADERS := \
     emc/linuxcnc.h \
     emc/kinematics/cubic.h \
     emc/kinematics/kinematics.h \
-    emc/kinematics/switchkins.h \
     emc/kinematics/genhexkins.h \
     emc/kinematics/genserkins.h \
     emc/kinematics/pentakins.h \
@@ -351,7 +353,6 @@ SRCHEADERS := \
     emc/tp/tc.h \
     emc/tp/tc_types.h \
     emc/tp/tcq.h \
-    emc/tp/tp.h \
     emc/tp/tp_types.h \
     emc/tp/spherical_arc.h \
     emc/tp/blendmath.h \
@@ -842,6 +843,7 @@ RTCFLAGS := $(filter-out -ffast-math,$(RTFLAGS)) -I$(BASEPWD)/../include -I$(BAS
 	-I$(BASEPWD)/libnml/os_intf -I$(BASEPWD)/libnml/nml -I$(BASEPWD)/libnml/buffer \
 	-I$(BASEPWD)/libnml/posemath -I$(BASEPWD)/rtapi -I$(BASEPWD)/hal \
 	-I$(BASEPWD)/emc/nml_intf -I$(BASEPWD)/emc/kinematics -I$(BASEPWD)/emc/tp -I$(BASEPWD)/emc/motion \
+	-I$(BASEPWD)/launcher/generated/gmi/mot \
 	-DSEQUENTIAL_SUPPORT -DHAL_SUPPORT -DDYNAMIC_PLCSIZE -DRT_SUPPORT -DOLD_TIMERS_MONOS_SUPPORT -DMODBUS_IO_MASTER \
 	-fno-fast-math $(call cc-option,-mieee-fp) -fno-unsafe-math-optimizations \
 	-Wno-declaration-after-statement \
@@ -1022,137 +1024,93 @@ scope_rt-objs := hal/utils/scope_rt.o $(MATHSTUB)
 #RTMODULES += hal_lib.o
 #hal_lib-objs := hal/hal_lib.o $(MATHSTUB)
 
-RTMODULES += trivkins.o
-trivkins-objs := emc/kinematics/trivkins.o
-trivkins-objs += emc/kinematics/kins_util.o
+# Kinematics modules are now built as cmods (see gmi/kins/Submakefile).
+# Legacy RTMODULE kins builds removed.
 
-RTMODULES += maxkins.o
-maxkins-objs := emc/kinematics/maxkins.o
+# motmod is now built as a cmod (see emc/motion/Submakefile).
+# Legacy RTMODULE builds removed.
 
-RTMODULES += rotatekins.o
-rotatekins-objs := emc/kinematics/rotatekins.o
+# ---------------------------------------------------------------------------
+# GMI home module (cmod)
+# ---------------------------------------------------------------------------
+ifeq ($(BUILD_GOLANG),yes)
 
-RTMODULES += tripodkins.o
-tripodkins-objs := emc/kinematics/tripodkins.o
+HOMEMOD_CMOD_SRCS := \
+    emc/motion/homing.c
 
-RTMODULES += corexykins.o
-corexykins-objs := emc/kinematics/corexykins.o
+HOMEMOD_CMOD_CFLAGS := \
+    -fPIC -Os -Wall -Wextra \
+    -DUSPACE -D_GNU_SOURCE -Drealtime \
+    -fno-strict-aliasing -fwrapv \
+    -I. -I../include \
+    -Ilauncher/pkg/cmodule \
+    -Ilauncher/generated/gmi/home \
+    -Ilauncher/generated/gmi/mot \
+    -Iemc/motion
 
-RTMODULES += lineardeltakins.o
-lineardeltakins-objs := emc/kinematics/lineardeltakins.o
+HOMEMOD_CMOD_DEPS := \
+    launcher/generated/gmi/home/home_api.h \
+    launcher/generated/gmi/mot/mot_api.h \
+    $(wildcard launcher/pkg/cmodule/gomc_*.h) \
+    $(wildcard emc/motion/homing.h) \
+    $(wildcard emc/motion/motion.h)
 
-RTMODULES += pentakins.o
-pentakins-objs := emc/kinematics/pentakins.o
-pentakins-objs += libnml/posemath/_posemath.o
-pentakins-objs += libnml/posemath/sincos.o $(MATHSTUB)
+../cmod/homemod.so: $(HOMEMOD_CMOD_SRCS) $(HOMEMOD_CMOD_DEPS) | headers ../lib/liblinuxcnchal.so
+	$(ECHO) "Compiling cmod homemod.so"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -shared $(HOMEMOD_CMOD_CFLAGS) \
+	    -o $@ $(HOMEMOD_CMOD_SRCS) \
+	    -L../lib -llinuxcnchal -lm
 
-RTMODULES += rotarydeltakins.o
-rotarydeltakins-objs := emc/kinematics/rotarydeltakins.o
-rotarydeltakins-objs += libnml/posemath/_posemath.o
-rotarydeltakins-objs += libnml/posemath/sincos.o $(MATHSTUB)
+TARGETS += ../cmod/homemod.so
+modules: ../cmod/homemod.so
 
-RTMODULES += rosekins.o
-rosekins-objs := emc/kinematics/rosekins.o
+endif # BUILD_GOLANG
 
-RTMODULES += scorbot-kins.o
-scorbot-kins-objs := emc/kinematics/scorbot-kins.o
+# ---------------------------------------------------------------------------
+# GMI trajectory planner module (cmod)
+# ---------------------------------------------------------------------------
+ifeq ($(BUILD_GOLANG),yes)
 
-ifeq ($(origin userkfuncs), undefined)
-  # use template:
-  USERKFUNCS = emc/kinematics/userkfuncs.o
-else
-  # user specified file for userkfuncs
-  ifeq ("$(wildcard $(userkfuncs))","")
-    $(error No such file: $(userkfuncs))
-  endif
-  $(shell touch $(userkfuncs))
-  USERKFUNCS = $(subst .c,.o,$(userkfuncs))
-  $(info !!!USERKFUNCS=$(USERKFUNCS))
-endif
+TPMOD_CMOD_SRCS := \
+    emc/tp/tp.c \
+    emc/tp/tc.c \
+    emc/tp/tcq.c \
+    emc/tp/spherical_arc.c \
+    emc/tp/blendmath.c \
+    emc/nml_intf/emcpose.c
 
-#----------------------------------------------------------------
-# SWITCHKINS
-RTMODULES += genhexkins.o
-genhexkins-objs := emc/kinematics/genhexkins.o
-genhexkins-objs += libnml/posemath/_posemath.o
-genhexkins-objs += libnml/posemath/sincos.o $(MATHSTUB)
-genhexkins-objs += emc/kinematics/kins_util.o
-genhexkins-objs += emc/kinematics/switchkins.o
-genhexkins-objs += $(USERKFUNCS)
+TPMOD_CMOD_CFLAGS := \
+    -fPIC -Os -Wall -Wextra \
+    -DUSPACE -D_GNU_SOURCE -Drealtime \
+    -fno-builtin-sin -fno-builtin-cos -fno-builtin-sincos \
+    -fno-strict-aliasing -fwrapv \
+    -I. -I../include \
+    -Ilauncher/pkg/cmodule \
+    -Ilauncher/generated/gmi/tp \
+    -Ilauncher/generated/gmi/mot \
+    -Iemc/motion \
+    -Iemc/tp \
+    -Ilibnml/posemath
 
-RTMODULES += genserkins.o
-genserkins-objs := emc/kinematics/genserkins.o
-genserkins-objs += emc/kinematics/genserfuncs.o
-genserkins-objs += libnml/posemath/gomath.o
-genserkins-objs += libnml/posemath/sincos.o $(MATHSTUB)
-genserkins-objs += emc/kinematics/kins_util.o
-genserkins-objs += emc/kinematics/switchkins.o
-genserkins-objs += $(USERKFUNCS)
+TPMOD_CMOD_DEPS := \
+    launcher/generated/gmi/tp/tp_api.h \
+    launcher/generated/gmi/mot/mot_api.h \
+    $(wildcard launcher/pkg/cmodule/gomc_*.h) \
+    $(wildcard emc/tp/*.h) \
+    $(wildcard emc/motion/motion.h)
 
-RTMODULES += xyzac-trt-kins.o
-xyzac-trt-kins-objs := emc/kinematics/xyzac-trt-kins.o
-xyzac-trt-kins-objs += emc/kinematics/trtfuncs.o
-xyzac-trt-kins-objs += emc/kinematics/kins_util.o
-xyzac-trt-kins-objs += emc/kinematics/switchkins.o
-xyzac-trt-kins-objs += $(USERKFUNCS)
+../cmod/tpmod.so: $(TPMOD_CMOD_SRCS) $(TPMOD_CMOD_DEPS) | headers ../lib/liblinuxcnchal.so ../lib/libposemath.so
+	$(ECHO) "Compiling cmod tpmod.so"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -shared $(TPMOD_CMOD_CFLAGS) \
+	    -o $@ $(TPMOD_CMOD_SRCS) \
+	    -L../lib -llinuxcnchal -lposemath -lm
 
-RTMODULES += xyzbc-trt-kins.o
-xyzbc-trt-kins-objs := emc/kinematics/xyzbc-trt-kins.o
-xyzbc-trt-kins-objs += emc/kinematics/trtfuncs.o
-xyzbc-trt-kins-objs += emc/kinematics/kins_util.o
-xyzbc-trt-kins-objs += emc/kinematics/switchkins.o
-xyzbc-trt-kins-objs += $(USERKFUNCS)
+TARGETS += ../cmod/tpmod.so
+modules: ../cmod/tpmod.so
 
-RTMODULES += scarakins.o
-scarakins-objs := emc/kinematics/scarakins.o
-scarakins-objs += libnml/posemath/_posemath.o
-scarakins-objs += libnml/posemath/sincos.o $(MATHSTUB)
-scarakins-objs += emc/kinematics/kins_util.o
-scarakins-objs += emc/kinematics/switchkins.o
-scarakins-objs += $(USERKFUNCS)
-
-RTMODULES += pumakins.o
-pumakins-objs := emc/kinematics/pumakins.o
-pumakins-objs += libnml/posemath/_posemath.o
-pumakins-objs += libnml/posemath/sincos.o $(MATHSTUB)
-pumakins-objs += emc/kinematics/kins_util.o
-pumakins-objs += emc/kinematics/switchkins.o
-pumakins-objs += $(USERKFUNCS)
-
-RTMODULES += 5axiskins.o
-5axiskins-objs := emc/kinematics/5axiskins.o
-5axiskins-objs += libnml/posemath/_posemath.o
-5axiskins-objs += libnml/posemath/sincos.o $(MATHSTUB)
-5axiskins-objs += emc/kinematics/kins_util.o
-5axiskins-objs += emc/kinematics/switchkins.o
-5axiskins-objs += $(USERKFUNCS)
-#----------------------------------------------------------------
-
-RTMODULES += motmod.o
-motmod-objs := emc/kinematics/cubic.o
-motmod-objs += emc/motion/axis.o
-motmod-objs += emc/motion/motion.o
-motmod-objs += emc/motion/command.o
-motmod-objs += emc/motion/control.o
-motmod-objs += emc/motion/simple_tp.o
-motmod-objs += emc/motion/emcmotutil.o
-motmod-objs += emc/motion/stashf.o
-motmod-objs += emc/motion/dbuf.o
-
-RTMODULES += homemod.o
-homemod-objs := emc/motion/homemod.o
-homemod-objs += emc/motion/homing.o
-
-RTMODULES += tpmod.o
-tpmod-objs := emc/tp/tpmod.o
-tpmod-objs += emc/tp/tc.o
-tpmod-objs += emc/tp/tcq.o
-tpmod-objs += emc/tp/tp.o
-tpmod-objs += emc/tp/spherical_arc.o
-tpmod-objs += emc/tp/blendmath.o
-tpmod-objs += emc/nml_intf/emcpose.o
-tpmod-objs += libnml/posemath/_posemath.o
-tpmod-objs += libnml/posemath/sincos.o $(MATHSTUB)
+endif # BUILD_GOLANG
 
 TORTOBJS = $(foreach file,$($(patsubst %.o,%,$(1))-objs), objects/rt$(file))
 RTCFLAGS += -fPIC -Os

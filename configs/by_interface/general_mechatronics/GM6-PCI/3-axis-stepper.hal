@@ -3,7 +3,7 @@
 #      		Loading real-time modules setup				#
 #########################################################################
 
-loadrt [KINS]KINEMATICS
+load [KINS]KINEMATICS
 loadrt hal_gm
 loadrt [EMCMOT]EMCMOT servo_period_nsec=[EMCMOT]SERVO_PERIOD num_joints=[KINS]JOINTS
 load not <not.0>

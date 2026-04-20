@@ -954,6 +954,9 @@ static int hal_shim_loadrt(const char *mod, const char *const args[], int nargs)
 
     char what[PATH_MAX];
     snprintf(what, sizeof(what), "%s/%s.so", EMC2_RTLIB_DIR, mod);
+    // RTLD_GLOBAL required for legacy multi-module symbol sharing
+    // (hostmot2 <-> board drivers, homecomp EXPORT_SYMBOL).
+    // Remove once hostmot2 is ported to the GMI cmod API pattern.
     void *module = rtapi_dlopen(what, RTLD_GLOBAL | RTLD_NOW);
     if (!module) {
         // Note: rtapi_dlopen already logs the dlerror() message.

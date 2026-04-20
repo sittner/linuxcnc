@@ -22,6 +22,13 @@ package launcher
 #include "hal.h"
 #include "rtapi.h"
 
+// --- API registry callbacks (forward-declared, implemented in Go via //export) ---
+
+extern int gomc_api_register_cb(void *ctx, char *api_name, int version,
+                                char *instance_name, void *callbacks);
+extern void *gomc_api_get_cb(void *ctx, char *api_name, int version,
+                             char *instance_name);
+
 // --- Pass-through HAL callbacks (delegate to liblinuxcnchal.so) ---
 
 static int gomc_hal_init_cb(void *ctx, const char *name, void *dl_handle, int type) {
@@ -125,6 +132,12 @@ static void gomc_rtapi_init_struct(gomc_rtapi_t *rtapi) {
     rtapi->pll_set_correction = gomc_rtapi_pll_set_correction_cb;
 }
 
+static void gomc_api_init_struct(gomc_api_t *api) {
+    api->ctx          = NULL;
+    api->register_api = (int(*)(void*,const char*,int,const char*,const void*))gomc_api_register_cb;
+    api->get_api      = (const void*(*)(void*,const char*,int,const char*))gomc_api_get_cb;
+}
+
 static cmod_env_t *gomc_env_create(gomc_log_ring_t *ring, void *ini_ctx,
                                    void *dl_handle) {
     cmod_env_t *env = (cmod_env_t *)calloc(1, sizeof(cmod_env_t));
@@ -134,9 +147,10 @@ static cmod_env_t *gomc_env_create(gomc_log_ring_t *ring, void *ini_ctx,
     gomc_ini_t *ini = (gomc_ini_t *)calloc(1, sizeof(gomc_ini_t));
     gomc_hal_t *hal = (gomc_hal_t *)calloc(1, sizeof(gomc_hal_t));
     gomc_rtapi_t *rtapi = (gomc_rtapi_t *)calloc(1, sizeof(gomc_rtapi_t));
+    gomc_api_t *api = (gomc_api_t *)calloc(1, sizeof(gomc_api_t));
 
-    if (!log || !ini || !hal || !rtapi) {
-        free(log); free(ini); free(hal); free(rtapi); free(env);
+    if (!log || !ini || !hal || !rtapi || !api) {
+        free(log); free(ini); free(hal); free(rtapi); free(api); free(env);
         return NULL;
     }
 
@@ -144,12 +158,14 @@ static cmod_env_t *gomc_env_create(gomc_log_ring_t *ring, void *ini_ctx,
     gomc_ini_init(ini, ini_ctx);
     gomc_hal_init_struct(hal);
     gomc_rtapi_init_struct(rtapi);
+    gomc_api_init_struct(api);
 
     env->dl_handle = dl_handle;
     env->log       = log;
     env->ini       = ini;
     env->hal       = hal;
     env->rtapi     = rtapi;
+    env->api       = api;
 
     return env;
 }
@@ -160,6 +176,7 @@ static void gomc_env_destroy(cmod_env_t *env) {
     free((void *)env->ini);
     free((void *)env->hal);
     free((void *)env->rtapi);
+    free((void *)env->api);
     free(env);
 }
 
@@ -170,15 +187,23 @@ static int cmod_call_new(cmod_new_fn fn, const cmod_env_t *env,
     return fn(env, name, argc, argv, out);
 }
 
+static int cmod_call_init(cmod_t *m) {
+    if (!m->Init) return 0;
+    return m->Init(m);
+}
+
 static int cmod_call_start(cmod_t *m) {
+    if (!m->Start) return 0;
     return m->Start(m);
 }
 
 static void cmod_call_stop(cmod_t *m) {
+    if (!m->Stop) return;
     m->Stop(m);
 }
 
 static void cmod_call_destroy(cmod_t *m) {
+    if (!m->Destroy) return;
     m->Destroy(m);
 }
 */
@@ -296,6 +321,20 @@ func (l *Launcher) loadCPlugin(path string, name string, args []string) error {
 	l.cModules = append(l.cModules, cm)
 	l.logger.Debug("C plugin loaded and initialized", "path", path, "name", name)
 
+	return nil
+}
+
+// initCModules calls Init() on all loaded C plugin modules in load order.
+// Init() runs after all modules' New() have completed (all APIs registered)
+// but before HAL wiring commands and Start().  Modules use Init() to look up
+// other modules' APIs and perform cross-module initialization.
+func (l *Launcher) initCModules() error {
+	for _, cm := range l.cModules {
+		rc := C.cmod_call_init(cm.mod)
+		if rc != 0 {
+			return fmt.Errorf("C module %q Init() returned error code %d", cm.name, int(rc))
+		}
+	}
 	return nil
 }
 

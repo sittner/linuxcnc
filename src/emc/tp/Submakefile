@@ -1,4 +1,5 @@
 INCLUDES += emc/tp
+INCLUDES += launcher/generated/gmi/mot
 
 $(patsubst ./emc/tp/%,../include/%,$(wildcard ./emc/tp/*.h)): ../include/%.h: ./emc/tp/%.h
 	cp $^ $@

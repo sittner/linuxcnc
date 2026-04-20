@@ -70,7 +70,6 @@ to another.
 #include <stdarg.h>
 #include "rtapi_bool.h"
 #include "state_tag.h"
-#include "tp_types.h"
 
 // define a special value to denote an invalid motion ID
 // NB: do not ever generate a motion id of  MOTION_INVALID_ID
@@ -748,7 +747,6 @@ typedef struct emcmot_internal_t {
     int teleoperating;  /* starts up in free mode */
     int overriding;     /* non-zero means we've initiated an joint
                            move while overriding limits */
-    TP_STRUCT coord_tp; /* coordinated mode planner */
     int idForStep;      /* status id while stepping */
     } emcmot_internal_t;
 

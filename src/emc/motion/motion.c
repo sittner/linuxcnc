@@ -10,76 +10,59 @@
 ********************************************************************/
 
 #include <stdarg.h>
+#include <stdlib.h>
+#include <string.h>
+#include "gomc_env.h"
+#include "kins_api.h"
+#include "mot_api.h"
 #include "rtapi.h"		/* RTAPI realtime OS API */
-#include "rtapi_app.h"		/* RTAPI realtime module decls */
 #include "rtapi_string.h"       /* memset */
 #include "hal.h"		/* decls for HAL implementation */
 #include "motion.h"
 #include "motion_struct.h"
 #include "mot_priv.h"
-#include "tp.h"
+
+#include "tp_api.h"
+#include "home_api.h"
 #include "rtapi_math.h"
-#include "homing.h"
 #include "axis.h"
+
+// Forward declarations (defined later in this file)
+extern const tp_callbacks_t   *motmod_tp_api;
+extern const home_callbacks_t *motmod_home_api;
 
 // Mark strings for translation, but defer translation to userspace
 #define _(s) (s)
 
 /***********************************************************************
-*                    KERNEL MODULE PARAMETERS                          *
+*                    MODULE PARAMETERS                                 *
 ************************************************************************/
-
-/* module information */
-/* register symbols to be modified by insmod
-   see "Linux Device Drivers", Alessandro Rubini, p. 385
-   (p.42-44 in 2nd edition) */
-MODULE_AUTHOR("Matt Shaver/John Kasunich");
-MODULE_DESCRIPTION("Motion Controller for EMC");
-MODULE_LICENSE("GPL");
 
 /* RTAPI shmem key - for comms with higher level user space stuff */
 static int key = DEFAULT_SHMEM_KEY;	/* the shared memory key, default value */
-RTAPI_MP_INT(key, "shared memory key");
 static long base_period_nsec = 0;	/* fastest thread period */
-RTAPI_MP_LONG(base_period_nsec, "fastest thread period (nsecs)");
 int base_thread_fp = 0;	/* default is no floating point in base thread */
-RTAPI_MP_INT(base_thread_fp, "floating point in base thread?");
 static long servo_period_nsec = 1000000;	/* servo thread period */
-RTAPI_MP_LONG(servo_period_nsec, "servo thread period (nsecs)");
 static long traj_period_nsec = 0;	/* trajectory planner period */
-RTAPI_MP_LONG(traj_period_nsec, "trajectory planner period (nsecs)");
 static int num_spindles = 1; /* default number of spindles is 1 */
-RTAPI_MP_INT (num_spindles, "number of spindles");
 int motion_num_spindles;
 static int num_joints = EMCMOT_MAX_JOINTS;	/* default number of joints present */
-RTAPI_MP_INT(num_joints, "number of joints used in kinematics");
 static int num_extrajoints = 0;	/* default number of extra joints present */
-RTAPI_MP_INT(num_extrajoints, "number of extra joints (not used in kinematics)");
 static int num_dio = 0;	/* default number of motion synched DIO */
-RTAPI_MP_INT(num_dio, "number of digital inputs/outputs");
 
 #define MAX_IO 64
 static char *names_din[MAX_IO] = {0,};
-RTAPI_MP_ARRAY_STRING(names_din, MAX_IO, "names of digital inputs");
 static char *names_dout[MAX_IO] = {0,};
-RTAPI_MP_ARRAY_STRING(names_dout, MAX_IO, "names of digital outputs");
 
 static int num_aio = 0;	/* default number of motion synched AIO */
-RTAPI_MP_INT(num_aio, "number of analog inputs/outputs");
-
 
 static char *names_ain[MAX_IO] = {0,};
-RTAPI_MP_ARRAY_STRING(names_ain, MAX_IO, "names of analog inputs");
 static char *names_aout[MAX_IO] = {0,};
-RTAPI_MP_ARRAY_STRING(names_aout, MAX_IO, "names of analog outputs");
 static int num_misc_error = -1;   /* To check use of num_misc_error modparam */
-RTAPI_MP_INT(num_misc_error, "number of misc error inputs");
 
 static char *names_misc_errors[MAX_IO] = {0,};
-RTAPI_MP_ARRAY_STRING(names_misc_errors, MAX_IO, "names of errors");
 
 static int unlock_joints_mask = 0;/* mask to select joints for unlock pins */
-RTAPI_MP_INT(unlock_joints_mask, "mask to select joints for unlock pins");
 /***********************************************************************
 *                  GLOBAL VARIABLE DEFINITIONS                         *
 ************************************************************************/
@@ -118,6 +101,357 @@ struct emcmot_error_t *emcmotError = 0;	/* unused for RT_FIFO */
 static int emc_shmem_id;	/* the shared memory ID */
 
 static int mot_comp_id;	/* component ID for motion module */
+
+/***********************************************************************
+*           KINEMATICS API WRAPPERS (via GMI kins_callbacks_t)         *
+************************************************************************/
+
+/* Pointer to kinematics callbacks, set during New() via kins_api_get(). */
+static const kins_callbacks_t *motmod_kins;
+
+/* These functions satisfy the legacy extern declarations in kinematics.h
+   but delegate to the registered kins API callbacks. */
+
+int kinematicsForward(const double *joint,
+                      struct EmcPose *world,
+                      const KINEMATICS_FORWARD_FLAGS *fflags,
+                      KINEMATICS_INVERSE_FLAGS *iflags)
+{
+    uint64_t ifl = *iflags;
+    int32_t result = motmod_kins->forward(joint, (kins_pose_t *)world,
+                         (uint64_t)*fflags, &ifl);
+    *iflags = ifl;
+    return result;
+}
+
+int kinematicsInverse(const struct EmcPose *world,
+                      double *joint,
+                      const KINEMATICS_INVERSE_FLAGS *iflags,
+                      KINEMATICS_FORWARD_FLAGS *fflags)
+{
+    uint64_t ffl = *fflags;
+    int32_t result = motmod_kins->inverse((const kins_pose_t *)world, joint,
+                         (uint64_t)*iflags, &ffl);
+    *fflags = ffl;
+    return result;
+}
+
+KINEMATICS_TYPE kinematicsType(void)
+{
+    return (KINEMATICS_TYPE)motmod_kins->type();
+}
+
+int kinematicsSwitchable(void)
+{
+    return motmod_kins->switchable();
+}
+
+int kinematicsSwitch(int switchkins_type)
+{
+    return motmod_kins->switch_(switchkins_type);
+}
+
+/***********************************************************************
+*           MOT API CALLBACKS (provided by motmod, consumed by         *
+*           tpmod and homemod via mot_api_get())                       *
+************************************************************************/
+
+/* --- I/O callbacks --- */
+
+static void gmi_mot_dio_write(int32_t index, int8_t value)
+{    emcmotDioWrite(index, value);
+}
+
+static void gmi_mot_aio_write(int32_t index, double value)
+{    emcmotAioWrite(index, value);
+}
+
+/* --- Rotary unlock --- */
+
+static void gmi_mot_set_rotary_unlock(int32_t jnum, int32_t unlock)
+{    emcmotSetRotaryUnlock(jnum, unlock);
+}
+
+static int32_t gmi_mot_get_rotary_unlock(int32_t jnum)
+{
+    return emcmotGetRotaryIsUnlocked(jnum);
+}
+
+/* --- Axis limits --- */
+
+static double gmi_mot_axis_get_vel_limit(int32_t axis)
+{
+    return axis_get_vel_limit(axis);
+}
+
+static double gmi_mot_axis_get_acc_limit(int32_t axis)
+{
+    return axis_get_acc_limit(axis);
+}
+
+/* --- Config getters (emcmotConfig fields, read-only) --- */
+
+static int32_t gmi_mot_cfg_get_arc_blend_enable(void)
+{
+    return emcmotConfig->arcBlendEnable;
+}
+
+static int32_t gmi_mot_cfg_get_arc_blend_gap_cycles(void)
+{
+    return emcmotConfig->arcBlendGapCycles;
+}
+
+static int32_t gmi_mot_cfg_get_arc_blend_opt_depth(void)
+{
+    return emcmotConfig->arcBlendOptDepth;
+}
+
+static double gmi_mot_cfg_get_arc_blend_ramp_freq(void)
+{
+    return emcmotConfig->arcBlendRampFreq;
+}
+
+static double gmi_mot_cfg_get_arc_blend_tangent_kink_ratio(void)
+{
+    return emcmotConfig->arcBlendTangentKinkRatio;
+}
+
+static double gmi_mot_cfg_get_max_feed_scale(void)
+{
+    return emcmotConfig->maxFeedScale;
+}
+
+static int32_t gmi_mot_cfg_get_num_aio(void)
+{
+    return emcmotConfig->numAIO;
+}
+
+static int32_t gmi_mot_cfg_get_num_dio(void)
+{
+    return emcmotConfig->numDIO;
+}
+
+static int32_t gmi_mot_cfg_get_num_spindles(void)
+{
+    return emcmotConfig->numSpindles;
+}
+
+/* --- Status getters --- */
+
+static double gmi_mot_status_get_net_feed_scale(void)
+{
+    return emcmotStatus->net_feed_scale;
+}
+
+static int32_t gmi_mot_status_get_stepping(void)
+{
+    return emcmotStatus->stepping;
+}
+
+static double gmi_mot_status_get_current_vel(void)
+{
+    return emcmotStatus->current_vel;
+}
+
+static int32_t gmi_mot_status_get_spindle_sync(void)
+{
+    return emcmotStatus->spindleSync;
+}
+
+static double gmi_mot_status_get_spindle_revs(int32_t spindle)
+{
+    return emcmotStatus->spindle_status[spindle].spindleRevs;
+}
+
+static int32_t gmi_mot_status_get_spindle_direction(int32_t spindle)
+{
+    return emcmotStatus->spindle_status[spindle].direction;
+}
+
+static int32_t gmi_mot_status_get_spindle_at_speed(int32_t spindle)
+{
+    return emcmotStatus->spindle_status[spindle].at_speed;
+}
+
+static double gmi_mot_status_get_spindle_speed_in(int32_t spindle)
+{
+    return emcmotStatus->spindle_status[spindle].spindleSpeedIn;
+}
+
+static int32_t gmi_mot_status_get_spindle_index_enable(int32_t spindle)
+{
+    return emcmotStatus->spindle_status[spindle].spindle_index_enable;
+}
+
+static uint8_t gmi_mot_status_get_enables_new(void)
+{
+    return emcmotStatus->enables_new;
+}
+
+static double gmi_mot_status_get_spindle_speed(int32_t spindle)
+{
+    return emcmotStatus->spindle_status[spindle].speed;
+}
+
+/* --- Status setters --- */
+
+static void gmi_mot_status_set_current_vel(double vel)
+{    emcmotStatus->current_vel = vel;
+}
+
+static void gmi_mot_status_set_requested_vel(double vel)
+{    emcmotStatus->requested_vel = vel;
+}
+
+static void gmi_mot_status_set_distance_to_go(double dist)
+{    emcmotStatus->distance_to_go = dist;
+}
+
+static void gmi_mot_status_set_dtg(mot_pose_t *dtg)
+{    memcpy(&emcmotStatus->dtg, dtg, sizeof(EmcPose));
+}
+
+static void gmi_mot_status_or_motion_flag(uint32_t bits)
+{    emcmotStatus->motionFlag |= bits;
+}
+
+static void gmi_mot_status_set_enables_queued(uint8_t val)
+{    emcmotStatus->enables_queued = val;
+}
+
+static void gmi_mot_status_set_spindle_sync(int32_t val)
+{    emcmotStatus->spindleSync = val;
+}
+
+static void gmi_mot_status_set_tcqlen(uint32_t len)
+{    emcmotStatus->tcqlen = len;
+}
+
+static void gmi_mot_status_set_spindle_speed(int32_t spindle, double speed)
+{    emcmotStatus->spindle_status[spindle].speed = speed;
+}
+
+static void gmi_mot_status_set_spindle_index_enable(int32_t spindle, int32_t enable)
+{    emcmotStatus->spindle_status[spindle].spindle_index_enable = enable;
+}
+
+/* --- Joint accessors (for homing subsystem) --- */
+
+static int32_t gmi_mot_get_num_joints(void)
+{
+    return num_joints;
+}
+
+static int32_t gmi_mot_joint_get_active_flag(int32_t jno)
+{
+    return GET_JOINT_ACTIVE_FLAG(&joints[jno]);
+}
+
+static int32_t gmi_mot_joint_get_inpos_flag(int32_t jno)
+{
+    return GET_JOINT_INPOS_FLAG(&joints[jno]);
+}
+
+static int32_t gmi_mot_joint_get_free_tp_active(int32_t jno)
+{
+    return joints[jno].free_tp.active;
+}
+
+static void gmi_mot_joint_set_free_tp_enable(int32_t jno, int32_t enable)
+{    joints[jno].free_tp.enable = enable;
+}
+
+static double gmi_mot_joint_get_free_tp_pos_cmd(int32_t jno)
+{
+    return joints[jno].free_tp.pos_cmd;
+}
+
+static void gmi_mot_joint_set_free_tp_pos_cmd(int32_t jno, double val)
+{    joints[jno].free_tp.pos_cmd = val;
+}
+
+static double gmi_mot_joint_get_free_tp_curr_pos(int32_t jno)
+{
+    return joints[jno].free_tp.curr_pos;
+}
+
+static void gmi_mot_joint_set_free_tp_curr_pos(int32_t jno, double val)
+{    joints[jno].free_tp.curr_pos = val;
+}
+
+static void gmi_mot_joint_set_free_tp_max_vel(int32_t jno, double vel)
+{    joints[jno].free_tp.max_vel = vel;
+}
+
+static double gmi_mot_joint_get_free_tp_max_vel(int32_t jno)
+{
+    return joints[jno].free_tp.max_vel;
+}
+
+static double gmi_mot_joint_get_pos_cmd(int32_t jno)
+{
+    return joints[jno].pos_cmd;
+}
+
+static void gmi_mot_joint_set_pos_cmd(int32_t jno, double val)
+{    joints[jno].pos_cmd = val;
+}
+
+static double gmi_mot_joint_get_pos_fb(int32_t jno)
+{
+    return joints[jno].pos_fb;
+}
+
+static void gmi_mot_joint_set_pos_fb(int32_t jno, double val)
+{    joints[jno].pos_fb = val;
+}
+
+static double gmi_mot_joint_get_motor_pos_fb(int32_t jno)
+{
+    return joints[jno].motor_pos_fb;
+}
+
+static double gmi_mot_joint_get_motor_offset(int32_t jno)
+{
+    return joints[jno].motor_offset;
+}
+
+static void gmi_mot_joint_set_motor_offset(int32_t jno, double val)
+{    joints[jno].motor_offset = val;
+}
+
+static double gmi_mot_joint_get_backlash_filt(int32_t jno)
+{
+    return joints[jno].backlash_filt;
+}
+
+static double gmi_mot_joint_get_vel_limit(int32_t jno)
+{
+    return joints[jno].vel_limit;
+}
+
+static double gmi_mot_joint_get_max_pos_limit(int32_t jno)
+{
+    return joints[jno].max_pos_limit;
+}
+
+static double gmi_mot_joint_get_min_pos_limit(int32_t jno)
+{
+    return joints[jno].min_pos_limit;
+}
+
+static int32_t gmi_mot_joint_get_on_pos_limit(int32_t jno)
+{
+    return joints[jno].on_pos_limit;
+}
+
+static int32_t gmi_mot_joint_get_on_neg_limit(int32_t jno)
+{
+    return joints[jno].on_neg_limit;
+}
+
+/* mot API callback table */
+static const mot_callbacks_t motmod_mot_callbacks = GMI_MOT_CALLBACKS;
 
 /***********************************************************************
 *                   LOCAL FUNCTION PROTOTYPES                          *
@@ -168,7 +502,7 @@ void switch_to_teleop_mode(void) {
     emcmot_joint_t *joint;
 
     if (emcmotConfig->kinType != KINEMATICS_IDENTITY) {
-        if (!get_allhomed()) {
+        if (!motmod_home_api->get_allhomed()) {
             reportError(_("all joints must be homed before going into teleop mode"));
             return;
         }
@@ -229,50 +563,161 @@ int count_names(char *names[]){
 }
 
 static int module_intfc() {
-    homeMotFunctions(emcmotSetRotaryUnlock
-                    ,emcmotGetRotaryIsUnlocked
-                    );
-
-    tpMotFunctions(emcmotDioWrite
-                  ,emcmotAioWrite
-                  ,emcmotSetRotaryUnlock
-                  ,emcmotGetRotaryIsUnlocked
-                  ,axis_get_vel_limit
-                  ,axis_get_acc_limit
-                  );
-
-    tpMotData(emcmotStatus
-             ,emcmotConfig
-             );
+    motmod_tp_api->init();
     return 0;
 }
 
 static int tp_init() {
-    if (-1 == tpCreate(&emcmotInternal->coord_tp, DEFAULT_TC_QUEUE_SIZE,mot_comp_id)) {
+    if (-1 == motmod_tp_api->create(DEFAULT_TC_QUEUE_SIZE,mot_comp_id)) {
         rtapi_print_msg(RTAPI_MSG_ERR,
-            "MOTION: tpCreate failed\n");
+            "MOTION: motmod_tp_api->create failed\n");
         return -1;
     }
-    // tpInit is called from tpCreate
-    tpSetCycleTime(&emcmotInternal->coord_tp,  emcmotConfig->trajCycleTime);
-    tpSetVmax(     &emcmotInternal->coord_tp,  emcmotStatus->vel, emcmotStatus->vel);
-    tpSetAmax(     &emcmotInternal->coord_tp,  emcmotStatus->acc);
-    tpSetPos(      &emcmotInternal->coord_tp, &emcmotStatus->carte_pos_cmd);
+    // tpInit is called from motmod_tp_api->create
+    motmod_tp_api->set_cycle_time(emcmotConfig->trajCycleTime);
+    motmod_tp_api->set_vmax(emcmotStatus->vel, emcmotStatus->vel);
+    motmod_tp_api->set_amax(emcmotStatus->acc);
+    motmod_tp_api->set_pos((tp_pose_t *)&emcmotStatus->carte_pos_cmd);
     return 0;
 }
 
-int rtapi_app_main(void)
+/***********************************************************************
+*              ARGUMENT PARSING (replaces RTAPI_MP_* macros)           *
+************************************************************************/
+
+/* Parse "key=value" from argv[].  Supports int, long, and array-of-string.
+   Returns 0 on success, -1 if a required value is malformed. */
+static int parse_argv(int argc, const char **argv)
+{
+    for (int i = 0; i < argc; i++) {
+        const char *a = argv[i];
+        if (!a) continue;
+
+        if (strncmp(a, "key=", 4) == 0)                  key = atoi(a + 4);
+        else if (strncmp(a, "base_period_nsec=", 17) == 0) base_period_nsec = atol(a + 17);
+        else if (strncmp(a, "base_thread_fp=", 15) == 0)  base_thread_fp = atoi(a + 15);
+        else if (strncmp(a, "servo_period_nsec=", 18) == 0) servo_period_nsec = atol(a + 18);
+        else if (strncmp(a, "traj_period_nsec=", 17) == 0) traj_period_nsec = atol(a + 17);
+        else if (strncmp(a, "num_spindles=", 13) == 0)    num_spindles = atoi(a + 13);
+        else if (strncmp(a, "num_joints=", 11) == 0)      num_joints = atoi(a + 11);
+        else if (strncmp(a, "num_extrajoints=", 16) == 0) num_extrajoints = atoi(a + 16);
+        else if (strncmp(a, "num_dio=", 8) == 0)          num_dio = atoi(a + 8);
+        else if (strncmp(a, "num_aio=", 8) == 0)          num_aio = atoi(a + 8);
+        else if (strncmp(a, "num_misc_error=", 15) == 0)  num_misc_error = atoi(a + 15);
+        else if (strncmp(a, "unlock_joints_mask=", 19) == 0) unlock_joints_mask = atoi(a + 19);
+        /* Array-of-string params: names_din=foo,bar,baz */
+        else if (strncmp(a, "names_din=", 10) == 0) {
+            const char *p = a + 10;
+            for (int n = 0; n < MAX_IO && *p; n++) {
+                const char *c = strchr(p, ',');
+                size_t len = c ? (size_t)(c - p) : strlen(p);
+                names_din[n] = strndup(p, len);
+                p = c ? c + 1 : p + len;
+            }
+        }
+        else if (strncmp(a, "names_dout=", 11) == 0) {
+            const char *p = a + 11;
+            for (int n = 0; n < MAX_IO && *p; n++) {
+                const char *c = strchr(p, ',');
+                size_t len = c ? (size_t)(c - p) : strlen(p);
+                names_dout[n] = strndup(p, len);
+                p = c ? c + 1 : p + len;
+            }
+        }
+        else if (strncmp(a, "names_ain=", 10) == 0) {
+            const char *p = a + 10;
+            for (int n = 0; n < MAX_IO && *p; n++) {
+                const char *c = strchr(p, ',');
+                size_t len = c ? (size_t)(c - p) : strlen(p);
+                names_ain[n] = strndup(p, len);
+                p = c ? c + 1 : p + len;
+            }
+        }
+        else if (strncmp(a, "names_aout=", 11) == 0) {
+            const char *p = a + 11;
+            for (int n = 0; n < MAX_IO && *p; n++) {
+                const char *c = strchr(p, ',');
+                size_t len = c ? (size_t)(c - p) : strlen(p);
+                names_aout[n] = strndup(p, len);
+                p = c ? c + 1 : p + len;
+            }
+        }
+        else if (strncmp(a, "names_misc_errors=", 18) == 0) {
+            const char *p = a + 18;
+            for (int n = 0; n < MAX_IO && *p; n++) {
+                const char *c = strchr(p, ',');
+                size_t len = c ? (size_t)(c - p) : strlen(p);
+                names_misc_errors[n] = strndup(p, len);
+                p = c ? c + 1 : p + len;
+            }
+        }
+        /* Ignore unknown params — HAL file may pass extra args */
+    }
+    return 0;
+}
+
+static void free_name_arrays(void)
+{
+    for (int i = 0; i < MAX_IO; i++) {
+        free(names_din[i]);   names_din[i] = NULL;
+        free(names_dout[i]);  names_dout[i] = NULL;
+        free(names_ain[i]);   names_ain[i] = NULL;
+        free(names_aout[i]);  names_aout[i] = NULL;
+        free(names_misc_errors[i]); names_misc_errors[i] = NULL;
+    }
+}
+
+/***********************************************************************
+*                    cmod LIFECYCLE                                     *
+************************************************************************/
+
+/* Forward declaration — filled in below. */
+static void motmod_Destroy(cmod_t *self);
+
+/* Module-level cmod_t (motmod is a singleton). */
+static cmod_t motmod_cmod;
+
+/* Store the env pointer for Destroy(). */
+static const cmod_env_t *motmod_env;
+
+/* GMI API pointers — set in Init(), used by bridge inlines */
+const tp_callbacks_t   *motmod_tp_api;
+const home_callbacks_t *motmod_home_api;
+
+static int motmod_init(cmod_t *self);
+
+int New(const cmod_env_t *env, const char *name,
+        int argc, const char **argv, cmod_t **out)
 {
     int retval;
 
-    rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: rtapi_app_main() starting...\n");
+    motmod_env = env;
+
+    rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: New() starting...\n");
+
+    /* Parse module arguments from argv */
+    if (parse_argv(argc, argv) != 0) {
+        rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: argument parsing failed\n"));
+        return -1;
+    }
 
     /* connect to the HAL and RTAPI */
-    mot_comp_id = hal_init("motmod");
+    mot_comp_id = hal_init_ex(name, env->dl_handle, COMPONENT_TYPE_REALTIME);
     if (mot_comp_id < 0) {
-	rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: hal_init() failed\n"));
+	rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: hal_init_ex() failed\n"));
 	return -1;
     }
+
+    /* Register the mot reverse-callback API so tpmod/homemod can look it up
+       in their Init() functions. */
+    retval = mot_api_register(env->api, "default", &motmod_mot_callbacks);
+    if (retval != 0) {
+	rtapi_print_msg(RTAPI_MSG_ERR,
+	    _("MOTION: failed to register mot API: %d\n"), retval);
+	hal_exit(mot_comp_id);
+	return -1;
+    }
+
     if (( num_joints < 1 ) || ( num_joints > EMCMOT_MAX_JOINTS )) {
 	rtapi_print_msg(RTAPI_MSG_ERR,
 	    _("MOTION: num_joints is %d, must be between 1 and %d\n"), num_joints, EMCMOT_MAX_JOINTS);
@@ -285,10 +730,6 @@ int rtapi_app_main(void)
 	    _("\nMOTION: num_extrajoints is %d, must be between 0 and %d\n\n"), num_extrajoints, num_joints);
 	hal_exit(mot_comp_id);
 	return -1;
-    }
-    if ( (num_extrajoints > 0) && (kinematicsType() != KINEMATICS_BOTH) ) {
-	rtapi_print_msg(RTAPI_MSG_ERR, _("\nMOTION: nonzero num_extrajoints requires KINEMATICS_BOTH\n\n"));
-        return -1;
     }
     if (num_extrajoints > 0) {
 	rtapi_print_msg(RTAPI_MSG_ERR,
@@ -362,21 +803,88 @@ int rtapi_app_main(void)
     return -1;
   }
 
-    /* initialize/export HAL pins and parameters */
-    retval = init_hal_io();
-    if (retval != 0) {
-	rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: init_hal_io() failed\n"));
-	hal_exit(mot_comp_id);
+    rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: New() complete\n");
+
+    /* Set up cmod interface */
+    motmod_cmod.Init    = motmod_init;
+    motmod_cmod.Start   = NULL;
+    motmod_cmod.Stop    = NULL;
+    motmod_cmod.Destroy = motmod_Destroy;
+    motmod_cmod.priv    = NULL;
+
+    *out = &motmod_cmod;
+    return 0;
+}
+
+/*
+ * motmod Init() — look up APIs registered by other modules during New(),
+ * then initialize the trajectory planner and homing subsystem.
+ *
+ * By the time Init() runs, all modules' New() have completed (APIs
+ * registered) and earlier-loaded modules' Init() have also completed
+ * (tpmod/homemod have wired their function pointers via the mot API).
+ */
+static int motmod_init(cmod_t *self)
+{
+    int retval;
+    (void)self;
+
+    rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: Init() starting...\n");
+
+    /* --- Cross-module API lookups (must come first) --- */
+
+    /* Look up the kinematics API registered by the kins module */
+    motmod_kins = kins_api_get(motmod_env->api, "kinematics");
+    if (!motmod_kins) {
+	rtapi_print_msg(RTAPI_MSG_ERR,
+	    _("MOTION: kinematics API not registered (is kins module loaded?)\n"));
 	return -1;
     }
 
-    /* allocate/initialize user space comm buffers (cmd/status/err) */
+    /* Look up the trajectory planner API registered by the tp module */
+    motmod_tp_api = tp_api_get(motmod_env->api, "default");
+    if (!motmod_tp_api) {
+	rtapi_print_msg(RTAPI_MSG_ERR,
+	    _("MOTION: tp API not registered (is tp module loaded?)\n"));
+	return -1;
+    }
+
+    /* Look up the homing API registered by the home module */
+    motmod_home_api = home_api_get(motmod_env->api, "default");
+    if (!motmod_home_api) {
+	rtapi_print_msg(RTAPI_MSG_ERR,
+	    _("MOTION: home API not registered (is home module loaded?)\n"));
+	return -1;
+    }
+
+    /* --- Validation (depends on kins) --- */
+
+    if ( (num_extrajoints > 0) && (kinematicsType() != KINEMATICS_BOTH) ) {
+	rtapi_print_msg(RTAPI_MSG_ERR, _("\nMOTION: nonzero num_extrajoints requires KINEMATICS_BOTH\n\n"));
+        return -1;
+    }
+
+    /* --- HAL pins, shared memory, RT function export --- */
+
+    retval = init_hal_io();
+    if (retval != 0) {
+	rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: init_hal_io() failed\n"));
+	return -1;
+    }
+
     retval = init_comm_buffers();
     if (retval != 0) {
 	rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: init_comm_buffers() failed\n"));
-	hal_exit(mot_comp_id);
 	return -1;
     }
+
+    retval = export_functions();
+    if (retval != 0) {
+	rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: export_functions() failed\n"));
+	return -1;
+    }
+
+    /* --- Subsystem initialization --- */
 
     if (module_intfc()) {
 	rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: module_intfc() failed\n"));
@@ -387,46 +895,33 @@ int rtapi_app_main(void)
 	return -1;
     }
 
-    /* export realtime functions for the motion controller */
-    retval = export_functions();
-    if (retval != 0) {
-	rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: export_functions() failed\n"));
-	hal_exit(mot_comp_id);
-	return -1;
+    /* Initialize homing via GMI home API */
+    if (motmod_home_api->init(mot_comp_id,
+                              emcmotConfig->servoCycleTime,
+                              num_joints,
+                              num_extrajoints) != 0) {
+        rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: homing init failed\n"));
+        return -1;
     }
-
-    if (homing_init(mot_comp_id,
-                    emcmotConfig->servoCycleTime,
-                    num_joints,
-                    num_extrajoints,
-                    joints)) {
-	rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: homing_init() failed\n"));
-	hal_exit(mot_comp_id);
-	return -1;
-    }
-
-    rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: rtapi_app_main() complete\n");
-
-    hal_ready(mot_comp_id);
 
     old_handler = rtapi_get_msg_handler();
     rtapi_set_msg_handler(emc_message_handler);
+
+    hal_ready(mot_comp_id);
+
+    rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: Init() complete\n");
     return 0;
 }
 
-void rtapi_app_exit(void)
+static void motmod_Destroy(cmod_t *self)
 {
     int retval;
+    (void)self;
 
     rtapi_set_msg_handler(old_handler);
 
-    rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: cleanup_module() started.\n");
+    rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: Destroy() started.\n");
 
-    retval = hal_stop_threads();
-    if (retval < 0) {
-	rtapi_print_msg(RTAPI_MSG_ERR,
-	    _("MOTION: hal_stop_threads() failed, returned %d\n"), retval);
-    }
     /* free shared memory */
     retval = rtapi_shmem_delete(emc_shmem_id, mot_comp_id);
     if (retval < 0) {
@@ -439,7 +934,10 @@ void rtapi_app_exit(void)
 	rtapi_print_msg(RTAPI_MSG_ERR,
 	    _("MOTION: hal_exit() failed, returned %d\n"), retval);
     }
-    rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: cleanup_module() finished.\n");
+
+    free_name_arrays();
+
+    rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: Destroy() finished.\n");
 }
 
 /***********************************************************************
@@ -603,9 +1101,9 @@ static int init_hal_io(void)
     CALL_CHECK(hal_pin_float_newf(HAL_OUT, &(emcmot_hal_data->tooloffset_v), mot_comp_id, "motion.tooloffset.v"));
     CALL_CHECK(hal_pin_float_newf(HAL_OUT, &(emcmot_hal_data->tooloffset_w), mot_comp_id, "motion.tooloffset.w"));
 
-    if (kinematicsSwitchable()) {
-        CALL_CHECK(hal_pin_float_newf(HAL_IN, &(emcmot_hal_data->switchkins_type), mot_comp_id, "motion.switchkins-type"));
-    }
+    /* Always create switchkins-type pin; it's a no-op if kins isn't switchable. */
+    CALL_CHECK(hal_pin_float_newf(HAL_IN, &(emcmot_hal_data->switchkins_type), mot_comp_id, "motion.switchkins-type"));
+
     /* initialize machine wide pins and parameters */
     *(emcmot_hal_data->adaptive_feed) = 1.0;
     *(emcmot_hal_data->feed_hold) = 0;
@@ -1080,7 +1578,7 @@ static int setTrajCycleTime(double secs)
         emcmotConfig->interpolationRate = 1;
 
     /* set traj planner */
-    tpSetCycleTime(&emcmotInternal->coord_tp, secs);
+    motmod_tp_api->set_cycle_time(secs);
 
     /* set the free planners, cubic interpolation rate and segment time */
     for (t = 0; t < ALL_JOINTS; t++) {

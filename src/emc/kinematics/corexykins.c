@@ -1,75 +1,85 @@
-/********************************************************************
-* Description: kinematics for corexy
-* Adapted from trivkins.c
-* ref: http://corexy.com/theory.html
-********************************************************************/
+// corexykins — CoreXY kinematics module (cmod version)
+// ref: http://corexy.com/theory.html
+// License: GPL Version 2
 
-#include "motion.h"
-#include "hal.h"
-#include "rtapi.h"
-#include "rtapi.h"
-#include "rtapi_app.h"
-#include "rtapi_math.h"
-#include "rtapi_string.h"
-#include "kinematics.h"
+#include <math.h>
+#include "gomc_env.h"
+#include "kins_api.h"
 
-static struct data {
-    hal_s32_t joints[EMCMOT_MAX_JOINTS];
-} *data;
+// ─── Forward/Inverse kinematics ───
 
-int kinematicsForward(const double *joints
-                     ,EmcPose *pos
-                     ,const KINEMATICS_FORWARD_FLAGS *fflags
-                     ,KINEMATICS_INVERSE_FLAGS *iflags
-                     ) {
-    pos->tran.x = 0.5 * (joints[0] + joints[1]);
-    pos->tran.y = 0.5 * (joints[0] - joints[1]);
-    pos->tran.z = joints[2];
-    pos->a      = joints[3];
-    pos->b      = joints[4];
-    pos->c      = joints[5];
-    pos->u      = joints[6];
-    pos->v      = joints[7];
-    pos->w      = joints[8];
-
+static int32_t corexykins_forward(
+    const double joints[KINS_MAX_JOINTS],
+    kins_pose_t *world,
+    uint64_t fflags,
+    uint64_t *iflags)
+{
+    (void)fflags; (void)iflags;
+    world->x = 0.5 * (joints[0] + joints[1]);
+    world->y = 0.5 * (joints[0] - joints[1]);
+    world->z = joints[2];
+    world->a = joints[3];
+    world->b = joints[4];
+    world->c = joints[5];
+    world->u = joints[6];
+    world->v = joints[7];
+    world->w = joints[8];
     return 0;
 }
 
-int kinematicsInverse(const EmcPose *pos
-                     ,double *joints
-                     ,const KINEMATICS_INVERSE_FLAGS *iflags
-                     ,KINEMATICS_FORWARD_FLAGS *fflags
-                     ) {
-    joints[0] = pos->tran.x + pos->tran.y;
-    joints[1] = pos->tran.x - pos->tran.y;
-    joints[2] = pos->tran.z;
-    joints[3] = pos->a;
-    joints[4] = pos->b;
-    joints[5] = pos->c;
-    joints[6] = pos->u;
-    joints[7] = pos->v;
-    joints[8] = pos->w;
-
+static int32_t corexykins_inverse(
+    const kins_pose_t *world,
+    double joints[KINS_MAX_JOINTS],
+    uint64_t iflags,
+    uint64_t *fflags)
+{
+    (void)iflags; (void)fflags;
+    joints[0] = world->x + world->y;
+    joints[1] = world->x - world->y;
+    joints[2] = world->z;
+    joints[3] = world->a;
+    joints[4] = world->b;
+    joints[5] = world->c;
+    joints[6] = world->u;
+    joints[7] = world->v;
+    joints[8] = world->w;
     return 0;
 }
 
-KINEMATICS_TYPE kinematicsType() { return KINEMATICS_BOTH; }
-
-KINS_NOT_SWITCHABLE
-EXPORT_SYMBOL(kinematicsType);
-EXPORT_SYMBOL(kinematicsForward);
-EXPORT_SYMBOL(kinematicsInverse);
-MODULE_LICENSE("GPL");
-
-static int comp_id;
-int rtapi_app_main(void) {
-    comp_id = hal_init("corexykins");
-    if(comp_id < 0) return comp_id;
-
-    data = hal_malloc(sizeof(struct data));
-
-    hal_ready(comp_id);
-    return 0;
+static kins_kinematics_type_t corexykins_type(void) {
+    return KINS_BOTH;
 }
 
-void rtapi_app_exit(void) { hal_exit(comp_id); }
+static int32_t corexykins_switchable(void) { return 0; }
+static int32_t corexykins_switch(int32_t t) { (void)t; return -1; }
+
+static kins_callbacks_t corexykins_callbacks = {
+    .forward    = corexykins_forward,
+    .inverse    = corexykins_inverse,
+    .type       = corexykins_type,
+    .switchable = corexykins_switchable,
+    .switch_    = corexykins_switch,
+};
+
+// ─── cmod lifecycle ───
+
+static cmod_t corexykins_cmod;
+
+static void corexykins_destroy(cmod_t *self) { (void)self; }
+
+int New(const cmod_env_t *env, const char *name,
+        int argc, const char **argv, cmod_t **out)
+{
+    (void)argc; (void)argv;
+
+    int rc = kins_api_register(env->api, "kinematics", &corexykins_callbacks);
+    if (rc != 0) {
+        gomc_log_errorf(env->log, name,
+            "failed to register kinematics API: %d", rc);
+        return rc;
+    }
+
+    corexykins_cmod.Destroy = corexykins_destroy;
+    *out = &corexykins_cmod;
+    return 0;
+}

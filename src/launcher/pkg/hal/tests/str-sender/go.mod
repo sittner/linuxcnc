@@ -1,6 +1,6 @@
 module str-sender
 
-go 1.21
+go 1.22
 
 require github.com/sittner/linuxcnc/src/launcher v0.0.0
 

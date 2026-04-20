@@ -44,19 +44,29 @@ LAUNCHER_LDFLAGS := \
 
 # All Go source files in the launcher module (recursive wildcard for
 # sub-packages).  Make will rebuild when any .go file or go.mod changes.
-LAUNCHER_SRC := $(wildcard launcher/*.go) \
+# Hand-written Go sources (no generated files — those are added in LAUNCHER_SRC).
+LAUNCHER_SRC_BASE := $(wildcard launcher/*.go) \
     $(wildcard launcher/cmd/*/*.go) \
     $(wildcard launcher/pkg/*/*.go) \
     $(wildcard launcher/internal/*/*.go) \
     $(wildcard launcher/internal/*/*/*.go) \
     launcher/go.mod
 
+# Full source list including generated files (for the launcher binary).
+LAUNCHER_SRC := $(LAUNCHER_SRC_BASE) \
+    $(wildcard launcher/generated/*/*/*)
+
+# Generated GMI files that the launcher imports.  The wildcard above may be
+# empty on a fresh build (files don't exist yet at parse time), so we list
+# concrete prerequisites here to ensure codegen runs first.
+GMI_KINS_GEN_GO := launcher/generated/gmi/kins/kins_cgo.go
+
 # Build the launcher binary.
 #
 # CGO_LDFLAGS adds -Wl,-rpath so the dynamic linker finds liblinuxcnchal.so
 # and its companions at runtime (RIP and installed builds alike).
 # LIB_DIR is $(EMC2_HOME)/lib, defined in Makefile.inc.
-../bin/linuxcnc-launcher: $(LAUNCHER_SRC) ../lib/liblinuxcnchal.so
+../bin/linuxcnc-launcher: $(LAUNCHER_SRC) $(GMI_KINS_GEN_GO) ../lib/liblinuxcnchal.so
 	$(ECHO) Building Go launcher
 	$(Q)cd launcher && CGO_LDFLAGS="-Wl,-rpath,$(LIB_DIR)" $(GO) build -ldflags "$(LAUNCHER_LDFLAGS)" -o $(TOP)/bin/linuxcnc-launcher ./cmd/linuxcnc-launcher
 
@@ -160,12 +170,23 @@ TARGETS += ../bin/linuxcnc-launcher ../bin/ads-xml-gen ../gomod/ads-server.so $(
 # modcompile — .comp → cmod C code generator
 # ---------------------------------------------------------------------------
 
-../bin/modcompile: $(LAUNCHER_SRC)
+../bin/modcompile: $(LAUNCHER_SRC_BASE)
 	$(ECHO) Building modcompile
 	@rm -f $@
 	$(Q)cd launcher && $(GO) build -ldflags "$(LAUNCHER_LDFLAGS)" -o $(TOP)/bin/modcompile ./cmd/modcompile
 
 TARGETS += ../bin/modcompile
+
+# ---------------------------------------------------------------------------
+# gmicompile — .gmi IDL → C/Go code generator
+# ---------------------------------------------------------------------------
+
+../bin/gmicompile: $(LAUNCHER_SRC_BASE)
+	$(ECHO) Building gmicompile
+	@rm -f $@
+	$(Q)cd launcher && $(GO) build -ldflags "$(LAUNCHER_LDFLAGS)" -o $(TOP)/bin/gmicompile ./cmd/gmicompile
+
+TARGETS += ../bin/gmicompile
 
 # Test target
 .PHONY: test-launcher
@@ -177,7 +198,7 @@ clean: launcher-clean
 .PHONY: launcher-clean
 launcher-clean:
 	rm -f ../bin/linuxcnc-launcher ../bin/ads-xml-gen ../gomod/ads-server.so
-	rm -f ../bin/modcompile
+	rm -f ../bin/modcompile ../bin/gmicompile
 	rm -f $(HAL_GO_EXAMPLES)
 	rm -f $(LAUNCHER_PKG_FILES)
 

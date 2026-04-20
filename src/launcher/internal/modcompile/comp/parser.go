@@ -164,6 +164,10 @@ func (p *parser) parseDeclaration() error {
 		return p.parseDocField(&p.pkg.Component.Notes)
 	case "examples":
 		return p.parseDocField(&p.pkg.Component.Examples)
+	case "gmi_provide":
+		return p.parseGMIProvide()
+	case "gmi_consume":
+		return p.parseGMIConsume()
 	default:
 		return p.errorf("unknown declaration keyword %q", p.cur.Val)
 	}
@@ -461,6 +465,40 @@ func (p *parser) parseInclude() error {
 	}
 
 	p.pkg.Component.Includes = append(p.pkg.Component.Includes, header)
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// GMI API bindings: "gmi_provide" NAME ";" / "gmi_consume" NAME ";"
+// ---------------------------------------------------------------------------
+
+func (p *parser) parseGMIProvide() error {
+	p.next() // skip "gmi_provide"
+
+	name, err := p.expectName()
+	if err != nil {
+		return err
+	}
+	if err := p.expectSemi(); err != nil {
+		return err
+	}
+
+	p.pkg.Component.GMIProvide = append(p.pkg.Component.GMIProvide, name)
+	return nil
+}
+
+func (p *parser) parseGMIConsume() error {
+	p.next() // skip "gmi_consume"
+
+	name, err := p.expectName()
+	if err != nil {
+		return err
+	}
+	if err := p.expectSemi(); err != nil {
+		return err
+	}
+
+	p.pkg.Component.GMIConsume = append(p.pkg.Component.GMIConsume, name)
 	return nil
 }
 

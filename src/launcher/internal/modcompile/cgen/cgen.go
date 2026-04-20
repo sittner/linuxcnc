@@ -36,7 +36,7 @@ func (g *generator) generate() error {
 	g.emitConvenienceDefines()
 	g.emitUserCodeBody() // Emit rest of user code (without includes)
 	g.emitUndefConvenience()
-	g.emitStartStopDestroy()
+	g.emitInitStartStopDestroy()
 	g.emitNew()
 	return g.err
 }
@@ -302,6 +302,14 @@ func (g *generator) emitHeader() {
 	for _, inc := range g.comp.Includes {
 		g.printf("#include %s\n", inc)
 	}
+
+	// GMI API headers for gmi_provide / gmi_consume.
+	for _, api := range g.comp.GMIProvide {
+		g.printf("#include \"%s_api.h\"\n", api)
+	}
+	for _, api := range g.comp.GMIConsume {
+		g.printf("#include \"%s_api.h\"\n", api)
+	}
 	g.printf("\n")
 }
 
@@ -388,6 +396,11 @@ func (g *generator) emitInstanceStruct() {
 		} else {
 			g.printf("    %s %s;\n", v.CType, v.Name)
 		}
+	}
+
+	// GMI consumed API pointers (populated during Start via api_get).
+	for _, api := range g.comp.GMIConsume {
+		g.printf("    const %s_callbacks_t *__gmi_%s;\n", api, api)
 	}
 
 	// Option data — extra allocation as void* (type defined in user code).
@@ -630,10 +643,30 @@ func (g *generator) emitUndefConvenience() {
 	g.printf("\n")
 }
 
-func (g *generator) emitStartStopDestroy() {
+// emitConsumeAPILookups emits api_get() calls for each gmi_consume API.
+// Called from inst_init() so that all providers have completed New()
+// (and thus api_register) before any consumer looks them up.
+func (g *generator) emitConsumeAPILookups() {
+	for _, api := range g.comp.GMIConsume {
+		g.printf("    /* gmi_consume %s */\n", api)
+		g.printf("    inst->__gmi_%s = %s_api_get(inst->env->api, inst->name);\n", api, api)
+		g.printf("    if (!inst->__gmi_%s) return -1;\n", api)
+	}
+}
+
+func (g *generator) emitInitStartStopDestroy() {
 	g.printf("/* ---------------------------------------------------------------------------\n")
-	g.printf(" * Lifecycle: Start / Stop / Destroy\n")
+	g.printf(" * Lifecycle: Init / Start / Stop / Destroy\n")
 	g.printf(" * ------------------------------------------------------------------------- */\n\n")
+
+	// Init: look up consumed APIs (cross-module lookups happen here).
+	if len(g.comp.GMIConsume) > 0 {
+		g.printf("static int inst_init(cmod_t *self) {\n")
+		g.printf("    inst_t *inst = (inst_t *)self;\n")
+		g.emitConsumeAPILookups()
+		g.printf("    return 0;\n")
+		g.printf("}\n\n")
+	}
 
 	if g.hasUserMainloop() {
 		// Thread entry point: sets __comp_inst_ptr and calls user_mainloop.
@@ -709,6 +742,9 @@ func (g *generator) emitNew() {
 	g.printf("    if (!inst) return -1;\n\n")
 
 	// Wire vtable.
+	if len(g.comp.GMIConsume) > 0 {
+		g.printf("    inst->base.Init    = inst_init;\n")
+	}
 	g.printf("    inst->base.Start   = inst_start;\n")
 	g.printf("    inst->base.Stop    = inst_stop;\n")
 	g.printf("    inst->base.Destroy = inst_destroy;\n")
@@ -840,6 +876,17 @@ func (g *generator) emitNew() {
 	// hal_ready.
 	g.printf("    r = env->hal->ready(env->hal->ctx, inst->comp_id);\n")
 	g.printf("    if (r != 0) goto err;\n\n")
+
+	// GMI API registration (gmi_provide).
+	for _, api := range g.comp.GMIProvide {
+		upper := strings.ToUpper(api)
+		g.printf("    /* gmi_provide %s */\n", api)
+		g.printf("    {\n")
+		g.printf("        static const %s_callbacks_t __gmi_%s_cb = GMI_%s_CALLBACKS;\n", api, api, upper)
+		g.printf("        r = %s_api_register(env->api, name, &__gmi_%s_cb);\n", api, api)
+		g.printf("        if (r != 0) goto err;\n")
+		g.printf("    }\n\n")
+	}
 
 	g.printf("    *out = &inst->base;\n")
 	g.printf("    return 0;\n\n")

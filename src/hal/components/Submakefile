@@ -9,16 +9,15 @@ CONVERTERS :=  \
 # These use features not supported by cmod or have special requirements
 # ---------------------------------------------------------------------------
 HALCOMPILE_COMP_NAMES := \
-    homecomp             \
     mesa_pktgyro_test    \
-    millturn             \
-    tpcomp               \
-    userkins             \
-    xyzab_tdr_kins
+    tpcomp
 # Reasons:
-#   homecomp, tpcomp      - use EXTRA_SETUP (motion controller integration)
-#   millturn, userkins, xyzab_tdr_kins - kinematics modules (special motion integration)
+#   tpcomp                - uses EXTRA_SETUP with HOMING_BASE include (motion controller integration)
 #   mesa_pktgyro_test     - hostmot2 driver test (depends on internal headers)
+
+# Kinematics .comp modules: built via modcompile with gmi_provide kins.
+# Need the GMI kins API header path at compile time.
+CMOD_KINS_COMP_NAMES := millturn userkins xyzab_tdr_kins
 
 HALCOMPILE_COMPS := $(addprefix hal/components/, $(addsuffix .comp, $(HALCOMPILE_COMP_NAMES)))
 
@@ -177,6 +176,36 @@ objects/cmod/%.c: hal/components/%.comp ../bin/modcompile
 	$(ECHO) "Compiling cmod $(notdir $@)"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -o $@ $< -lm
+
+# Step 2b: kinematics comps need the GMI kins API header path.
+# These override the generic pattern rule above for kins modules.
+CMOD_GMI_KINS_API := launcher/generated/gmi/kins
+CMOD_KINS_CFLAGS := -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I $(CMOD_GMI_KINS_API) -lm
+
+../cmod/userkins.so: objects/cmod/userkins.c $(CMOD_GMI_KINS_API)/kins_api.h
+	$(ECHO) "Compiling cmod (kins) $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) $(CMOD_KINS_CFLAGS) -o $@ $<
+
+../cmod/millturn.so: objects/cmod/millturn.c $(CMOD_GMI_KINS_API)/kins_api.h
+	$(ECHO) "Compiling cmod (kins) $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) $(CMOD_KINS_CFLAGS) -o $@ $<
+
+../cmod/xyzab_tdr_kins.so: objects/cmod/xyzab_tdr_kins.c $(CMOD_GMI_KINS_API)/kins_api.h
+	$(ECHO) "Compiling cmod (kins) $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) $(CMOD_KINS_CFLAGS) -o $@ $<
+
+# Step 2c: homecomp needs the GMI home + mot API header paths.
+CMOD_GMI_HOME_API := launcher/generated/gmi/home
+CMOD_GMI_MOT_API := launcher/generated/gmi/mot
+CMOD_HOME_CFLAGS := -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I $(CMOD_GMI_HOME_API) -I $(CMOD_GMI_MOT_API) -lm
+
+../cmod/homecomp.so: objects/cmod/homecomp.c $(CMOD_GMI_HOME_API)/home_api.h $(CMOD_GMI_MOT_API)/mot_api.h
+	$(ECHO) "Compiling cmod (home) $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) $(CMOD_HOME_CFLAGS) -o $@ $<
 
 TARGETS += $(CMOD_TARGETS)
 modules: $(CMOD_TARGETS)

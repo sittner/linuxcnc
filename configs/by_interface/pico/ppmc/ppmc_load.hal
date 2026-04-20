@@ -1,7 +1,7 @@
 # sample file pulls all load commands into a single file
 
 # kinematics
-loadrt [KINS]KINEMATICS
+load [KINS]KINEMATICS
 
 #motion controller, get name and thread periods from ini file
 loadrt [EMCMOT]EMCMOT servo_period_nsec=[EMCMOT]SERVO_PERIOD num_joints=[KINS]JOINTS

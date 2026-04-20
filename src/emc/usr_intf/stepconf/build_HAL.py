@@ -45,7 +45,7 @@ class HAL:
         print(_("# If you make changes to this file, they will be"), file=file)
         print(_("# overwritten when you run stepconf again"), file=file)
 
-        print("loadrt [KINS]KINEMATICS", file=file)
+        print("load [KINS]KINEMATICS", file=file)
         # qtplasmac requires 3 spindles
         if self.d.select_qtplasmac:
             print("loadrt [EMCMOT]EMCMOT base_period_nsec=[EMCMOT]BASE_PERIOD servo_period_nsec=[EMCMOT]SERVO_PERIOD num_joints=[KINS]JOINTS num_spindles=[TRAJ]SPINDLES", file=file)

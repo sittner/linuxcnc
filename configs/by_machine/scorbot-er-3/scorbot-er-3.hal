@@ -1,5 +1,5 @@
 
-loadrt [KINS]KINEMATICS
+load [KINS]KINEMATICS
 #autoconverted  scorbot-kins
 
 # motion controller, get name and thread periods from ini file

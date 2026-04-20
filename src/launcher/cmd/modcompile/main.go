@@ -291,12 +291,29 @@ func compileComp(compPath string, pkg *ast.Package, outDir string) error {
 
 	args := []string{
 		"-I" + config.EMC2CmodIncludeDir,
+		"-I" + filepath.Join(config.EMC2Home, "include"),
+	}
+
+	// Add -I for each GMI API referenced (gmi_provide / gmi_consume).
+	gmiAPIs := make(map[string]bool)
+	for _, api := range pkg.Component.GMIProvide {
+		gmiAPIs[api] = true
+	}
+	for _, api := range pkg.Component.GMIConsume {
+		gmiAPIs[api] = true
+	}
+	for api := range gmiAPIs {
+		apiIncDir := filepath.Join(config.EMC2LauncherDir, "generated", "gmi", api)
+		args = append(args, "-I"+apiIncDir)
+	}
+
+	args = append(args,
 		"-fPIC", "-Os", "-Wall",
 		"-shared",
 		"-o", soPath,
 		tmpCPath,
 		"-lm",
-	}
+	)
 
 	cmd := exec.Command(cc, args...)
 	cmd.Stdout = os.Stdout

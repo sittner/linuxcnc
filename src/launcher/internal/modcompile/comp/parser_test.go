@@ -338,3 +338,26 @@ func TestParseUserComps(t *testing.T) {
 		})
 	}
 }
+
+func TestParseGMIProvideConsume(t *testing.T) {
+	src := `component mykins "Custom kinematics";
+pin out s32 fpin;
+function fdemo;
+gmi_provide kins;
+gmi_consume tp;
+license "GPL";
+;;
+// user code
+`
+	pkg, err := Parse("mykins.comp", src)
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+	c := pkg.Component
+	if len(c.GMIProvide) != 1 || c.GMIProvide[0] != "kins" {
+		t.Errorf("GMIProvide = %v, want [kins]", c.GMIProvide)
+	}
+	if len(c.GMIConsume) != 1 || c.GMIConsume[0] != "tp" {
+		t.Errorf("GMIConsume = %v, want [tp]", c.GMIConsume)
+	}
+}

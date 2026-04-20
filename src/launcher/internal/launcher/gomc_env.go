@@ -16,8 +16,11 @@ import (
 	"log/slog"
 	"runtime/cgo"
 	"sync"
+	"syscall"
 	"time"
 	"unsafe"
+
+	"github.com/sittner/linuxcnc/src/launcher/internal/apiserver"
 )
 
 // gomcLogRing wraps a C-allocated gomc_log_ring_t and provides the Go-side
@@ -186,4 +189,59 @@ func gomc_ini_get_all(ctx unsafe.Pointer, section, key *C.char, outCount *C.int)
 	*(**C.char)(unsafe.Add(unsafe.Pointer(arr), uintptr(n)*ptrSize)) = nil
 
 	return arr
+}
+
+// --- API registry callback implementations (exported to C) ---
+
+//export gomc_api_register_cb
+func gomc_api_register_cb(ctx unsafe.Pointer, apiName *C.char, version C.int,
+	instanceName *C.char, callbacks unsafe.Pointer) C.int {
+
+	reg := apiserver.DefaultRegistry()
+	if reg == nil {
+		slog.Error("register_api: no default registry")
+		return -C.int(syscall.EINVAL)
+	}
+
+	name := C.GoString(apiName)
+	ver := int(version)
+	instance := C.GoString(instanceName)
+
+	err := reg.Register(name, ver, instance, callbacks)
+	if err != nil {
+		slog.Error("register_api: registration failed",
+			"api", name, "instance", instance, "error", err)
+		switch err {
+		case syscall.EEXIST:
+			return -C.int(syscall.EEXIST)
+		case syscall.EINVAL:
+			return -C.int(syscall.EINVAL)
+		default:
+			return -1
+		}
+	}
+	return 0
+}
+
+//export gomc_api_get_cb
+func gomc_api_get_cb(ctx unsafe.Pointer, apiName *C.char, version C.int,
+	instanceName *C.char) unsafe.Pointer {
+
+	reg := apiserver.DefaultRegistry()
+	if reg == nil {
+		slog.Error("get_api: no default registry")
+		return nil
+	}
+
+	name := C.GoString(apiName)
+	instance := C.GoString(instanceName)
+	ver := int(version)
+
+	cbs, err := reg.GetAPI(name, instance, ver)
+	if err != nil {
+		slog.Error("get_api: lookup failed",
+			"api", name, "instance", instance, "version", ver, "error", err)
+		return nil
+	}
+	return cbs
 }

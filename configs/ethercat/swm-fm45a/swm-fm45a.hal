@@ -13,7 +13,7 @@
 ###########################################################
 
 # load kinematiks and motion controller (realtime)
-loadrt trivkins
+load trivkins
 loadrt [EMCMOT]EMCMOT servo_period_nsec=[EMCMOT]SERVO_PERIOD num_joints=[TRAJ]AXES
 
 # load ethercat config parser

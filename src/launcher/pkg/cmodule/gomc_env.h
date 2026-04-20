@@ -24,6 +24,7 @@
 #include "gomc_hal.h"
 #include "gomc_rtapi.h"
 #include "gomc_log.h"
+#include "gomc_api.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -45,6 +46,7 @@ typedef struct {
     const gomc_ini_t   *ini;
     const gomc_hal_t   *hal;    // NULL if module has no HAL component
     const gomc_rtapi_t *rtapi;  // NULL if module needs no RT services
+    const gomc_api_t   *api;    // NULL if module does not use dynamic APIs
 } cmod_env_t;
 
 // ---------------------------------------------------------------------------
@@ -52,6 +54,7 @@ typedef struct {
 // ---------------------------------------------------------------------------
 
 typedef struct cmod {
+    int  (*Init)(struct cmod *self);
     int  (*Start)(struct cmod *self);
     void (*Stop)(struct cmod *self);
     void (*Destroy)(struct cmod *self);

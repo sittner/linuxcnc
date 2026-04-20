@@ -25,6 +25,7 @@ import (
 
 	halcmd "github.com/sittner/linuxcnc/src/launcher/internal/halcmd"
 
+	"github.com/sittner/linuxcnc/src/launcher/internal/apiserver"
 	"github.com/sittner/linuxcnc/src/launcher/internal/config"
 	"github.com/sittner/linuxcnc/src/launcher/internal/halfile"
 	"github.com/sittner/linuxcnc/src/launcher/internal/lockfile"
@@ -128,6 +129,9 @@ func (l *Launcher) ensureLogRing() {
 // responsibility of the display GUI (AXIS, QtVCP, gmoccapy, etc.) to load
 // its own post-GUI HAL files after creating its HAL pins.
 func (l *Launcher) Run() (runErr error) {
+	// Initialize the API registry so cmod plugins can register/lookup APIs.
+	apiserver.SetDefaultRegistry(apiserver.NewRegistry())
+
 	l.setupEnvironment()
 
 	// Export INI file path and config directory so that child processes
@@ -365,6 +369,14 @@ func (l *Launcher) Run() (runErr error) {
 		l.logger.Warn("HAL loadrt error (continuing)", "error", err)
 	}
 
+	// Phase 1b: Initialize all plugin modules (Init phase).
+	// All modules' New() have completed and APIs are registered.  Init()
+	// looks up other modules' APIs and performs cross-module initialization
+	// (e.g. wiring function pointers, initializing subsystems).
+	if err := l.initCModules(); err != nil {
+		return fmt.Errorf("C module init failed: %w", err)
+	}
+
 	// Phase 2: Execute HAL wiring commands (net, addf, setp, etc.).
 	if err := halResult.Execute(); err != nil {
 		if !l.opts.ContinueOnError {
@@ -595,13 +607,9 @@ func (l *Launcher) logConfiguration() {
 	l.logger.Debug("INI configuration loaded", fields...)
 }
 
-// preloadMotionModules loads the trajectory planner and homing modules via
-// separate hal.LoadRT() calls before any HAL files execute.
-//
-// This mirrors scripts/linuxcnc.in lines 865-868:
-//
-//	eval $HALCMD loadrt "$TPMOD"
-//	eval $HALCMD loadrt "$HOMEMOD"
+// preloadMotionModules loads the trajectory planner and homing modules as
+// cmod plugins before any HAL files execute.  These modules register their
+// GMI APIs (tp, home) so that motmod can look them up in its New().
 //
 // Priority for TPMOD: CLI flag (-t) > [TRAJ]TPMOD > "tpmod".
 // Priority for HOMEMOD: CLI flag (-m) > [EMCMOT]HOMEMOD > "homemod".
@@ -624,12 +632,20 @@ func (l *Launcher) preloadMotionModules() error {
 
 	l.logger.Debug("preloading motion modules", "tpmod", tpMod, "homemod", homeMod)
 
-	if err := halcmd.LoadRT(tpMod); err != nil {
-		return fmt.Errorf("loadrt %s: %w", tpMod, err)
+	tpPath := resolveCModulePath(tpMod)
+	if !cModuleExists(tpPath) {
+		return fmt.Errorf("tp module not found: %s", tpPath)
+	}
+	if err := l.loadCPlugin(tpPath, tpMod, nil); err != nil {
+		return fmt.Errorf("load %s: %w", tpMod, err)
 	}
 
-	if err := halcmd.LoadRT(homeMod); err != nil {
-		return fmt.Errorf("loadrt %s: %w", homeMod, err)
+	homePath := resolveCModulePath(homeMod)
+	if !cModuleExists(homePath) {
+		return fmt.Errorf("home module not found: %s", homePath)
+	}
+	if err := l.loadCPlugin(homePath, homeMod, nil); err != nil {
+		return fmt.Errorf("load %s: %w", homeMod, err)
 	}
 
 	return nil
