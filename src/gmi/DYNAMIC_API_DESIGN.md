@@ -554,36 +554,108 @@ func pinInfoCToGo(src *C.hal_pin_info_t) *PinInfo {
 
 ```
 src/gmi/
-├── idl/                    # Interface definitions
+├── idl/                    # Interface definitions (.gmi files)
 │   ├── hal.gmi
 │   ├── halcmd.gmi
+│   ├── home.gmi
+│   ├── kins.gmi
+│   ├── mot.gmi
+│   ├── tp.gmi
 │   └── README.md
+├── codegen/                # Submakefile for gmicompile code generation
+│   └── Submakefile
 ├── lib/                    # C runtime library (libgmi)
 │   ├── gmi.h
 │   ├── gmi_*.c/h
 │   └── Submakefile
+├── DYNAMIC_API_DESIGN.md   # This document
 └── README.md
 
-src/generated/              # Generated code (gitignored)
-├── hal_api.h               # C server (callbacks struct + register)
-├── hal_dispatch.go         # Go dispatch wrappers + APIMeta with Dispatch (cmod)
-├── hal_api.go              # Go server (interface + register, gomod)
-├── hal_rest_client.h/c     # C REST client (for external programs)
-├── hal_client.go           # Go client (typed wrapper around registry)
-├── hal_conv.go             # Go↔C struct converters
+src/launcher/
+├── generated/              # Generated code (gitignored)
+│   └── gmi/
+│       ├── home/           # home_api.h, home_cgo.go
+│       ├── mot/            # mot_api.h, mot_cgo.go
+│       ├── tp/             # tp_api.h, tp_cgo.go
+│       └── kins/           # kins_api.h, kins_cgo.go
+├── pkg/cmodule/            # cmod runtime headers (gomc_env.h, etc.)
+├── internal/
+│   ├── gmicompile/         # Code generator (parses .gmi → C/Go)
+│   │   ├── ast/
+│   │   ├── parser/
+│   │   └── cgen/           # server.go, dispatch_c.go
+│   └── ...
 └── ...
 
-src/launcher/
-├── internal/
-│   ├── apiserver/          # HTTP server + registry
-│   │   ├── server.go       # Generic HTTP handler (path → funcIndex → dispatch)
-│   │   ├── registry.go     # RegisteredAPI storage, Register/GetAPI
-│   │   └── types.go        # DispatchFunc, APIMeta, FuncMeta, RegisteredAPI
-│   └── ...
+src/emc/kinematics/         # Kinematics modules (cmod .so plugins)
+├── trivkins.c              # Each .c is a self-contained cmod
+├── 5axiskins.c
+├── genhexkins.c
+├── genserkins.c
+├── ...                     # 17 kins modules total
+├── switchkins_cmod.h       # Shared header for switchable kins cmods
+├── Submakefile             # Build rules for Python modules + cmod rules
+└── ...
+
+src/emc/tp/                 # Trajectory planner (cmod .so plugin)
+├── tp.c                    # Self-contained cmod: owns TP_STRUCT, registers tp API
+├── tc.c, tcq.c, ...       # Support files compiled into tpmod.so
+└── ...
+
+src/emc/motion/             # Motion controller
+├── homing.c                # Self-contained cmod: registers home API
+├── motion.c                # motmod (consumes tp + home APIs)
+├── control.c               # RT control loop (calls motmod_tp_api->*, motmod_home_api->*)
+├── command.c               # Command handler
 └── ...
 ```
 
 ## Implementation Plan
+
+### Step 0: Core Module Migration (COMPLETE)
+
+Migrate the three core motion modules (kins, tp, homing) from legacy RTAPI loadable
+modules to self-contained cmods using the GMI dynamic API.
+
+**Deliverables:**
+- [x] IDL definitions: `mot.gmi` (83 callbacks), `home.gmi` (19), `tp.gmi` (29), `kins.gmi` (5)
+- [x] Code generator (`gmicompile`): `--server-c` producing C headers + Go CGO wrappers
+- [x] Codegen: functions return values directly (not via out-pointer)
+- [x] Codegen: enums passed by value (not pointer)
+- [x] Kinematics: 17 kins modules ported to cmod (in `emc/kinematics/`)
+- [x] Trajectory planner: `tp.c` is self-contained cmod (owns `TP_STRUCT`, registers tp API)
+- [x] Homing: `homing.c` is self-contained cmod (registers home API)
+- [x] Motion controller (`motmod`): consumes tp + home APIs via direct pointer calls
+- [x] Bridge layer removed — `control.c`/`command.c` call `motmod_tp_api->*` directly
+- [x] All wrapper layers eliminated (tpmod.c, homemod.c deleted)
+- [x] Build system: cmod rules in Makefile/Submakefiles, rtlib rules removed
+- [x] Generated code properly gitignored (`src/launcher/.gitignore`)
+
+**Migration findings:**
+
+- **Self-contained cmod pattern**: Each module implements `New()` entry point,
+  returns a `cmod_t` with Init/Start/Destroy. Init calls `*_api_get()` to
+  resolve dependencies. This replaces the old RTAPI module_init + EXPORT_SYMBOL pattern.
+
+- **Wrapper elimination**: Initial migration used intermediate wrapper files
+  (tpmod.c, homemod.c) that forwarded calls to the original implementation.
+  These were eliminated by merging directly — making original functions `static`
+  and appending `gmi_*` callback wrappers + cmod lifecycle to the same file.
+
+- **Forward declarations needed**: After making functions static, some are called
+  before their definition. Forward declarations are required (added at top of file).
+
+- **Internal self-calls**: When public wrapper functions are removed, internal code
+  that previously called those wrappers must be updated to call `base_*` functions
+  directly (e.g., `get_allhomed()` → `base_get_allhomed()` inside homing.c).
+
+- **Kinematics are trivial cmods**: Each is a single .c file with `New()` that
+  registers kins callbacks. No complex lifecycle. The `switchkins_cmod.h` header
+  provides common infrastructure for switchable kins modules.
+
+- **No separate directories needed**: Source lives in standard locations
+  (`emc/kinematics/`, `emc/tp/`, `emc/motion/`). Only the IDL definitions and
+  runtime library need a dedicated `gmi/` directory.
 
 ### Step 1: apiserver Package (pure Go, no cgo, no codegen)
 
@@ -623,10 +695,11 @@ Generate Go code that plugs into the apiserver from Step 1.
 Generate C callbacks struct + Go dispatch wrappers that cross the cgo boundary.
 
 **Deliverables:**
-- [ ] Generate C header (callbacks struct, register function, types)
-- [ ] Generate Go dispatch wrappers (cgo: JSON → Go → C → errno → JSON)
+- [x] Generate C header (callbacks struct, register function, types)
+- [x] Generate Go dispatch wrappers (cgo: Go → C callback calls)
 - [ ] Generate Go↔C struct converters
 - [ ] Generate cgo-exported `Register()` callable from C
+- [ ] REST dispatch wrappers (JSON → Go → C → errno → JSON)
 
 **Tests:**
 - [ ] Unit: golden-file comparison of generated .h and .go output
@@ -639,14 +712,14 @@ Enable inter-module calls (direct) and external REST clients.
 
 **Deliverables:**
 - [ ] `--client-go` — typed Go wrapper around `apiserver.GetAPI()` + type assertion
-- [ ] `--client-c` internal — C header for cmod→cmod/gomod (direct callback)
+- [x] `--client-c` internal — C header for cmod→cmod/gomod (direct callback)
 - [ ] `--client-c` REST — C REST client using libgmi (for external programs)
 
 **Tests:**
 - [ ] Unit: golden-file comparison of generated client code
 - [ ] Integration: gomod→gomod direct call
 - [ ] Integration: gomod→cmod direct call (via cgo)
-- [ ] Integration: cmod→cmod direct call (pure C function pointers)
+- [x] Integration: cmod→cmod direct call (pure C function pointers) — motmod→tp, motmod→home
 - [ ] Integration: C REST client → HTTP server → cmod roundtrip
 
 ### Step 5: Python Client Generation (`--client-py`)
