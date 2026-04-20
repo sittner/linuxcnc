@@ -195,5 +195,6 @@ type Param struct {
 	Name  string
 	Type  TypeRef
 	ByRef bool // passed as mutable pointer (byref keyword)
+	IsPtr bool // passed as opaque typed pointer (ptr keyword) — no marshaling
 	Pos   Pos
 }

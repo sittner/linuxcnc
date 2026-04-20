@@ -176,6 +176,9 @@ func joint_set_free_tp_curr_pos(jno: i32, val: f64)
 @doc "Set joint free_tp.max_vel"
 func joint_set_free_tp_max_vel(jno: i32, vel: f64)
 
+@doc "Get joint free_tp.max_vel"
+func joint_get_free_tp_max_vel(jno: i32) -> f64
+
 @doc "Get joint pos_cmd"
 func joint_get_pos_cmd(jno: i32) -> f64
 

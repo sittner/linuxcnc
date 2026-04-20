@@ -17,22 +17,9 @@
 
 static const gomc_api_t *homemod_api;
 
-// ─── Mot API adapter functions ─────────────────────────────────────────────
-// homing.c expects legacy function-pointer signatures via homeMotFunctions().
+// ─── Stored mot API pointer ────────────────────────────────────────────────
 
 static const mot_callbacks_t *home_mot;
-
-static void adapt_set_rotary_unlock(int jnum, int unlock)
-{
-    home_mot->set_rotary_unlock(jnum, unlock);
-}
-
-static int adapt_get_rotary_is_unlocked(int jnum)
-{
-    int32_t out;
-    home_mot->get_rotary_unlock(jnum, &out);
-    return out;
-}
 
 // ─── GMI callback wrappers ─────────────────────────────────────────────────
 //
@@ -42,12 +29,10 @@ static int adapt_get_rotary_is_unlocked(int jnum)
 static int gmi_home_init(
     int32_t comp_id, double servo_period,
     int32_t n_joints, int32_t n_extrajoints,
-    uint64_t joints_ptr,
     int32_t *out)
 {
     *out = homing_init(comp_id, servo_period,
-                       n_joints, n_extrajoints,
-                       (emcmot_joint_t *)(uintptr_t)joints_ptr);
+                       n_joints, n_extrajoints);
     return 0;
 }
 
@@ -198,9 +183,8 @@ static int homemod_init(cmod_t *self)
     if (!home_mot)
         return -1;
 
-    /* Wire legacy homing.c function-pointer statics through mot API adapters. */
-    homeMotFunctions(adapt_set_rotary_unlock,
-                     adapt_get_rotary_is_unlocked);
+    /* Wire mot API into homing.c for joint access. */
+    homingSetMotAPI(home_mot);
     return 0;
 }
 

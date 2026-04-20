@@ -21,12 +21,10 @@ enum MotionState {
 
 # --- Initialization ---
 
-# One-time init. Reverse callbacks come from the mot API.
-# joints_ptr is the shared emcmot_joint_t array from motmod.
+# One-time init. Joint access goes through mot API callbacks.
 @doc "Initialize homing subsystem"
 func init(comp_id: i32, servo_period: f64,
-          n_joints: i32, n_extrajoints: i32,
-          joints_ptr: u64) -> i32
+          n_joints: i32, n_extrajoints: i32) -> i32
 
 # --- Per-joint interface parameters ---
 

@@ -212,15 +212,13 @@ static custom_home_state_t chomestate[EMCMOT_MAX_JOINTS] = {0};
 int homing_init(int id,
                 double servo_period,
                 int n_joints,
-                int n_extrajoints,
-                emcmot_joint_t* pjoints)
+                int n_extrajoints)
 {
     int retval;
     retval = base_homing_init(id,
                               servo_period,
                               n_joints,
-                              n_extrajoints,
-                              pjoints);
+                              n_extrajoints);
     retval += custom_makepins(id,n_joints);
     return retval;
 } // homing_init()
@@ -375,17 +373,13 @@ static int makepins(int id,int njoints)
     return retval;
 }
 // All (skeleton) functions required for homing api follow:
-void homeMotFunctions(void(*pSetRotaryUnlock)(int,int)
-                     ,int (*pGetRotaryIsUnlocked)(int)
-                     )
+void homingSetMotAPI(const void *api)
 { return; }
 
 int  homing_init(int id,
                  double servo_period,
                  int n_joints,
-                 int n_extrajoints,
-                 emcmot_joint_t* pjoints) {
-     joints = pjoints;
+                 int n_extrajoints) {
      return makepins(id,n_joints);
 }
 bool do_homing(void)                                 {return 1;}
@@ -423,7 +417,7 @@ void write_homing_out_pins(int njoints)              {return;}
 //=====================================================================
 
 // all home functions for homing api
-EXPORT_SYMBOL(homeMotFunctions);
+EXPORT_SYMBOL(homingSetMotAPI);
 
 EXPORT_SYMBOL(homing_init);
 EXPORT_SYMBOL(do_homing);

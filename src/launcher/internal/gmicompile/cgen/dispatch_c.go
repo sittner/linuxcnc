@@ -119,6 +119,17 @@ func (g *dispatchCGen) emitCallWrapper(fn ast.Func) {
 func cgoParamDecl(apiName string, p ast.Param) string {
 	name := toSnakeCase(p.Name)
 
+	// ptr qualifier: pass-through typed pointer, no marshaling.
+	if p.IsPtr {
+		switch p.Type.Kind {
+		case ast.TypePrimitive:
+			return fmt.Sprintf("%s *%s", primitiveToCType(p.Type.Name), name)
+		default:
+			cType := fmt.Sprintf("%s_%s_t", apiName, toSnakeCase(p.Type.Name))
+			return fmt.Sprintf("%s *%s", cType, name)
+		}
+	}
+
 	switch p.Type.Kind {
 	case ast.TypePrimitive:
 		cType := primitiveToCType(p.Type.Name)
@@ -426,7 +437,12 @@ func (g *dispatchCGen) emitOneDispatch(fn ast.Func) {
 		g.printf("\tvar params struct {\n")
 		for _, p := range fn.Params {
 			fieldName := toPascalCase(p.Name)
-			fieldType := goTypeForDispatch(p.Type)
+			var fieldType string
+			if p.IsPtr {
+				fieldType = "uint64"
+			} else {
+				fieldType = goTypeForDispatch(p.Type)
+			}
 			jsonTag := toSnakeCase(p.Name)
 			g.printf("\t\t%s %s `json:\"%s\"`\n", fieldName, fieldType, jsonTag)
 		}
@@ -476,6 +492,18 @@ func (g *dispatchCGen) emitOneDispatch(fn ast.Func) {
 }
 
 func (g *dispatchCGen) emitParamGoToC(cVar, goVar string, p ast.Param) {
+	// ptr qualifier: cast uintptr → unsafe.Pointer → *C.type (no marshaling).
+	if p.IsPtr {
+		var cType string
+		switch p.Type.Kind {
+		case ast.TypePrimitive:
+			cType = "*C." + primitiveToCType(p.Type.Name)
+		default:
+			cType = fmt.Sprintf("*C.%s_%s_t", g.api.Name, toSnakeCase(p.Type.Name))
+		}
+		g.printf("\t%s := (%s)(unsafe.Pointer(uintptr(%s)))\n", cVar, cType, goVar)
+		return
+	}
 	t := p.Type
 	switch t.Kind {
 	case ast.TypePrimitive:
@@ -539,6 +567,10 @@ func (g *dispatchCGen) emitParamGoToC(cVar, goVar string, p ast.Param) {
 // paramCallArg returns the C call arguments for a parameter.
 // Handles byref (pass pointer), arrays (pass pointer to first element), etc.
 func (g *dispatchCGen) paramCallArg(cVar string, p ast.Param) []string {
+	// ptr qualifier: cVar is already a pointer, pass directly.
+	if p.IsPtr {
+		return []string{cVar}
+	}
 	switch p.Type.Kind {
 	case ast.TypePrimitive:
 		if p.ByRef {

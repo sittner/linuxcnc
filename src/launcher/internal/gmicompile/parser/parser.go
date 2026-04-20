@@ -218,11 +218,15 @@ func (p *Parser) parseFunc(anns []annotation) ast.Func {
 		p.expect(COLON)
 		ptype := p.parseTypeRef()
 		byref := false
+		isPtr := false
 		if p.cur.Type == IDENT && p.cur.Text == "byref" {
 			byref = true
 			p.advance()
+		} else if p.cur.Type == IDENT && p.cur.Text == "ptr" {
+			isPtr = true
+			p.advance()
 		}
-		fn.Params = append(fn.Params, ast.Param{Name: pname, Type: ptype, ByRef: byref, Pos: ppos})
+		fn.Params = append(fn.Params, ast.Param{Name: pname, Type: ptype, ByRef: byref, IsPtr: isPtr, Pos: ppos})
 		if p.cur.Type == COMMA {
 			p.advance()
 		}

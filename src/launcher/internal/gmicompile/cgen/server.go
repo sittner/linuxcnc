@@ -239,6 +239,16 @@ func (g *serverGen) emitCallbackTypedefs() {
 func (g *serverGen) paramDecl(p ast.Param) string {
 	name := toSnakeCase(p.Name)
 
+	// ptr qualifier: always a mutable typed pointer, for any type kind.
+	if p.IsPtr {
+		switch p.Type.Kind {
+		case ast.TypePrimitive:
+			return fmt.Sprintf("%s *%s", primitiveToCType(p.Type.Name), name)
+		default:
+			return fmt.Sprintf("%s *%s", g.toCType(p.Type), name)
+		}
+	}
+
 	switch p.Type.Kind {
 	case ast.TypePrimitive:
 		cType := primitiveToCType(p.Type.Name)

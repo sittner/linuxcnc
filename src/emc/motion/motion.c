@@ -449,6 +449,12 @@ static int gmi_mot_joint_set_free_tp_max_vel(int32_t jno, double vel)
     return 0;
 }
 
+static int gmi_mot_joint_get_free_tp_max_vel(int32_t jno, double *out)
+{
+    *out = joints[jno].free_tp.max_vel;
+    return 0;
+}
+
 static int gmi_mot_joint_get_pos_cmd(int32_t jno, double *out)
 {
     *out = joints[jno].pos_cmd;
@@ -980,7 +986,6 @@ static int motmod_init(cmod_t *self)
                               emcmotConfig->servoCycleTime,
                               num_joints,
                               num_extrajoints,
-                              (uintptr_t)joints,
                               &homing_rc);
         if (homing_rc != 0) {
             rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: homing init failed\n"));
