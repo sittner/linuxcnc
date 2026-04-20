@@ -179,8 +179,6 @@ SUBDIRS := \
 	launcher \
 	gmi/codegen \
 	gmi/kins \
-	gmi/home \
-	gmi/tp \
     \
     emc/usr_intf/axis emc/usr_intf/touchy emc/usr_intf/stepconf emc/usr_intf/pncconf \
     emc/usr_intf/gremlin emc/usr_intf/gscreen emc/usr_intf/pyui emc/usr_intf/qtvcp \
@@ -1031,9 +1029,91 @@ scope_rt-objs := hal/utils/scope_rt.o $(MATHSTUB)
 # Legacy RTMODULE kins builds removed.
 
 # motmod is now built as a cmod (see emc/motion/Submakefile).
-# homemod is now built as a cmod (see gmi/home/Submakefile).
-# tpmod is now built as a cmod (see gmi/tp/Submakefile).
 # Legacy RTMODULE builds removed.
+
+# ---------------------------------------------------------------------------
+# GMI home module (cmod)
+# ---------------------------------------------------------------------------
+ifeq ($(BUILD_GOLANG),yes)
+
+HOMEMOD_CMOD_SRCS := \
+    emc/motion/homing.c
+
+HOMEMOD_CMOD_CFLAGS := \
+    -fPIC -Os -Wall -Wextra \
+    -DUSPACE -D_GNU_SOURCE -Drealtime \
+    -fno-strict-aliasing -fwrapv \
+    -I. -I../include \
+    -Ilauncher/pkg/cmodule \
+    -Ilauncher/generated/gmi/home \
+    -Ilauncher/generated/gmi/mot \
+    -Iemc/motion
+
+HOMEMOD_CMOD_DEPS := \
+    launcher/generated/gmi/home/home_api.h \
+    launcher/generated/gmi/mot/mot_api.h \
+    $(wildcard launcher/pkg/cmodule/gomc_*.h) \
+    $(wildcard emc/motion/homing.h) \
+    $(wildcard emc/motion/motion.h)
+
+../cmod/homemod.so: $(HOMEMOD_CMOD_SRCS) $(HOMEMOD_CMOD_DEPS) | headers ../lib/liblinuxcnchal.so
+	$(ECHO) "Compiling cmod homemod.so"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -shared $(HOMEMOD_CMOD_CFLAGS) \
+	    -o $@ $(HOMEMOD_CMOD_SRCS) \
+	    -L../lib -llinuxcnchal -lm
+
+TARGETS += ../cmod/homemod.so
+modules: ../cmod/homemod.so
+
+endif # BUILD_GOLANG
+
+# ---------------------------------------------------------------------------
+# GMI trajectory planner module (cmod)
+# ---------------------------------------------------------------------------
+ifeq ($(BUILD_GOLANG),yes)
+
+TPMOD_CMOD_SRCS := \
+    emc/tp/tp.c \
+    emc/tp/tc.c \
+    emc/tp/tcq.c \
+    emc/tp/spherical_arc.c \
+    emc/tp/blendmath.c \
+    emc/nml_intf/emcpose.c \
+    libnml/posemath/_posemath.c \
+    libnml/posemath/sincos.c
+
+TPMOD_CMOD_CFLAGS := \
+    -fPIC -Os -Wall -Wextra \
+    -DUSPACE -D_GNU_SOURCE -Drealtime \
+    -fno-builtin-sin -fno-builtin-cos -fno-builtin-sincos \
+    -fno-strict-aliasing -fwrapv \
+    -I. -I../include \
+    -Ilauncher/pkg/cmodule \
+    -Ilauncher/generated/gmi/tp \
+    -Ilauncher/generated/gmi/mot \
+    -Iemc/motion \
+    -Iemc/tp \
+    -Ilibnml/posemath
+
+TPMOD_CMOD_DEPS := \
+    launcher/generated/gmi/tp/tp_api.h \
+    launcher/generated/gmi/mot/mot_api.h \
+    $(wildcard launcher/pkg/cmodule/gomc_*.h) \
+    $(wildcard emc/tp/*.h) \
+    $(wildcard emc/motion/motion.h)
+
+../cmod/tpmod.so: $(TPMOD_CMOD_SRCS) $(TPMOD_CMOD_DEPS) | headers ../lib/liblinuxcnchal.so
+	$(ECHO) "Compiling cmod tpmod.so"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -shared $(TPMOD_CMOD_CFLAGS) \
+	    -o $@ $(TPMOD_CMOD_SRCS) \
+	    -L../lib -llinuxcnchal -lm
+
+TARGETS += ../cmod/tpmod.so
+modules: ../cmod/tpmod.so
+
+endif # BUILD_GOLANG
 
 TORTOBJS = $(foreach file,$($(patsubst %.o,%,$(1))-objs), objects/rt$(file))
 RTCFLAGS += -fPIC -Os
