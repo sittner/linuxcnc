@@ -14,6 +14,7 @@
 #include <string.h>
 #include "gomc_env.h"
 #include "kins_api.h"
+#include "mot_api.h"
 #include "rtapi.h"		/* RTAPI realtime OS API */
 #include "rtapi_string.h"       /* memset */
 #include "hal.h"		/* decls for HAL implementation */
@@ -154,6 +155,370 @@ int kinematicsSwitch(int switchkins_type)
 }
 
 /***********************************************************************
+*           MOT API CALLBACKS (provided by motmod, consumed by         *
+*           tpmod and homemod via mot_api_get())                       *
+************************************************************************/
+
+/* --- I/O callbacks --- */
+
+static int gmi_mot_dio_write(int32_t index, int8_t value)
+{
+    emcmotDioWrite(index, value);
+    return 0;
+}
+
+static int gmi_mot_aio_write(int32_t index, double value)
+{
+    emcmotAioWrite(index, value);
+    return 0;
+}
+
+/* --- Rotary unlock --- */
+
+static int gmi_mot_set_rotary_unlock(int32_t jnum, int32_t unlock)
+{
+    emcmotSetRotaryUnlock(jnum, unlock);
+    return 0;
+}
+
+static int gmi_mot_get_rotary_unlock(int32_t jnum, int32_t *out)
+{
+    *out = emcmotGetRotaryIsUnlocked(jnum);
+    return 0;
+}
+
+/* --- Axis limits --- */
+
+static int gmi_mot_axis_get_vel_limit(int32_t axis, double *out)
+{
+    *out = axis_get_vel_limit(axis);
+    return 0;
+}
+
+static int gmi_mot_axis_get_acc_limit(int32_t axis, double *out)
+{
+    *out = axis_get_acc_limit(axis);
+    return 0;
+}
+
+/* --- Config getters (emcmotConfig fields, read-only) --- */
+
+static int gmi_mot_cfg_get_arc_blend_enable(int32_t *out)
+{
+    *out = emcmotConfig->arcBlendEnable;
+    return 0;
+}
+
+static int gmi_mot_cfg_get_arc_blend_gap_cycles(int32_t *out)
+{
+    *out = emcmotConfig->arcBlendGapCycles;
+    return 0;
+}
+
+static int gmi_mot_cfg_get_arc_blend_opt_depth(int32_t *out)
+{
+    *out = emcmotConfig->arcBlendOptDepth;
+    return 0;
+}
+
+static int gmi_mot_cfg_get_arc_blend_ramp_freq(double *out)
+{
+    *out = emcmotConfig->arcBlendRampFreq;
+    return 0;
+}
+
+static int gmi_mot_cfg_get_arc_blend_tangent_kink_ratio(double *out)
+{
+    *out = emcmotConfig->arcBlendTangentKinkRatio;
+    return 0;
+}
+
+static int gmi_mot_cfg_get_max_feed_scale(double *out)
+{
+    *out = emcmotConfig->maxFeedScale;
+    return 0;
+}
+
+static int gmi_mot_cfg_get_num_aio(int32_t *out)
+{
+    *out = emcmotConfig->numAIO;
+    return 0;
+}
+
+static int gmi_mot_cfg_get_num_dio(int32_t *out)
+{
+    *out = emcmotConfig->numDIO;
+    return 0;
+}
+
+static int gmi_mot_cfg_get_num_spindles(int32_t *out)
+{
+    *out = emcmotConfig->numSpindles;
+    return 0;
+}
+
+/* --- Status getters --- */
+
+static int gmi_mot_status_get_net_feed_scale(double *out)
+{
+    *out = emcmotStatus->net_feed_scale;
+    return 0;
+}
+
+static int gmi_mot_status_get_stepping(int32_t *out)
+{
+    *out = emcmotStatus->stepping;
+    return 0;
+}
+
+static int gmi_mot_status_get_current_vel(double *out)
+{
+    *out = emcmotStatus->current_vel;
+    return 0;
+}
+
+static int gmi_mot_status_get_spindle_sync(int32_t *out)
+{
+    *out = emcmotStatus->spindleSync;
+    return 0;
+}
+
+static int gmi_mot_status_get_spindle_revs(int32_t spindle, double *out)
+{
+    *out = emcmotStatus->spindle_status[spindle].spindleRevs;
+    return 0;
+}
+
+static int gmi_mot_status_get_spindle_direction(int32_t spindle, int32_t *out)
+{
+    *out = emcmotStatus->spindle_status[spindle].direction;
+    return 0;
+}
+
+static int gmi_mot_status_get_spindle_at_speed(int32_t spindle, int32_t *out)
+{
+    *out = emcmotStatus->spindle_status[spindle].at_speed;
+    return 0;
+}
+
+static int gmi_mot_status_get_spindle_speed_in(int32_t spindle, double *out)
+{
+    *out = emcmotStatus->spindle_status[spindle].spindleSpeedIn;
+    return 0;
+}
+
+static int gmi_mot_status_get_spindle_index_enable(int32_t spindle, int32_t *out)
+{
+    *out = emcmotStatus->spindle_status[spindle].spindle_index_enable;
+    return 0;
+}
+
+/* --- Status setters --- */
+
+static int gmi_mot_status_set_current_vel(double vel)
+{
+    emcmotStatus->current_vel = vel;
+    return 0;
+}
+
+static int gmi_mot_status_set_requested_vel(double vel)
+{
+    emcmotStatus->requested_vel = vel;
+    return 0;
+}
+
+static int gmi_mot_status_set_distance_to_go(double dist)
+{
+    emcmotStatus->distance_to_go = dist;
+    return 0;
+}
+
+static int gmi_mot_status_set_dtg(mot_pose_t *dtg)
+{
+    memcpy(&emcmotStatus->dtg, dtg, sizeof(EmcPose));
+    return 0;
+}
+
+static int gmi_mot_status_or_motion_flag(uint32_t bits)
+{
+    emcmotStatus->motionFlag |= bits;
+    return 0;
+}
+
+static int gmi_mot_status_set_enables_queued(uint8_t val)
+{
+    emcmotStatus->enables_queued = val;
+    return 0;
+}
+
+static int gmi_mot_status_set_spindle_sync(int32_t val)
+{
+    emcmotStatus->spindleSync = val;
+    return 0;
+}
+
+static int gmi_mot_status_set_tcqlen(uint32_t len)
+{
+    emcmotStatus->tcqlen = len;
+    return 0;
+}
+
+static int gmi_mot_status_set_spindle_speed(int32_t spindle, double speed)
+{
+    emcmotStatus->spindle_status[spindle].speed = speed;
+    return 0;
+}
+
+static int gmi_mot_status_set_spindle_index_enable(int32_t spindle, int32_t enable)
+{
+    emcmotStatus->spindle_status[spindle].spindle_index_enable = enable;
+    return 0;
+}
+
+/* --- Joint accessors (for homing subsystem) --- */
+
+static int gmi_mot_get_num_joints(int32_t *out)
+{
+    *out = num_joints;
+    return 0;
+}
+
+static int gmi_mot_joint_get_active_flag(int32_t jno, int32_t *out)
+{
+    *out = GET_JOINT_ACTIVE_FLAG(&joints[jno]);
+    return 0;
+}
+
+static int gmi_mot_joint_get_inpos_flag(int32_t jno, int32_t *out)
+{
+    *out = GET_JOINT_INPOS_FLAG(&joints[jno]);
+    return 0;
+}
+
+static int gmi_mot_joint_get_free_tp_active(int32_t jno, int32_t *out)
+{
+    *out = joints[jno].free_tp.active;
+    return 0;
+}
+
+static int gmi_mot_joint_set_free_tp_enable(int32_t jno, int32_t enable)
+{
+    joints[jno].free_tp.enable = enable;
+    return 0;
+}
+
+static int gmi_mot_joint_get_free_tp_pos_cmd(int32_t jno, double *out)
+{
+    *out = joints[jno].free_tp.pos_cmd;
+    return 0;
+}
+
+static int gmi_mot_joint_set_free_tp_pos_cmd(int32_t jno, double val)
+{
+    joints[jno].free_tp.pos_cmd = val;
+    return 0;
+}
+
+static int gmi_mot_joint_get_free_tp_curr_pos(int32_t jno, double *out)
+{
+    *out = joints[jno].free_tp.curr_pos;
+    return 0;
+}
+
+static int gmi_mot_joint_set_free_tp_curr_pos(int32_t jno, double val)
+{
+    joints[jno].free_tp.curr_pos = val;
+    return 0;
+}
+
+static int gmi_mot_joint_set_free_tp_max_vel(int32_t jno, double vel)
+{
+    joints[jno].free_tp.max_vel = vel;
+    return 0;
+}
+
+static int gmi_mot_joint_get_pos_cmd(int32_t jno, double *out)
+{
+    *out = joints[jno].pos_cmd;
+    return 0;
+}
+
+static int gmi_mot_joint_set_pos_cmd(int32_t jno, double val)
+{
+    joints[jno].pos_cmd = val;
+    return 0;
+}
+
+static int gmi_mot_joint_get_pos_fb(int32_t jno, double *out)
+{
+    *out = joints[jno].pos_fb;
+    return 0;
+}
+
+static int gmi_mot_joint_set_pos_fb(int32_t jno, double val)
+{
+    joints[jno].pos_fb = val;
+    return 0;
+}
+
+static int gmi_mot_joint_get_motor_pos_fb(int32_t jno, double *out)
+{
+    *out = joints[jno].motor_pos_fb;
+    return 0;
+}
+
+static int gmi_mot_joint_get_motor_offset(int32_t jno, double *out)
+{
+    *out = joints[jno].motor_offset;
+    return 0;
+}
+
+static int gmi_mot_joint_set_motor_offset(int32_t jno, double val)
+{
+    joints[jno].motor_offset = val;
+    return 0;
+}
+
+static int gmi_mot_joint_get_backlash_filt(int32_t jno, double *out)
+{
+    *out = joints[jno].backlash_filt;
+    return 0;
+}
+
+static int gmi_mot_joint_get_vel_limit(int32_t jno, double *out)
+{
+    *out = joints[jno].vel_limit;
+    return 0;
+}
+
+static int gmi_mot_joint_get_max_pos_limit(int32_t jno, double *out)
+{
+    *out = joints[jno].max_pos_limit;
+    return 0;
+}
+
+static int gmi_mot_joint_get_min_pos_limit(int32_t jno, double *out)
+{
+    *out = joints[jno].min_pos_limit;
+    return 0;
+}
+
+static int gmi_mot_joint_get_on_pos_limit(int32_t jno, int32_t *out)
+{
+    *out = joints[jno].on_pos_limit;
+    return 0;
+}
+
+static int gmi_mot_joint_get_on_neg_limit(int32_t jno, int32_t *out)
+{
+    *out = joints[jno].on_neg_limit;
+    return 0;
+}
+
+/* mot API callback table */
+static const mot_callbacks_t motmod_mot_callbacks = GMI_MOT_CALLBACKS;
+
+/***********************************************************************
 *                   LOCAL FUNCTION PROTOTYPES                          *
 ************************************************************************/
 /* init_hal_io() exports HAL pins and parameters making data from
@@ -263,19 +628,9 @@ int count_names(char *names[]){
 }
 
 static int module_intfc() {
-    /* Wire reverse callbacks into tp via GMI init */
-    static tp_ctx_t tp_ctx;
-    tp_ctx.dio_write          = emcmotDioWrite;
-    tp_ctx.aio_write          = emcmotAioWrite;
-    tp_ctx.set_rotary_unlock  = emcmotSetRotaryUnlock;
-    tp_ctx.get_rotary_unlock  = emcmotGetRotaryIsUnlocked;
-    tp_ctx.axis_get_vel_limit = axis_get_vel_limit;
-    tp_ctx.axis_get_acc_limit = axis_get_acc_limit;
-    tp_ctx.status             = emcmotStatus;
-    tp_ctx.config             = emcmotConfig;
-
+    /* Wire status/config pointers into tp via GMI init */
     int32_t out;
-    motmod_tp_api->init((uintptr_t)&tp_ctx, &out);
+    motmod_tp_api->init((uintptr_t)emcmotStatus, (uintptr_t)emcmotConfig, &out);
     return 0;
 }
 
@@ -415,6 +770,16 @@ int New(const cmod_env_t *env, const char *name,
     mot_comp_id = hal_init_ex(name, env->dl_handle, COMPONENT_TYPE_REALTIME);
     if (mot_comp_id < 0) {
 	rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: hal_init_ex() failed\n"));
+	return -1;
+    }
+
+    /* Register the mot reverse-callback API so tpmod/homemod can look it up
+       in their Start() functions. */
+    retval = mot_api_register(env->api, "default", &motmod_mot_callbacks);
+    if (retval != 0) {
+	rtapi_print_msg(RTAPI_MSG_ERR,
+	    _("MOTION: failed to register mot API: %d\n"), retval);
+	hal_exit(mot_comp_id);
 	return -1;
     }
 
@@ -569,16 +934,12 @@ int New(const cmod_env_t *env, const char *name,
 
     /* Initialize homing via GMI home API */
     {
-        static home_ctx_t homing_ctx;
-        homing_ctx.set_rotary_unlock    = emcmotSetRotaryUnlock;
-        homing_ctx.get_rotary_is_unlocked = emcmotGetRotaryIsUnlocked;
         int32_t homing_rc;
         motmod_home_api->init(mot_comp_id,
                               emcmotConfig->servoCycleTime,
                               num_joints,
                               num_extrajoints,
                               (uintptr_t)joints,
-                              (uintptr_t)&homing_ctx,
                               &homing_rc);
         if (homing_rc != 0) {
             rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: homing init failed\n"));

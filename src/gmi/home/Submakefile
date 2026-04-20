@@ -18,10 +18,12 @@ HOMEMOD_CMOD_CFLAGS := \
     -I. -I../include \
     -Ilauncher/pkg/cmodule \
     -Ilauncher/generated/gmi/home \
+    -Ilauncher/generated/gmi/mot \
     -Iemc/motion
 
 HOMEMOD_CMOD_DEPS := \
     launcher/generated/gmi/home/home_api.h \
+    launcher/generated/gmi/mot/mot_api.h \
     $(wildcard launcher/pkg/cmodule/gomc_*.h) \
     $(wildcard emc/motion/homing.h) \
     $(wildcard emc/motion/home_ctx.h) \

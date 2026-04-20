@@ -14,8 +14,6 @@
 #include <string.h>
 #include "tp_api.h"
 #include "home_api.h"
-#include "home_ctx.h"
-#include "tp_ctx.h"
 
 // ─── API pointers (defined in motion.c, set during New()) ───────────────
 

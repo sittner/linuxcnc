@@ -65,6 +65,20 @@ $(GMI_HOME_GEN)/home_cgo.go: $(GMI_HOME_GEN)/home_api.h
 
 TARGETS += $(GMI_HOME_GEN)/home_api.h
 
+# --- mot API (reverse callbacks: motmod → tpmod/homemod) ---
+
+GMI_MOT_IDL := gmi/idl/mot.gmi
+GMI_MOT_GEN := launcher/generated/gmi/mot
+
+$(GMI_MOT_GEN)/mot_api.h: $(GMI_MOT_IDL) $(GMICOMPILE)
+	$(ECHO) "Generating GMI mot API from $(GMI_MOT_IDL)"
+	@mkdir -p $(GMI_MOT_GEN)
+	$(Q)$(GMICOMPILE) --server-c $(GMI_MOT_IDL) -o $(GMI_MOT_GEN)/mot_api.h
+
+$(GMI_MOT_GEN)/mot_cgo.go: $(GMI_MOT_GEN)/mot_api.h
+
+TARGETS += $(GMI_MOT_GEN)/mot_api.h
+
 clean: gmi-codegen-clean
 .PHONY: gmi-codegen-clean
 gmi-codegen-clean:

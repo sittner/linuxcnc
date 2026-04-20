@@ -9,10 +9,10 @@
 #include <string.h>
 #include "gomc_env.h"
 #include "tp_api.h"
+#include "mot_api.h"
 #include "motion.h"
 #include "tp.h"
 #include "tcq.h"
-#include "tp_ctx.h"
 
 // Static assert to verify type layout compatibility.
 // tp_pose_t and EmcPose must be identical in memory (9 contiguous doubles).
@@ -23,24 +23,62 @@ _Static_assert(sizeof(tp_cartesian_t) == sizeof(PmCartesian),
 _Static_assert(sizeof(tp_state_tag_t) == sizeof(struct state_tag_t),
     "tp_state_tag_t and state_tag_t must have the same size");
 
+// ─── Stored API/env pointers ────────────────────────────────────────────────
+
+static const gomc_api_t *tpmod_api;
+
 // ─── Helper macros ──────────────────────────────────────────────────────────
 
 #define TP(ptr) ((TP_STRUCT *)(uintptr_t)(ptr))
 
+// ─── Mot API adapter functions ──────────────────────────────────────────────
+// tp.c expects legacy function-pointer signatures via tpMotFunctions().
+// These adapters bridge to the mot API callbacks looked up at Start() time.
+
+static const mot_callbacks_t *mot;
+
+static void adapt_dio_write(int index, char value)
+{
+    mot->dio_write(index, (int8_t)value);
+}
+
+static void adapt_aio_write(int index, double value)
+{
+    mot->aio_write(index, value);
+}
+
+static void adapt_set_rotary_unlock(int jnum, int unlock)
+{
+    mot->set_rotary_unlock(jnum, unlock);
+}
+
+static int adapt_get_rotary_unlock(int jnum)
+{
+    int32_t out;
+    mot->get_rotary_unlock(jnum, &out);
+    return out;
+}
+
+static double adapt_axis_get_vel_limit(int axis)
+{
+    double out;
+    mot->axis_get_vel_limit(axis, &out);
+    return out;
+}
+
+static double adapt_axis_get_acc_limit(int axis)
+{
+    double out;
+    mot->axis_get_acc_limit(axis, &out);
+    return out;
+}
+
 // ─── GMI callback wrappers ──────────────────────────────────────────────────
 
-static int gmi_tp_init(uint64_t ctx_ptr, int32_t *out)
+static int gmi_tp_init(uint64_t status_ptr, uint64_t config_ptr, int32_t *out)
 {
-    const tp_ctx_t *ctx = (const tp_ctx_t *)(uintptr_t)ctx_ptr;
-    if (ctx) {
-        tpMotFunctions(ctx->dio_write,
-                       ctx->aio_write,
-                       ctx->set_rotary_unlock,
-                       ctx->get_rotary_unlock,
-                       ctx->axis_get_vel_limit,
-                       ctx->axis_get_acc_limit);
-        tpMotData(ctx->status, ctx->config);
-    }
+    tpMotData((emcmot_status_t *)(uintptr_t)status_ptr,
+              (emcmot_config_t *)(uintptr_t)config_ptr);
     *out = 0;
     return 0;
 }
@@ -271,10 +309,31 @@ static cmod_t tpmod_cmod;
 
 static void tpmod_destroy(cmod_t *self) { (void)self; }
 
+static int tpmod_start(cmod_t *self)
+{
+    (void)self;
+
+    /* Look up the mot reverse-callback API registered by motmod. */
+    mot = mot_api_get(tpmod_api, "default");
+    if (!mot)
+        return -1;
+
+    /* Wire legacy tp.c function-pointer statics through mot API adapters. */
+    tpMotFunctions(adapt_dio_write,
+                   adapt_aio_write,
+                   adapt_set_rotary_unlock,
+                   adapt_get_rotary_unlock,
+                   adapt_axis_get_vel_limit,
+                   adapt_axis_get_acc_limit);
+    return 0;
+}
+
 int New(const cmod_env_t *env, const char *name,
         int argc, const char **argv, cmod_t **out)
 {
     (void)argc; (void)argv;
+
+    tpmod_api = env->api;
 
     int rc = tp_api_register(env->api, "default", &tpmod_callbacks);
     if (rc != 0) {
@@ -283,6 +342,7 @@ int New(const cmod_env_t *env, const char *name,
         return rc;
     }
 
+    tpmod_cmod.Start   = tpmod_start;
     tpmod_cmod.Destroy = tpmod_destroy;
     *out = &tpmod_cmod;
     return 0;

@@ -21,12 +21,12 @@ enum MotionState {
 
 # --- Initialization ---
 
-# One-time init. ctx is an opaque pointer to home_ctx_t (defined in home_ctx.h)
-# which carries the reverse callbacks (set_rotary_unlock, get_rotary_is_unlocked).
+# One-time init. Reverse callbacks come from the mot API.
+# joints_ptr is the shared emcmot_joint_t array from motmod.
 @doc "Initialize homing subsystem"
 func init(comp_id: i32, servo_period: f64,
           n_joints: i32, n_extrajoints: i32,
-          joints_ptr: u64, ctx_ptr: u64) -> i32
+          joints_ptr: u64) -> i32
 
 # --- Per-joint interface parameters ---
 

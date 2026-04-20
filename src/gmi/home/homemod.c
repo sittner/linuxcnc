@@ -9,9 +9,30 @@
 #include <string.h>
 #include "gomc_env.h"
 #include "home_api.h"
+#include "mot_api.h"
 #include "motion.h"
 #include "homing.h"
-#include "home_ctx.h"
+
+// ─── Stored API pointer ────────────────────────────────────────────────────
+
+static const gomc_api_t *homemod_api;
+
+// ─── Mot API adapter functions ─────────────────────────────────────────────
+// homing.c expects legacy function-pointer signatures via homeMotFunctions().
+
+static const mot_callbacks_t *home_mot;
+
+static void adapt_set_rotary_unlock(int jnum, int unlock)
+{
+    home_mot->set_rotary_unlock(jnum, unlock);
+}
+
+static int adapt_get_rotary_is_unlocked(int jnum)
+{
+    int32_t out;
+    home_mot->get_rotary_unlock(jnum, &out);
+    return out;
+}
 
 // ─── GMI callback wrappers ─────────────────────────────────────────────────
 //
@@ -21,15 +42,9 @@
 static int gmi_home_init(
     int32_t comp_id, double servo_period,
     int32_t n_joints, int32_t n_extrajoints,
-    uint64_t joints_ptr, uint64_t ctx_ptr,
+    uint64_t joints_ptr,
     int32_t *out)
 {
-    // Wire reverse callbacks from motmod into homing.c.
-    const home_ctx_t *ctx = (const home_ctx_t *)(uintptr_t)ctx_ptr;
-    if (ctx) {
-        homeMotFunctions(ctx->set_rotary_unlock,
-                         ctx->get_rotary_is_unlocked);
-    }
     *out = homing_init(comp_id, servo_period,
                        n_joints, n_extrajoints,
                        (emcmot_joint_t *)(uintptr_t)joints_ptr);
@@ -174,10 +189,27 @@ static cmod_t homemod_cmod;
 
 static void homemod_destroy(cmod_t *self) { (void)self; }
 
+static int homemod_start(cmod_t *self)
+{
+    (void)self;
+
+    /* Look up the mot reverse-callback API registered by motmod. */
+    home_mot = mot_api_get(homemod_api, "default");
+    if (!home_mot)
+        return -1;
+
+    /* Wire legacy homing.c function-pointer statics through mot API adapters. */
+    homeMotFunctions(adapt_set_rotary_unlock,
+                     adapt_get_rotary_is_unlocked);
+    return 0;
+}
+
 int New(const cmod_env_t *env, const char *name,
         int argc, const char **argv, cmod_t **out)
 {
     (void)argc; (void)argv;
+
+    homemod_api = env->api;
 
     int rc = home_api_register(env->api, "default", &homemod_callbacks);
     if (rc != 0) {
@@ -186,6 +218,7 @@ int New(const cmod_env_t *env, const char *name,
         return rc;
     }
 
+    homemod_cmod.Start   = homemod_start;
     homemod_cmod.Destroy = homemod_destroy;
     *out = &homemod_cmod;
     return 0;
