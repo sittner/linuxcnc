@@ -1,4 +1,3 @@
-package gomodtest
 // Package gomodtest provides tests for pure Go inter-module calls (gomod→gomod).
 // This tests the pattern where a Go module registers callbacks and another
 // Go module looks them up and calls them directly.

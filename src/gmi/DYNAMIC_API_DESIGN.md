@@ -12,6 +12,7 @@ intended to replace NML with a modern, type-safe approach.
 | 2: `--server-go` | ✅ Complete | 3 |
 | 3: `--server-c` + cgo | ✅ Complete | 5 |
 | 4: Client Generation | ✅ Complete | 14 |
+| 4.5: halcmd REST Tool | ✅ Complete | — |
 | 5: Python Client | ❌ Not Started | — |
 | 6: Polish | ❌ Not Started | — |
 
@@ -808,6 +809,60 @@ Enable inter-module calls (direct) and external REST clients.
 - `gmi_error.c/h` — error codes (GMI_ERR_*)
 - `gmi_types.c/h` — type utilities
 
+### Step 4.5: halcmd REST Tool (COMPLETE)
+
+Replace the legacy C halcmd/halrmt with a new Go-based halcmd using the REST API.
+
+**Motivation:**
+- Validates `--client-go` in real-world usage
+- Removes ~8k lines of old C halcmd code
+- halrmt becomes redundant (REST is inherently remote-capable)
+- Consistent architecture: all external tools use REST
+
+**Deliverables:**
+- [x] New `cmd/halcmd/` in launcher — Go CLI using generated halcmd client
+- [x] Environment variable `GMC_REST_URL` (default: `http://localhost:5080/`)
+- [x] Full command compatibility (show, list, getp, setp, gets, sets, newsig, delsig, net, loadrt, etc.)
+- [x] Disable old halcmd/halrmt in build system (`BUILD_GOLANG=yes` guard)
+
+**Commands mapped to REST:**
+| halcmd command | REST API call |
+|----------------|---------------|
+| `show pin [pattern]` | GET /pins?pattern= |
+| `show sig [pattern]` | GET /signals?pattern= |
+| `show param [pattern]` | GET /params?pattern= |
+| `show comp [pattern]` | GET /components?pattern= |
+| `show funct [pattern]` | GET /functions?pattern= |
+| `show thread [pattern]` | GET /threads?pattern= |
+| `status` | GET /status |
+| `getp <pin>` | GET /pin/{name} |
+| `gets <signal>` | GET /signal/{name} |
+| `setp <pin> <value>` | PUT /pin/{name} |
+| `sets <signal> <value>` | PUT /signal/{name} |
+| `newsig <name> <type>` | POST /signal |
+| `delsig <name>` | DELETE /signal/{name} |
+| `net <signal> <pins>` | POST /net |
+| `linksp <signal> <pin>` | POST /link |
+| `linkpp <pin1> <pin2>` | POST /linkpp |
+| `unlinkp <pin>` | DELETE /link/{pin} |
+| `loadrt <module> [args]` | POST /loadrt |
+| `unloadrt <module>` | DELETE /loadrt/{module} |
+| `loadusr [-W] <cmd>` | POST /loadusr |
+| `unloadusr <name>` | DELETE /loadusr/{name} |
+| `waitusr <name>` | POST /waitusr/{name} |
+| `newthread <n> <period>` | POST /thread |
+| `delthread <name>` | DELETE /thread/{name} |
+| `addf <func> <thread>` | POST /thread/{thread}/function |
+| `delf <func> <thread>` | DELETE /thread/{thread}/function/{func} |
+| `start` | POST /start |
+| `stop` | POST /stop |
+| `alias pin <n> <a>` | POST /pin/{n}/alias |
+| `unalias pin <n>` | DELETE /pin/{n}/alias |
+| `lock [level]` | POST /lock |
+| `unlock [level]` | POST /unlock |
+| `debug <level>` | PUT /debug |
+| `save [type]` | GET /save |
+
 ### Step 5: Python Client Generation (NOT STARTED)
 
 REST client for Python UIs (axis, gmoccapy, etc.).
@@ -826,6 +881,7 @@ REST client for Python UIs (axis, gmoccapy, etc.).
 - [ ] Logging/tracing
 - [ ] Performance optimization
 - [ ] Documentation
+- [ ] Launcher REST server reads listen URL from INI file (halcmd client already uses `GMC_REST_URL`)
 
 ## Open Questions
 

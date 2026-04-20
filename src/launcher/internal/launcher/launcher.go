@@ -28,6 +28,7 @@ import (
 	"github.com/sittner/linuxcnc/src/launcher/internal/apiserver"
 	"github.com/sittner/linuxcnc/src/launcher/internal/config"
 	"github.com/sittner/linuxcnc/src/launcher/internal/halfile"
+	"github.com/sittner/linuxcnc/src/launcher/internal/halrest"
 	"github.com/sittner/linuxcnc/src/launcher/internal/lockfile"
 	"github.com/sittner/linuxcnc/src/launcher/internal/realtime"
 	"github.com/sittner/linuxcnc/src/launcher/pkg/gomodule"
@@ -71,6 +72,7 @@ type Launcher struct {
 	cModArena    []unsafe.Pointer   // arena-tracked C strings freed in destroyCModules
 	logRing      *gomcLogRing       // shared log ring buffer for C module FIFO logging
 	retain       *retainInstance    // integrated retain subsystem (nil if unused)
+	apiServer    *apiserver.Server  // REST API server for halcmd and external tools
 }
 
 // New creates a new Launcher with the given options and logger.
@@ -131,6 +133,11 @@ func (l *Launcher) ensureLogRing() {
 func (l *Launcher) Run() (runErr error) {
 	// Initialize the API registry so cmod plugins can register/lookup APIs.
 	apiserver.SetDefaultRegistry(apiserver.NewRegistry())
+
+	// Register the halcmd REST API handler (uses internal HAL access, not liblinuxcnchal.so).
+	if err := halrest.Register(apiserver.DefaultRegistry()); err != nil {
+		l.logger.Warn("failed to register halcmd REST API", "error", err)
+	}
 
 	l.setupEnvironment()
 
@@ -428,6 +435,9 @@ func (l *Launcher) Run() (runErr error) {
 	if err := l.startCModules(); err != nil {
 		return fmt.Errorf("C module start failed: %w", err)
 	}
+
+	// 6d.5. Start the REST API server for halcmd and external tools.
+	l.startAPIServer()
 
 	// 6e. Launch application entries ([APPLICATIONS]APP) in background (step 4.3.11).
 	if err := l.runApplications(); err != nil {
