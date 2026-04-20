@@ -41,7 +41,7 @@ Code generation:
     --server-c       Generate C server header (types, callback typedefs)
     --client-c       Generate C REST client (header + source, cJSON/libcurl)
     --server-go      Generate Go server handlers (not yet implemented)
-    --client-go      Generate Go REST client (not yet implemented)
+    --client-go      Generate Go REST client
     --client-python  Generate Python REST client (not yet implemented)
     -o PATH          Output file or directory
 
@@ -154,7 +154,13 @@ func processFile(file string, m mode, outputPath string) error {
 	case modeServerGo:
 		return generateServerGo(api, outputPath)
 
-	case modeClientGo, modeClientPython:
+	case modeClientGo:
+		if !api.RestExport {
+			return fmt.Errorf("%s: --client-go requires @rest_export true", file)
+		}
+		return generateClientGo(api, outputPath)
+
+	case modeClientPython:
 		return fmt.Errorf("mode not yet implemented")
 	}
 
@@ -262,6 +268,31 @@ func generateServerGo(api *ast.API, outputPath string) error {
 	defer f.Close()
 
 	if err := cgen.GenerateServerGo(f, api, pkgName); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stderr, "generated %s\n", outputPath)
+	return nil
+}
+
+func generateClientGo(api *ast.API, outputPath string) error {
+	if outputPath == "" {
+		outputPath = api.Name + "_client.go"
+	}
+
+	// Derive package name from output directory, default to api name + "client"
+	pkgName := api.Name + "client"
+	if dir := filepath.Dir(outputPath); dir != "." && dir != "" {
+		pkgName = filepath.Base(dir)
+	}
+
+	f, err := os.Create(outputPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if err := cgen.GenerateClientGo(f, api, pkgName); err != nil {
 		return err
 	}
 
