@@ -9,11 +9,10 @@ CONVERTERS :=  \
 # These use features not supported by cmod or have special requirements
 # ---------------------------------------------------------------------------
 HALCOMPILE_COMP_NAMES := \
-    homecomp             \
     mesa_pktgyro_test    \
     tpcomp
 # Reasons:
-#   homecomp, tpcomp      - use EXTRA_SETUP (motion controller integration)
+#   tpcomp                - uses EXTRA_SETUP with HOMING_BASE include (motion controller integration)
 #   mesa_pktgyro_test     - hostmot2 driver test (depends on internal headers)
 
 # Kinematics .comp modules: built via modcompile with gmi_provide kins.
@@ -197,6 +196,16 @@ CMOD_KINS_CFLAGS := -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I $(CMOD_GMI_KIN
 	$(ECHO) "Compiling cmod (kins) $(notdir $@)"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) $(CMOD_KINS_CFLAGS) -o $@ $<
+
+# Step 2c: homecomp needs the GMI home + mot API header paths.
+CMOD_GMI_HOME_API := launcher/generated/gmi/home
+CMOD_GMI_MOT_API := launcher/generated/gmi/mot
+CMOD_HOME_CFLAGS := -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I $(CMOD_GMI_HOME_API) -I $(CMOD_GMI_MOT_API) -lm
+
+../cmod/homecomp.so: objects/cmod/homecomp.c $(CMOD_GMI_HOME_API)/home_api.h $(CMOD_GMI_MOT_API)/mot_api.h
+	$(ECHO) "Compiling cmod (home) $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) $(CMOD_HOME_CFLAGS) -o $@ $<
 
 TARGETS += $(CMOD_TARGETS)
 modules: $(CMOD_TARGETS)
