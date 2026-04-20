@@ -242,31 +242,6 @@ void printEmcPose(EmcPose * pose)
            pose->a, pose->b, pose->c);
 }
 
-void printTPstruct(TP_STRUCT * tp)
-{
-    printf("queueSize=%d\n", tp->queueSize);
-    printf("cycleTime=%f\n", tp->cycleTime);
-    printf("vMax=%f\n", tp->vMax);
-    printf("aMax=%f\n", tp->aMax);
-    printf("vLimit=%f\n", tp->vLimit);
-    printf("wMax=%f\n", tp->wMax);
-    printf("wDotMax=%f\n", tp->wDotMax);
-    printf("nextId=%d\n", tp->nextId);
-    printf("execId=%d\n", tp->execId);
-    printf("termCond=%d\n", tp->termCond);
-    printf("currentPos :");
-    printEmcPose(&tp->currentPos);
-    printf("\n");
-    printf("goalPos :");
-    printEmcPose(&tp->goalPos);
-    printf("\n");
-    printf("done=%d\n", tp->done);
-    printf("depth=%d\n", tp->depth);
-    printf("activeDepth=%d\n", tp->activeDepth);
-    printf("aborting=%d\n", tp->aborting);
-    printf("pausing=%d\n", tp->pausing);
-}
-
 void usrmotPrintEmcmotConfig(emcmot_config_t c, int which)
 {
 //    int t;

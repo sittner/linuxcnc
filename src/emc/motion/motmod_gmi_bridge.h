@@ -1,11 +1,7 @@
 // motmod_gmi_bridge.h — Bridge layer for motmod GMI API consumption
 //
-// Provides inline wrappers that match the original tp.h/homing.h function
-// signatures but dispatch through GMI API callback pointers.  This lets
-// control.c and command.c call tp/home functions without code changes.
-//
-// Usage: replace #include "tp.h" / #include "homing.h" with this header.
-// Include "tp_types.h" / "tc_types.h" / "tcq.h" separately for types.
+// Provides inline wrappers that dispatch through GMI API callback pointers.
+// control.c and command.c call these tp/home functions.
 
 #ifndef MOTMOD_GMI_BRIDGE_H
 #define MOTMOD_GMI_BRIDGE_H
@@ -21,105 +17,107 @@ extern const tp_callbacks_t   *motmod_tp_api;
 extern const home_callbacks_t *motmod_home_api;
 
 // ─── TP bridge functions ────────────────────────────────────────────────
-// These match the original tp.h signatures exactly.
+// tpmod owns the TP_STRUCT internally.  These wrappers match the original
+// tp.h signatures for minimal change in control.c / command.c, except
+// the TP_STRUCT pointer is ignored (kept only for call-site compatibility).
 
-static inline int tpCreate(TP_STRUCT * const tp, int _queueSize, int id)
+static inline int tpCreate(int _queueSize, int id)
 {
-    return motmod_tp_api->create((uintptr_t)tp, _queueSize, id);
+    return motmod_tp_api->create(_queueSize, id);
 }
 
-static inline int tpClear(TP_STRUCT * const tp)
+static inline int tpClear(void)
 {
-    return motmod_tp_api->clear((uintptr_t)tp);
+    return motmod_tp_api->clear();
 }
 
-static inline int tpSetCycleTime(TP_STRUCT *tp, double secs)
+static inline int tpSetCycleTime(double secs)
 {
-    return motmod_tp_api->set_cycle_time((uintptr_t)tp, secs);
+    return motmod_tp_api->set_cycle_time(secs);
 }
 
-static inline int tpSetVmax(TP_STRUCT *tp, double vmax, double ini_maxvel)
+static inline int tpSetVmax(double vmax, double ini_maxvel)
 {
-    return motmod_tp_api->set_vmax((uintptr_t)tp, vmax, ini_maxvel);
+    return motmod_tp_api->set_vmax(vmax, ini_maxvel);
 }
 
-static inline int tpSetVlimit(TP_STRUCT *tp, double limit)
+static inline int tpSetVlimit(double limit)
 {
-    return motmod_tp_api->set_vlimit((uintptr_t)tp, limit);
+    return motmod_tp_api->set_vlimit(limit);
 }
 
-static inline int tpSetAmax(TP_STRUCT *tp, double amax)
+static inline int tpSetAmax(double amax)
 {
-    return motmod_tp_api->set_amax((uintptr_t)tp, amax);
+    return motmod_tp_api->set_amax(amax);
 }
 
-static inline int tpSetId(TP_STRUCT *tp, int id)
+static inline int tpSetId(int id)
 {
-    return motmod_tp_api->set_id((uintptr_t)tp, id);
+    return motmod_tp_api->set_id(id);
 }
 
-static inline int tpGetExecId(TP_STRUCT *tp)
+static inline int tpGetExecId(void)
 {
-    return motmod_tp_api->get_exec_id((uintptr_t)tp);
+    return motmod_tp_api->get_exec_id();
 }
 
-static inline struct state_tag_t tpGetExecTag(TP_STRUCT * const tp)
+static inline struct state_tag_t tpGetExecTag(void)
 {
     struct state_tag_t result;
     tp_state_tag_t gmi_tag;
-    motmod_tp_api->get_exec_tag((uintptr_t)tp, &gmi_tag);
+    motmod_tp_api->get_exec_tag(&gmi_tag);
     memcpy(&result, &gmi_tag, sizeof(result));
     return result;
 }
 
-static inline int tpSetTermCond(TP_STRUCT *tp, int cond, double tolerance)
+static inline int tpSetTermCond(int cond, double tolerance)
 {
-    return motmod_tp_api->set_term_cond((uintptr_t)tp, cond, tolerance);
+    return motmod_tp_api->set_term_cond(cond, tolerance);
 }
 
-static inline int tpSetPos(TP_STRUCT *tp, EmcPose const * const pos)
+static inline int tpSetPos(EmcPose const * const pos)
 {
-    return motmod_tp_api->set_pos((uintptr_t)tp, (tp_pose_t *)pos);
+    return motmod_tp_api->set_pos((tp_pose_t *)pos);
 }
 
-static inline int tpRunCycle(TP_STRUCT *tp, long period)
+static inline int tpRunCycle(long period)
 {
-    return motmod_tp_api->run_cycle((uintptr_t)tp, (int64_t)period);
+    return motmod_tp_api->run_cycle((int64_t)period);
 }
 
-static inline int tpPause(TP_STRUCT *tp)
+static inline int tpPause(void)
 {
-    return motmod_tp_api->pause((uintptr_t)tp);
+    return motmod_tp_api->pause();
 }
 
-static inline int tpResume(TP_STRUCT *tp)
+static inline int tpResume(void)
 {
-    return motmod_tp_api->resume((uintptr_t)tp);
+    return motmod_tp_api->resume();
 }
 
-static inline int tpAbort(TP_STRUCT *tp)
+static inline int tpAbort(void)
 {
-    return motmod_tp_api->abort((uintptr_t)tp);
+    return motmod_tp_api->abort();
 }
 
-static inline int tpAddLine(TP_STRUCT * const tp, EmcPose end,
+static inline int tpAddLine(EmcPose end,
     int canon_motion_type, double vel, double ini_maxvel, double acc,
     unsigned char enables, char atspeed, int indexrotary,
     struct state_tag_t tag)
 {
-    return motmod_tp_api->add_line((uintptr_t)tp,
+    return motmod_tp_api->add_line(
         (const tp_pose_t *)&end,
         canon_motion_type, vel, ini_maxvel, acc,
         enables, (int8_t)atspeed, indexrotary,
         (const tp_state_tag_t *)&tag);
 }
 
-static inline int tpAddCircle(TP_STRUCT * const tp, EmcPose end,
+static inline int tpAddCircle(EmcPose end,
     PmCartesian center, PmCartesian normal, int turn,
     int canon_motion_type, double vel, double ini_maxvel, double acc,
     unsigned char enables, char atspeed, struct state_tag_t tag)
 {
-    return motmod_tp_api->add_circle((uintptr_t)tp,
+    return motmod_tp_api->add_circle(
         (const tp_pose_t *)&end,
         (const tp_cartesian_t *)&center,
         (const tp_cartesian_t *)&normal,
@@ -128,72 +126,74 @@ static inline int tpAddCircle(TP_STRUCT * const tp, EmcPose end,
         (const tp_state_tag_t *)&tag);
 }
 
-static inline int tpAddRigidTap(TP_STRUCT * const tp, EmcPose end,
+static inline int tpAddRigidTap(EmcPose end,
     double vel, double ini_maxvel, double acc,
     unsigned char enables, double scale, struct state_tag_t tag)
 {
-    return motmod_tp_api->add_rigid_tap((uintptr_t)tp,
+    return motmod_tp_api->add_rigid_tap(
         (const tp_pose_t *)&end,
         vel, ini_maxvel, acc,
         enables, scale,
         (const tp_state_tag_t *)&tag);
 }
 
-static inline int tpSetAout(TP_STRUCT * const tp, unsigned char index,
+static inline int tpSetAout(unsigned char index,
     double start, double end)
 {
-    return motmod_tp_api->set_aout((uintptr_t)tp, index, start, end);
+    return motmod_tp_api->set_aout(index, start, end);
 }
 
-static inline int tpSetDout(TP_STRUCT * const tp, int index,
+static inline int tpSetDout(int index,
     unsigned char start, unsigned char end)
 {
-    return motmod_tp_api->set_dout((uintptr_t)tp, index, start, end);
+    return motmod_tp_api->set_dout(index, start, end);
 }
 
-static inline int tpGetPos(TP_STRUCT const * const tp, EmcPose * const pos)
+static inline int tpGetPos(EmcPose * const pos)
 {
-    return motmod_tp_api->get_pos((uintptr_t)tp, (tp_pose_t *)pos);
+    return motmod_tp_api->get_pos((tp_pose_t *)pos);
 }
 
-static inline int tpIsDone(TP_STRUCT * const tp)
+static inline int tpIsDone(void)
 {
-    return motmod_tp_api->is_done((uintptr_t)tp);
+    return motmod_tp_api->is_done();
 }
 
-static inline int tpQueueDepth(TP_STRUCT * const tp)
+static inline int tpQueueDepth(void)
 {
-    return motmod_tp_api->queue_depth((uintptr_t)tp);
+    return motmod_tp_api->queue_depth();
 }
 
-static inline int tpActiveDepth(TP_STRUCT * const tp)
+static inline int tpActiveDepth(void)
 {
-    return motmod_tp_api->active_depth((uintptr_t)tp);
+    return motmod_tp_api->active_depth();
 }
 
-static inline int tpGetMotionType(TP_STRUCT * const tp)
+static inline int tpGetMotionType(void)
 {
-    return motmod_tp_api->get_motion_type((uintptr_t)tp);
+    return motmod_tp_api->get_motion_type();
 }
 
-static inline int tpSetSpindleSync(TP_STRUCT * const tp, int spindle,
+static inline int tpSetSpindleSync(int spindle,
     double sync, int wait)
 {
-    return motmod_tp_api->set_spindle_sync((uintptr_t)tp, spindle, sync, wait);
+    return motmod_tp_api->set_spindle_sync(spindle, sync, wait);
 }
 
-static inline int tpSetRunDir(TP_STRUCT * const tp, tc_direction_t dir)
+static inline int tpSetRunDir(tc_direction_t dir)
 {
     tp_direction_t gmi_dir = (tp_direction_t)dir;
-    return motmod_tp_api->set_run_dir((uintptr_t)tp, &gmi_dir);
+    return motmod_tp_api->set_run_dir(&gmi_dir);
 }
 
-// tcqFull — use motmod_tcqFull() instead, since tcqFull is declared in tcq.h
-// and we can't redefine it here.  The single call site in control.c must
-// be changed to use this helper.
-static inline int motmod_tcqFull(TP_STRUCT const * const tp)
+static inline int tpGetRunDir(void)
 {
-    return motmod_tp_api->queue_full((uintptr_t)tp);
+    return motmod_tp_api->get_run_dir();
+}
+
+static inline int tpQueueFull(void)
+{
+    return motmod_tp_api->queue_full();
 }
 
 // ─── Home bridge functions ──────────────────────────────────────────────
