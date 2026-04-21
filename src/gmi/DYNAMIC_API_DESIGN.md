@@ -14,6 +14,7 @@ intended to replace NML with a modern, type-safe approach.
 | 4: Client Generation | ✅ Complete | 14 |
 | 4.5: halcmd REST Tool | ✅ Complete | — |
 | 5: Python Client | ✅ Complete | 3 |
+| 5.1: manualtoolchange REST | ✅ Complete | — |
 | 6: Polish | ❌ Not Started | — |
 
 **Total: 73 tests passing**
@@ -362,14 +363,19 @@ At runtime (can be from RT context if callback is RT-safe):
 
 ### Core Types
 
+The lightweight API types live in `pkg/gomodule` so Go plugins can use them
+without pulling in `net/http`. The `pkg/apiserver` package re-exports them as
+type aliases for backward compatibility with existing generated code.
+
 ```go
+// In pkg/gomodule/api.go (canonical definitions):
+
 // DispatchFunc is the uniform signature for all generated dispatch wrappers.
 // Both cmod and gomod generate functions with this signature.
 // The HTTP server calls these — it never touches callbacks directly.
 type DispatchFunc func(callbacks unsafe.Pointer, req []byte) ([]byte, error)
 
 // FuncMeta holds static metadata + dispatch for one API function (generated).
-// Routing info and dispatch wrapper live together — no parallel arrays.
 type FuncMeta struct {
     Name     string       // "pin_read"
     Method   string       // "GET", "POST", etc. (empty if not REST-exported)
@@ -386,6 +392,21 @@ type APIMeta struct {
     Prefix     string     // REST path prefix
     Funcs      []FuncMeta // routing + dispatch in one place
 }
+
+// Host is the interface the launcher provides to Go plugins for API
+// registration. Plugins receive Host via Factory — no apiserver import needed.
+type Host interface {
+    RegisterMeta(meta *APIMeta)
+    Register(apiName string, version int, instance string, callbacks unsafe.Pointer) error
+}
+```
+
+```go
+// In pkg/apiserver/types.go (aliases for backward compatibility):
+
+type DispatchFunc = gomodule.DispatchFunc
+type FuncMeta     = gomodule.FuncMeta
+type APIMeta      = gomodule.APIMeta
 
 // RegisteredAPI is one registered API instance in the registry.
 type RegisteredAPI struct {
@@ -641,17 +662,23 @@ src/launcher/
 │       ├── kins/           # kins_api.h, kins_cgo.go
 │       ├── mot/            # mot_api.h, mot_cgo.go
 │       └── tp/             # tp_api.h, tp_cgo.go
-├── internal/
-│   ├── apiserver/          # REST server (Step 1)
-│   │   ├── types.go        # DispatchFunc, FuncMeta, APIMeta, RegisteredAPI
+├── pkg/
+│   ├── apiserver/          # REST server + registry (Step 1)
+│   │   ├── types.go        # Type aliases reexported from gomodule
 │   │   ├── registry.go     # Register(), GetAPI(), thread-safe map
 │   │   ├── server.go       # HTTP handler, path matching
 │   │   ├── *_test.go       # 37 tests
 │   │   └── directtest/     # cmod direct-call simulation tests
+│   ├── gomodule/           # Plugin interface (lightweight, no net/http)
+│   │   ├── gomodule.go     # Module interface, Factory signature
+│   │   └── api.go          # DispatchFunc, FuncMeta, APIMeta, Host interface
+│   └── inifile/            # INI file parser
+├── internal/
 │   ├── halrest/            # Server-side REST handler for halcmd API (Step 4.5)
 │   │   └── halrest.go      # Dispatches REST calls to internal/halcmd
 │   ├── launcher/           # Launcher lifecycle
 │   │   ├── launcher.go     # Main launcher struct + startup
+│   │   ├── gomodules.go    # Go plugin loading, registryHost adapter
 │   │   ├── rest_server.go  # REST API server start/stop ([GMC]REST_ADDR)
 │   │   └── cleanup.go      # Shutdown sequence
 │   └── gmicompile/         # Code generator (parses .gmi → C/Go)
@@ -665,6 +692,13 @@ src/launcher/
 │           ├── client_go.go    # --client-go: Go REST client generation
 │           └── client_py.go    # --client-python: Python REST client generation
 └── ...
+
+src/hal/components/
+├── manualtoolchange.comp   # Original .comp (kept for reference, excluded from build)
+└── manualtoolchange_gomod/ # First gomod pilot (Step 5.1)
+    ├── main.go             # Go plugin: C HAL code via cgo + Go REST dispatch
+    ├── go.mod
+    └── go.work
 
 src/emc/kinematics/         # Kinematics modules (cmod .so plugins)
 ├── trivkins.c              # Each .c is a self-contained cmod
@@ -893,6 +927,95 @@ REST client for Python UIs (axis, gmoccapy, etc.).
 - [x] Unit: full API generation (types, enums, constants, client class, methods)
 - [x] Unit: multiple path parameter substitution
 - [x] Unit: primitive return types and void methods
+
+### Step 5.1: manualtoolchange REST Migration (COMPLETE)
+
+Replace the legacy manualtoolchange (Tcl popup dialog) with a REST-based
+architecture: the HAL component exposes tool-change state via the GMI API,
+and a standalone Python/Tk UI polls the REST endpoint.
+
+**Motivation:**
+- First real-world GMI consumer outside the core motion modules
+- Validates the full vertical slice: IDL → codegen → REST dispatch → Python UI
+- Demonstrates that existing HAL components can expose REST APIs without
+  changes to HAL files or machine configurations
+
+**Why gomod instead of cmod:**
+The natural first approach was a plain cmod (`.comp` with `gmi_provide`).
+However, cmods register their REST dispatch through generated cgo packages
+that must be blank-imported into the launcher at compile time. This couples
+every new REST-providing component to the launcher build — impractical for
+user or third-party components. A gomod solves this: it carries its own
+dispatch code and registers via the `Host` callback at load time, requiring
+no launcher changes. The trade-off is a larger `.so` (5.9MB vs ~60KB for a
+plain cmod) because Go plugins embed the Go runtime. If a way to register
+REST dispatch from plain cmods at runtime (without launcher recompilation)
+is found, cmod would be the preferred approach.
+
+**Deliverables:**
+- [x] IDL: `manualtoolchange.gmi` (GET /state, POST /confirm)
+- [x] Python UI: `manualtoolchange_ui.py` (REST client, Tk popup)
+- [x] `manualtoolchange_gomod/main.go` — Go plugin with C HAL code (cgo) + Go REST dispatch
+- [x] HAL file: `axis_manualtoolchange.hal` — unchanged (`load manualtoolchange`)
+- [x] Build: `-buildmode=plugin`, output `gomod/manualtoolchange.so` (5.9MB)
+- [x] Cmod build disabled (`.comp` excluded from `CMOD_COMPS` wildcard)
+
+**Gomod infrastructure developed along the way:**
+- [x] `gomodule.Host` interface — decouples gomods from `pkg/apiserver` (saves ~3MB)
+- [x] `APIMeta`, `FuncMeta`, `DispatchFunc` types moved to `pkg/gomodule`
+- [x] `pkg/apiserver/types.go` re-exports as type aliases (existing code unchanged)
+- [x] Factory signature: `func(Host, *IniFile, *slog.Logger, name, args) (Module, error)`
+- [x] Launcher `registryHost` adapter wraps `apiserver.Registry` → implements `Host`
+
+**Key findings:**
+
+- **Plugin size**: Initial build was 12MB because importing `pkg/apiserver`
+  dragged in `net/http` → `crypto/tls` → entire Go crypto stack (~3MB). Solved by
+  introducing `gomodule.Host` callback interface — gomods only import lightweight
+  `pkg/gomodule` (no `net/http`). Final size: **5.9MB**. Still large compared to a
+  plain cmod (~60KB), reinforcing that cmod with runtime REST registration would
+  be the better long-term solution.
+
+- **Type alias pattern**: `pkg/apiserver/types.go` re-exports gomodule types as
+  `type APIMeta = gomodule.APIMeta` etc. All existing generated code and launcher
+  code continues to import `apiserver` unchanged — only gomods benefit from the
+  lighter `gomodule` import.
+
+- **No init() for meta registration**: Unlike cmod-backed generated packages that
+  register `APIMeta` in `init()`, gomods register via `host.RegisterMeta()` in the
+  Factory. This is cleaner — no global side effects from `plugin.Open`, all
+  registration is explicit and ordered.
+
+- **cgo pointer rules**: Go plugins cannot pass Go pointers containing other Go
+  pointers to C. The original `dl_handle_for_gomod(unsafe.Pointer(factoryPtr))`
+  panicked at runtime. Fixed by resolving the dlopen handle via path-based
+  `dlopen(path, RTLD_NOW | RTLD_NOLOAD)` instead of `dladdr`.
+
+- **Gomod load dispatch**: `IterLoads` checks `cModuleExists(cmodPath)` first,
+  falls through to `loadGoPlugin(resolveGoModulePath(path))`. Disabling the cmod
+  build + deleting the old .so is sufficient — no HAL file changes needed.
+
+- **C HAL API directly**: The gomod's C code calls `hal_init_ex`, `hal_pin_*_newf`,
+  `hal_export_funct`, `hal_ready` directly (not through `cmod_env_t` callbacks).
+  This works because `-llinuxcnchal` is linked into the plugin. The `pkg/hal` Go
+  wrapper only supports `COMPONENT_TYPE_USER`, so RT components must use C via cgo.
+
+**Open issue — why gomods are needed for REST-providing components:**
+Plain cmods with `gmi_provide` and `@rest_export true` require a blank import
+in the launcher to pull in the generated cgo dispatch package. Core modules
+(kins, tp, home) have no REST API (`@rest_export false`) and need no such
+import — their cgo packages are only used for inter-module C↔Go dispatch,
+which is compiled into the launcher naturally. The blank-import problem only
+affects REST-providing cmods.
+
+A cmod cannot register REST dispatch at runtime because `DispatchFunc` is Go
+code — it does JSON↔Go↔C marshaling via `encoding/json` and cgo. A plain C
+`.so` loaded via `dlopen` cannot produce Go function pointers. Alternative
+approaches (C-level JSON parsing in the cmod, or schema-driven generic
+dispatch in the launcher) are either impractical or fragile. Therefore,
+components that need to expose a REST API must currently be gomods, which
+carry their own Go dispatch code. The trade-off is a larger `.so` (5.9MB vs
+~60KB for a plain cmod) because Go plugins embed parts of the Go runtime.
 
 ### Step 6: Polish (NOT STARTED)
 - [ ] Error handling standardization
