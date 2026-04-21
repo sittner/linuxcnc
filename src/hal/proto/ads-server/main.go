@@ -82,7 +82,7 @@ func parseArgs(args []string) (configPath string, debug bool) {
 
 // New is the plugin entry point. The launcher looks up this symbol and calls
 // it to create the module instance.
-var New gomodule.Factory = func(ini *inifile.IniFile, logger *slog.Logger, name string, args []string) (gomodule.Module, error) {
+var New gomodule.Factory = func(_ gomodule.Host, ini *inifile.IniFile, logger *slog.Logger, name string, args []string) (gomodule.Module, error) {
 	configPath, debug := parseArgs(args)
 	if configPath == "" {
 		return nil, fmt.Errorf("ads-server: missing required config= parameter")
