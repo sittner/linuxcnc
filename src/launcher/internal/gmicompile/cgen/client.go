@@ -65,7 +65,7 @@ func (g *clientHeaderGen) emitIncludes() {
 }
 
 func (g *clientHeaderGen) emitForwardDecls() {
-	g.printf("// ─── Client Handle ───\n\n")
+	g.printf("// --- Client Handle ---\n\n")
 	g.printf("typedef struct %s_client %s_client_t;\n\n", g.api.Name, g.api.Name)
 
 	g.printf("// Create a new client connected to the given base URL.\n")
@@ -80,7 +80,7 @@ func (g *clientHeaderGen) emitClientFunctions() {
 	if len(g.api.Funcs) == 0 {
 		return
 	}
-	g.printf("// ─── Client Functions ───\n\n")
+	g.printf("// --- Client Functions ---\n\n")
 	for _, fn := range g.api.Funcs {
 		g.emitClientFunctionDecl(fn)
 	}
@@ -173,7 +173,7 @@ func (g *clientSourceGen) emitIncludes() {
 }
 
 func (g *clientSourceGen) emitClientStruct() {
-	g.printf("// ─── Client Struct ───\n\n")
+	g.printf("// --- Client Struct ---\n\n")
 	g.printf("struct %s_client {\n", g.api.Name)
 	g.printf("    gmi_http_t *http;\n")
 	g.printf("};\n\n")
@@ -186,7 +186,7 @@ func (g *clientSourceGen) emitHelpers() {
 func (g *clientSourceGen) emitNewFree() {
 	name := g.api.Name
 
-	g.printf("// ─── Constructor / Destructor ───\n\n")
+	g.printf("// --- Constructor / Destructor ---\n\n")
 	g.printf("%s_client_t *%s_client_new(const char *base_url) {\n", name, name)
 	g.printf("    %s_client_t *c = calloc(1, sizeof(*c));\n", name)
 	g.printf("    if (!c) return NULL;\n")
@@ -209,7 +209,7 @@ func (g *clientSourceGen) emitClientFunctions() {
 	if len(g.api.Funcs) == 0 {
 		return
 	}
-	g.printf("// ─── Client Functions ───\n\n")
+	g.printf("// --- Client Functions ---\n\n")
 	for _, fn := range g.api.Funcs {
 		g.emitClientFunction(fn)
 	}
@@ -524,7 +524,7 @@ func (g *clientSourceGen) emitStructParsing(fn ast.Func, ret ast.TypeRef) {
 		}
 	}
 	if typeDef == nil {
-		g.printf("            // Warning: type %s not found in API — cannot parse\n", ret.Name)
+		g.printf("            // Warning: type %s not found in API -- cannot parse\n", ret.Name)
 		return
 	}
 

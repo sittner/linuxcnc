@@ -64,7 +64,7 @@ func (g *serverGen) emitConstants() {
 	if len(g.api.Consts) == 0 {
 		return
 	}
-	g.printf("// ─── Constants ───\n\n")
+	g.printf("// --- Constants ---\n\n")
 	for _, c := range g.api.Consts {
 		g.printf("#define %s_%s %d\n", strings.ToUpper(g.api.Name), c.Name, c.Value)
 	}
@@ -75,7 +75,7 @@ func (g *serverGen) emitEnums() {
 	if len(g.api.Enums) == 0 {
 		return
 	}
-	g.printf("// ─── Enums ───\n\n")
+	g.printf("// --- Enums ---\n\n")
 	for _, e := range g.api.Enums {
 		g.printf("typedef enum {\n")
 		for i, v := range e.Values {
@@ -102,16 +102,17 @@ func (g *serverGen) emitTypes() {
 	if len(g.api.Types) == 0 {
 		return
 	}
-	g.printf("// ─── Types ───\n\n")
+	g.printf("// --- Types ---\n\n")
 	for _, t := range g.api.Types {
-		g.printf("typedef struct {\n")
+		structTag := fmt.Sprintf("%s_%s", g.api.Name, toSnakeCase(t.Name))
+		g.printf("typedef struct %s {\n", structTag)
 		for _, f := range t.Fields {
 			g.printf("    %s;\n", g.fieldDecl(f))
 			if f.Type.Kind == ast.TypeSlice {
 				g.printf("    size_t %s_len;\n", toSnakeCase(f.Name))
 			}
 		}
-		g.printf("} %s_%s_t;\n\n", g.api.Name, toSnakeCase(t.Name))
+		g.printf("} %s_t;\n\n", structTag)
 	}
 }
 
@@ -190,7 +191,7 @@ func (g *serverGen) emitCallbackTypedefs() {
 	if len(g.api.Funcs) == 0 {
 		return
 	}
-	g.printf("// ─── Callback Typedefs ───\n\n")
+	g.printf("// --- Callback Typedefs ---\n\n")
 	for _, fn := range g.api.Funcs {
 		// Direct return: function returns the declared type (or void).
 		retCType := "void"
@@ -282,8 +283,8 @@ func (g *serverGen) emitCallbacksStruct() {
 	if len(g.api.Funcs) == 0 {
 		return
 	}
-	g.printf("// ─── Callbacks Struct ───\n\n")
-	g.printf("typedef struct {\n")
+	g.printf("// --- Callbacks Struct ---\n\n")
+	g.printf("typedef struct %s_callbacks {\n", g.api.Name)
 	g.printf("    void *ctx;\n")
 	for _, fn := range g.api.Funcs {
 		fieldName := cSafeName(toSnakeCase(fn.Name))
@@ -315,10 +316,10 @@ func (g *serverGen) emitRegistration() {
 	version := g.api.Version
 	guard := strings.ToUpper(name) + "_API_CGO"
 
-	g.printf("// ─── Registration & Lookup ───\n")
+	g.printf("// --- Registration & Lookup ---\n")
 	g.printf("//\n")
 	g.printf("// These static inline wrappers call through the gomc_api_t callback\n")
-	g.printf("// table provided in cmod_env_t.  No extern symbols — the C plugin\n")
+	g.printf("// table provided in cmod_env_t.  No extern symbols -- the C plugin\n")
 	g.printf("// has zero undefined references to the Go launcher.\n")
 	g.printf("// Skipped when included from the cgo dispatcher (types only).\n\n")
 	g.printf("#ifndef %s\n\n", guard)
