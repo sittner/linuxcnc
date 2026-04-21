@@ -20,7 +20,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/sittner/linuxcnc/src/launcher/internal/apiserver"
+	"github.com/sittner/linuxcnc/src/launcher/pkg/apiserver"
 )
 
 // gomcLogRing wraps a C-allocated gomc_log_ring_t and provides the Go-side

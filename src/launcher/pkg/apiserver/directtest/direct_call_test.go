@@ -3,7 +3,7 @@ package directtest
 import (
 	"testing"
 
-	"github.com/sittner/linuxcnc/src/launcher/internal/apiserver"
+	"github.com/sittner/linuxcnc/src/launcher/pkg/apiserver"
 )
 
 func TestDirectKinsRegisterAndCall(t *testing.T) {

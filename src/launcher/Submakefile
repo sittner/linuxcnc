@@ -101,6 +101,27 @@ $(ADS_SERVER_DIR)/go.work: $(ADS_SERVER_DIR)/go.mod launcher/go.mod
 	$(Q)cd $(ADS_SERVER_DIR) && CGO_ENABLED=0 GOTOOLCHAIN=local $(GO) build -o $(TOP)/bin/ads-xml-gen ./cmd/ads-xml-gen
 
 # ---------------------------------------------------------------------------
+# Manualtoolchange Go plugin (.so) — gomod with embedded C via cgo
+# ---------------------------------------------------------------------------
+
+MTC_GOMOD_DIR := hal/components/manualtoolchange_gomod
+MTC_GOMOD_SRC := $(wildcard $(MTC_GOMOD_DIR)/*.go) $(MTC_GOMOD_DIR)/go.mod
+
+$(MTC_GOMOD_DIR)/go.work: $(MTC_GOMOD_DIR)/go.mod launcher/go.mod
+	@rm -f $(MTC_GOMOD_DIR)/go.work $(MTC_GOMOD_DIR)/go.work.sum
+	$(Q)cd $(MTC_GOMOD_DIR) && GOTOOLCHAIN=local $(GO) work init
+	$(Q)cd $(MTC_GOMOD_DIR) && GOTOOLCHAIN=local $(GO) work use .
+	$(Q)cd $(MTC_GOMOD_DIR) && GOTOOLCHAIN=local $(GO) work use ../../../launcher
+
+../gomod/manualtoolchange.so: $(MTC_GOMOD_SRC) $(MTC_GOMOD_DIR)/go.work $(LAUNCHER_SRC) ../lib/liblinuxcnchal.so
+	$(ECHO) Building manualtoolchange.so Go plugin
+	$(Q)cd $(MTC_GOMOD_DIR) && \
+	CGO_ENABLED=1 \
+	CGO_LDFLAGS="-Wl,-rpath,$(LIB_DIR)" \
+	GOTOOLCHAIN=local \
+	$(GO) build -buildmode=plugin -o $(TOP)/gomod/manualtoolchange.so .
+
+# ---------------------------------------------------------------------------
 # Copy launcher public packages to share/ for RIP builds
 # ---------------------------------------------------------------------------
 
@@ -164,7 +185,7 @@ HAL_GO_EXAMPLES := ../bin/passthrough ../bin/str-sender ../bin/str-receiver
 	CGO_LDFLAGS="$(HAL_GO_CGO_LDFLAGS)" \
 	$(GO) build -o $(TOP)/bin/str-receiver .
 
-TARGETS += ../bin/linuxcnc-launcher ../bin/ads-xml-gen ../gomod/ads-server.so $(LAUNCHER_PKG_FILES) $(HAL_GO_EXAMPLES)
+TARGETS += ../bin/linuxcnc-launcher ../bin/ads-xml-gen ../gomod/ads-server.so ../gomod/manualtoolchange.so $(LAUNCHER_PKG_FILES) $(HAL_GO_EXAMPLES)
 
 # ---------------------------------------------------------------------------
 # modcompile — .comp → cmod C code generator
@@ -215,7 +236,7 @@ test-launcher:
 clean: launcher-clean
 .PHONY: launcher-clean
 launcher-clean:
-	rm -f ../bin/linuxcnc-launcher ../bin/ads-xml-gen ../gomod/ads-server.so
+	rm -f ../bin/linuxcnc-launcher ../bin/ads-xml-gen ../gomod/ads-server.so ../gomod/manualtoolchange.so
 	rm -f ../bin/modcompile ../bin/gmicompile ../bin/halcmd
 	rm -f $(HAL_GO_EXAMPLES)
 	rm -f $(LAUNCHER_PKG_FILES)
@@ -223,13 +244,14 @@ launcher-clean:
 # Install
 install: launcher-install
 .PHONY: launcher-install
-launcher-install: ../bin/linuxcnc-launcher ../bin/ads-xml-gen ../gomod/ads-server.so ../bin/halcmd $(LAUNCHER_PKG_FILES) $(HAL_GO_EXAMPLES)
+launcher-install: ../bin/linuxcnc-launcher ../bin/ads-xml-gen ../gomod/ads-server.so ../gomod/manualtoolchange.so ../bin/halcmd $(LAUNCHER_PKG_FILES) $(HAL_GO_EXAMPLES)
 	$(DIR) $(DESTDIR)$(EMC2_BIN_DIR)
 	$(INSTALL) -m 0755 ../bin/linuxcnc-launcher $(DESTDIR)$(EMC2_BIN_DIR)/linuxcnc-launcher
 	$(INSTALL) -m 0755 ../bin/ads-xml-gen $(DESTDIR)$(EMC2_BIN_DIR)/ads-xml-gen
 	$(INSTALL) -m 0755 ../bin/halcmd $(DESTDIR)$(EMC2_BIN_DIR)/halcmd
 	$(DIR) $(DESTDIR)$(EMC2_GOMOD_DIR)
 	$(INSTALL) -m 0644 ../gomod/ads-server.so $(DESTDIR)$(EMC2_GOMOD_DIR)/ads-server.so
+	$(INSTALL) -m 0644 ../gomod/manualtoolchange.so $(DESTDIR)$(EMC2_GOMOD_DIR)/manualtoolchange.so
 	$(FILE) $(HAL_GO_EXAMPLES) $(DESTDIR)$(EMC2_BIN_DIR)/
 	# Install launcher public packages for external Go plugin development
 	$(DIR) $(DESTDIR)$(datadir)/linuxcnc/launcher/pkg/hal

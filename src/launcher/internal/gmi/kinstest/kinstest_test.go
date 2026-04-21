@@ -3,7 +3,7 @@ package kinstest
 import (
 	"testing"
 
-	"github.com/sittner/linuxcnc/src/launcher/internal/apiserver"
+	"github.com/sittner/linuxcnc/src/launcher/pkg/apiserver"
 )
 
 func TestTrivkinsLoadAndRegister(t *testing.T) {

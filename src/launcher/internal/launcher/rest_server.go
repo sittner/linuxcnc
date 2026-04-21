@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/sittner/linuxcnc/src/launcher/internal/apiserver"
+	"github.com/sittner/linuxcnc/src/launcher/pkg/apiserver"
 )
 
 const (

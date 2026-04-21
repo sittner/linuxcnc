@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/sittner/linuxcnc/src/launcher/internal/apiserver"
+	"github.com/sittner/linuxcnc/src/launcher/pkg/apiserver"
 )
 
 // setupPuma sets up registry, loads pumakins, returns cleanup func.

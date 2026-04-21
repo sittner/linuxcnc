@@ -89,7 +89,7 @@ func TestGenerateServerGoSimple(t *testing.T) {
 
 	// Check imports
 	assertContains(t, out, `"encoding/json"`)
-	assertContains(t, out, `"github.com/sittner/linuxcnc/src/launcher/internal/apiserver"`)
+	assertContains(t, out, `"github.com/sittner/linuxcnc/src/launcher/pkg/apiserver"`)
 
 	// Check enum
 	assertContains(t, out, "type Color int32")

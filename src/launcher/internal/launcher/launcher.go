@@ -25,7 +25,7 @@ import (
 
 	halcmd "github.com/sittner/linuxcnc/src/launcher/internal/halcmd"
 
-	"github.com/sittner/linuxcnc/src/launcher/internal/apiserver"
+	"github.com/sittner/linuxcnc/src/launcher/pkg/apiserver"
 	"github.com/sittner/linuxcnc/src/launcher/internal/config"
 	"github.com/sittner/linuxcnc/src/launcher/internal/halfile"
 	"github.com/sittner/linuxcnc/src/launcher/internal/halrest"
