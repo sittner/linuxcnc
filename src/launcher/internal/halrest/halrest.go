@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"unsafe"
 
-	"github.com/sittner/linuxcnc/src/launcher/internal/apiserver"
+	"github.com/sittner/linuxcnc/src/launcher/pkg/apiserver"
 	"github.com/sittner/linuxcnc/src/launcher/internal/halcmd"
 	hal "github.com/sittner/linuxcnc/src/launcher/pkg/hal"
 )

@@ -223,7 +223,7 @@ import (
 	"unsafe"
 
 	_ "github.com/sittner/linuxcnc/src/launcher/generated/gmi/kins" // registers KinsMeta via init()
-	"github.com/sittner/linuxcnc/src/launcher/internal/apiserver"
+	"github.com/sittner/linuxcnc/src/launcher/pkg/apiserver"
 )
 
 // soPath finds a cmod .so relative to the source tree.

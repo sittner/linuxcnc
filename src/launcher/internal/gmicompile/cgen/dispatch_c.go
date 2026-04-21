@@ -176,7 +176,7 @@ func (g *dispatchCGen) emitImports() {
 	g.printf("\t\"syscall\"\n")
 	g.printf("\t\"unsafe\"\n")
 	g.printf("\n")
-	g.printf("\t\"github.com/sittner/linuxcnc/src/launcher/internal/apiserver\"\n")
+	g.printf("\t\"github.com/sittner/linuxcnc/src/launcher/pkg/apiserver\"\n")
 	g.printf(")\n\n")
 
 	// Suppress unused import warnings

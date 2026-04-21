@@ -25,7 +25,8 @@ HALCOMPILE_COMPS := $(addprefix hal/components/, $(addsuffix .comp, $(HALCOMPILE
 # Components built via modcompile (cmod API, output to ../cmod/)
 # All .comp files except those in HALCOMPILE_COMPS
 # ---------------------------------------------------------------------------
-CMOD_COMPS := $(filter-out $(HALCOMPILE_COMPS), $(sort $(wildcard hal/components/*.comp)))
+# manualtoolchange is now built as a gomod (see launcher/Submakefile)
+CMOD_COMPS := $(filter-out hal/components/manualtoolchange.comp $(HALCOMPILE_COMPS), $(sort $(wildcard hal/components/*.comp)))
 CMOD_COMP_NAMES := $(patsubst hal/components/%.comp,%,$(CMOD_COMPS))
 CMOD_TARGETS := $(addprefix ../cmod/, $(addsuffix .so, $(CMOD_COMP_NAMES)))
 
@@ -207,14 +208,16 @@ CMOD_HOME_CFLAGS := -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I $(CMOD_GMI_HOM
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) $(CMOD_HOME_CFLAGS) -o $@ $<
 
-# Step 2d: manualtoolchange needs the GMI manualtoolchange API header path.
-CMOD_GMI_MTC_API := launcher/generated/gmi/manualtoolchange
-CMOD_MTC_CFLAGS := -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I $(CMOD_GMI_MTC_API) -lm
-
-../cmod/manualtoolchange.so: objects/cmod/manualtoolchange.c $(CMOD_GMI_MTC_API)/manualtoolchange_api.h
-	$(ECHO) "Compiling cmod (manualtoolchange) $(notdir $@)"
-	@mkdir -p $(dir $@)
-	$(Q)$(CC) $(CMOD_MTC_CFLAGS) -o $@ $<
+# Step 2d: manualtoolchange — now built as gomod (see launcher/Submakefile).
+# The cmod build is disabled; the gomod version in gomod/manualtoolchange.so
+# contains both the C HAL code (via cgo) and Go REST dispatch wrappers.
+#CMOD_GMI_MTC_API := launcher/generated/gmi/manualtoolchange
+#CMOD_MTC_CFLAGS := -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I $(CMOD_GMI_MTC_API) -lm
+#
+#../cmod/manualtoolchange.so: objects/cmod/manualtoolchange.c $(CMOD_GMI_MTC_API)/manualtoolchange_api.h
+#	$(ECHO) "Compiling cmod (manualtoolchange) $(notdir $@)"
+#	@mkdir -p $(dir $@)
+#	$(Q)$(CC) $(CMOD_MTC_CFLAGS) -o $@ $<
 
 TARGETS += $(CMOD_TARGETS)
 modules: $(CMOD_TARGETS)

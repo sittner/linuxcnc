@@ -86,7 +86,7 @@ func TestGenerateDispatchC(t *testing.T) {
 	assertContains(t, out, `"encoding/json"`)
 	assertContains(t, out, `"syscall"`)
 	assertContains(t, out, `"unsafe"`)
-	assertContains(t, out, `"github.com/sittner/linuxcnc/src/launcher/internal/apiserver"`)
+	assertContains(t, out, `"github.com/sittner/linuxcnc/src/launcher/pkg/apiserver"`)
 
 	// -- Enums --
 	assertContains(t, out, "type Color int32")
