@@ -71,41 +71,41 @@ func TestGenerateDispatchC(t *testing.T) {
 
 	out := buf.String()
 
-	// ── Package + cgo preamble ──
+	// -- Package + cgo preamble --
 	assertContains(t, out, "package testpkg")
 	assertContains(t, out, `#include "testapi_api.h"`)
 	assertContains(t, out, `#include <stdlib.h>`)
 	assertContains(t, out, `import "C"`)
 
-	// ── Static call wrappers (with ctx) ──
+	// -- Static call wrappers (with ctx) --
 	assertContains(t, out, "static testapi_item_t * call_testapi_list_items(testapi_list_items_fn fn, void *ctx,")
 	assertContains(t, out, "static testapi_item_t call_testapi_get_item(testapi_get_item_fn fn, void *ctx,")
 	assertContains(t, out, "static void call_testapi_delete_item(testapi_delete_item_fn fn, void *ctx,")
 
-	// ── Go imports ──
+	// -- Go imports --
 	assertContains(t, out, `"encoding/json"`)
 	assertContains(t, out, `"syscall"`)
 	assertContains(t, out, `"unsafe"`)
 	assertContains(t, out, `"github.com/sittner/linuxcnc/src/launcher/internal/apiserver"`)
 
-	// ── Enums ──
+	// -- Enums --
 	assertContains(t, out, "type Color int32")
 	assertContains(t, out, "RED Color = 0")
 	assertContains(t, out, "GREEN Color = 1")
 
-	// ── Types ──
+	// -- Types --
 	assertContains(t, out, "type Item struct {")
 	assertContains(t, out, `Name string `+"`"+`json:"name"`+"`")
 	assertContains(t, out, `Value float64 `+"`"+`json:"value"`+"`")
 	assertContains(t, out, `Color Color `+"`"+`json:"color"`+"`")
 
-	// ── C→Go converters ──
+	// -- CToGo converters --
 	assertContains(t, out, "func itemCToGo(src *C.testapi_item_t) Item")
 	assertContains(t, out, "C.GoString(src.name)")
 	assertContains(t, out, "float64(src.value)")
 	assertContains(t, out, "Color(src.color)")
 
-	// ── Dispatch functions ──
+	// -- Dispatch functions --
 	assertContains(t, out, "func testapiDispatchListItems(callbacks unsafe.Pointer, req []byte) ([]byte, error)")
 	assertContains(t, out, "func testapiDispatchGetItem(callbacks unsafe.Pointer, req []byte) ([]byte, error)")
 	assertContains(t, out, "func testapiDispatchDeleteItem(callbacks unsafe.Pointer, req []byte) ([]byte, error)")
@@ -125,7 +125,7 @@ func TestGenerateDispatchC(t *testing.T) {
 	assertContains(t, out, "itemCToGo(&out)")       // struct return
 	assertContains(t, out, "return nil, nil")       // void return
 
-	// ── APIMeta ──
+	// -- APIMeta --
 	assertContains(t, out, "var TestapiMeta = &apiserver.APIMeta{")
 	assertContains(t, out, `Name:       "testapi"`)
 	assertContains(t, out, "Version:    1")
@@ -134,7 +134,7 @@ func TestGenerateDispatchC(t *testing.T) {
 	assertContains(t, out, "testapiDispatchGetItem,")
 	assertContains(t, out, "testapiDispatchDeleteItem,")
 
-	// ── Meta Registration ──
+	// -- Meta Registration --
 	assertContains(t, out, "func init() {")
 	assertContains(t, out, "apiserver.RegisterMeta(TestapiMeta)")
 }
