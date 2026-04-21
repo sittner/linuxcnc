@@ -5,14 +5,13 @@ package launcher
 /*
 #define _GNU_SOURCE
 #include <dlfcn.h>
+#include <stdlib.h>
 
-// dl_handle_for_gomod resolves a dlopen handle from an arbitrary address
-// inside the plugin .so (typically the "New" symbol).  RTLD_NOLOAD bumps the
-// refcount without re-loading; the caller must dlclose() at shutdown.
-static void *dl_handle_for_gomod(void *addr) {
-    Dl_info info;
-    if (dladdr(addr, &info) == 0 || !info.dli_fname) return NULL;
-    return dlopen(info.dli_fname, RTLD_NOW | RTLD_NOLOAD);
+// dl_handle_for_gomod_path opens the already-loaded plugin .so by path.
+// RTLD_NOLOAD bumps the refcount without re-loading; the caller must
+// dlclose() at shutdown.
+static void *dl_handle_for_gomod_path(const char *path) {
+    return dlopen(path, RTLD_NOW | RTLD_NOLOAD);
 }
 */
 import "C"
@@ -81,10 +80,12 @@ func (l *Launcher) loadGoPlugin(path string, name string, args []string) error {
 		return fmt.Errorf("load Go plugin %q: \"New\" symbol has wrong type %T (expected *gomodule.Factory)", path, sym)
 	}
 
-	// Resolve dlopen handle via dladdr on the New symbol address.
+	// Resolve dlopen handle for the plugin .so by path.
 	// This handle is needed so that gomod .so files with RT components
 	// can be mlocked (the module passes it to hal_init).
-	dlHandle := C.dl_handle_for_gomod(unsafe.Pointer(factoryPtr))
+	cPath := C.CString(path)
+	dlHandle := C.dl_handle_for_gomod_path(cPath)
+	C.free(unsafe.Pointer(cPath))
 	if dlHandle == nil {
 		l.logger.Warn("Go plugin: could not resolve dl_handle via dladdr", "path", path)
 	}
