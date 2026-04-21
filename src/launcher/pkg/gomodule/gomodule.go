@@ -74,4 +74,4 @@ type Module interface {
 //	load mymodule <inst1,inst2> config=/path/to/config.ini
 //
 // creates two instances named "inst1" and "inst2", each receiving the same args.
-type Factory func(ini *inifile.IniFile, logger *slog.Logger, name string, args []string) (Module, error)
+type Factory func(host Host, ini *inifile.IniFile, logger *slog.Logger, name string, args []string) (Module, error)

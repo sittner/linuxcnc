@@ -24,6 +24,7 @@ import (
 	"unsafe"
 
 	"github.com/sittner/linuxcnc/src/launcher/internal/config"
+	"github.com/sittner/linuxcnc/src/launcher/pkg/apiserver"
 	"github.com/sittner/linuxcnc/src/launcher/pkg/gomodule"
 )
 
@@ -90,7 +91,12 @@ func (l *Launcher) loadGoPlugin(path string, name string, args []string) error {
 		l.logger.Warn("Go plugin: could not resolve dl_handle via dladdr", "path", path)
 	}
 
-	mod, err := (*factoryPtr)(l.ini, l.logger, name, args)
+	// Build a Host adapter wrapping the global API registry so the
+	// plugin can register metadata and instances without importing
+	// the heavy apiserver package (saves ~3 MB of crypto/tls).
+	host := &registryHost{}
+
+	mod, err := (*factoryPtr)(host, l.ini, l.logger, name, args)
 	if err != nil {
 		if dlHandle != nil {
 			C.dlclose(dlHandle)
@@ -136,4 +142,21 @@ func (l *Launcher) destroyGoModules() {
 			C.dlclose(gm.handle)
 		}
 	}
+}
+
+// registryHost implements gomodule.Host by delegating to the global
+// apiserver.Registry.  Passed to every gomod Factory so plugins never
+// need to import pkg/apiserver.
+type registryHost struct{}
+
+func (h *registryHost) RegisterMeta(meta *gomodule.APIMeta) {
+	apiserver.RegisterMeta(meta)
+}
+
+func (h *registryHost) Register(apiName string, version int, instance string, callbacks unsafe.Pointer) error {
+	reg := apiserver.DefaultRegistry()
+	if reg == nil {
+		return fmt.Errorf("no API registry available")
+	}
+	return reg.Register(apiName, version, instance, callbacks)
 }

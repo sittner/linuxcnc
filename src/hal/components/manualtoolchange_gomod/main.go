@@ -135,7 +135,6 @@ import (
 	"log/slog"
 	"unsafe"
 
-	"github.com/sittner/linuxcnc/src/launcher/pkg/apiserver"
 	"github.com/sittner/linuxcnc/src/launcher/pkg/gomodule"
 	"github.com/sittner/linuxcnc/src/launcher/pkg/inifile"
 )
@@ -169,12 +168,12 @@ func dispatchConfirm(callbacks unsafe.Pointer, req []byte) ([]byte, error) {
 
 // --- API metadata ---
 
-var meta = &apiserver.APIMeta{
+var meta = &gomodule.APIMeta{
 	Name:       "manualtoolchange",
 	Version:    1,
 	RESTExport: true,
 	Prefix:     "manualtoolchange",
-	Funcs: []apiserver.FuncMeta{
+	Funcs: []gomodule.FuncMeta{
 		{
 			Name:     "get_state",
 			Method:   "GET",
@@ -192,9 +191,8 @@ var meta = &apiserver.APIMeta{
 	},
 }
 
-func init() {
-	apiserver.RegisterMeta(meta)
-}
+// host is set by the Factory at load time; used for deferred registration.
+var host gomodule.Host
 
 // --- gomodule.Module implementation ---
 
@@ -213,24 +211,21 @@ func (m *mtcModule) Destroy() {
 }
 
 // New is the gomodule.Factory entry point.
-var New gomodule.Factory = func(ini *inifile.IniFile, logger *slog.Logger, name string, args []string) (gomodule.Module, error) {
+var New gomodule.Factory = func(h gomodule.Host, ini *inifile.IniFile, logger *slog.Logger, name string, args []string) (gomodule.Module, error) {
+	host = h
+	host.RegisterMeta(meta)
+
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
 
-	// Resolve dl_handle for this plugin so hal_init_ex can track it for mlock.
-	// The gomod loader already resolved it; we pass nil here and let
-	// hal_init_ex use the comp name for tracking.
 	inst := C.mtc_create(cName, nil)
 	if inst == nil {
 		return nil, fmt.Errorf("manualtoolchange: C init failed for %q", name)
 	}
 
 	// Register API instance — dispatch functions call C directly via inst pointer.
-	reg := apiserver.DefaultRegistry()
-	if reg != nil {
-		if err := reg.Register("manualtoolchange", 1, name, unsafe.Pointer(inst)); err != nil {
-			logger.Error("manualtoolchange: API registration failed", "error", err)
-		}
+	if err := host.Register("manualtoolchange", 1, name, unsafe.Pointer(inst)); err != nil {
+		logger.Error("manualtoolchange: API registration failed", "error", err)
 	}
 
 	return &mtcModule{inst: inst, name: name, logger: logger}, nil
