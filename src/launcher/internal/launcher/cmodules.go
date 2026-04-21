@@ -29,9 +29,43 @@ extern int gomc_api_register_cb(void *ctx, char *api_name, int version,
 extern void *gomc_api_get_cb(void *ctx, char *api_name, int version,
                              char *instance_name);
 
+// --- RT module handle tracking ---
+//
+// Modules that call hal_init() with GOMC_HAL_COMP_REALTIME have their
+// dl_handle recorded here.  The Go side batch-locks / unlocks these
+// before starting / after stopping HAL threads.  Works for both cmod
+// and gomod — the interception point is gomc_hal_init_cb which every
+// module's hal->init() delegates to.
+
+static void **rt_dl_handles = NULL;
+static int    rt_dl_count   = 0;
+static int    rt_dl_cap     = 0;
+
+static void rt_dl_handles_add(void *handle) {
+    for (int i = 0; i < rt_dl_count; i++)
+        if (rt_dl_handles[i] == handle) return;  // deduplicate
+    if (rt_dl_count >= rt_dl_cap) {
+        rt_dl_cap = rt_dl_cap ? rt_dl_cap * 2 : 8;
+        rt_dl_handles = realloc(rt_dl_handles, rt_dl_cap * sizeof(void *));
+    }
+    rt_dl_handles[rt_dl_count++] = handle;
+}
+
+static void rt_dl_handles_free(void) {
+    free(rt_dl_handles);
+    rt_dl_handles = NULL;
+    rt_dl_count = 0;
+    rt_dl_cap = 0;
+}
+
+static int rt_dl_handles_len(void) { return rt_dl_count; }
+static void *rt_dl_handles_get(int i) { return rt_dl_handles[i]; }
+
 // --- Pass-through HAL callbacks (delegate to liblinuxcnchal.so) ---
 
 static int gomc_hal_init_cb(void *ctx, const char *name, void *dl_handle, int type) {
+    if (type == GOMC_HAL_COMP_REALTIME && dl_handle)
+        rt_dl_handles_add(dl_handle);
     return hal_init_ex(name, dl_handle, (component_type_t)type);
 }
 
@@ -374,23 +408,22 @@ func (l *Launcher) startCModuleByName(name string) error {
 	return fmt.Errorf("C module %q not loaded", name)
 }
 
-// lockCModules locks the PT_LOAD segments of all loaded C plugin .so files
-// into memory. Call after all components are initialized, before starting
-// RT threads.
-func (l *Launcher) lockCModules() {
-	for _, cm := range l.cModules {
-		if cm.handle != nil {
-			halcmd.LockDLHandle(unsafe.Pointer(cm.handle))
-		}
+// lockRTModules locks the PT_LOAD segments of all module .so files that
+// registered at least one GOMC_HAL_COMP_REALTIME component.  The set of
+// handles is maintained by gomc_hal_init_cb (C side) and covers both
+// cmod and gomod .so files.
+func (l *Launcher) lockRTModules() {
+	n := int(C.rt_dl_handles_len())
+	for i := 0; i < n; i++ {
+		halcmd.LockDLHandle(C.rt_dl_handles_get(C.int(i)))
 	}
 }
 
-// unlockCModules unlocks the PT_LOAD segments of all loaded C plugin .so files.
-func (l *Launcher) unlockCModules() {
-	for _, cm := range l.cModules {
-		if cm.handle != nil {
-			halcmd.UnlockDLHandle(unsafe.Pointer(cm.handle))
-		}
+// unlockRTModules unlocks the PT_LOAD segments locked by lockRTModules.
+func (l *Launcher) unlockRTModules() {
+	n := int(C.rt_dl_handles_len())
+	for i := 0; i < n; i++ {
+		halcmd.UnlockDLHandle(C.rt_dl_handles_get(C.int(i)))
 	}
 }
 
@@ -405,7 +438,7 @@ func (l *Launcher) stopCModules() {
 // order, unlocks and closes the dlopen handles, stops the log drain, and
 // frees all arena-tracked strings and gomc env structs.
 func (l *Launcher) destroyCModules() {
-	l.unlockCModules()
+	l.unlockRTModules()
 	for i := len(l.cModules) - 1; i >= 0; i-- {
 		cm := l.cModules[i]
 		C.cmod_call_destroy(cm.mod)
@@ -429,4 +462,6 @@ func (l *Launcher) destroyCModules() {
 		C.free(p)
 	}
 	l.cModArena = nil
+	// Free the RT handle tracking array.
+	C.rt_dl_handles_free()
 }
