@@ -31,7 +31,6 @@ import (
 	"github.com/sittner/linuxcnc/src/launcher/internal/halrest"
 	"github.com/sittner/linuxcnc/src/launcher/internal/lockfile"
 	"github.com/sittner/linuxcnc/src/launcher/internal/realtime"
-	"github.com/sittner/linuxcnc/src/launcher/pkg/gomodule"
 	"github.com/sittner/linuxcnc/src/launcher/pkg/inifile"
 )
 
@@ -67,7 +66,7 @@ type Launcher struct {
 	cleanupOnce  sync.Once          // ensures cleanup runs exactly once
 	appProcesses []*exec.Cmd        // [APPLICATIONS]APP background processes
 	halComp      *hal.Component     // launcher's HAL component (like halcmd's hal_init)
-	goModules    []gomodule.Module  // Go plugin modules loaded via "load" command
+	goModules    []*goModule        // Go plugin modules loaded via "load" command
 	cModules     []*cModule         // C plugin modules loaded via "load" command
 	cModArena    []unsafe.Pointer   // arena-tracked C strings freed in destroyCModules
 	logRing      *gomcLogRing       // shared log ring buffer for C module FIFO logging
@@ -421,7 +420,7 @@ func (l *Launcher) Run() (runErr error) {
 	}
 
 	// 6d. Lock C plugin memory and start HAL threads (step 4.3.10).
-	l.lockCModules()
+	l.lockRTModules()
 	if err := l.startHalThreads(); err != nil {
 		return fmt.Errorf("hal start threads: %w", err)
 	}
