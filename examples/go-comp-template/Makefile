@@ -1,16 +1,15 @@
-# Makefile for a Go HAL plugin (.so)
+# Makefile for a Go module compiled into gomc-server
 #
-# Uses modcompile to locate LinuxCNC paths and the exact Go binary used to
-# build LinuxCNC. This guarantees the plugin is compiled with the same Go
-# toolchain as linuxcnc-launcher (a hard requirement for Go plugins).
+# Uses modcompile to locate LinuxCNC paths and compile the module
+# into the gomc-server binary.
 #
 # Usage:
-#   make            - build mygomodule.so in the current directory
-#   make install    - install to GOMC_GOMOD_DIR (auto-detected via modcompile)
-#   make clean      - remove build artifacts
+#   make            - verify the module compiles locally
+#   make install    - copy into gomc, register, and rebuild gomc-server
+#   make uninstall  - remove from gomc and rebuild gomc-server
+#   make clean      - remove local build artifacts
 
-PLUGIN_NAME ?= mygomodule
-PLUGIN_SO   := $(PLUGIN_NAME).so
+MODULE_NAME ?= mygomodule
 
 # ---------------------------------------------------------------------------
 # Get paths from modcompile
@@ -20,14 +19,12 @@ ifneq ($(MODCOMPILE),)
 $(eval $(shell $(MODCOMPILE) --print-make-inc))
 endif
 
-CGO_LDFLAGS ?= -Wl,-rpath,$(GOMC_LIB_DIR)
-
 # ---------------------------------------------------------------------------
 # Targets
 # ---------------------------------------------------------------------------
-.PHONY: all install clean check-env
+.PHONY: all compile install uninstall clean check-env
 
-all: check-env go.work $(PLUGIN_SO)
+all: compile
 
 check-env:
 	@if [ -z "$(MODCOMPILE)" ]; then \
@@ -35,12 +32,18 @@ check-env:
 		echo "Source rip-environment or install LinuxCNC."; \
 		exit 1; \
 	fi
-	@if [ ! -d "$(GOMC_LAUNCHER_DIR)" ]; then \
-		echo "Error: launcher not found at $(GOMC_LAUNCHER_DIR)"; \
-		exit 1; \
-	fi
 	@echo "GO:       $(GOMC_GO)"
-	@echo "launcher: $(GOMC_LAUNCHER_DIR)"
+	@echo "gomc dir: $(GOMC_LAUNCHER_DIR)"
+
+# Compile locally to verify the module builds before installing.
+# Uses go.work to resolve the gomc module dependency from the local tree.
+compile: check-env go.work
+	@echo "Compiling $(MODULE_NAME)..."
+	CGO_ENABLED=1 \
+	CGO_LDFLAGS="-Wl,-rpath,$(GOMC_LIB_DIR)" \
+	GOTOOLCHAIN=local \
+	$(GOMC_GO) build ./...
+	@echo "$(MODULE_NAME) compiles OK"
 
 go.work: go.mod
 	@rm -f go.work go.work.sum
@@ -49,15 +52,14 @@ go.work: go.mod
 	GOTOOLCHAIN=local $(GOMC_GO) work edit \
 		-replace github.com/sittner/linuxcnc/src/gomc=$(GOMC_LAUNCHER_DIR)
 
-$(PLUGIN_SO): main.go go.mod go.work
-	CGO_ENABLED=1 \
-	CGO_LDFLAGS="$(CGO_LDFLAGS)" \
-	GOTOOLCHAIN=local \
-	$(GOMC_GO) build -buildmode=plugin -o $(PLUGIN_SO) .
+# Install: copy source into gomc/external/<name>/, register, and rebuild.
+install: check-env compile
+	$(MODCOMPILE) add-gomod .
 
-install: $(PLUGIN_SO)
-	install -d $(DESTDIR)$(GOMC_GOMOD_DIR)
-	install -m 644 $(PLUGIN_SO) $(DESTDIR)$(GOMC_GOMOD_DIR)/$(PLUGIN_SO)
+# Uninstall: remove from registry and delete source copy.
+# Uses the directory name, which is the registry key for add-gomod.
+uninstall: check-env
+	$(MODCOMPILE) rm-gomod $(notdir $(CURDIR))
 
 clean:
-	rm -f $(PLUGIN_SO) go.work go.work.sum
+	rm -f go.work go.work.sum

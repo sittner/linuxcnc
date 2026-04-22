@@ -1,8 +1,10 @@
 # Built binaries (when running go build from module root)
 /ads-xml-gen
-/gmicompile
 /gomc-server
 /modcompile
 
 # Generated code (produced by gmicompile from .gmi IDL files)
 /generated/
+
+# External Go modules installed via modcompile add-gomod
+/external/

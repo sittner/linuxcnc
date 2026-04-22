@@ -19,9 +19,9 @@
 // Package registry commands:
 //
 //	list             List registered packages.
-//	rebuild          Regenerate imports_generated.go + go.work, rebuild gomc-server.
-//	add-gomod        Register a Go package and rebuild gomc-server.
-//	rm-gomod         Unregister a Go package and rebuild gomc-server.
+//	rebuild          Regenerate imports_generated.go and rebuild gomc-server.
+//	add-gomod        Copy a Go package into gomc and rebuild gomc-server.
+//	rm-gomod         Remove a Go package and rebuild gomc-server.
 //
 // Environment query options (for external Makefiles):
 //
@@ -37,6 +37,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -83,8 +84,8 @@ GMI code generation (.gmi):
 Package registry commands:
     list             List packages compiled into gomc-server
     rebuild          Regenerate imports + rebuild gomc-server from packages.conf
-    add-gomod <dir>  Register a Go package directory and rebuild gomc-server
-    rm-gomod <name>  Unregister a Go package and rebuild gomc-server
+    add-gomod <dir>  Copy a Go package into gomc, register, and rebuild
+    rm-gomod <name>  Unregister, delete source, and rebuild gomc-server
 
 Environment query options (for external Makefiles):
     --cflags         Print compiler flags for cmod components
@@ -165,11 +166,20 @@ func main() {
 		cmdRebuild()
 		return
 	case "add-gomod":
-		if len(os.Args) < 3 {
+		force := false
+		var dir string
+		for _, a := range os.Args[2:] {
+			if a == "--force" || a == "-f" {
+				force = true
+			} else if !strings.HasPrefix(a, "-") {
+				dir = a
+			}
+		}
+		if dir == "" {
 			fmt.Fprintln(os.Stderr, "modcompile add-gomod: missing directory argument")
 			os.Exit(1)
 		}
-		cmdAddGomod(os.Args[2])
+		cmdAddGomod(dir, force)
 		return
 	case "rm-gomod":
 		if len(os.Args) < 3 {
@@ -421,17 +431,12 @@ func loadRegistry() *pkgreg.Registry {
 	return reg
 }
 
-// regenerate writes imports_generated.go and go.work from the registry.
+// regenerate writes imports_generated.go from the registry.
 func regenerate(reg *pkgreg.Registry) {
 	serverDir := config.EMC2LauncherDir
 
 	if err := reg.GenerateImports(serverDir); err != nil {
 		fmt.Fprintf(os.Stderr, "modcompile: generating imports: %v\n", err)
-		os.Exit(1)
-	}
-
-	if err := reg.GenerateGoWork(serverDir); err != nil {
-		fmt.Fprintf(os.Stderr, "modcompile: generating go.work: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -532,11 +537,7 @@ func buildServer() {
 func cmdList() {
 	reg := loadRegistry()
 	for _, e := range reg.Entries {
-		if e.UseDir != "" {
-			fmt.Printf("%-8s %-50s %s\n", e.Type, e.ImportPath, e.UseDir)
-		} else {
-			fmt.Printf("%-8s %s\n", e.Type, e.ImportPath)
-		}
+		fmt.Printf("%-8s %s\n", e.Type, e.ImportPath)
 	}
 }
 
@@ -547,8 +548,8 @@ func cmdRebuild() {
 	buildServer()
 }
 
-// cmdAddGomod adds an external Go package to the registry and rebuilds.
-func cmdAddGomod(dir string) {
+// cmdAddGomod copies an external Go package into external/<name>/ and rebuilds.
+func cmdAddGomod(dir string, force bool) {
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "modcompile add-gomod: resolving path: %v\n", err)
@@ -562,65 +563,100 @@ func cmdAddGomod(dir string) {
 		os.Exit(1)
 	}
 
-	// Read the module path from go.mod (first "module" line).
-	goModData, err := os.ReadFile(goModPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "modcompile add-gomod: reading go.mod: %v\n", err)
-		os.Exit(1)
-	}
-	modulePath := ""
-	for _, line := range strings.Split(string(goModData), "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "module ") {
-			modulePath = strings.TrimSpace(strings.TrimPrefix(line, "module"))
-			break
+	// Package name = directory basename.
+	name := filepath.Base(absDir)
+	importPath := "external/" + name
+	extDir := filepath.Join(config.EMC2LauncherDir, "external", name)
+	originFile := filepath.Join(extDir, ".origin")
+
+	// Check for collision.
+	if info, err := os.Stat(extDir); err == nil && info.IsDir() {
+		originData, _ := os.ReadFile(originFile)
+		existingOrigin := strings.TrimSpace(string(originData))
+		if existingOrigin == absDir {
+			// Same source — auto-force (reinstall).
+			fmt.Fprintf(os.Stderr, "Reinstalling %s from %s\n", name, absDir)
+		} else if !force {
+			fmt.Fprintf(os.Stderr, "modcompile add-gomod: external/%s already installed", name)
+			if existingOrigin != "" {
+				fmt.Fprintf(os.Stderr, " from %s", existingOrigin)
+			}
+			fmt.Fprintf(os.Stderr, "\nUse --force to overwrite.\n")
+			os.Exit(1)
+		} else {
+			fmt.Fprintf(os.Stderr, "Overwriting external/%s (--force)\n", name)
 		}
 	}
-	if modulePath == "" {
-		fmt.Fprintf(os.Stderr, "modcompile add-gomod: could not find module path in %s\n", goModPath)
+
+	// rsync --delete source into external/<name>/.
+	if err := os.MkdirAll(extDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "modcompile add-gomod: creating directory: %v\n", err)
 		os.Exit(1)
 	}
 
-	reg := loadRegistry()
-	e := pkgreg.Entry{
-		Type:       pkgreg.TypeGomod,
-		ImportPath: modulePath,
-		UseDir:     absDir,
+	// Mirror source directory into external/<name>/, excluding build artifacts
+	// and module boundary files (the copy becomes a sub-package of the gomc module).
+	excludeSet := map[string]bool{
+		".git": true, "go.work": true, "go.work.sum": true,
+		"go.mod": true, "go.sum": true,
 	}
-	if !reg.Add(e) {
-		fmt.Fprintf(os.Stderr, "modcompile add-gomod: %s is already registered\n", modulePath)
+	if err := dirMirror(absDir, extDir, excludeSet); err != nil {
+		fmt.Fprintf(os.Stderr, "modcompile add-gomod: copying files: %v\n", err)
 		os.Exit(1)
 	}
+
+	// Write .origin to track where the source came from.
+	if err := os.WriteFile(originFile, []byte(absDir+"\n"), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "modcompile add-gomod: writing .origin: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Update package registry.
+	reg := loadRegistry()
+	reg.Remove(importPath) // remove old entry if reinstalling
+	reg.Add(pkgreg.Entry{Type: pkgreg.TypeGomod, ImportPath: importPath})
 
 	if err := reg.WriteFile(packagesConfPath()); err != nil {
 		fmt.Fprintf(os.Stderr, "modcompile add-gomod: writing packages.conf: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Fprintf(os.Stderr, "Added %s (%s)\n", modulePath, absDir)
+	fmt.Fprintf(os.Stderr, "Installed %s → external/%s\n", absDir, name)
 	regenerate(reg)
 	buildServer()
 }
 
-// cmdRmGomod removes a Go package from the registry and rebuilds.
+// cmdRmGomod removes a Go package from the registry, deletes its source, and rebuilds.
 func cmdRmGomod(name string) {
 	reg := loadRegistry()
 
 	// Try exact match first, then basename match.
-	found := false
-	for _, e := range reg.Entries {
+	var found *pkgreg.Entry
+	for i := range reg.Entries {
+		e := &reg.Entries[i]
 		if e.ImportPath == name || filepath.Base(e.ImportPath) == name {
-			if reg.Remove(e.ImportPath) {
-				fmt.Fprintf(os.Stderr, "Removed %s\n", e.ImportPath)
-				found = true
-				break
-			}
+			found = e
+			break
 		}
 	}
 
-	if !found {
+	if found == nil {
 		fmt.Fprintf(os.Stderr, "modcompile rm-gomod: %s not found in registry\n", name)
 		os.Exit(1)
+	}
+
+	importPath := found.ImportPath
+	reg.Remove(importPath)
+	fmt.Fprintf(os.Stderr, "Removed %s from registry\n", importPath)
+
+	// If the package lives under external/, delete its directory.
+	if strings.HasPrefix(importPath, "external/") {
+		extDir := filepath.Join(config.EMC2LauncherDir, importPath)
+		if err := os.RemoveAll(extDir); err != nil {
+			fmt.Fprintf(os.Stderr, "modcompile rm-gomod: removing %s: %v\n", extDir, err)
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stderr, "Deleted %s\n", extDir)
 	}
 
 	if err := reg.WriteFile(packagesConfPath()); err != nil {
@@ -630,6 +666,90 @@ func cmdRmGomod(name string) {
 
 	regenerate(reg)
 	buildServer()
+}
+
+// ---------------------------------------------------------------------------
+// Directory mirror (pure Go, replaces rsync -a --delete)
+// ---------------------------------------------------------------------------
+
+// dirMirror copies srcDir into dstDir, mirroring the contents exactly.
+// Files in dstDir that don't exist in srcDir are deleted (except .origin).
+// Top-level entries whose name is in exclude are skipped during copy.
+func dirMirror(srcDir, dstDir string, exclude map[string]bool) error {
+	// Phase 1: copy / update files from src → dst.
+	srcSet := make(map[string]bool) // relative paths present in source
+	err := filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(srcDir, path)
+		if rel == "." {
+			return nil
+		}
+
+		// Skip excluded top-level entries.
+		topLevel := strings.SplitN(rel, string(filepath.Separator), 2)[0]
+		if exclude[topLevel] {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		srcSet[rel] = true
+		dst := filepath.Join(dstDir, rel)
+
+		if info.IsDir() {
+			return os.MkdirAll(dst, info.Mode()|0700)
+		}
+
+		// Copy file if it doesn't exist or differs in size/modtime.
+		dstInfo, dstErr := os.Lstat(dst)
+		if dstErr == nil && dstInfo.Size() == info.Size() && !dstInfo.ModTime().Before(info.ModTime()) {
+			return nil // up to date
+		}
+
+		return copyFile(path, dst, info.Mode())
+	})
+	if err != nil {
+		return fmt.Errorf("copying: %w", err)
+	}
+
+	// Phase 2: delete files in dst that are not in src (except .origin).
+	return filepath.Walk(dstDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(dstDir, path)
+		if rel == "." || rel == ".origin" {
+			return nil
+		}
+		if !srcSet[rel] {
+			if info.IsDir() {
+				os.RemoveAll(path)
+				return filepath.SkipDir
+			}
+			os.Remove(path)
+		}
+		return nil
+	})
+}
+
+func copyFile(src, dst string, mode os.FileMode) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, in)
+	return err
 }
 
 // ---------------------------------------------------------------------------

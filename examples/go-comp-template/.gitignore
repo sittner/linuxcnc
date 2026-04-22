@@ -1,4 +1,3 @@
 # Build artifacts
-*.so
 go.work
 go.work.sum
