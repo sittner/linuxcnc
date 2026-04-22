@@ -789,10 +789,12 @@ class HAL:
                 if not self.d.frontend in (_PD._QTDRAGON,_PD._GMOCCAPY):
                     print(_("#  ---Use external manual tool change dialog---"), file=file)
                     print(file=file)
-                    print("loadusr -W hal_manualtoolchange", file=file)
-                    print("net tool-change-request    =>  hal_manualtoolchange.change", file=file)
-                    print("net tool-change-confirmed  <=  hal_manualtoolchange.changed", file=file)
-                    print("net tool-number            =>  hal_manualtoolchange.number", file=file)
+                    print("load manualtoolchange", file=file)
+                    print("addf manualtoolchange servo-thread", file=file)
+                    print("loadusr manualtoolchange_ui", file=file)
+                    print("net tool-change-request    =>  manualtoolchange.change", file=file)
+                    print("net tool-change-confirmed  <=  manualtoolchange.changed", file=file)
+                    print("net tool-number            =>  manualtoolchange.number", file=file)
                     print(file=file)
 
                 if self.d.frontend == _PD._GMOCCAPY:
@@ -829,9 +831,9 @@ class HAL:
                         f1 = open(qt, "w")
                         print(_("#  ---manual tool change signals to qtdragon's dialog---"), file=f1)
                         print(file=f1)
-                        print("net tool-change-request    => hal_manualtoolchange.change", file=f1)
-                        print("net tool-change-confirmed  <= hal_manualtoolchange.changed", file=f1)
-                        print("net tool-number            => hal_manualtoolchange.number", file=f1)
+                        print("net tool-change-request    => manualtoolchange.change", file=f1)
+                        print("net tool-change-confirmed  <= manualtoolchange.changed", file=f1)
+                        print("net tool-number            => manualtoolchange.number", file=f1)
                         f1.close()
 
                 print(_("#  ---ignore tool prepare requests---"), file=file)

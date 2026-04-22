@@ -277,7 +277,9 @@ proc make_ddts {number_of_joints} {
 
 proc use_hal_manualtoolchange {} {
   # adapted as haltcl proc from axis_manualtoolchange.hal
-  loadusr -W hal_manualtoolchange
+  load manualtoolchange
+  addf manualtoolchange servo-thread
+  loadusr manualtoolchange_ui
 
   # disconnect if previously connected:
   unlinkp iocontrol.tool-change
@@ -286,12 +288,12 @@ proc use_hal_manualtoolchange {} {
   delsig tool:change-loop
 
   net tool:change <= iocontrol.tool-change
-  net tool:change => hal_manualtoolchange.change
+  net tool:change => manualtoolchange.change
 
-  net tool:changed <= hal_manualtoolchange.changed
+  net tool:changed <= manualtoolchange.changed
   net tool:changed => iocontrol.tool-changed
 
-  net tool:prep-number <= hal_manualtoolchange.number
+  net tool:prep-number <= manualtoolchange.number
   net tool:prep-number => iocontrol.tool-prep-number
 } ;# use_hal_manualtoolchange
 
@@ -448,8 +450,10 @@ proc save_hal_cmds {savefilename {options ""} } {
 #
 "
   if {[lsearch $options use_hal_manualtoolchange] >= 0} {
-    puts $fd "# user space components"
-    puts $fd "loadusr -W hal_manualtoolchange"
+    puts $fd "# manualtoolchange cmod + UI"
+    puts $fd "load manualtoolchange"
+    puts $fd "addf manualtoolchange servo-thread"
+    puts $fd "loadusr manualtoolchange_ui"
     puts $fd ""
   }
 

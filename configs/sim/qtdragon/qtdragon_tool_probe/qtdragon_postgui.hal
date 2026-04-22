@@ -6,9 +6,9 @@ unlinkp iocontrol.tool-change
 unlinkp iocontrol.tool-changed
 unlinkp iocontrol.tool-prep-number
 
-net tool-change      hal_manualtoolchange.change   <=  iocontrol.tool-change 
-net tool-changed     hal_manualtoolchange.changed  <=  iocontrol.tool-changed
-net tool-prep-number hal_manualtoolchange.number   <=  iocontrol.tool-prep-number
+net tool-change      manualtoolchange.change   <=  iocontrol.tool-change 
+net tool-changed     manualtoolchange.changed  <=  iocontrol.tool-changed
+net tool-prep-number manualtoolchange.number   <=  iocontrol.tool-prep-number
 
 # external offset spindle auto raise on pause
 net spindle-pause     qtdragon.spindle-inhibit spindle.0.inhibit

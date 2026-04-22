@@ -3,9 +3,9 @@
 # unlink hal_manual_toolchange so we can connect to gscreen's
 unlinkp iocontrol.tool-change
 unlinkp iocontrol.tool-changed
-unlinkp hal_manualtoolchange.change
-unlinkp hal_manualtoolchange.changed
-unlinkp hal_manualtoolchange.number
+unlinkp manualtoolchange.change
+unlinkp manualtoolchange.changed
+unlinkp manualtoolchange.number
 
 net tool-change gscreen.change-tool iocontrol.tool-change 
 net tool-changed gscreen.tool-changed iocontrol.tool-changed

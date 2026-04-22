@@ -307,10 +307,12 @@ class HAL:
         print(file=file)
         if self.d.manualtoolchange:
             if not self.d.select_qtdragon:
-                print("loadusr -W hal_manualtoolchange", file=file)
-                print("net tool-change iocontrol.tool-change => hal_manualtoolchange.change", file=file)
-                print("net tool-changed iocontrol.tool-changed <= hal_manualtoolchange.changed", file=file)
-                print("net tool-number iocontrol.tool-prep-number => hal_manualtoolchange.number", file=file)
+                print("load manualtoolchange", file=file)
+                print("addf manualtoolchange servo-thread", file=file)
+                print("loadusr manualtoolchange_ui", file=file)
+                print("net tool-change iocontrol.tool-change => manualtoolchange.change", file=file)
+                print("net tool-changed iocontrol.tool-changed <= manualtoolchange.changed", file=file)
+                print("net tool-number iocontrol.tool-prep-number => manualtoolchange.number", file=file)
             else:
                 print("net tool-change  <= iocontrol.tool-change", file=file)
                 print("net tool-changed  => iocontrol.tool-changed", file=file)
@@ -318,9 +320,9 @@ class HAL:
                 qt = os.path.join(base, "qtvcp_postgui.hal")
                 if not os.path.exists(qt):
                     f1 = open(qt, "w")
-                    print("net tool-change => hal_manualtoolchange.change", file=f1)
-                    print("net tool-changed <= hal_manualtoolchange.changed", file=f1)
-                    print("net tool-number  => hal_manualtoolchange.number", file=f1)
+                    print("net tool-change => manualtoolchange.change", file=f1)
+                    print("net tool-changed <= manualtoolchange.changed", file=f1)
+                    print("net tool-number  => manualtoolchange.number", file=f1)
                     f1.close()
         else:
             print("net tool-number <= iocontrol.tool-prep-number", file=file)

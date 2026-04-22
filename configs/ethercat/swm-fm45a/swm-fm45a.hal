@@ -64,9 +64,11 @@ net voltage-on => iocontrol.0.emc-enable-in
 #
 ###########################################################
 
-loadusr -W hal_manualtoolchange
-net tool-change iocontrol.0.tool-change => hal_manualtoolchange.change
-net tool-changed iocontrol.0.tool-changed <= hal_manualtoolchange.changed
-net tool-number iocontrol.0.tool-prep-number => hal_manualtoolchange.number
+load manualtoolchange
+addf manualtoolchange servo-thread
+loadusr manualtoolchange_ui
+net tool-change iocontrol.0.tool-change => manualtoolchange.change
+net tool-changed iocontrol.0.tool-changed <= manualtoolchange.changed
+net tool-number iocontrol.0.tool-prep-number => manualtoolchange.number
 net tool-prepare-loopback iocontrol.0.tool-prepare => iocontrol.0.tool-prepared
 
