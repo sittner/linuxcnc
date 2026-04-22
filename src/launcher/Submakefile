@@ -60,12 +60,15 @@ LAUNCHER_SRC := $(LAUNCHER_SRC_BASE) \
 # concrete prerequisites here to ensure codegen runs first.
 GMI_KINS_GEN_GO := launcher/generated/gmi/kins/kins_cgo.go
 
+# Generated imports file for compiled-in Go modules.
+IMPORTS_GENERATED := launcher/cmd/gomc-server/imports_generated.go
+
 # Build the gomc-server binary.
 #
 # CGO_LDFLAGS adds -Wl,-rpath so the dynamic linker finds liblinuxcnchal.so
 # and its companions at runtime (RIP and installed builds alike).
 # LIB_DIR is $(EMC2_HOME)/lib, defined in Makefile.inc.
-../bin/gomc-server: $(LAUNCHER_SRC) $(GMI_KINS_GEN_GO) ../lib/liblinuxcnchal.so
+../bin/gomc-server: $(LAUNCHER_SRC) $(GMI_KINS_GEN_GO) $(IMPORTS_GENERATED) ../lib/liblinuxcnchal.so
 	$(ECHO) Building gomc-server
 	$(Q)cd launcher && CGO_LDFLAGS="-Wl,-rpath,$(LIB_DIR)" $(GO) build -ldflags "$(LAUNCHER_LDFLAGS)" -o $(TOP)/bin/gomc-server ./cmd/gomc-server
 

@@ -32,10 +32,6 @@ import (
 	"github.com/sittner/linuxcnc/src/launcher/internal/launcher"
 
 	halcmd "github.com/sittner/linuxcnc/src/launcher/internal/halcmd"
-
-	// Compiled-in Go modules — their init() functions register with the
-	// gomc module registry so they can be loaded via HAL "load" commands.
-	_ "github.com/sittner/linuxcnc/src/launcher/internal/adsmodule"
 )
 
 func init() {

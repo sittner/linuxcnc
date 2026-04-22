@@ -1,4 +1,5 @@
-// modcompile compiles .comp files into cmod .so plugins for linuxcnc-launcher.
+// modcompile compiles .comp files into cmod .so plugins for gomc-server,
+// and manages the package registry for compiled-in Go modules.
 //
 // Usage:
 //
@@ -15,13 +16,19 @@
 //	--install        Compile and install to EMC2_CMOD_DIR.
 //	-o FILE          Write output to FILE (for --preprocess, --document).
 //
+// Package registry commands:
+//
+//	list             List registered packages.
+//	rebuild          Regenerate imports_generated.go + go.work, rebuild gomc-server.
+//	add-gomod        Register a Go package and rebuild gomc-server.
+//	rm-gomod         Unregister a Go package and rebuild gomc-server.
+//
 // Environment query options (for external Makefiles):
 //
 //	--cflags         Print compiler flags for cmod components.
 //	--ldflags        Print linker flags for cmod components.
 //	--cmod-dir       Print cmod installation directory.
 //	--include-dir    Print cmod headers directory.
-//	--gomod-dir      Print gomod directory.
 //	--launcher-dir   Print launcher Go module source directory.
 //	--go             Print Go binary path used to build LinuxCNC.
 //	--print-make-inc Print Makefile include snippet for external projects.
@@ -40,13 +47,15 @@ import (
 	"github.com/sittner/linuxcnc/src/launcher/internal/modcompile/cgen"
 	"github.com/sittner/linuxcnc/src/launcher/internal/modcompile/comp"
 	"github.com/sittner/linuxcnc/src/launcher/internal/modcompile/docgen"
+	"github.com/sittner/linuxcnc/src/launcher/internal/pkgreg"
 )
 
-const usageText = `modcompile: Compile .comp files to cmod shared libraries
+const usageText = `modcompile: Compile .comp files and manage gomc-server packages
 
 Usage:
     modcompile [options] file.comp...
-    modcompile --cflags | --ldflags | --cmod-dir | --include-dir | --gomod-dir
+    modcompile list | rebuild | add-gomod | rm-gomod
+    modcompile --cflags | --ldflags | --cmod-dir | --include-dir
     modcompile --print-make-inc
 
 Compile options:
@@ -59,12 +68,17 @@ Compile options:
     --install        Compile .comp and install to cmod directory
     -o FILE          Write output to FILE (for --preprocess, --document)
 
+Package registry commands:
+    list             List packages compiled into gomc-server
+    rebuild          Regenerate imports + rebuild gomc-server from packages.conf
+    add-gomod <dir>  Register a Go package directory and rebuild gomc-server
+    rm-gomod <name>  Unregister a Go package and rebuild gomc-server
+
 Environment query options (for external Makefiles):
     --cflags         Print compiler flags for cmod components
     --ldflags        Print linker flags for cmod components
     --cmod-dir       Print cmod installation directory
     --include-dir    Print cmod headers directory
-    --gomod-dir      Print gomod directory
     --launcher-dir   Print launcher Go module source directory
     --go             Print Go binary path used to build LinuxCNC
     --print-make-inc Print Makefile include snippet for external projects
@@ -78,14 +92,16 @@ Examples:
     modcompile --document -o mycomp.9 mycomp.comp
     modcompile --view-doc mycomp.comp
 
+    # Manage compiled-in Go modules
+    modcompile list
+    modcompile add-gomod /path/to/galv-formula
+    modcompile rm-gomod galv-formula
+    modcompile rebuild
+
     # Use in external Makefile:
     $(eval $(shell modcompile --print-make-inc))
     mycomp.so: mycomp.c
         $(GOMC_CC) $(GOMC_CFLAGS) -o $@ $< $(GOMC_LDFLAGS)
-
-    # Or query individual flags:
-    CFLAGS := $(shell modcompile --cflags)
-    LDFLAGS := $(shell modcompile --ldflags)
 `
 
 // Compiler/linker settings
@@ -123,6 +139,28 @@ func main() {
 		return
 	case "--print-make-inc":
 		printMakeInc()
+		return
+
+	// Package registry subcommands
+	case "list":
+		cmdList()
+		return
+	case "rebuild":
+		cmdRebuild()
+		return
+	case "add-gomod":
+		if len(os.Args) < 3 {
+			fmt.Fprintln(os.Stderr, "modcompile add-gomod: missing directory argument")
+			os.Exit(1)
+		}
+		cmdAddGomod(os.Args[2])
+		return
+	case "rm-gomod":
+		if len(os.Args) < 3 {
+			fmt.Fprintln(os.Stderr, "modcompile rm-gomod: missing package name argument")
+			os.Exit(1)
+		}
+		cmdRmGomod(os.Args[2])
 		return
 	}
 
@@ -345,4 +383,164 @@ func printMakeInc() {
 		config.GoBinary,
 		libDir,
 	)
+}
+
+// packagesConfPath returns the path to packages.conf in the launcher dir.
+func packagesConfPath() string {
+	return filepath.Join(config.EMC2LauncherDir, "packages.conf")
+}
+
+// loadRegistry reads packages.conf from the launcher directory.
+func loadRegistry() *pkgreg.Registry {
+	reg, err := pkgreg.ReadFile(packagesConfPath())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "modcompile: reading packages.conf: %v\n", err)
+		os.Exit(1)
+	}
+	return reg
+}
+
+// regenerate writes imports_generated.go and go.work from the registry.
+func regenerate(reg *pkgreg.Registry) {
+	serverDir := config.EMC2LauncherDir
+
+	if err := reg.GenerateImports(serverDir); err != nil {
+		fmt.Fprintf(os.Stderr, "modcompile: generating imports: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := reg.GenerateGoWork(serverDir); err != nil {
+		fmt.Fprintf(os.Stderr, "modcompile: generating go.work: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// buildServer builds the gomc-server binary.
+func buildServer() {
+	serverDir := config.EMC2LauncherDir
+	binDir := config.EMC2BinDir
+	gobin := config.GoBinary
+	if gobin == "" {
+		gobin = "go"
+	}
+
+	outPath := filepath.Join(binDir, "gomc-server")
+	cmd := exec.Command(gobin, "build", "-o", outPath, "./cmd/gomc-server")
+	cmd.Dir = serverDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	// Propagate CGO flags for liblinuxcnchal linkage.
+	libDir := filepath.Join(config.EMC2Home, "lib")
+	cmd.Env = append(os.Environ(), "CGO_LDFLAGS=-Wl,-rpath,"+libDir)
+
+	fmt.Fprintf(os.Stderr, "Building gomc-server...\n")
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "modcompile: building gomc-server: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Fprintf(os.Stderr, "gomc-server built successfully: %s\n", outPath)
+}
+
+// cmdList lists all packages in the registry.
+func cmdList() {
+	reg := loadRegistry()
+	for _, e := range reg.Entries {
+		if e.UseDir != "" {
+			fmt.Printf("%-8s %-50s %s\n", e.Type, e.ImportPath, e.UseDir)
+		} else {
+			fmt.Printf("%-8s %s\n", e.Type, e.ImportPath)
+		}
+	}
+}
+
+// cmdRebuild regenerates derived files and rebuilds the server.
+func cmdRebuild() {
+	reg := loadRegistry()
+	regenerate(reg)
+	buildServer()
+}
+
+// cmdAddGomod adds an external Go package to the registry and rebuilds.
+func cmdAddGomod(dir string) {
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "modcompile add-gomod: resolving path: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Validate the directory exists and has a go.mod.
+	goModPath := filepath.Join(absDir, "go.mod")
+	if _, err := os.Stat(goModPath); err != nil {
+		fmt.Fprintf(os.Stderr, "modcompile add-gomod: %s does not exist or has no go.mod\n", absDir)
+		os.Exit(1)
+	}
+
+	// Read the module path from go.mod (first "module" line).
+	goModData, err := os.ReadFile(goModPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "modcompile add-gomod: reading go.mod: %v\n", err)
+		os.Exit(1)
+	}
+	modulePath := ""
+	for _, line := range strings.Split(string(goModData), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "module ") {
+			modulePath = strings.TrimSpace(strings.TrimPrefix(line, "module"))
+			break
+		}
+	}
+	if modulePath == "" {
+		fmt.Fprintf(os.Stderr, "modcompile add-gomod: could not find module path in %s\n", goModPath)
+		os.Exit(1)
+	}
+
+	reg := loadRegistry()
+	e := pkgreg.Entry{
+		Type:       pkgreg.TypeGomod,
+		ImportPath: modulePath,
+		UseDir:     absDir,
+	}
+	if !reg.Add(e) {
+		fmt.Fprintf(os.Stderr, "modcompile add-gomod: %s is already registered\n", modulePath)
+		os.Exit(1)
+	}
+
+	if err := reg.WriteFile(packagesConfPath()); err != nil {
+		fmt.Fprintf(os.Stderr, "modcompile add-gomod: writing packages.conf: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Fprintf(os.Stderr, "Added %s (%s)\n", modulePath, absDir)
+	regenerate(reg)
+	buildServer()
+}
+
+// cmdRmGomod removes a Go package from the registry and rebuilds.
+func cmdRmGomod(name string) {
+	reg := loadRegistry()
+
+	// Try exact match first, then basename match.
+	found := false
+	for _, e := range reg.Entries {
+		if e.ImportPath == name || filepath.Base(e.ImportPath) == name {
+			if reg.Remove(e.ImportPath) {
+				fmt.Fprintf(os.Stderr, "Removed %s\n", e.ImportPath)
+				found = true
+				break
+			}
+		}
+	}
+
+	if !found {
+		fmt.Fprintf(os.Stderr, "modcompile rm-gomod: %s not found in registry\n", name)
+		os.Exit(1)
+	}
+
+	if err := reg.WriteFile(packagesConfPath()); err != nil {
+		fmt.Fprintf(os.Stderr, "modcompile rm-gomod: writing packages.conf: %v\n", err)
+		os.Exit(1)
+	}
+
+	regenerate(reg)
+	buildServer()
 }
