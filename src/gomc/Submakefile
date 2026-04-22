@@ -158,26 +158,15 @@ TARGETS += ../bin/gomc-server ../bin/ads-xml-gen $(LAUNCHER_PKG_FILES) $(HAL_GO_
 TARGETS += ../bin/modcompile
 
 # ---------------------------------------------------------------------------
-# gmicompile — .gmi IDL → C/Go code generator
-# ---------------------------------------------------------------------------
-
-../bin/gmicompile: $(LAUNCHER_SRC_BASE)
-	$(ECHO) Building gmicompile
-	@rm -f $@
-	$(Q)cd gomc && $(GO) build -ldflags "$(LAUNCHER_LDFLAGS)" -o $(TOP)/bin/gmicompile ./cmd/gmicompile
-
-TARGETS += ../bin/gmicompile
-
-# ---------------------------------------------------------------------------
 # halcmd — HAL command-line tool (REST-based, replaces legacy C halcmd/halrmt)
 # ---------------------------------------------------------------------------
 
 GMI_HALCMD_GEN_GO := gomc/generated/gmi/halcmd/halcmd_client.go
 
-$(GMI_HALCMD_GEN_GO): gmi/idl/halcmd.gmi ../bin/gmicompile
+$(GMI_HALCMD_GEN_GO): gmi/idl/halcmd.gmi ../bin/modcompile
 	$(ECHO) Generating halcmd REST client
 	@mkdir -p $(dir $@)
-	$(Q)../bin/gmicompile --client-go $(TOP)/src/gmi/idl/halcmd.gmi -o $@
+	$(Q)../bin/modcompile gmi --client-go $(TOP)/src/gmi/idl/halcmd.gmi -o $@
 
 ../bin/halcmd: $(LAUNCHER_SRC_BASE) $(GMI_HALCMD_GEN_GO)
 	$(ECHO) Building halcmd - Go REST client
@@ -196,7 +185,7 @@ clean: gomc-clean
 .PHONY: gomc-clean
 gomc-clean:
 	rm -f ../bin/gomc-server ../bin/ads-xml-gen
-	rm -f ../bin/modcompile ../bin/gmicompile ../bin/halcmd
+	rm -f ../bin/modcompile ../bin/halcmd
 	rm -f $(HAL_GO_EXAMPLES)
 	rm -f $(LAUNCHER_PKG_FILES)
 

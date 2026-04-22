@@ -1,20 +1,21 @@
 # ---------------------------------------------------------------------------
 # GMI code generation
 # ---------------------------------------------------------------------------
-# Runs gmicompile on .gmi IDL files to produce C headers and Go cgo shims.
+# Runs modcompile gmi on .gmi IDL files to produce C headers and Go cgo shims.
 # Generated output goes to gomc/generated/gmi/<api>/ so it is:
 #   - Inside the Go module (importable)
 #   - Separate from hand-written code
 #   - Gitignored (not checked in)
 #
-# This Submakefile must appear in SUBDIRS after 'launcher' (which builds
-# gmicompile) and before any Submakefile that uses the generated headers
+# This Submakefile must appear in SUBDIRS after 'gomc' (which builds
+# modcompile) and before any Submakefile that uses the generated headers
 # (e.g. gmi/kins).
 # ---------------------------------------------------------------------------
 
 ifeq ($(BUILD_GOLANG),yes)
 
-GMICOMPILE := ../bin/gmicompile
+GMICOMPILE := ../bin/modcompile gmi
+GMICOMPILE_BIN := ../bin/modcompile
 
 # IDL source files
 GMI_KINS_IDL := gmi/idl/kins.gmi
@@ -27,7 +28,7 @@ GMI_KINS_GEN := gomc/generated/gmi/kins
 # Only the .h carries the recipe; the .go is a side-effect that depends on
 # the .h so Make knows it exists once the recipe has run.
 
-$(GMI_KINS_GEN)/kins_api.h: $(GMI_KINS_IDL) $(GMICOMPILE)
+$(GMI_KINS_GEN)/kins_api.h: $(GMI_KINS_IDL) $(GMICOMPILE_BIN)
 	$(ECHO) "Generating GMI kins API from $(GMI_KINS_IDL)"
 	@mkdir -p $(GMI_KINS_GEN)
 	$(Q)$(GMICOMPILE) --server-c $(GMI_KINS_IDL) -o $(GMI_KINS_GEN)/kins_api.h
@@ -42,7 +43,7 @@ TARGETS += $(GMI_KINS_GEN)/kins_api.h
 GMI_TP_IDL := gmi/idl/tp.gmi
 GMI_TP_GEN := gomc/generated/gmi/tp
 
-$(GMI_TP_GEN)/tp_api.h: $(GMI_TP_IDL) $(GMICOMPILE)
+$(GMI_TP_GEN)/tp_api.h: $(GMI_TP_IDL) $(GMICOMPILE_BIN)
 	$(ECHO) "Generating GMI tp API from $(GMI_TP_IDL)"
 	@mkdir -p $(GMI_TP_GEN)
 	$(Q)$(GMICOMPILE) --server-c $(GMI_TP_IDL) -o $(GMI_TP_GEN)/tp_api.h
@@ -56,7 +57,7 @@ TARGETS += $(GMI_TP_GEN)/tp_api.h
 GMI_HOME_IDL := gmi/idl/home.gmi
 GMI_HOME_GEN := gomc/generated/gmi/home
 
-$(GMI_HOME_GEN)/home_api.h: $(GMI_HOME_IDL) $(GMICOMPILE)
+$(GMI_HOME_GEN)/home_api.h: $(GMI_HOME_IDL) $(GMICOMPILE_BIN)
 	$(ECHO) "Generating GMI home API from $(GMI_HOME_IDL)"
 	@mkdir -p $(GMI_HOME_GEN)
 	$(Q)$(GMICOMPILE) --server-c $(GMI_HOME_IDL) -o $(GMI_HOME_GEN)/home_api.h
@@ -70,7 +71,7 @@ TARGETS += $(GMI_HOME_GEN)/home_api.h
 GMI_MOT_IDL := gmi/idl/mot.gmi
 GMI_MOT_GEN := gomc/generated/gmi/mot
 
-$(GMI_MOT_GEN)/mot_api.h: $(GMI_MOT_IDL) $(GMICOMPILE)
+$(GMI_MOT_GEN)/mot_api.h: $(GMI_MOT_IDL) $(GMICOMPILE_BIN)
 	$(ECHO) "Generating GMI mot API from $(GMI_MOT_IDL)"
 	@mkdir -p $(GMI_MOT_GEN)
 	$(Q)$(GMICOMPILE) --server-c $(GMI_MOT_IDL) -o $(GMI_MOT_GEN)/mot_api.h
@@ -84,7 +85,7 @@ TARGETS += $(GMI_MOT_GEN)/mot_api.h
 GMI_MTC_IDL := gmi/idl/manualtoolchange.gmi
 GMI_MTC_GEN := gomc/generated/gmi/manualtoolchange
 
-$(GMI_MTC_GEN)/manualtoolchange_api.h: $(GMI_MTC_IDL) $(GMICOMPILE)
+$(GMI_MTC_GEN)/manualtoolchange_api.h: $(GMI_MTC_IDL) $(GMICOMPILE_BIN)
 	$(ECHO) "Generating GMI manualtoolchange API from $(GMI_MTC_IDL)"
 	@mkdir -p $(GMI_MTC_GEN)
 	$(Q)$(GMICOMPILE) --server-c $(GMI_MTC_IDL) -o $(GMI_MTC_GEN)/manualtoolchange_api.h
@@ -97,7 +98,7 @@ TARGETS += $(GMI_MTC_GEN)/manualtoolchange_api.h
 
 GMI_MTC_PY := ../lib/python/gmi/manualtoolchange_client.py
 
-$(GMI_MTC_PY): $(GMI_MTC_IDL) $(GMICOMPILE)
+$(GMI_MTC_PY): $(GMI_MTC_IDL) $(GMICOMPILE_BIN)
 	$(ECHO) "Generating GMI manualtoolchange Python client from $(GMI_MTC_IDL)"
 	@mkdir -p $(dir $(GMI_MTC_PY))
 	@touch $(dir $(GMI_MTC_PY))__init__.py

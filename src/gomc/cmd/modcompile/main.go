@@ -43,6 +43,9 @@ import (
 	"strings"
 
 	"github.com/sittner/linuxcnc/src/gomc/internal/config"
+	gmiast "github.com/sittner/linuxcnc/src/gomc/internal/gmicompile/ast"
+	gmicgen "github.com/sittner/linuxcnc/src/gomc/internal/gmicompile/cgen"
+	gmiparser "github.com/sittner/linuxcnc/src/gomc/internal/gmicompile/parser"
 	"github.com/sittner/linuxcnc/src/gomc/internal/modcompile/ast"
 	"github.com/sittner/linuxcnc/src/gomc/internal/modcompile/cgen"
 	"github.com/sittner/linuxcnc/src/gomc/internal/modcompile/comp"
@@ -50,15 +53,16 @@ import (
 	"github.com/sittner/linuxcnc/src/gomc/internal/pkgreg"
 )
 
-const usageText = `modcompile: Compile .comp files and manage gomc-server packages
+const usageText = `modcompile: Compile .comp files, generate GMI code, and manage gomc-server packages
 
 Usage:
     modcompile [options] file.comp...
+    modcompile gmi [options] file.gmi...
     modcompile list | rebuild | add-gomod | rm-gomod
     modcompile --cflags | --ldflags | --cmod-dir | --include-dir
     modcompile --print-make-inc
 
-Compile options:
+Compile options (.comp):
     --help           Show this help message
     --parse          Parse only — print the parsed AST as JSON
     --preprocess     Preprocess only — emit generated C code
@@ -67,6 +71,14 @@ Compile options:
     --compile        Compile .comp to .so in the current directory
     --install        Compile .comp and install to cmod directory
     -o FILE          Write output to FILE (for --preprocess, --document)
+
+GMI code generation (.gmi):
+    modcompile gmi --parse file.gmi
+    modcompile gmi --server-c file.gmi -o api.h
+    modcompile gmi --client-c file.gmi -o client
+    modcompile gmi --server-go file.gmi -o api.go
+    modcompile gmi --client-go file.gmi -o client.go
+    modcompile gmi --client-python file.gmi -o client.py
 
 Package registry commands:
     list             List packages compiled into gomc-server
@@ -87,6 +99,10 @@ Examples:
     # Compile a .comp file
     modcompile --compile mycomp.comp
     modcompile --install mycomp.comp
+
+    # Generate GMI code from .gmi IDL
+    modcompile gmi --server-c kins.gmi -o kins_api.h
+    modcompile gmi --client-python manualtoolchange.gmi -o mtc_client.py
 
     # Generate documentation
     modcompile --document -o mycomp.9 mycomp.comp
@@ -161,6 +177,11 @@ func main() {
 			os.Exit(1)
 		}
 		cmdRmGomod(os.Args[2])
+		return
+
+	// GMI code generation subcommand
+	case "gmi":
+		cmdGMI(os.Args[2:])
 		return
 	}
 
@@ -543,4 +564,272 @@ func cmdRmGomod(name string) {
 
 	regenerate(reg)
 	buildServer()
+}
+
+// ---------------------------------------------------------------------------
+// GMI code generation (modcompile gmi)
+// ---------------------------------------------------------------------------
+
+const gmiUsageText = `modcompile gmi: Compile GMI interface definitions
+
+Usage:
+    modcompile gmi [options] file.gmi...
+
+Options:
+    --help           Show this help message
+    --parse          Parse only — print AST as JSON
+    --server-c       Generate C server header (types, callback typedefs)
+    --client-c       Generate C REST client (header + source)
+    --server-go      Generate Go server handlers
+    --client-go      Generate Go REST client
+    --client-python  Generate Python REST client
+    -o PATH          Output file or directory
+`
+
+type gmiMode int
+
+const (
+	gmiModeParse gmiMode = iota
+	gmiModeServerC
+	gmiModeClientC
+	gmiModeServerGo
+	gmiModeClientGo
+	gmiModeClientPython
+)
+
+func cmdGMI(args []string) {
+	if len(args) == 0 {
+		fmt.Fprint(os.Stderr, gmiUsageText)
+		os.Exit(1)
+	}
+
+	var m gmiMode
+	var outputPath string
+	var files []string
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch arg {
+		case "--help", "-h":
+			fmt.Print(gmiUsageText)
+			os.Exit(0)
+		case "--parse":
+			m = gmiModeParse
+		case "--server-c":
+			m = gmiModeServerC
+		case "--client-c":
+			m = gmiModeClientC
+		case "--server-go":
+			m = gmiModeServerGo
+		case "--client-go":
+			m = gmiModeClientGo
+		case "--client-python":
+			m = gmiModeClientPython
+		case "-o":
+			if i+1 < len(args) {
+				i++
+				outputPath = args[i]
+			}
+		default:
+			if len(arg) > 0 && arg[0] != '-' {
+				files = append(files, arg)
+			}
+		}
+	}
+
+	if len(files) == 0 {
+		fmt.Fprintln(os.Stderr, "modcompile gmi: no input files")
+		os.Exit(1)
+	}
+
+	for _, file := range files {
+		if err := processGMIFile(file, m, outputPath); err != nil {
+			fmt.Fprintf(os.Stderr, "modcompile gmi: %v\n", err)
+			os.Exit(1)
+		}
+	}
+}
+
+func processGMIFile(file string, m gmiMode, outputPath string) error {
+	src, err := os.ReadFile(file)
+	if err != nil {
+		return err
+	}
+
+	api, errors := gmiparser.Parse(file, string(src))
+	if len(errors) > 0 {
+		for _, e := range errors {
+			fmt.Fprintln(os.Stderr, e)
+		}
+		return fmt.Errorf("parse failed")
+	}
+
+	switch m {
+	case gmiModeParse:
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(api)
+	case gmiModeServerC:
+		return gmiGenerateServerC(api, outputPath)
+	case gmiModeClientC:
+		if !api.RestExport {
+			return fmt.Errorf("%s: --client-c requires @rest_export true", file)
+		}
+		return gmiGenerateClientC(api, outputPath)
+	case gmiModeServerGo:
+		return gmiGenerateServerGo(api, outputPath)
+	case gmiModeClientGo:
+		if !api.RestExport {
+			return fmt.Errorf("%s: --client-go requires @rest_export true", file)
+		}
+		return gmiGenerateClientGo(api, outputPath)
+	case gmiModeClientPython:
+		if !api.RestExport {
+			return fmt.Errorf("%s: --client-python requires @rest_export true", file)
+		}
+		return gmiGenerateClientPython(api, outputPath)
+	}
+	return nil
+}
+
+func gmiGenerateServerC(api *gmiast.API, outputPath string) error {
+	if outputPath == "" {
+		outputPath = api.Name + "_api.h"
+	}
+
+	f, err := os.Create(outputPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if err := gmicgen.GenerateServerHeader(f, api); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "generated %s\n", outputPath)
+
+	// Generate Go cgo dispatch file alongside the header.
+	dir := filepath.Dir(outputPath)
+	goPath := filepath.Join(dir, api.Name+"_cgo.go")
+
+	pkgName := api.Name
+	if dir != "." && dir != "" {
+		pkgName = filepath.Base(dir)
+	}
+
+	headerFile := filepath.Base(outputPath)
+
+	gf, err := os.Create(goPath)
+	if err != nil {
+		return err
+	}
+	defer gf.Close()
+
+	if err := gmicgen.GenerateDispatchC(gf, api, pkgName, headerFile); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "generated %s\n", goPath)
+
+	return nil
+}
+
+func gmiGenerateClientC(api *gmiast.API, outputPath string) error {
+	var baseName string
+	if outputPath == "" {
+		baseName = api.Name + "_client"
+	} else {
+		baseName = strings.TrimSuffix(outputPath, filepath.Ext(outputPath))
+	}
+
+	headerPath := baseName + ".h"
+	sourcePath := baseName + ".c"
+
+	hf, err := os.Create(headerPath)
+	if err != nil {
+		return err
+	}
+	defer hf.Close()
+	if err := gmicgen.GenerateClientHeader(hf, api); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "generated %s\n", headerPath)
+
+	sf, err := os.Create(sourcePath)
+	if err != nil {
+		return err
+	}
+	defer sf.Close()
+	if err := gmicgen.GenerateClientSource(sf, api); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "generated %s\n", sourcePath)
+
+	return nil
+}
+
+func gmiGenerateServerGo(api *gmiast.API, outputPath string) error {
+	if outputPath == "" {
+		outputPath = api.Name + "_api.go"
+	}
+
+	pkgName := api.Name
+	if dir := filepath.Dir(outputPath); dir != "." && dir != "" {
+		pkgName = filepath.Base(dir)
+	}
+
+	f, err := os.Create(outputPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if err := gmicgen.GenerateServerGo(f, api, pkgName); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stderr, "generated %s\n", outputPath)
+	return nil
+}
+
+func gmiGenerateClientGo(api *gmiast.API, outputPath string) error {
+	if outputPath == "" {
+		outputPath = api.Name + "_client.go"
+	}
+
+	pkgName := api.Name + "client"
+	if dir := filepath.Dir(outputPath); dir != "." && dir != "" {
+		pkgName = filepath.Base(dir)
+	}
+
+	f, err := os.Create(outputPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if err := gmicgen.GenerateClientGo(f, api, pkgName); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stderr, "generated %s\n", outputPath)
+	return nil
+}
+
+func gmiGenerateClientPython(api *gmiast.API, outputPath string) error {
+	if outputPath == "" {
+		outputPath = api.Name + "_client.py"
+	}
+
+	f, err := os.Create(outputPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if err := gmicgen.GenerateClientPython(f, api); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stderr, "generated %s\n", outputPath)
+	return nil
 }
