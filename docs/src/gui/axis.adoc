@@ -704,19 +704,19 @@ file ('--reload'), and making AXIS exit ('--quit').
 == Manual Tool Change
 
 (((AXIS GUI, Manual Tool Change)))(((Manual Tool Change)))
-LinuxCNC includes a non-realtime HAL component called 'hal_manualtoolchange',
-which shows a window prompt telling you what tool is expected when a
-'M6' command is issued. After the OK button is pressed, execution of
-the program will continue.
+LinuxCNC includes a realtime HAL component called 'manualtoolchange',
+which together with the 'manualtoolchange_ui' program shows a window
+prompt telling you what tool is expected when a 'M6' command is issued.
+After the OK button is pressed, execution of the program will continue.
 
-The hal_manualtoolchange component includes a HAL pin for a button that
+The manualtoolchange component includes a HAL pin for a button that
 can be connected to a physical button to complete the tool change and
-remove the window prompt (hal_manualtoolchange.change_button).
+remove the window prompt (manualtoolchange.change_button).
 
 The HAL configuration file 'lib/hallib/axis_manualtoolchange.hal'
 shows the HAL commands necessary to use this component.
 
-hal_manualtoolchange can be used even when AXIS is not used as the GUI.
+manualtoolchange can be used even when AXIS is not used as the GUI.
 This component is most useful if you have presettable tools and
 you use the tool table.
 

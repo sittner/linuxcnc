@@ -15,7 +15,6 @@ usr/bin/gs2_vfd
 usr/bin/gscreen
 usr/bin/hal-histogram
 usr/bin/hal_input
-usr/bin/hal_manualtoolchange
 usr/bin/halcmd
 usr/bin/halmeter
 usr/bin/halreport
