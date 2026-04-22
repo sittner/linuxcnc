@@ -1220,24 +1220,59 @@ Example minimal gomod:
 ```go
 package mymodule
 
-import "github.com/sittner/linuxcnc/src/launcher/internal/apiserver"
+import "github.com/sittner/linuxcnc/src/launcher/pkg/gomc"
 
-var meta = &apiserver.APIMeta{
+var meta = &gomc.APIMeta{
     Name: "mymodule", Version: 1, RESTExport: true, Prefix: "mymodule",
-    Funcs: []apiserver.FuncMeta{ /* ... */ },
+    Funcs: []gomc.FuncMeta{ /* ... */ },
 }
 
 func init() {
-    apiserver.RegisterMeta(meta)
+    gomc.RegisterMeta(meta)
 }
 ```
 
-Note: For external packages, `apiserver` must be accessible. This means it stays
-in `internal/` but external packages reference it through the Go workspace
-(`go.work`). Go's `internal/` restriction is per-module — workspace `use`
-directives don't bypass it. **Resolution**: Either move `apiserver` to `pkg/`
-(public API), or define a minimal registration interface in `pkg/` that
-delegates to `internal/apiserver`. The latter keeps the API surface small.
+Note: For external packages, `apiserver` is in `internal/` and Go's `internal/`
+restriction is per-module — `go.work` `use` directives don't bypass it.
+
+**Resolution**: A thin registration interface in `pkg/` delegates to
+`internal/apiserver`. This keeps the public API surface minimal — external
+packages only see the types needed for registration, not the full server
+internals.
+
+### Configure Support for In-Tree Gomods
+
+In-tree Go modules (like ads-server) should be selectable at configure time:
+
+```
+./configure --enable-ads-server    # default: enabled
+./configure --disable-ads-server   # exclude from build
+```
+
+Configure writes the selection to a config file. The build system reads it to
+determine which in-tree gomods are added to `packages.conf` and compiled into
+gomc-server. This mirrors how optional C components (e.g., `--enable-pncconf`)
+work today.
+
+### Dependency Conflicts Between External Go Packages
+
+All compiled-in packages share one dependency tree. When two external packages
+require different versions of the same dependency, Go's MVS (Minimum Version
+Selection) picks the highest version. This usually works, but can break if the
+higher version has breaking API changes without a module path bump.
+
+This is the same problem Java solves with ClassLoader isolation. Go can't solve
+it — there is no per-package dependency isolation.
+
+Mitigation:
+- `modcompile add-gomod` must **build-test before committing** to packages.conf.
+  If the combined build fails due to dependency conflicts, report the error
+  clearly and don't add the package.
+- `modcompile add-gomod` should print the dependency diff (which versions changed)
+  so the user can assess impact.
+- Document as a known constraint: *"All compiled-in packages share one dependency
+  tree. Adding a package that requires an incompatible version of a shared
+  dependency will fail at build time."*
 
 ### Impact on Existing Components
 
@@ -1257,8 +1292,8 @@ delegates to `internal/apiserver`. The latter keeps the API surface small.
 2. ~~**Hot reload**: Can APIs be re-registered while running?~~ **Resolved**: No, lookup at startup only
 3. ~~**Timeout handling**: Per-call timeouts? Global?~~ **Resolved**: No function timeouts, only HTTP transport
 4. ~~**Error codes**: Standardize across Go/C boundary?~~ **Resolved**: errno for inter-module callbacks, GMI_ERR_* for client library
-5. **apiserver visibility**: Should `apiserver` move to `pkg/` for external Go packages, or use a thin `pkg/` registration interface?
-6. **Module lifecycle for gomods**: External Go packages may need Start/Stop lifecycle (like ads-server). Define a registration mechanism in `pkg/` similar to the old `gomodule.Module` but without the plugin baggage?
+5. ~~**apiserver visibility**: Should `apiserver` move to `pkg/` for external Go packages, or use a thin `pkg/` registration interface?~~ **Resolved**: Thin `pkg/gomc` registration interface. External packages import `pkg/gomc` for types (`APIMeta`, `FuncMeta`, `RegisterMeta()`) + lifecycle hooks (`RegisterModule()`). `internal/apiserver` stays internal.
+6. ~~**Module lifecycle for gomods**: External Go packages may need Start/Stop lifecycle (like ads-server). Define a registration mechanism in `pkg/` similar to the old `gomodule.Module` but without the plugin baggage?~~ **Resolved**: Mirror the cmod lifecycle. `pkg/gomc.RegisterModule()` registers Start/Stop/Cleanup hooks. The launcher calls these at the same lifecycle points it calls cmod equivalents. No plugin.Open — just init()-time registry lookup.
 
 ## Design Decisions
 
