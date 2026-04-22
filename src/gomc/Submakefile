@@ -44,11 +44,18 @@ GOMC_LDFLAGS := \
 # All Go source files in the gomc module (recursive wildcard for
 # sub-packages).  Make will rebuild when any .go file or go.mod changes.
 # Hand-written Go sources (no generated files — those are added in GOMC_SRC).
-GOMC_SRC_BASE := $(wildcard gomc/*.go) \
+# Generated imports file for compiled-in Go modules.
+IMPORTS_GENERATED := gomc/cmd/gomc-server/imports_generated.go
+
+# All Go source files in the gomc module (recursive wildcard for
+# sub-packages).  Make will rebuild when any .go file or go.mod changes.
+# Hand-written Go sources (no generated files — those are added in GOMC_SRC).
+GOMC_SRC_BASE := $(filter-out $(IMPORTS_GENERATED),$(wildcard gomc/*.go) \
     $(wildcard gomc/cmd/*/*.go) \
     $(wildcard gomc/pkg/*/*.go) \
     $(wildcard gomc/internal/*/*.go) \
-    $(wildcard gomc/internal/*/*/*.go) \
+    $(wildcard gomc/internal/*/*/*.go)) \
+    gomc/go.mod.in \
     gomc/go.mod
 
 # Full source list including generated files (for the gomc binary).
@@ -60,15 +67,24 @@ GOMC_SRC := $(GOMC_SRC_BASE) \
 # concrete prerequisites here to ensure codegen runs first.
 GMI_KINS_GEN_GO := gomc/generated/gmi/kins/kins_cgo.go
 
-# Generated imports file for compiled-in Go modules.
-IMPORTS_GENERATED := gomc/cmd/gomc-server/imports_generated.go
+# Runtime files generated from .in bases on fresh checkouts.
+# packages.conf and go.mod are copied from .in if missing;
+# imports_generated.go is produced by modcompile from packages.conf.
+gomc/packages.conf: gomc/packages.conf.in
+	$(Q)test -f $@ || cp $< $@
+
+gomc/go.mod: gomc/go.mod.in
+	$(Q)test -f $@ || cp $< $@
+
+$(IMPORTS_GENERATED): gomc/packages.conf ../bin/modcompile
+	$(Q)test -f $@ || cd gomc && $(TOP)/bin/modcompile rebuild
 
 # Build the gomc-server binary.
 #
 # CGO_LDFLAGS adds -Wl,-rpath so the dynamic linker finds liblinuxcnchal.so
 # and its companions at runtime (RIP and installed builds alike).
 # LIB_DIR is $(EMC2_HOME)/lib, defined in Makefile.inc.
-../bin/gomc-server: $(GOMC_SRC) $(GMI_KINS_GEN_GO) $(IMPORTS_GENERATED) ../lib/liblinuxcnchal.so
+../bin/gomc-server: $(GOMC_SRC) $(GMI_KINS_GEN_GO) $(IMPORTS_GENERATED) gomc/packages.conf ../lib/liblinuxcnchal.so
 	$(ECHO) Building gomc-server
 	$(Q)cd gomc && CGO_LDFLAGS="-Wl,-rpath,$(LIB_DIR)" $(GO) build -ldflags "$(GOMC_LDFLAGS)" -o $(TOP)/bin/gomc-server ./cmd/gomc-server
 
@@ -188,6 +204,8 @@ gomc-clean:
 	rm -f ../bin/modcompile ../bin/halcmd
 	rm -f $(HAL_GO_EXAMPLES)
 	rm -f $(GOMC_PKG_FILES)
+	rm -f gomc/packages.conf gomc/go.mod gomc/go.sum
+	rm -f $(IMPORTS_GENERATED)
 
 # Install
 install: gomc-install
@@ -208,7 +226,7 @@ gomc-install: ../bin/gomc-server ../bin/ads-xml-gen ../bin/modcompile ../bin/hal
 		-path './pkg/hal/examples' -prune -o \
 		-path './pkg/hal/tests' -prune -o \
 		-path './internal/gmi/kinstest' -prune -o \
-		-type f \( -name '*.go' -o -name 'go.mod' -o -name 'go.sum' -o -name 'packages.conf' \) \
+		-type f \( -name '*.go' -o -name 'go.mod' -o -name 'go.mod.in' -o -name 'go.sum' -o -name 'packages.conf' -o -name 'packages.conf.in' \) \
 		-print | while read f; do \
 			dest=$(DESTDIR)$(datadir)/linuxcnc/gomc/$$f; \
 			mkdir -p $$(dirname $$dest); \

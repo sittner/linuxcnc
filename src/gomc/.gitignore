@@ -8,3 +8,11 @@
 
 # External Go modules installed via modcompile add-gomod
 /external/
+
+# Runtime state files (generated from .in base files)
+# These are modified by modcompile add-gomod/rm-gomod at runtime.
+# Base versions are tracked as packages.conf.in and go.mod.in.
+/packages.conf
+/go.mod
+/go.sum
+/cmd/gomc-server/imports_generated.go

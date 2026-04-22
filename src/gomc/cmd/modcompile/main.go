@@ -416,6 +416,32 @@ func printMakeInc() {
 	)
 }
 
+// ensureRuntimeFiles copies .in base files to their working copies if they
+// don't exist yet. This happens on fresh checkouts or after "git clean".
+func ensureRuntimeFiles() {
+	gomcDir := config.EMC2GomcDir
+	if gomcDir == "" {
+		return
+	}
+	for _, name := range []string{"packages.conf", "go.mod"} {
+		dst := filepath.Join(gomcDir, name)
+		if _, err := os.Stat(dst); err == nil {
+			continue // already exists
+		}
+		src := filepath.Join(gomcDir, name+".in")
+		data, err := os.ReadFile(src)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "modcompile: %s.in not found: %v\n", name, err)
+			os.Exit(1)
+		}
+		if err := os.WriteFile(dst, data, 0644); err != nil {
+			fmt.Fprintf(os.Stderr, "modcompile: creating %s: %v\n", name, err)
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stderr, "Initialized %s from %s.in\n", name, name)
+	}
+}
+
 // packagesConfPath returns the path to packages.conf in the gomc dir.
 func packagesConfPath() string {
 	return filepath.Join(config.EMC2GomcDir, "packages.conf")
@@ -423,6 +449,7 @@ func packagesConfPath() string {
 
 // loadRegistry reads packages.conf from the gomc directory.
 func loadRegistry() *pkgreg.Registry {
+	ensureRuntimeFiles()
 	reg, err := pkgreg.ReadFile(packagesConfPath())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "modcompile: reading packages.conf: %v\n", err)
