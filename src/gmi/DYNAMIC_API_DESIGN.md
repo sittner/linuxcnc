@@ -894,6 +894,49 @@ REST client for Python UIs (axis, gmoccapy, etc.).
 - [x] Unit: multiple path parameter substitution
 - [x] Unit: primitive return types and void methods
 
+### Step 5.1: Manualtoolchange REST Migration (IN PROGRESS)
+
+First real consumer of the GMI pipeline: replace `hal_manualtoolchange.py`
+(HAL userspace component in Python that directly accesses HAL pins) with a
+cmod + REST API architecture.
+
+**Architecture:**
+- `manualtoolchange.comp` — cmod (C, RT-capable) handling HAL pins + iocontrol handshake
+- `manualtoolchange.gmi` — IDL defining REST API (GET /state, POST /confirm)
+- Generated dispatch (`manualtoolchange_cgo.go`) — compiled into gomc-server
+- Generated Python client (`manualtoolchange_client.py`) — used by UI
+- `manualtoolchange_ui.py` — Tkinter UI, polls REST, replaces old `hal_manualtoolchange.py`
+
+**Completed:**
+- [x] `gmi/idl/manualtoolchange.gmi` — IDL with `@rest_export true`, two endpoints
+- [x] `hal/components/manualtoolchange.comp` — cmod with `gmi_provide manualtoolchange`,
+      HAL pins (change, number, change_button, changed), thread function,
+      GMI callbacks (`gmi_manualtoolchange_get_state`, `gmi_manualtoolchange_confirm`)
+- [x] Generated `manualtoolchange_api.h` + `manualtoolchange_cgo.go` in
+      `launcher/generated/gmi/manualtoolchange/`
+- [x] Generated `lib/python/gmi/manualtoolchange_client.py` — Python REST client
+- [x] `manualtoolchange_ui.py` (133 lines) — Tkinter UI using generated REST client
+- [x] `gmi/codegen/Submakefile` — build rules for API header, cgo dispatch, Python client
+- [x] `hal/components/Submakefile` — cmod build rule with GMI header dependency
+- [x] `bin/manualtoolchange_ui` — installed UI script
+
+**Known Issues (to fix in/after Step 7):**
+- [ ] Generated cgo imports `pkg/apiserver` which doesn't exist on this branch
+      (was created during gomod experiments, removed on revert). Step 7 resolves
+      this: `pkg/gomc` will provide the registration interface, codegen template
+      updated to import `pkg/gomc` instead.
+- [ ] No sim configs updated yet — existing configs still reference
+      `hal_manualtoolchange` (old Python component). Need to provide migration
+      path or compatibility wrapper.
+- [ ] Python client generated but not in `lib/python/gmi/__init__.py` (no
+      `gmi` package init exists yet).
+
+**Blocked on Step 7:**
+- The cgo dispatch package must be compiled into gomc-server via
+  `imports_generated.go` + `packages.conf` (Step 7 Phase 3).
+- Once Step 7 lands, verify end-to-end: cmod loads → registers GMI callbacks →
+  gomc-server exposes REST → `manualtoolchange_ui.py` polls and confirms.
+
 ### Step 6: Polish (NOT STARTED)
 - [ ] Error handling standardization
 - [ ] Logging/tracing
