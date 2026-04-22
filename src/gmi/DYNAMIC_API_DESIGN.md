@@ -901,12 +901,364 @@ REST client for Python UIs (axis, gmoccapy, etc.).
 - [ ] Documentation
 - [x] Launcher REST server reads listen URL from INI file (`[GMC]REST_ADDR`, default `localhost:5080`)
 
+## Step 7: Remove Go Plugins — Compile-In Architecture
+
+### Motivation
+
+Go's `plugin.Open` mechanism has fundamental problems:
+- **Version fragility**: Plugin must be built with exact same Go version and
+  dependency versions as the host binary. Any mismatch → runtime panic.
+- **No unload**: `plugin.Open` has no `Close`. Memory grows, can't hot-swap.
+- **Runtime duplication**: Each plugin embeds parts of the Go runtime (~5MB baseline).
+- **Size overhead**: A trivial plugin like manualtoolchange is 5.9MB (vs ~60KB as cmod).
+
+The solution: **eliminate Go plugins entirely**. All Go packages (internal like
+ads-server, generated GMI dispatch, external like galv-formula) are compiled
+directly into the server binary. Adding a package = rebuild the server.
+
+This is the same pattern used by Caddy, Traefik, and other Go-based extensible
+servers. It trades dynamic loading for build-time composition — which is the
+natural Go approach.
+
+### Terminology Changes
+
+| Old | New | Reason |
+|-----|-----|--------|
+| `linuxcnc-launcher` | `gomc-server` | Reflects role: server process, not UI launcher |
+| gomod (.so plugin) | gomod (compiled-in Go package) | Same name, but compiled in, not dynamic |
+| `pkg/gomodule/` | removed | No more plugin interface needed |
+| `gomodules.go` | removed | No more `plugin.Open`, `loadGoPlugin` |
+| `gomod/*.so` | (nothing) | No more plugin .so files |
+| `gmicompile` (standalone) | `modcompile gmi` | Merged into unified tool |
+
+### What Gets Removed
+
+- `pkg/gomodule/gomodule.go` — Module interface, Factory type
+- `internal/launcher/gomodules.go` — `loadGoPlugin`, `resolveGoModulePath`, etc.
+- `gomod/` directory — no more plugin .so outputs
+- `EMC2_GOMOD_DIR` — no more gomod path in config
+- `-buildmode=plugin` build rules in Submakefile
+- `go.work` files in individual plugin dirs (`hal/proto/ads-server/go.work`)
+
+### New Architecture
+
+#### Server Source Layout
+
+The gomc-server source tree serves as both development tree and installable
+build directory. For RIP, `GOMC_SERVER_DIR` points to the source tree directly.
+For installed systems, the source is copied to a share directory.
+
+```
+GOMC_SERVER_DIR/                    # = src/launcher (RIP) or $prefix/share/linuxcnc/gomc-server (installed)
+├── go.mod                          # module: github.com/sittner/linuxcnc/src/launcher
+├── go.work                         # generated: "use" entries for all registered packages
+├── packages.conf                   # registry: all installed gomod + gmi packages
+├── cmd/
+│   ├── gomc-server/
+│   │   ├── main.go
+│   │   └── imports_generated.go    # generated: blank imports for registered packages
+│   ├── modcompile/                 # unified tool (comp + gmi + gomod management)
+│   │   └── main.go
+│   └── halcmd/
+│       └── main.go
+├── generated/
+│   └── gmi/                        # generated dispatch packages
+│       ├── kins/                   # kins_api.h + kins_cgo.go
+│       ├── tp/
+│       ├── home/
+│       ├── mot/
+│       ├── manualtoolchange/       # REST dispatch for manualtoolchange cmod
+│       └── halcmd/                 # halcmd Go REST client
+├── internal/
+│   ├── apiserver/                  # REST server + registry
+│   ├── launcher/                   # server lifecycle
+│   ├── halrest/                    # halcmd REST handler
+│   ├── halcmd/                     # halcmd implementation
+│   ├── halparse/                   # HAL file parser
+│   ├── ads/                        # ads-server (moved from external plugin)
+│   └── modcompile/                 # .comp parser + C codegen + .gmi codegen
+│       ├── comp/                   # .comp parser
+│       ├── ast/                    # shared AST types
+│       └── cgen/                   # all code generators (.comp C, .gmi C/Go/Python)
+├── pkg/
+│   ├── cmodule/                    # C module headers (gomc_*.h)
+│   ├── inifile/                    # INI file parser
+│   └── hal/                        # Go HAL bindings
+└── build/
+    └── gomc-server                 # output binary (RIP: symlinked to bin/)
+```
+
+#### Package Registry (`packages.conf`)
+
+A simple text file that `modcompile` reads and writes. Tracks all Go packages
+compiled into the server — both GMI dispatch packages and full Go modules.
+
+```ini
+# packages.conf — managed by modcompile. DO NOT EDIT MANUALLY.
+#
+# Format: TYPE IMPORT_PATH [USE_DIR]
+#
+# TYPE:
+#   gmi     — generated GMI dispatch package (no go.work entry needed)
+#   gomod   — Go package compiled into server (needs go.work "use" if external)
+#
+# IMPORT_PATH — Go import path for the blank import
+# USE_DIR     — (optional) directory for go.work "use" directive (external packages only)
+
+# Core GMI dispatch (generated, part of this module)
+gmi generated/gmi/kins
+gmi generated/gmi/tp
+gmi generated/gmi/home
+gmi generated/gmi/mot
+gmi generated/gmi/manualtoolchange
+gmi generated/gmi/halcmd
+
+# Internal Go modules
+gomod internal/ads
+
+# External Go modules (installed by user)
+# gomod github.com/example/galv-formula /home/sascha/source/galv-mqtt-receiver/galv-formula
+```
+
+#### Generated Files
+
+`modcompile` regenerates two files from `packages.conf`:
+
+**`imports_generated.go`** — blank imports that pull packages into the binary:
+
+```go
+// Code generated by modcompile. DO NOT EDIT.
+package main
+
+import (
+    // GMI dispatch packages
+    _ "github.com/sittner/linuxcnc/src/launcher/generated/gmi/kins"
+    _ "github.com/sittner/linuxcnc/src/launcher/generated/gmi/tp"
+    _ "github.com/sittner/linuxcnc/src/launcher/generated/gmi/home"
+    _ "github.com/sittner/linuxcnc/src/launcher/generated/gmi/mot"
+    _ "github.com/sittner/linuxcnc/src/launcher/generated/gmi/manualtoolchange"
+    _ "github.com/sittner/linuxcnc/src/launcher/generated/gmi/halcmd"
+
+    // Go modules
+    _ "github.com/sittner/linuxcnc/src/launcher/internal/ads"
+)
+```
+
+**`go.work`** — workspace entries for external packages:
+
+```
+go 1.24.4
+
+use (
+    .
+    /home/sascha/source/galv-mqtt-receiver/galv-formula
+)
+```
+
+For packages inside the launcher module (internal/*, generated/*), no `go.work`
+entry is needed — they're already part of the module.
+
+### Unified `modcompile` Tool
+
+`modcompile` becomes the single entry point for all module operations:
+
+```
+modcompile [global-flags] <command> [command-flags] [args...]
+
+Commands:
+  compile     Compile a .comp file to cmod .so
+  install     Compile and install a .comp to EMC2_CMOD_DIR
+  uninstall   Remove an installed .comp cmod from EMC2_CMOD_DIR
+  gmi         Generate dispatch code from a .gmi file
+  add-gomod   Register a Go package and rebuild gomc-server
+  rm-gomod    Unregister a Go package and rebuild gomc-server
+  list        List registered packages
+  rebuild     Rebuild gomc-server from current packages.conf
+  info        Print build environment (cflags, ldflags, dirs, etc.)
+
+Examples:
+  # Compile and install a HAL component:
+  modcompile install mycomponent.comp
+
+  # Generate GMI dispatch + rebuild server:
+  modcompile gmi src/gmi/idl/manualtoolchange.gmi
+
+  # Add external Go package + rebuild server:
+  modcompile add-gomod /home/sascha/source/galv-mqtt-receiver/galv-formula
+
+  # Uninstall an installed HAL component:
+  modcompile uninstall mycomponent
+
+  # Remove a Go package:
+  modcompile rm-gomod galv-formula
+
+  # Rebuild after manual edits:
+  modcompile rebuild
+```
+
+#### `modcompile gmi` Workflow
+
+```
+1. Parse the .gmi file
+2. Generate C header + Go cgo dispatch to GOMC_SERVER_DIR/generated/gmi/<api>/
+3. If @rest_export true: also generate Python client to lib/python/gmi/
+4. Add "gmi generated/gmi/<api>" to packages.conf (if not already present)
+5. Regenerate imports_generated.go from packages.conf
+6. Rebuild gomc-server binary
+```
+
+#### `modcompile add-gomod` Workflow
+
+```
+1. Validate: target directory has go.mod, package builds
+2. Determine import path from go.mod
+3. Add "gomod <import_path> <abs_dir>" to packages.conf
+4. Regenerate imports_generated.go + go.work from packages.conf
+5. Rebuild gomc-server binary
+```
+
+The Go package must have an `init()` function that registers itself (e.g., calls
+`RegisterMeta` for REST APIs, or registers Module lifecycle hooks).
+
+#### `modcompile rebuild` Workflow
+
+```
+1. Read packages.conf
+2. Regenerate imports_generated.go
+3. Regenerate go.work
+4. cd GOMC_SERVER_DIR && go build -o build/gomc-server ./cmd/gomc-server/
+5. (installed mode) Install binary to $prefix/bin/
+```
+
+### Build System Integration
+
+#### Makefile Changes
+
+```makefile
+# GOMC_SERVER_DIR is always used for building, even in RIP
+# RIP: points to source tree
+GOMC_SERVER_DIR = $(TOP)/src/launcher
+
+# Build gomc-server
+../bin/gomc-server: $(GOMC_SERVER_SRC) $(GENERATED_GMI_FILES)
+    cd $(GOMC_SERVER_DIR) && $(GO) build -o $(TOP)/bin/gomc-server ./cmd/gomc-server/
+
+# Generate GMI dispatch (replaces separate gmicompile calls)
+$(GENERATED_GMI_DIR)/%_api.h: gmi/idl/%.gmi $(MODCOMPILE)
+    $(MODCOMPILE) gmi $<
+
+# Install: copy source tree for user rebuilds
+launcher-install:
+    cp -r $(GOMC_SERVER_DIR) $(DESTDIR)$(prefix)/share/linuxcnc/gomc-server/
+    install -m 0755 ../bin/gomc-server $(DESTDIR)$(prefix)/bin/gomc-server
+```
+
+#### Environment Variables
+
+Set by `scripts/rip-environment` (RIP) or read from installed paths:
+
+| Variable | RIP Value | Installed Value |
+|----------|-----------|-----------------|
+| `GOMC_SERVER_DIR` | `$EMC2_HOME/src/launcher` | `$prefix/share/linuxcnc/gomc-server` |
+| `EMC2_CMOD_DIR` | `$EMC2_HOME/cmod` | `$prefix/lib/linuxcnc/cmod` |
+| `GOMC_SERVER_BIN` | `$EMC2_HOME/bin/gomc-server` | `$prefix/bin/gomc-server` |
+
+### Migration Steps
+
+#### Phase 1: Rename + Remove Plugin Infrastructure
+
+1. Rename `linuxcnc-launcher` binary to `gomc-server` (update scripts, Submakefile)
+2. Remove `pkg/gomodule/` (Module, Factory interfaces)
+3. Remove `internal/launcher/gomodules.go` (loadGoPlugin, plugin.Open)
+4. Remove `gomod/` directory and `EMC2_GOMOD_DIR`
+5. Remove `-buildmode=plugin` build rules from Submakefile
+
+#### Phase 2: Move ads-server In-Tree
+
+1. Move `hal/proto/ads-server/` → `launcher/internal/ads/`
+2. Change from `var New gomodule.Factory = func(...)` to `init()` registration
+3. Remove ads-server's `go.mod` and `go.work` (it's now part of the launcher module)
+4. Add blank import in main.go
+
+#### Phase 3: Package Registry
+
+1. Create `packages.conf` with current hardcoded imports
+2. Create `imports_generated.go` generator in modcompile
+3. Create `go.work` generator in modcompile
+4. Implement `modcompile add-gomod` / `rm-gomod` / `list` / `rebuild`
+5. Remove hardcoded blank imports from main.go (replaced by generated file)
+
+#### Phase 4: Merge gmicompile into modcompile
+
+1. Move gmicompile's CLI logic into `modcompile gmi` subcommand
+2. Update Submakefile to use `modcompile gmi` instead of `gmicompile`
+3. Remove standalone `cmd/gmicompile/` directory
+4. Update `gmi/codegen/Submakefile` rules
+
+#### Phase 5: Installed Build Support
+
+1. Add `launcher-install` target that copies source tree to share dir
+2. Ensure `modcompile` uses `GOMC_SERVER_DIR` for all paths
+3. Test: `modcompile add-gomod` on installed system → rebuilds binary
+4. Test: `modcompile gmi` on installed system → generates + rebuilds
+5. Document Go toolchain requirement for installed systems
+
+### Go Package Requirements for `add-gomod`
+
+External Go packages must follow these conventions to be compiled into
+gomc-server:
+
+1. **`go.mod`** at package root with proper module path
+2. **`init()` function** that registers the package with the server:
+   - For REST-providing modules: call `apiserver.RegisterMeta(&meta)`
+   - For lifecycle modules: register with a Module registry (TBD)
+3. **No `main` package** — the package is imported, not executed
+4. **Compatible dependencies** — must build with the launcher's Go version
+
+Example minimal gomod:
+
+```go
+package mymodule
+
+import "github.com/sittner/linuxcnc/src/launcher/internal/apiserver"
+
+var meta = &apiserver.APIMeta{
+    Name: "mymodule", Version: 1, RESTExport: true, Prefix: "mymodule",
+    Funcs: []apiserver.FuncMeta{ /* ... */ },
+}
+
+func init() {
+    apiserver.RegisterMeta(meta)
+}
+```
+
+Note: For external packages, `apiserver` must be accessible. This means it stays
+in `internal/` but external packages reference it through the Go workspace
+(`go.work`). Go's `internal/` restriction is per-module — workspace `use`
+directives don't bypass it. **Resolution**: Either move `apiserver` to `pkg/`
+(public API), or define a minimal registration interface in `pkg/` that
+delegates to `internal/apiserver`. The latter keeps the API surface small.
+
+### Impact on Existing Components
+
+| Component | Change |
+|-----------|--------|
+| manualtoolchange (.comp with gmi_provide) | No change — cmod still loaded via dlopen, GMI dispatch compiled into server via generated package |
+| ads-server | Moved from external plugin to `internal/ads/`, compiled in |
+| kins/tp/home/mot | No change — already compiled into server via generated cgo packages |
+| halcmd | No change — already compiled into server |
+| External user modules (.comp) | No change — still compiled to cmod .so via `modcompile install` |
+| External Go packages | `modcompile add-gomod` instead of building separate .so |
+| Python UIs | No change — still REST clients |
+
 ## Open Questions
 
 1. ~~**Versioning strategy**: How to handle API version mismatches?~~ **Resolved**: Exact match required, fail at lookup
 2. ~~**Hot reload**: Can APIs be re-registered while running?~~ **Resolved**: No, lookup at startup only
 3. ~~**Timeout handling**: Per-call timeouts? Global?~~ **Resolved**: No function timeouts, only HTTP transport
 4. ~~**Error codes**: Standardize across Go/C boundary?~~ **Resolved**: errno for inter-module callbacks, GMI_ERR_* for client library
+5. **apiserver visibility**: Should `apiserver` move to `pkg/` for external Go packages, or use a thin `pkg/` registration interface?
+6. **Module lifecycle for gomods**: External Go packages may need Start/Stop lifecycle (like ads-server). Define a registration mechanism in `pkg/` similar to the old `gomodule.Module` but without the plugin baggage?
 
 ## Design Decisions
 
