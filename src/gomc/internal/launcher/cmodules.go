@@ -373,6 +373,61 @@ func (l *Launcher) initCModules() error {
 	return nil
 }
 
+// isCModuleLoaded returns true if a module with the given name has already
+// been loaded via loadCPlugin.
+func (l *Launcher) isCModuleLoaded(name string) bool {
+	for _, cm := range l.cModules {
+		if cm.name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// loadDisplayModules auto-loads cmod components required by the configured
+// display.  This avoids requiring every INI config to carry a display-specific
+// HALFILE entry.
+//
+// Currently supported:
+//   - AXIS display → loads axisui cmod + addf to servo-thread
+func (l *Launcher) loadDisplayModules() error {
+	displayName := l.ini.Get("DISPLAY", "DISPLAY")
+	if displayName == "" {
+		return nil
+	}
+	// Strip path prefix and arguments — only compare the basename.
+	displayBase := filepath.Base(strings.Fields(displayName)[0])
+
+	switch displayBase {
+	case "axis":
+		if l.isCModuleLoaded("axisui") {
+			return nil // already loaded via HALFILE
+		}
+		cmodPath := resolveCModulePath("axisui")
+		if !cModuleExists(cmodPath) {
+			l.logger.Warn("axisui cmod not found, skipping auto-load", "path", cmodPath)
+			return nil
+		}
+		if err := l.loadCPlugin(cmodPath, "axisui", nil); err != nil {
+			return fmt.Errorf("auto-loading axisui: %w", err)
+		}
+		// Init the newly loaded module so its APIs are available.
+		for _, cm := range l.cModules {
+			if cm.name == "axisui" {
+				if rc := C.cmod_call_init(cm.mod); rc != 0 {
+					return fmt.Errorf("axisui Init() returned error code %d", int(rc))
+				}
+				break
+			}
+		}
+		if err := halcmd.AddF("axisui", "servo-thread", -1); err != nil {
+			return fmt.Errorf("addf axisui servo-thread: %w", err)
+		}
+		l.logger.Info("auto-loaded axisui cmod for AXIS display")
+	}
+	return nil
+}
+
 // startCModules calls Start() on all loaded C plugin modules that have not
 // already been started (e.g. modules started early via startCModuleByName).
 func (l *Launcher) startCModules() error {

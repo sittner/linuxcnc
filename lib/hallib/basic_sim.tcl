@@ -64,8 +64,6 @@ if {[lsearch -nocase $::argv -no_use_hal_manualtoolchange] < 0} {
 if {[lsearch -nocase $::argv -no_sim_spindle] < 0} {
   sim_spindle
 }
-# Load the axisui cmod for AXIS GUI HAL pins + WebSocket API
-use_axisui
 
 # make a halfile (inifilename_cmds.hal) with equivalent hal commands
 set savefilename \

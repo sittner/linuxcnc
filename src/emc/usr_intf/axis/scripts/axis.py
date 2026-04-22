@@ -4136,7 +4136,7 @@ t.configure(state="disabled")
 if hal_present == 1 :
     # Connect to the axisui cmod via WebSocket watch channel.
     # The cmod owns the HAL pins; we communicate via WS.
-    ws_url = "ws://localhost:5080/ws/watch"
+    ws_url = "ws://localhost:5080/api/v1/watch"
     _ws_thread = AxisuiWatchThread(ws_url)
     comp = WSCompat(_ws_thread)
     _ws_thread.subscribe_get_jog_inputs(callback=comp._on_jog)
