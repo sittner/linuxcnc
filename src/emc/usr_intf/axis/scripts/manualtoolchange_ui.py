@@ -64,7 +64,7 @@ def main():
             state = client.get_state()
         except Exception:
             # REST not ready yet or transient error — retry
-            app.after(200, poll)
+            app.after(1000, poll)
             return
 
         if state.change_requested and not state.change_confirmed and not prev_change:
@@ -73,9 +73,9 @@ def main():
         elif not state.change_requested:
             prev_change = False
 
-        app.after(100, poll)
+        app.after(1000, poll)
 
-    app.after(100, poll)
+    app.after(1000, poll)
 
     try:
         app.mainloop()
@@ -109,9 +109,9 @@ def do_change(app, client, tool_number):
                 return
         except Exception:
             pass
-        app.after(100, check_still_pending)
+        app.after(1000, check_still_pending)
 
-    app.after(100, check_still_pending)
+    app.after(1000, check_still_pending)
 
     try:
         r = app.tk.call("nf_dialog", ".tool_change",
