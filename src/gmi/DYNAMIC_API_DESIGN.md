@@ -15,6 +15,7 @@ intended to replace NML with a modern, type-safe approach.
 | 4.5: halcmd REST Tool | ✅ Complete | — |
 | 5: Python Client | ✅ Complete | 3 |
 | 5.1: Manualtoolchange REST | ✅ Complete | — |
+| 5.2: AXIS UI Watch Channel | ❌ Not Started | — |
 | 6: Polish | ❌ Not Started | — |
 | 7: Remove Go Plugins | ✅ Complete | — |
 
@@ -943,6 +944,170 @@ cmod + REST API architecture.
   changed (loads cmod instead of `loadusr`).
 - `hal_manualtoolchange.py` (old Python component) is kept but deprecated — to be
   removed in a future cleanup pass.
+
+### Step 5.2: AXIS UI Watch Channel (NOT STARTED)
+
+Migrate AXIS GUI's HAL pins to a WebSocket-based watch channel, eliminating the
+UI's dependency on HAL shared memory. This is a preparation step for removing
+all shared memory access from UI processes.
+
+**Motivation:**
+- Mid-term goal: UI processes must not access HAL shared memory
+- AXIS currently exports ~25 HAL pins (jog, status, notifications, sliders)
+- REST polling is adequate for slow state (notifications, errors) but insufficient
+  for jog buttons (~10ms) and position updates (~50ms)
+- NML status polling (current mechanism for machine position) will also need
+  replacement — the watch channel infrastructure serves both needs
+
+**Architecture: GMI Watch Channel (WebSocket)**
+
+A single persistent WebSocket connection between UI and gomc-server:
+
+```
+axis.py (Tk)                    gomc-server
+    │                               │
+    ├─ REST (1s) ──────────────────►│  tool change, notifications
+    │                               │
+    └─ WebSocket (persistent) ◄────►│  position/status push (50ms)
+         jog commands (immediate) ──►│  jog start/stop, abort
+         slider values ────────────►│  feed override, spindle override
+```
+
+**Server→Client (push):** Server calls `@watch`-annotated functions at the
+subscribed rate and pushes results as JSON over the WebSocket.
+
+**Client→Server (commands):** Jog start/stop, abort, slider values sent as
+JSON command messages over the same connection. Minimal framing overhead
+(~2 bytes WebSocket header vs ~200 bytes HTTP per request).
+
+**Why WebSocket:**
+- Bidirectional on one persistent TCP connection
+- ~1-5ms LAN latency (limited only by TCP + Go scheduling)
+- Native Python support (`websockets` / `asyncio`)
+- Tk integration: run in thread, post events to mainloop
+- Works over network / reverse proxies → remote UI for free
+- SSE is push-only (still need REST for commands); gRPC is heavy for Python/Tk;
+  long-poll has per-request overhead defeating 50ms updates
+
+**GMI IDL Extensions:**
+
+`@watch` is a function-level annotation. Watchable functions can return any
+GMI type (structs, enums, arrays, nested structs). The framework serializes
+whatever the function returns.
+
+```gmi
+@api axis
+
+type Position {
+    x: f64
+    y: f64
+    z: f64
+    a: f64
+    b: f64
+    c: f64
+}
+
+type JogState {
+    active_axis: string
+    increment: f64
+    disabled: bool
+}
+
+type MachineStatus {
+    position: Position
+    jog: JogState
+    is_running: bool
+    has_error: bool
+    has_notifications: bool
+}
+
+type Notification {
+    level: NotifyLevel
+    message: string
+}
+
+enum NotifyLevel {
+    Info = 0
+    Error = 1
+}
+
+enum NotifyClearMask {
+    All = 0
+    Info = 1
+    Error = 2
+}
+
+# Push at 50ms — client subscribes, server calls at requested rate
+@watch true
+@watch_default_rate 50ms
+func get_status() -> MachineStatus
+
+# Slower status, separate subscription
+@watch true
+@watch_default_rate 1000ms
+func get_notifications() -> []Notification
+
+# Commands — not watchable, dispatched immediately over same WebSocket
+func jog_start(axis: string, speed: f64) -> bool
+func jog_stop(axis: string) -> bool
+func set_jog_increment(value: f64) -> bool
+func clear_notifications(which: NotifyClearMask) -> bool
+func abort() -> bool
+```
+
+**Generated Code (gmicompile):**
+
+| Flag | Output | Purpose |
+|------|--------|---------|
+| `--server-ws` | Go WebSocket handler | Subscribe/dispatch loop, per-client goroutine |
+| `--client-python-ws` | Python async client | Typed callbacks, same dataclasses as REST client |
+
+Server-side handler:
+- Accepts subscription messages: `{"subscribe": "get_status", "rate_ms": 50}`
+- Runs a goroutine per client per subscription that calls the GMI function
+  at the requested rate and pushes the serialized result
+- Receives command messages: `{"call": "jog_start", "args": {"axis": "x", "speed": 100.0}}`
+- Optional delta optimization: only send fields that changed since last push
+
+Python client:
+```python
+client = AxisWatchClient("ws://localhost:5080/api/v1/watch")
+client.subscribe_get_status(rate_ms=50, callback=on_status_update)
+client.subscribe_get_notifications(rate_ms=1000, callback=on_notifications)
+# Commands go through the same connection
+client.jog_start(axis="x", speed=100.0)
+```
+
+**Pin Migration Map (axis.py → axis.gmi):**
+
+| Old HAL Pin | Direction | New GMI Mechanism |
+|-------------|-----------|-------------------|
+| `is-running` | OUT | `get_status().is_running` (watch @50ms) |
+| `error` | OUT | `get_status().has_error` (watch @50ms) |
+| `has-notifications` | OUT | `get_status().has_notifications` (watch @50ms) |
+| `abort` | OUT | `abort()` command |
+| `jog.{x..w}` | OUT | `get_status().jog.active_axis` (watch @50ms) |
+| `jog.increment` | OUT | `get_status().jog.increment` (watch @50ms) |
+| `jog.{x..w}-plus/minus` | IN | `jog_start()`/`jog_stop()` commands |
+| `jog.disable` | IN | `get_status().jog.disabled` (watch @50ms) |
+| `notifications-clear*` | IN | `clear_notifications()` command |
+| `resume-inhibit` | IN | Part of status or separate command |
+| `sliders.scale*` | IN | Slider commands (future) |
+
+**Implementation Plan:**
+
+- [ ] GMI parser: `@watch`, `@watch_default_rate` annotations on functions
+- [ ] gmicompile `--server-ws`: Go WebSocket subscribe/push handler
+- [ ] gmicompile `--client-python-ws`: Python async watch client
+- [ ] gomc-server: WebSocket endpoint at `/api/v1/watch`
+- [ ] `axis.gmi`: IDL with status watch + jog/notification commands
+- [ ] axis.py: replace HAL `comp` with WebSocket client (thread + Tk event posting)
+- [ ] Integration test: subscribe → push → command round-trip
+
+**Future (out of scope for 5.2):**
+- NML status channel replacement (same watch infrastructure, different GMI API)
+- Multiple simultaneous UI clients (watch supports this by design)
+- Remote UI over network (WebSocket works through reverse proxies)
 
 ### Step 6: Polish (NOT STARTED)
 - [ ] Error handling standardization
