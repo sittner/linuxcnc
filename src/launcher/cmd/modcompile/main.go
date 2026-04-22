@@ -115,9 +115,6 @@ func main() {
 	case "--include-dir":
 		fmt.Println(config.EMC2CmodIncludeDir)
 		return
-	case "--gomod-dir":
-		fmt.Println(config.EMC2GomodDir)
-		return
 	case "--launcher-dir":
 		fmt.Println(config.EMC2LauncherDir)
 		return
@@ -338,12 +335,11 @@ func printMakeInc() {
 
 	// Each line wrapped in $(eval ...) because $(shell) converts newlines to spaces.
 	// The outer $(eval $(shell ...)) then evaluates each inner $(eval) properly.
-	fmt.Printf(`$(eval GOMC_CC := %s) $(eval GOMC_CFLAGS := -I%s %s) $(eval GOMC_LDFLAGS := %s) $(eval GOMC_CMOD_DIR := %s) $(eval GOMC_GOMOD_DIR := %s) $(eval GOMC_INCLUDE_DIR := %s) $(eval GOMC_LAUNCHER_DIR := %s) $(eval GOMC_GO := %s) $(eval GOMC_LIB_DIR := %s)`,
+	fmt.Printf(`$(eval GOMC_CC := %s) $(eval GOMC_CFLAGS := -I%s %s) $(eval GOMC_LDFLAGS := %s) $(eval GOMC_CMOD_DIR := %s) $(eval GOMC_INCLUDE_DIR := %s) $(eval GOMC_LAUNCHER_DIR := %s) $(eval GOMC_GO := %s) $(eval GOMC_LIB_DIR := %s)`,
 		cc,
 		config.EMC2CmodIncludeDir, defaultCFlags,
 		defaultLDFlags,
 		config.EMC2CmodDir,
-		config.EMC2GomodDir,
 		config.EMC2CmodIncludeDir,
 		config.EMC2LauncherDir,
 		config.GoBinary,

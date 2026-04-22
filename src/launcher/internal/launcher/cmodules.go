@@ -266,7 +266,8 @@ type cModule struct {
 }
 
 // resolveCModulePath resolves a C module name or path to an absolute .so path.
-// Same resolution logic as resolveGoModulePath but uses EMC2_CMOD_DIR.
+// If the name contains a '/' it is treated as a path and used as-is.
+// Otherwise, the bare module name is resolved to $EMC2_CMOD_DIR/<name>.so.
 func resolveCModulePath(name string) string {
 	if strings.Contains(name, "/") {
 		return name

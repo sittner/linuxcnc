@@ -66,7 +66,7 @@ type Launcher struct {
 	cleanupOnce  sync.Once          // ensures cleanup runs exactly once
 	appProcesses []*exec.Cmd        // [APPLICATIONS]APP background processes
 	halComp      *hal.Component     // launcher's HAL component (like halcmd's hal_init)
-	goModules    []*goModule        // Go plugin modules loaded via "load" command
+	goModules    []*goModule        // Go modules loaded via "load" command (compiled-in)
 	cModules     []*cModule         // C plugin modules loaded via "load" command
 	cModArena    []unsafe.Pointer   // arena-tracked C strings freed in destroyCModules
 	logRing      *gomcLogRing       // shared log ring buffer for C module FIFO logging
@@ -360,7 +360,7 @@ func (l *Launcher) Run() (runErr error) {
 		if cModuleExists(cmodPath) {
 			return l.loadCPlugin(cmodPath, name, args)
 		}
-		return l.loadGoPlugin(resolveGoModulePath(path), name, args)
+		return l.loadGoModule(path, args)
 	}); err != nil {
 		if !l.opts.ContinueOnError {
 			return fmt.Errorf("plugin module loading failed: %w", err)

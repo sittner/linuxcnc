@@ -1,7 +1,7 @@
 # Built binaries (when running go build from module root)
 /ads-xml-gen
 /gmicompile
-/linuxcnc-launcher
+/gomc-server
 /modcompile
 
 # Generated code (produced by gmicompile from .gmi IDL files)

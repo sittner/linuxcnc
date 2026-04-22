@@ -137,7 +137,7 @@ ifeq ($(origin KERNELRELEASE),undefined)
 # The "modules" target is the gateway to the kernel module build.
 build-software: userspace modules
 ifeq ($(RUN_IN_PLACE),yes)
-	@if [ -f ../bin/linuxcnc-launcher ]; then if ! getcap ../bin/linuxcnc-launcher 2>/dev/null | grep -q cap_sys_nice; then $(VECHO) "You now need to run 'sudo make setuid' in order to run in place with access to hardware."; fi; fi
+	@if [ -f ../bin/gomc-server ]; then if ! getcap ../bin/gomc-server 2>/dev/null | grep -q cap_sys_nice; then $(VECHO) "You now need to run 'sudo make setuid' in order to run in place with access to hardware."; fi; fi
 endif
 
 VERSION=$(shell cat ../VERSION)
@@ -572,7 +572,7 @@ pycheck: pycheck-python-files pycheck-python-script
 # So that nothing is built as root, this rule does not depend on the touched
 # files (Note that files in depends/ might be rebuilt, and there's little that
 # can be done about it)
-# Capabilities required by linuxcnc-launcher:
+# Capabilities required by gomc-server:
 #   cap_net_admin  - EtherCAT: manage network interfaces and settings
 #   cap_net_raw    - EtherCAT: send/receive raw Ethernet frames
 #   cap_ipc_lock   - lock shared memory (mlock) for realtime operation
@@ -580,7 +580,7 @@ pycheck: pycheck-python-files pycheck-python-script
 #   cap_sys_nice   - set realtime scheduling priorities (SCHED_FIFO/SCHED_RR)
 #   cap_sys_rawio  - direct hardware I/O port access (ioperm/iopl for parport, PCI BARs)
 setuid:
-	setcap cap_net_admin,cap_net_raw,cap_ipc_lock,cap_sys_resource,cap_sys_nice,cap_sys_rawio=ep ../bin/linuxcnc-launcher
+	setcap cap_net_admin,cap_net_raw,cap_ipc_lock,cap_sys_resource,cap_sys_nice,cap_sys_rawio=ep ../bin/gomc-server
 
 # These rules allows a header file from this directory to be installed into
 # ../include.  A pair of rules like these will exist in the Submakefile

@@ -3,7 +3,7 @@
 # usage: linuxcnc [options] [<INI file>]
 #
 # Thin wrapper that ensures the environment is set up (via rip-environment
-# for RIP builds) and delegates all work to the Go-based linuxcnc-launcher.
+# for RIP builds) and delegates all work to the Go-based gomc-server.
 #
 ################################################################################
 # Author:
@@ -45,4 +45,4 @@ if [[ ! -v LINUXCNC_OPENGL_PLATFORM || "${LINUXCNC_OPENGL_PLATFORM}" == "glx" ]]
     export QT_QPA_PLATFORM="xcb"
 fi
 
-exec @EMC2_BIN_DIR@/linuxcnc-launcher "$@"
+exec @EMC2_BIN_DIR@/gomc-server "$@"

@@ -1,4 +1,4 @@
-// Command linuxcnc-launcher is the Go-based launcher for LinuxCNC.
+// Command gomc-server is the Go-based server process for LinuxCNC.
 //
 // It is invoked by the scripts/linuxcnc wrapper script after environment
 // setup (via rip-environment for RIP builds) and accepts the same
@@ -6,7 +6,7 @@
 //
 // Usage:
 //
-//	linuxcnc-launcher [Options] [path/to/ini_file]
+//	gomc-server [Options] [path/to/ini_file]
 //
 // Options:
 //
@@ -32,6 +32,10 @@ import (
 	"github.com/sittner/linuxcnc/src/launcher/internal/launcher"
 
 	halcmd "github.com/sittner/linuxcnc/src/launcher/internal/halcmd"
+
+	// Compiled-in Go modules — their init() functions register with the
+	// gomc module registry so they can be loaded via HAL "load" commands.
+	_ "github.com/sittner/linuxcnc/src/launcher/internal/adsmodule"
 )
 
 func init() {
@@ -80,12 +84,12 @@ func main() {
 }
 
 func run(args []string) int {
-	fs := flag.NewFlagSet("linuxcnc-launcher", flag.ContinueOnError)
+	fs := flag.NewFlagSet("gomc-server", flag.ContinueOnError)
 	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, `linuxcnc-launcher: Run LinuxCNC
+		fmt.Fprintf(os.Stderr, `gomc-server: Run LinuxCNC
 
 Usage:
-  linuxcnc-launcher [Options] [path/to/ini_file]
+  gomc-server [Options] [path/to/ini_file]
 
   path/to/ini_file  Path to the INI configuration file.
                     Pass '-' to use the last-used INI file (same as -l).
@@ -117,7 +121,7 @@ Options:
 	// Validate -H directories.
 	for _, d := range halLibDirs {
 		if info, err := os.Stat(d); err != nil || !info.IsDir() {
-			fmt.Fprintf(os.Stderr, "linuxcnc-launcher: invalid directory specified with -H: %s\n", d)
+			fmt.Fprintf(os.Stderr, "gomc-server: invalid directory specified with -H: %s\n", d)
 			return 1
 		}
 	}
@@ -131,7 +135,7 @@ Options:
 		} else {
 			abs, err := filepath.Abs(arg)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "linuxcnc-launcher: resolving INI file path: %v\n", err)
+				fmt.Fprintf(os.Stderr, "gomc-server: resolving INI file path: %v\n", err)
 				return 1
 			}
 			iniFile = abs
@@ -141,13 +145,13 @@ Options:
 	// TODO (M7): if useLast && iniFile == "", look up the last-used INI file
 	// from ~/.linuxcncrc or similar.
 	if *useLast && iniFile == "" {
-		fmt.Fprintln(os.Stderr, "linuxcnc-launcher: -l / last-used INI file not yet implemented")
+		fmt.Fprintln(os.Stderr, "gomc-server: -l / last-used INI file not yet implemented")
 		return 1
 	}
 
 	// TODO (M7): if no INI file specified, launch pickconfig.tcl GUI.
 	if iniFile == "" {
-		fmt.Fprintln(os.Stderr, "linuxcnc-launcher: no INI file specified (GUI picker not yet implemented)")
+		fmt.Fprintln(os.Stderr, "gomc-server: no INI file specified (GUI picker not yet implemented)")
 		return 1
 	}
 
@@ -172,7 +176,7 @@ Options:
 
 	l := launcher.New(opts, logger)
 	if err := l.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "linuxcnc-launcher: %v\n", err)
+		fmt.Fprintf(os.Stderr, "gomc-server: %v\n", err)
 		return 1
 	}
 	return 0
