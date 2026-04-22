@@ -118,6 +118,19 @@ func DefaultRegistry() *Registry {
 	return defaultRegistry
 }
 
+// defaultWatchRegistry is the package-level watch registry for WebSocket subscriptions.
+var defaultWatchRegistry *WatchRegistry
+
+// SetDefaultWatchRegistry sets the package-level watch registry.
+func SetDefaultWatchRegistry(r *WatchRegistry) {
+	defaultWatchRegistry = r
+}
+
+// DefaultWatchRegistry returns the package-level watch registry.
+func DefaultWatchRegistry() *WatchRegistry {
+	return defaultWatchRegistry
+}
+
 // ─── Meta Registry ───
 //
 // APIMeta objects are registered by generated cgo packages at init() time.

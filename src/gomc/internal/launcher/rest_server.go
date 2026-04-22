@@ -32,6 +32,14 @@ func (l *Launcher) startAPIServer() {
 
 	l.apiServer = apiserver.NewServer(reg, addr)
 
+	// Add WebSocket watch endpoint if a watch registry is available
+	watchReg := apiserver.DefaultWatchRegistry()
+	if watchReg == nil {
+		watchReg = apiserver.NewWatchRegistry()
+		apiserver.SetDefaultWatchRegistry(watchReg)
+	}
+	l.apiServer.AddWatchEndpoint(watchReg)
+
 	go func() {
 		l.logger.Info("starting REST API server", "addr", addr)
 		if err := l.apiServer.ListenAndServe(); err != nil {

@@ -184,10 +184,12 @@ type Func struct {
 	Return *TypeRef // nil if no return type
 
 	// Metadata from annotations.
-	Method string // GET, POST, PUT, DELETE (empty if not REST)
-	Path   string // REST endpoint path
-	RTSafe bool   // true if callable from RT context
-	Doc    string // documentation string
+	Method           string // GET, POST, PUT, DELETE (empty if not REST)
+	Path             string // REST endpoint path
+	RTSafe           bool   // true if callable from RT context
+	Doc              string // documentation string
+	Watch            bool   // true if this function supports WebSocket watch subscriptions
+	WatchDefaultRate string // default push rate (e.g. "50ms", "1s")
 }
 
 // Param represents a function parameter.

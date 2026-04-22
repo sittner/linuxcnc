@@ -121,9 +121,21 @@ func (p *Parser) parseAnnotation() annotation {
 	p.advance() // skip @
 	pos := p.pos()
 	name := p.cur.Text
+	nameLine := p.cur.Line
 	p.advance()
-	value := p.cur.Text
-	p.advance()
+	// Collect value tokens on the same line as the annotation name.
+	// This handles compound values like "100ms" (tokenized as "100" + "ms").
+	var parts []string
+	for p.cur.Type != EOF && p.cur.Line == nameLine &&
+		p.cur.Type != AT && p.cur.Type != FUNC &&
+		p.cur.Type != TYPE && p.cur.Type != ENUM && p.cur.Type != CONST {
+		parts = append(parts, p.cur.Text)
+		p.advance()
+	}
+	value := ""
+	for _, part := range parts {
+		value += part
+	}
 	return annotation{name: name, value: value, pos: pos}
 }
 
@@ -251,6 +263,10 @@ func (p *Parser) parseFunc(anns []annotation) ast.Func {
 			fn.RTSafe = ann.value == "true"
 		case "doc":
 			fn.Doc = ann.value
+		case "watch":
+			fn.Watch = ann.value == "true"
+		case "watch_default_rate":
+			fn.WatchDefaultRate = ann.value
 		}
 	}
 
