@@ -74,19 +74,19 @@ func (r *WatchRegistry) Get(apiName, instance string) *WatchAPI {
 
 // wsSubscribe is sent by the client to start receiving updates.
 type wsSubscribe struct {
-	Action   string `json:"action"`    // "subscribe"
-	API      string `json:"api"`       // "axis"
-	Instance string `json:"instance"`  // "default"
-	Func     string `json:"func"`      // "get_status"
-	RateMS   int    `json:"rate_ms"`   // 50
+	Action   string `json:"action"`   // "subscribe"
+	API      string `json:"api"`      // "axis"
+	Instance string `json:"instance"` // "default"
+	Func     string `json:"func"`     // "get_status"
+	RateMS   int    `json:"rate_ms"`  // 50
 }
 
 // wsUnsubscribe is sent by the client to stop receiving updates.
 type wsUnsubscribe struct {
-	Action   string `json:"action"`    // "unsubscribe"
-	API      string `json:"api"`       // "axis"
-	Instance string `json:"instance"`  // "default"
-	Func     string `json:"func"`      // "get_status"
+	Action   string `json:"action"`   // "unsubscribe"
+	API      string `json:"api"`      // "axis"
+	Instance string `json:"instance"` // "default"
+	Func     string `json:"func"`     // "get_status"
 }
 
 // wsCall is sent by the client to invoke a command.
@@ -110,15 +110,15 @@ type wsUpdate struct {
 
 // wsResult is sent by the server in response to a call.
 type wsResult struct {
-	Type   string          `json:"type"`             // "result"
-	ID     int             `json:"id"`               // echoed request ID
-	Data   json.RawMessage `json:"data,omitempty"`
-	Error  string          `json:"error,omitempty"`
+	Type  string          `json:"type"` // "result"
+	ID    int             `json:"id"`   // echoed request ID
+	Data  json.RawMessage `json:"data,omitempty"`
+	Error string          `json:"error,omitempty"`
 }
 
 // wsError is sent by the server for protocol errors.
 type wsError struct {
-	Type    string `json:"type"`    // "error"
+	Type    string `json:"type"` // "error"
 	Message string `json:"message"`
 }
 
@@ -150,11 +150,11 @@ func (h *WatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	c := &wsConn{
-		conn:     conn,
-		handler:  h,
-		ctx:      ctx,
-		cancel:   cancel,
-		subs:     make(map[string]context.CancelFunc),
+		conn:    conn,
+		handler: h,
+		ctx:     ctx,
+		cancel:  cancel,
+		subs:    make(map[string]context.CancelFunc),
 	}
 
 	c.readLoop()
