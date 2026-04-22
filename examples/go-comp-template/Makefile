@@ -33,7 +33,7 @@ check-env:
 		exit 1; \
 	fi
 	@echo "GO:       $(GOMC_GO)"
-	@echo "gomc dir: $(GOMC_LAUNCHER_DIR)"
+	@echo "gomc dir: $(GOMC_DIR)"
 
 # Compile locally to verify the module builds before installing.
 # Uses go.work to resolve the gomc module dependency from the local tree.
@@ -50,7 +50,7 @@ go.work: go.mod
 	GOTOOLCHAIN=local $(GOMC_GO) work init
 	GOTOOLCHAIN=local $(GOMC_GO) work use .
 	GOTOOLCHAIN=local $(GOMC_GO) work edit \
-		-replace github.com/sittner/linuxcnc/src/gomc=$(GOMC_LAUNCHER_DIR)
+		-replace github.com/sittner/linuxcnc/src/gomc=$(GOMC_DIR)
 
 # Install: copy source into gomc/external/<name>/, register, and rebuild.
 install: check-env compile

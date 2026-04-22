@@ -29,10 +29,10 @@ var (
 	// For RIP this is src/gomc/pkg/cmodule, for installed it's include/linuxcnc/cmod.
 	EMC2CmodIncludeDir string
 
-	// EMC2LauncherDir is the directory containing the gomc Go module source.
-	// External Go plugins need this for 'go work -replace' to link against the same module.
+	// EMC2GomcDir is the directory containing the gomc Go module source.
+	// External Go modules need this to compile against the same module.
 	// For RIP this is src/gomc, for installed it's share/linuxcnc/gomc.
-	EMC2LauncherDir string
+	EMC2GomcDir string
 
 	// GoBinary is the path to the Go compiler used to build LinuxCNC.
 	// External Go plugins must use the same Go toolchain for compatibility.

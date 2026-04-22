@@ -30,7 +30,7 @@ rtapi_app \- DEPRECATED \- former realtime module loader
 
 .SH DESCRIPTION
 \fBrtapi_app\fR is no longer built or used.  Realtime module loading is now
-handled in-process by the LinuxCNC launcher (linuxcnc-launcher) via dlopen.
+handled in-process by gomc-server via dlopen.
 .PP
 The \fBrtapi_app_main\fR and \fBrtapi_app_exit\fR entry points in HAL
 components are still used as the dlsym symbols for module initialization

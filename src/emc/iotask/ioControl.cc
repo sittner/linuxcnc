@@ -4,7 +4,7 @@
 *           outputs those to a HAL pin,
 *           and sends back a "Done" message.
 *
-*   Built as a C plugin (.so) loaded by the linuxcnc-launcher via:
+*   Built as a C plugin (.so) loaded by gomc-server via:
 *
 *       load iocontrol
 *

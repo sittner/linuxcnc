@@ -1,7 +1,7 @@
 // Package cgen generates C source code from a modcompile AST.
 //
 // The generated code targets the gomc cmod API (gomc_env.h) and produces
-// a single .c file that compiles to one .so plugin for linuxcnc-launcher.
+// a single .c file that compiles to one .so plugin for gomc-server.
 package cgen
 
 import (

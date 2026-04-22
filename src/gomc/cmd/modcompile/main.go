@@ -29,7 +29,7 @@
 //	--ldflags        Print linker flags for cmod components.
 //	--cmod-dir       Print cmod installation directory.
 //	--include-dir    Print cmod headers directory.
-//	--launcher-dir   Print launcher Go module source directory.
+//	--gomc-dir       Print gomc Go module source directory.
 //	--go             Print Go binary path used to build LinuxCNC.
 //	--print-make-inc Print Makefile include snippet for external projects.
 package main
@@ -92,7 +92,7 @@ Environment query options (for external Makefiles):
     --ldflags        Print linker flags for cmod components
     --cmod-dir       Print cmod installation directory
     --include-dir    Print cmod headers directory
-    --launcher-dir   Print launcher Go module source directory
+    --gomc-dir       Print gomc Go module source directory
     --go             Print Go binary path used to build LinuxCNC
     --print-make-inc Print Makefile include snippet for external projects
 
@@ -148,8 +148,8 @@ func main() {
 	case "--include-dir":
 		fmt.Println(config.EMC2CmodIncludeDir)
 		return
-	case "--launcher-dir":
-		fmt.Println(config.EMC2LauncherDir)
+	case "--gomc-dir", "--launcher-dir":
+		fmt.Println(config.EMC2GomcDir)
 		return
 	case "--go":
 		fmt.Println(config.GoBinary)
@@ -369,7 +369,7 @@ func compileComp(compPath string, pkg *ast.Package, outDir string) error {
 		gmiAPIs[api] = true
 	}
 	for api := range gmiAPIs {
-		apiIncDir := filepath.Join(config.EMC2LauncherDir, "generated", "gmi", api)
+		apiIncDir := filepath.Join(config.EMC2GomcDir, "generated", "gmi", api)
 		args = append(args, "-I"+apiIncDir)
 	}
 
@@ -404,24 +404,24 @@ func printMakeInc() {
 
 	// Each line wrapped in $(eval ...) because $(shell) converts newlines to spaces.
 	// The outer $(eval $(shell ...)) then evaluates each inner $(eval) properly.
-	fmt.Printf(`$(eval GOMC_CC := %s) $(eval GOMC_CFLAGS := -I%s %s) $(eval GOMC_LDFLAGS := %s) $(eval GOMC_CMOD_DIR := %s) $(eval GOMC_INCLUDE_DIR := %s) $(eval GOMC_LAUNCHER_DIR := %s) $(eval GOMC_GO := %s) $(eval GOMC_LIB_DIR := %s)`,
+	fmt.Printf(`$(eval GOMC_CC := %s) $(eval GOMC_CFLAGS := -I%s %s) $(eval GOMC_LDFLAGS := %s) $(eval GOMC_CMOD_DIR := %s) $(eval GOMC_INCLUDE_DIR := %s) $(eval GOMC_DIR := %s) $(eval GOMC_GO := %s) $(eval GOMC_LIB_DIR := %s)`,
 		cc,
 		config.EMC2CmodIncludeDir, defaultCFlags,
 		defaultLDFlags,
 		config.EMC2CmodDir,
 		config.EMC2CmodIncludeDir,
-		config.EMC2LauncherDir,
+		config.EMC2GomcDir,
 		config.GoBinary,
 		libDir,
 	)
 }
 
-// packagesConfPath returns the path to packages.conf in the launcher dir.
+// packagesConfPath returns the path to packages.conf in the gomc dir.
 func packagesConfPath() string {
-	return filepath.Join(config.EMC2LauncherDir, "packages.conf")
+	return filepath.Join(config.EMC2GomcDir, "packages.conf")
 }
 
-// loadRegistry reads packages.conf from the launcher directory.
+// loadRegistry reads packages.conf from the gomc directory.
 func loadRegistry() *pkgreg.Registry {
 	reg, err := pkgreg.ReadFile(packagesConfPath())
 	if err != nil {
@@ -433,7 +433,7 @@ func loadRegistry() *pkgreg.Registry {
 
 // regenerate writes imports_generated.go from the registry.
 func regenerate(reg *pkgreg.Registry) {
-	serverDir := config.EMC2LauncherDir
+	serverDir := config.EMC2GomcDir
 
 	if err := reg.GenerateImports(serverDir); err != nil {
 		fmt.Fprintf(os.Stderr, "modcompile: generating imports: %v\n", err)
@@ -443,7 +443,7 @@ func regenerate(reg *pkgreg.Registry) {
 
 // buildServer builds the gomc-server binary.
 func buildServer() {
-	serverDir := config.EMC2LauncherDir
+	serverDir := config.EMC2GomcDir
 	binDir := config.EMC2BinDir
 	gobin := config.GoBinary
 	if gobin == "" {
@@ -463,7 +463,7 @@ func buildServer() {
 			"-X '%s.EMC2RtlibDir=%s' "+
 			"-X '%s.EMC2CmodDir=%s' "+
 			"-X '%s.EMC2CmodIncludeDir=%s' "+
-			"-X '%s.EMC2LauncherDir=%s' "+
+			"-X '%s.EMC2GomcDir=%s' "+
 			"-X '%s.GoBinary=%s' "+
 			"-X '%s.EMC2ConfigPath=%s' "+
 			"-X '%s.EMC2NCFilesDir=%s' "+
@@ -483,7 +483,7 @@ func buildServer() {
 		pkg, config.EMC2RtlibDir,
 		pkg, config.EMC2CmodDir,
 		pkg, config.EMC2CmodIncludeDir,
-		pkg, config.EMC2LauncherDir,
+		pkg, config.EMC2GomcDir,
 		pkg, config.GoBinary,
 		pkg, config.EMC2ConfigPath,
 		pkg, config.EMC2NCFilesDir,
@@ -566,7 +566,7 @@ func cmdAddGomod(dir string, force bool) {
 	// Package name = directory basename.
 	name := filepath.Base(absDir)
 	importPath := "external/" + name
-	extDir := filepath.Join(config.EMC2LauncherDir, "external", name)
+	extDir := filepath.Join(config.EMC2GomcDir, "external", name)
 	originFile := filepath.Join(extDir, ".origin")
 
 	// Check for collision.
@@ -651,7 +651,7 @@ func cmdRmGomod(name string) {
 
 	// If the package lives under external/, delete its directory.
 	if strings.HasPrefix(importPath, "external/") {
-		extDir := filepath.Join(config.EMC2LauncherDir, importPath)
+		extDir := filepath.Join(config.EMC2GomcDir, importPath)
 		if err := os.RemoveAll(extDir); err != nil {
 			fmt.Fprintf(os.Stderr, "modcompile rm-gomod: removing %s: %v\n", extDir, err)
 			os.Exit(1)
