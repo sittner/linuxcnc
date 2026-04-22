@@ -30,7 +30,7 @@
 #include "nml.hh"
 #include <rtapi_string.h>
 
-#include "launcher/pkg/cmodule/gomc_env.h"
+#include "gomc/pkg/cmodule/gomc_env.h"
 
 // nml_control_C_caught is a non-static global in nml_srv.cc.
 extern int nml_control_C_caught;

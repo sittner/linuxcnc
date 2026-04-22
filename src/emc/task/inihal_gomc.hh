@@ -23,8 +23,8 @@ gomc variant: uses gomc_hal.h types instead of hal.h.
 #ifndef INIHAL_H
 #define INIHAL_H
 
-#include "launcher/pkg/cmodule/gomc_hal.h"
-#include "launcher/pkg/cmodule/gomc_log.h"
+#include "gomc/pkg/cmodule/gomc_hal.h"
+#include "gomc/pkg/cmodule/gomc_log.h"
 #include "emcmotcfg.h"
 
 int check_ini_hal_items(int numjoints);

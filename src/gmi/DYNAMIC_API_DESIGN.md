@@ -628,7 +628,7 @@ src/gmi/
 ├── DYNAMIC_API_DESIGN.md   # This document
 └── README.md
 
-src/launcher/
+src/gomc/
 ├── cmd/
 │   ├── gmicompile/         # Code generator CLI
 │   │   └── main.go
@@ -650,7 +650,7 @@ src/launcher/
 │   │   └── directtest/     # cmod direct-call simulation tests
 │   ├── halrest/            # Server-side REST handler for halcmd API (Step 4.5)
 │   │   └── halrest.go      # Dispatches REST calls to internal/halcmd
-│   ├── launcher/           # Launcher lifecycle
+│   ├── gomc/           # Launcher lifecycle
 │   │   ├── launcher.go     # Main launcher struct + startup
 │   │   ├── rest_server.go  # REST API server start/stop ([GMC]REST_ADDR)
 │   │   └── cleanup.go      # Shutdown sequence
@@ -708,7 +708,7 @@ modules to self-contained cmods using the GMI dynamic API.
 - [x] Bridge layer removed — `control.c`/`command.c` call `motmod_tp_api->*` directly
 - [x] All wrapper layers eliminated (tpmod.c, homemod.c deleted)
 - [x] Build system: cmod rules in Makefile/Submakefiles, rtlib rules removed
-- [x] Generated code properly gitignored (`src/launcher/.gitignore`)
+- [x] Generated code properly gitignored (`src/gomc/.gitignore`)
 - [x] Kins round-trip Go tests: forward→inverse→compare (trivkins, pumakins)
 - [x] RPY convention test: verifies j1 rotation maps to yaw (C), not roll (A)
 
@@ -913,7 +913,7 @@ cmod + REST API architecture.
       HAL pins (change, number, change_button, changed), thread function,
       GMI callbacks (`gmi_manualtoolchange_get_state`, `gmi_manualtoolchange_confirm`)
 - [x] Generated `manualtoolchange_api.h` + `manualtoolchange_cgo.go` in
-      `launcher/generated/gmi/manualtoolchange/`
+      `gomc/generated/gmi/manualtoolchange/`
 - [x] Generated `lib/python/gmi/manualtoolchange_client.py` — Python REST client
 - [x] `manualtoolchange_ui.py` (133 lines) — Tkinter UI using generated REST client
 - [x] `gmi/codegen/Submakefile` — build rules for API header, cgo dispatch, Python client
@@ -977,7 +977,7 @@ natural Go approach.
 ### What Gets Removed
 
 - `pkg/gomodule/gomodule.go` — Module interface, Factory type
-- `internal/launcher/gomodules.go` — `loadGoPlugin`, `resolveGoModulePath`, etc.
+- `internal/gomc/gomodules.go` — `loadGoPlugin`, `resolveGoModulePath`, etc.
 - `gomod/` directory — no more plugin .so outputs
 - `EMC2_GOMOD_DIR` — no more gomod path in config
 - `-buildmode=plugin` build rules in Submakefile
@@ -992,8 +992,8 @@ build directory. For RIP, `GOMC_SERVER_DIR` points to the source tree directly.
 For installed systems, the source is copied to a share directory.
 
 ```
-GOMC_SERVER_DIR/                    # = src/launcher (RIP) or $prefix/share/linuxcnc/gomc-server (installed)
-├── go.mod                          # module: github.com/sittner/linuxcnc/src/launcher
+GOMC_SERVER_DIR/                    # = src/gomc (RIP) or $prefix/share/linuxcnc/gomc-server (installed)
+├── go.mod                          # module: github.com/sittner/linuxcnc/src/gomc
 ├── go.work                         # generated: "use" entries for all registered packages
 ├── packages.conf                   # registry: all installed gomod + gmi packages
 ├── cmd/
@@ -1014,7 +1014,7 @@ GOMC_SERVER_DIR/                    # = src/launcher (RIP) or $prefix/share/linu
 │       └── halcmd/                 # halcmd Go REST client
 ├── internal/
 │   ├── apiserver/                  # REST server + registry
-│   ├── launcher/                   # server lifecycle
+│   ├── gomc/                   # server lifecycle
 │   ├── halrest/                    # halcmd REST handler
 │   ├── halcmd/                     # halcmd implementation
 │   ├── halparse/                   # HAL file parser
@@ -1075,15 +1075,15 @@ package main
 
 import (
     // GMI dispatch packages
-    _ "github.com/sittner/linuxcnc/src/launcher/generated/gmi/kins"
-    _ "github.com/sittner/linuxcnc/src/launcher/generated/gmi/tp"
-    _ "github.com/sittner/linuxcnc/src/launcher/generated/gmi/home"
-    _ "github.com/sittner/linuxcnc/src/launcher/generated/gmi/mot"
-    _ "github.com/sittner/linuxcnc/src/launcher/generated/gmi/manualtoolchange"
-    _ "github.com/sittner/linuxcnc/src/launcher/generated/gmi/halcmd"
+    _ "github.com/sittner/linuxcnc/src/gomc/generated/gmi/kins"
+    _ "github.com/sittner/linuxcnc/src/gomc/generated/gmi/tp"
+    _ "github.com/sittner/linuxcnc/src/gomc/generated/gmi/home"
+    _ "github.com/sittner/linuxcnc/src/gomc/generated/gmi/mot"
+    _ "github.com/sittner/linuxcnc/src/gomc/generated/gmi/manualtoolchange"
+    _ "github.com/sittner/linuxcnc/src/gomc/generated/gmi/halcmd"
 
     // Go modules
-    _ "github.com/sittner/linuxcnc/src/launcher/internal/ads"
+    _ "github.com/sittner/linuxcnc/src/gomc/internal/ads"
 )
 ```
 
@@ -1180,7 +1180,7 @@ The Go package must have an `init()` function that registers itself (e.g., calls
 ```makefile
 # GOMC_SERVER_DIR is always used for building, even in RIP
 # RIP: points to source tree
-GOMC_SERVER_DIR = $(TOP)/src/launcher
+GOMC_SERVER_DIR = $(TOP)/src/gomc
 
 # Build gomc-server
 ../bin/gomc-server: $(GOMC_SERVER_SRC) $(GENERATED_GMI_FILES)
@@ -1202,7 +1202,7 @@ Set by `scripts/rip-environment` (RIP) or read from installed paths:
 
 | Variable | RIP Value | Installed Value |
 |----------|-----------|-----------------|
-| `GOMC_SERVER_DIR` | `$EMC2_HOME/src/launcher` | `$prefix/share/linuxcnc/gomc-server` |
+| `GOMC_SERVER_DIR` | `$EMC2_HOME/src/gomc` | `$prefix/share/linuxcnc/gomc-server` |
 | `EMC2_CMOD_DIR` | `$EMC2_HOME/cmod` | `$prefix/lib/linuxcnc/cmod` |
 | `GOMC_SERVER_BIN` | `$EMC2_HOME/bin/gomc-server` | `$prefix/bin/gomc-server` |
 
@@ -1212,13 +1212,13 @@ Set by `scripts/rip-environment` (RIP) or read from installed paths:
 
 1. Rename `linuxcnc-launcher` binary to `gomc-server` (update scripts, Submakefile)
 2. Remove `pkg/gomodule/` (Module, Factory interfaces)
-3. Remove `internal/launcher/gomodules.go` (loadGoPlugin, plugin.Open)
+3. Remove `internal/gomc/gomodules.go` (loadGoPlugin, plugin.Open)
 4. Remove `gomod/` directory and `EMC2_GOMOD_DIR`
 5. Remove `-buildmode=plugin` build rules from Submakefile
 
 #### Phase 2: Move ads-server In-Tree
 
-1. Move `hal/proto/ads-server/` → `launcher/internal/ads/`
+1. Move `hal/proto/ads-server/` → `gomc/internal/ads/`
 2. Change from `var New gomodule.Factory = func(...)` to `init()` registration
 3. Remove ads-server's `go.mod` and `go.work` (it's now part of the launcher module)
 4. Add blank import in main.go
@@ -1263,7 +1263,7 @@ Example minimal gomod:
 ```go
 package mymodule
 
-import "github.com/sittner/linuxcnc/src/launcher/pkg/gomc"
+import "github.com/sittner/linuxcnc/src/gomc/pkg/gomc"
 
 var meta = &gomc.APIMeta{
     Name: "mymodule", Version: 1, RESTExport: true, Prefix: "mymodule",

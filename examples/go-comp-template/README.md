@@ -87,11 +87,11 @@ net my-signal go-passthrough.out-f some-other-component.input-pin
   resident in memory until the process exits. This is fine for LinuxCNC, where
   components loaded at startup live for the entire machine session.
 
-- All dependency versions (e.g. `github.com/sittner/linuxcnc/src/launcher/pkg/hal`, standard library, and any
+- All dependency versions (e.g. `github.com/sittner/linuxcnc/src/gomc/pkg/hal`, standard library, and any
   third-party packages) must match the versions used to build `linuxcnc-launcher`
   at the time both binaries were compiled. A mismatch causes `plugin.Open()` to
   fail at runtime with a clear message like:
-  `plugin was built with a different version of package github.com/sittner/linuxcnc/src/launcher/pkg/hal`
+  `plugin was built with a different version of package github.com/sittner/linuxcnc/src/gomc/pkg/hal`
 
 - To verify compatibility, compare the module info of both binaries:
   ```bash

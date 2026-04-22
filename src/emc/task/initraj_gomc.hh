@@ -7,7 +7,7 @@
 #ifndef INITRAJ_GOMC_HH
 #define INITRAJ_GOMC_HH
 
-#include "launcher/pkg/cmodule/gomc_ini.h"
+#include "gomc/pkg/cmodule/gomc_ini.h"
 
 /* initializes traj module from gomc INI handle */
 extern int iniTraj(const gomc_ini_t *ini);

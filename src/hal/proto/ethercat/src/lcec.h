@@ -33,7 +33,7 @@
 #ifndef _LCEC_H_
 #define _LCEC_H_
 
-#include "launcher/pkg/cmodule/gomc_env.h"
+#include "gomc/pkg/cmodule/gomc_env.h"
 
 #include <errno.h>
 #include <stdbool.h>

@@ -19,10 +19,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/sittner/linuxcnc/src/launcher/pkg/hal"
+	"github.com/sittner/linuxcnc/src/gomc/pkg/hal"
 
-	"github.com/sittner/linuxcnc/src/launcher/pkg/gomodule"
-	"github.com/sittner/linuxcnc/src/launcher/pkg/inifile"
+	"github.com/sittner/linuxcnc/src/gomc/pkg/gomodule"
+	"github.com/sittner/linuxcnc/src/gomc/pkg/inifile"
 
 	"github.com/sittner/linuxcnc/src/hal/proto/ads-server/internal/ads"
 	"github.com/sittner/linuxcnc/src/hal/proto/ads-server/internal/adsbridge"

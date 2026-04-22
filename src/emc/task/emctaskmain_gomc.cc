@@ -85,10 +85,10 @@ fpu_control_t __fpu_control = _FPU_IEEE & ~(_FPU_MASK_IM | _FPU_MASK_ZM | _FPU_M
 #include "motion.h"             // EMCMOT_ORIENT_*
 #include "inihal_gomc.hh"
 
-#include "launcher/pkg/cmodule/gomc_env.h"
-#include "launcher/pkg/cmodule/gomc_ini.h"
-#include "launcher/pkg/cmodule/gomc_hal.h"
-#include "launcher/pkg/cmodule/gomc_log.h"
+#include "gomc/pkg/cmodule/gomc_env.h"
+#include "gomc/pkg/cmodule/gomc_ini.h"
+#include "gomc/pkg/cmodule/gomc_hal.h"
+#include "gomc/pkg/cmodule/gomc_log.h"
 
 // from taskintf_gomc.cc
 extern void taskintf_gomc_init(const gomc_ini_t *ini,

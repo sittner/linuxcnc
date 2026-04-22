@@ -1,0 +1,222 @@
+# gomc/Submakefile - Go-based LinuxCNC server (gomc-server)
+# Only included if BUILD_GOLANG is true (Go 1.21+ detected)
+
+ifeq ($(BUILD_GOLANG),yes)
+
+# Build directory for absolute paths
+TOP := $(shell cd ..; pwd)
+
+# Package path for -ldflags -X injection
+LAUNCHER_LDFLAGS_PKG := github.com/sittner/linuxcnc/src/gomc/internal/config
+
+# Cmod include directory - where gomc_*.h headers are
+ifeq ($(RUN_IN_PLACE),yes)
+EMC2_CMOD_INCLUDE_DIR := $(EMC2_HOME)/src/gomc/pkg/cmodule
+EMC2_LAUNCHER_DIR := $(EMC2_HOME)/src/gomc
+else
+EMC2_CMOD_INCLUDE_DIR := $(includedir)/linuxcnc/cmod
+EMC2_LAUNCHER_DIR := $(datadir)/linuxcnc/gomc
+endif
+
+# Compile-time variables injected via -ldflags
+LAUNCHER_LDFLAGS := \
+    -X '$(LAUNCHER_LDFLAGS_PKG).EMC2Home=$(EMC2_HOME)' \
+    -X '$(LAUNCHER_LDFLAGS_PKG).EMC2BinDir=$(EMC2_BIN_DIR)' \
+    -X '$(LAUNCHER_LDFLAGS_PKG).EMC2TclDir=$(EMC2_TCL_DIR)' \
+    -X '$(LAUNCHER_LDFLAGS_PKG).EMC2HelpDir=$(EMC2_HELP_DIR)' \
+    -X '$(LAUNCHER_LDFLAGS_PKG).EMC2RtlibDir=$(EMC2_RTLIB_DIR)' \
+    -X '$(LAUNCHER_LDFLAGS_PKG).EMC2CmodDir=$(EMC2_CMOD_DIR)' \
+    -X '$(LAUNCHER_LDFLAGS_PKG).EMC2CmodIncludeDir=$(EMC2_CMOD_INCLUDE_DIR)' \
+    -X '$(LAUNCHER_LDFLAGS_PKG).EMC2LauncherDir=$(EMC2_LAUNCHER_DIR)' \
+    -X '$(LAUNCHER_LDFLAGS_PKG).GoBinary=$(GO)' \
+    -X '$(LAUNCHER_LDFLAGS_PKG).EMC2ConfigPath=$(LINUXCNC_CONFIG_PATH)' \
+    -X '$(LAUNCHER_LDFLAGS_PKG).EMC2NCFilesDir=$(EMC2_NCFILES_DIR)' \
+    -X '$(LAUNCHER_LDFLAGS_PKG).EMC2LangDir=$(EMC2_LANG_DIR)' \
+    -X '$(LAUNCHER_LDFLAGS_PKG).EMC2ImageDir=$(EMC2_IMAGEDIR)' \
+    -X '$(LAUNCHER_LDFLAGS_PKG).EMC2TclLibDir=$(EMC2_TCL_LIB_DIR)' \
+    -X '$(LAUNCHER_LDFLAGS_PKG).HalibDir=$(HALLIB_DIR)' \
+    -X '$(LAUNCHER_LDFLAGS_PKG).EMC2Version=$(EMC2VERSION)' \
+    -X '$(LAUNCHER_LDFLAGS_PKG).RunInPlace=$(RUN_IN_PLACE)' \
+    -X '$(LAUNCHER_LDFLAGS_PKG).DefaultNmlFile=$(DEFAULT_NMLFILE)' \
+    -X '$(LAUNCHER_LDFLAGS_PKG).ModExt=$(MODULE_EXT)' \
+    -X '$(LAUNCHER_LDFLAGS_PKG).KernelVers=$(kernelvers)'
+
+# All Go source files in the gomc module (recursive wildcard for
+# sub-packages).  Make will rebuild when any .go file or go.mod changes.
+# Hand-written Go sources (no generated files — those are added in LAUNCHER_SRC).
+LAUNCHER_SRC_BASE := $(wildcard gomc/*.go) \
+    $(wildcard gomc/cmd/*/*.go) \
+    $(wildcard gomc/pkg/*/*.go) \
+    $(wildcard gomc/internal/*/*.go) \
+    $(wildcard gomc/internal/*/*/*.go) \
+    gomc/go.mod
+
+# Full source list including generated files (for the gomc binary).
+LAUNCHER_SRC := $(LAUNCHER_SRC_BASE) \
+    $(wildcard gomc/generated/*/*/*)
+
+# Generated GMI files that the gomc imports.  The wildcard above may be
+# empty on a fresh build (files don't exist yet at parse time), so we list
+# concrete prerequisites here to ensure codegen runs first.
+GMI_KINS_GEN_GO := gomc/generated/gmi/kins/kins_cgo.go
+
+# Generated imports file for compiled-in Go modules.
+IMPORTS_GENERATED := gomc/cmd/gomc-server/imports_generated.go
+
+# Build the gomc-server binary.
+#
+# CGO_LDFLAGS adds -Wl,-rpath so the dynamic linker finds liblinuxcnchal.so
+# and its companions at runtime (RIP and installed builds alike).
+# LIB_DIR is $(EMC2_HOME)/lib, defined in Makefile.inc.
+../bin/gomc-server: $(LAUNCHER_SRC) $(GMI_KINS_GEN_GO) $(IMPORTS_GENERATED) ../lib/liblinuxcnchal.so
+	$(ECHO) Building gomc-server
+	$(Q)cd gomc && CGO_LDFLAGS="-Wl,-rpath,$(LIB_DIR)" $(GO) build -ldflags "$(LAUNCHER_LDFLAGS)" -o $(TOP)/bin/gomc-server ./cmd/gomc-server
+
+# ---------------------------------------------------------------------------
+# ADS XML generator tool — built from cmd/ads-xml-gen within the gomc module
+# ---------------------------------------------------------------------------
+
+../bin/ads-xml-gen: $(LAUNCHER_SRC_BASE)
+	$(ECHO) Building ads-xml-gen
+	$(Q)cd gomc && CGO_ENABLED=0 $(GO) build -o $(TOP)/bin/ads-xml-gen ./cmd/ads-xml-gen
+
+# ---------------------------------------------------------------------------
+# Copy gomc public packages to share/ for RIP builds
+# ---------------------------------------------------------------------------
+
+# Files that external Go modules need (hal bindings + gomc interface +
+# inifile parser).
+LAUNCHER_PKG_FILES := \
+    ../share/linuxcnc/gomc/pkg/hal/hal.go \
+    ../share/linuxcnc/gomc/pkg/hal/component.go \
+    ../share/linuxcnc/gomc/pkg/hal/pin.go \
+    ../share/linuxcnc/gomc/pkg/hal/types.go \
+    ../share/linuxcnc/gomc/pkg/hal/errors.go \
+    ../share/linuxcnc/gomc/pkg/hal/cgo.go \
+    ../share/linuxcnc/gomc/pkg/hal/doc.go \
+    ../share/linuxcnc/gomc/pkg/gomc/gomc.go \
+    ../share/linuxcnc/gomc/pkg/inifile/types.go \
+    ../share/linuxcnc/gomc/pkg/inifile/parser.go \
+    ../share/linuxcnc/gomc/pkg/inifile/expand.go \
+    ../share/linuxcnc/gomc/go.mod
+
+../share/linuxcnc/gomc/pkg/%: gomc/pkg/%
+	$(ECHO) Copying gomc pkg file $<
+	@mkdir -p $(dir $@)
+	$(Q)cp -f $< $@
+
+# The installed go.mod must not carry the local replace directive.
+../share/linuxcnc/gomc/go.mod: gomc/go.mod
+	$(ECHO) Generating gomc share go.mod
+	@mkdir -p $(dir $@)
+	$(Q)printf 'module github.com/sittner/linuxcnc/src/gomc\n\ngo 1.21\n' > $@
+
+# ---------------------------------------------------------------------------
+# HAL Go example / test binaries (standalone processes using the hal package)
+# ---------------------------------------------------------------------------
+
+HAL_GO_CGO_CFLAGS := -I$(TOP)/src -I$(TOP)/src/hal -I$(TOP)/src/rtapi -I$(TOP)/include
+HAL_GO_CGO_LDFLAGS := -L$(TOP)/lib -llinuxcnchal
+
+HAL_GO_EXAMPLES := ../bin/passthrough ../bin/str-sender ../bin/str-receiver
+
+../bin/passthrough: $(LAUNCHER_SRC) gomc/pkg/hal/examples/passthrough/main.go gomc/pkg/hal/examples/passthrough/go.mod ../lib/liblinuxcnchal.so
+	$(ECHO) Building hal-go passthrough example
+	$(Q)cd gomc/pkg/hal/examples/passthrough && \
+	CGO_ENABLED=1 \
+	CGO_CFLAGS="$(HAL_GO_CGO_CFLAGS)" \
+	CGO_LDFLAGS="$(HAL_GO_CGO_LDFLAGS)" \
+	$(GO) build -o $(TOP)/bin/passthrough .
+
+../bin/str-sender: $(LAUNCHER_SRC) gomc/pkg/hal/tests/str-sender/main.go gomc/pkg/hal/tests/str-sender/go.mod ../lib/liblinuxcnchal.so
+	$(ECHO) Building hal-go str-sender test component
+	$(Q)cd gomc/pkg/hal/tests/str-sender && \
+	CGO_ENABLED=1 \
+	CGO_CFLAGS="$(HAL_GO_CGO_CFLAGS)" \
+	CGO_LDFLAGS="$(HAL_GO_CGO_LDFLAGS)" \
+	$(GO) build -o $(TOP)/bin/str-sender .
+
+../bin/str-receiver: $(LAUNCHER_SRC) gomc/pkg/hal/tests/str-receiver/main.go gomc/pkg/hal/tests/str-receiver/go.mod ../lib/liblinuxcnchal.so
+	$(ECHO) Building hal-go str-receiver test component
+	$(Q)cd gomc/pkg/hal/tests/str-receiver && \
+	CGO_ENABLED=1 \
+	CGO_CFLAGS="$(HAL_GO_CGO_CFLAGS)" \
+	CGO_LDFLAGS="$(HAL_GO_CGO_LDFLAGS)" \
+	$(GO) build -o $(TOP)/bin/str-receiver .
+
+TARGETS += ../bin/gomc-server ../bin/ads-xml-gen $(LAUNCHER_PKG_FILES) $(HAL_GO_EXAMPLES)
+
+# ---------------------------------------------------------------------------
+# modcompile — .comp → cmod C code generator
+# ---------------------------------------------------------------------------
+
+../bin/modcompile: $(LAUNCHER_SRC_BASE)
+	$(ECHO) Building modcompile
+	@rm -f $@
+	$(Q)cd gomc && $(GO) build -ldflags "$(LAUNCHER_LDFLAGS)" -o $(TOP)/bin/modcompile ./cmd/modcompile
+
+TARGETS += ../bin/modcompile
+
+# ---------------------------------------------------------------------------
+# gmicompile — .gmi IDL → C/Go code generator
+# ---------------------------------------------------------------------------
+
+../bin/gmicompile: $(LAUNCHER_SRC_BASE)
+	$(ECHO) Building gmicompile
+	@rm -f $@
+	$(Q)cd gomc && $(GO) build -ldflags "$(LAUNCHER_LDFLAGS)" -o $(TOP)/bin/gmicompile ./cmd/gmicompile
+
+TARGETS += ../bin/gmicompile
+
+# ---------------------------------------------------------------------------
+# halcmd — HAL command-line tool (REST-based, replaces legacy C halcmd/halrmt)
+# ---------------------------------------------------------------------------
+
+GMI_HALCMD_GEN_GO := gomc/generated/gmi/halcmd/halcmd_client.go
+
+$(GMI_HALCMD_GEN_GO): gmi/idl/halcmd.gmi ../bin/gmicompile
+	$(ECHO) Generating halcmd REST client
+	@mkdir -p $(dir $@)
+	$(Q)../bin/gmicompile --client-go $(TOP)/src/gmi/idl/halcmd.gmi -o $@
+
+../bin/halcmd: $(LAUNCHER_SRC_BASE) $(GMI_HALCMD_GEN_GO)
+	$(ECHO) Building halcmd - Go REST client
+	@rm -f $@
+	$(Q)cd gomc && $(GO) build -ldflags "$(LAUNCHER_LDFLAGS)" -o $(TOP)/bin/halcmd ./cmd/halcmd
+
+TARGETS += ../bin/halcmd
+
+# Test target
+.PHONY: test-gomc
+test-gomc:
+	$(Q)cd gomc && $(GO) test ./...
+
+# Clean
+clean: gomc-clean
+.PHONY: gomc-clean
+gomc-clean:
+	rm -f ../bin/gomc-server ../bin/ads-xml-gen
+	rm -f ../bin/modcompile ../bin/gmicompile ../bin/halcmd
+	rm -f $(HAL_GO_EXAMPLES)
+	rm -f $(LAUNCHER_PKG_FILES)
+
+# Install
+install: gomc-install
+.PHONY: gomc-install
+gomc-install: ../bin/gomc-server ../bin/ads-xml-gen ../bin/halcmd $(LAUNCHER_PKG_FILES) $(HAL_GO_EXAMPLES)
+	$(DIR) $(DESTDIR)$(EMC2_BIN_DIR)
+	$(INSTALL) -m 0755 ../bin/gomc-server $(DESTDIR)$(EMC2_BIN_DIR)/gomc-server
+	$(INSTALL) -m 0755 ../bin/ads-xml-gen $(DESTDIR)$(EMC2_BIN_DIR)/ads-xml-gen
+	$(INSTALL) -m 0755 ../bin/halcmd $(DESTDIR)$(EMC2_BIN_DIR)/halcmd
+	$(FILE) $(HAL_GO_EXAMPLES) $(DESTDIR)$(EMC2_BIN_DIR)/
+	# Install gomc public packages for external Go module development
+	$(DIR) $(DESTDIR)$(datadir)/linuxcnc/gomc/pkg/hal
+	$(DIR) $(DESTDIR)$(datadir)/linuxcnc/gomc/pkg/gomc
+	$(DIR) $(DESTDIR)$(datadir)/linuxcnc/gomc/pkg/inifile
+	$(Q)for f in $(LAUNCHER_PKG_FILES); do \
+		dest=$(DESTDIR)$(datadir)/linuxcnc/gomc/$$(echo $$f | sed 's|^../share/linuxcnc/gomc/||'); \
+		mkdir -p $$(dirname $$dest); \
+		$(INSTALL) -m 0644 $$f $$dest; \
+	done
+
+endif # BUILD_GOLANG

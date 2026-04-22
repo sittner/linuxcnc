@@ -176,7 +176,7 @@ SUBDIRS := \
 	hal/user_comps/xhc-whb04b-6 \
 	hal/hal-ads-server \
 	hal/proto/ethercat \
-	launcher \
+	gomc \
 	gmi/codegen \
     \
     emc/usr_intf/axis emc/usr_intf/touchy emc/usr_intf/stepconf emc/usr_intf/pncconf \
@@ -843,7 +843,7 @@ RTCFLAGS := $(filter-out -ffast-math,$(RTFLAGS)) -I$(BASEPWD)/../include -I$(BAS
 	-I$(BASEPWD)/libnml/os_intf -I$(BASEPWD)/libnml/nml -I$(BASEPWD)/libnml/buffer \
 	-I$(BASEPWD)/libnml/posemath -I$(BASEPWD)/rtapi -I$(BASEPWD)/hal \
 	-I$(BASEPWD)/emc/nml_intf -I$(BASEPWD)/emc/kinematics -I$(BASEPWD)/emc/tp -I$(BASEPWD)/emc/motion \
-	-I$(BASEPWD)/launcher/generated/gmi/mot \
+	-I$(BASEPWD)/gomc/generated/gmi/mot \
 	-DSEQUENTIAL_SUPPORT -DHAL_SUPPORT -DDYNAMIC_PLCSIZE -DRT_SUPPORT -DOLD_TIMERS_MONOS_SUPPORT -DMODBUS_IO_MASTER \
 	-fno-fast-math $(call cc-option,-mieee-fp) -fno-unsafe-math-optimizations \
 	-Wno-declaration-after-statement \
@@ -1043,15 +1043,15 @@ HOMEMOD_CMOD_CFLAGS := \
     -DUSPACE -D_GNU_SOURCE -Drealtime \
     -fno-strict-aliasing -fwrapv \
     -I. -I../include \
-    -Ilauncher/pkg/cmodule \
-    -Ilauncher/generated/gmi/home \
-    -Ilauncher/generated/gmi/mot \
+    -Igomc/pkg/cmodule \
+    -Igomc/generated/gmi/home \
+    -Igomc/generated/gmi/mot \
     -Iemc/motion
 
 HOMEMOD_CMOD_DEPS := \
-    launcher/generated/gmi/home/home_api.h \
-    launcher/generated/gmi/mot/mot_api.h \
-    $(wildcard launcher/pkg/cmodule/gomc_*.h) \
+    gomc/generated/gmi/home/home_api.h \
+    gomc/generated/gmi/mot/mot_api.h \
+    $(wildcard gomc/pkg/cmodule/gomc_*.h) \
     $(wildcard emc/motion/homing.h) \
     $(wildcard emc/motion/motion.h)
 
@@ -1086,17 +1086,17 @@ TPMOD_CMOD_CFLAGS := \
     -fno-builtin-sin -fno-builtin-cos -fno-builtin-sincos \
     -fno-strict-aliasing -fwrapv \
     -I. -I../include \
-    -Ilauncher/pkg/cmodule \
-    -Ilauncher/generated/gmi/tp \
-    -Ilauncher/generated/gmi/mot \
+    -Igomc/pkg/cmodule \
+    -Igomc/generated/gmi/tp \
+    -Igomc/generated/gmi/mot \
     -Iemc/motion \
     -Iemc/tp \
     -Ilibnml/posemath
 
 TPMOD_CMOD_DEPS := \
-    launcher/generated/gmi/tp/tp_api.h \
-    launcher/generated/gmi/mot/mot_api.h \
-    $(wildcard launcher/pkg/cmodule/gomc_*.h) \
+    gomc/generated/gmi/tp/tp_api.h \
+    gomc/generated/gmi/mot/mot_api.h \
+    $(wildcard gomc/pkg/cmodule/gomc_*.h) \
     $(wildcard emc/tp/*.h) \
     $(wildcard emc/motion/motion.h)
 

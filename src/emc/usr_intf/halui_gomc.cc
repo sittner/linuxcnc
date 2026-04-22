@@ -31,7 +31,7 @@
 
 #include "hal.h"		/* HAL type definitions (hal_bit_t etc.) */
 #include "rtapi.h"		/* RTAPI_MSG_ERR, rtapi_s32, rtapi_u32 */
-#include "launcher/pkg/cmodule/gomc_env.h"		/* cmod API: cmod_env_t, cmod_t, gomc_hal/ini/log */
+#include "gomc/pkg/cmodule/gomc_env.h"		/* cmod API: cmod_env_t, cmod_t, gomc_hal/ini/log */
 #include "rcs.hh"
 #include "posemath.h"		// PM_POSE, TO_RAD
 #include "emc.hh"		// EMC NML

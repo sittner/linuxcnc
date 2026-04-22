@@ -7,7 +7,7 @@
 #ifndef INISPINDLE_GOMC_HH
 #define INISPINDLE_GOMC_HH
 
-#include "launcher/pkg/cmodule/gomc_ini.h"
+#include "gomc/pkg/cmodule/gomc_ini.h"
 #include "emc.hh"
 
 /* initializes spindle modules from gomc INI handle */

@@ -27,7 +27,7 @@
 #ifndef _LCEC_CONF_H_
 #define _LCEC_CONF_H_
 
-#include "launcher/pkg/cmodule/gomc_hal.h"
+#include "gomc/pkg/cmodule/gomc_hal.h"
 
 #include "ecrt.h"
 

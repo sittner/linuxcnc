@@ -7,7 +7,7 @@
 #ifndef INIAXIS_GOMC_HH
 #define INIAXIS_GOMC_HH
 
-#include "launcher/pkg/cmodule/gomc_ini.h"
+#include "gomc/pkg/cmodule/gomc_ini.h"
 #include "emc.hh"
 
 /* initializes axis modules from gomc INI handle */

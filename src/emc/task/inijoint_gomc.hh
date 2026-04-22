@@ -7,7 +7,7 @@
 #ifndef INIJOINT_GOMC_HH
 #define INIJOINT_GOMC_HH
 
-#include "launcher/pkg/cmodule/gomc_ini.h"
+#include "gomc/pkg/cmodule/gomc_ini.h"
 
 /* initializes joint modules from gomc INI handle */
 extern int iniJoint(int joint, const gomc_ini_t *ini);

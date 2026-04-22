@@ -25,8 +25,8 @@ gomc variant: uses gomc HAL/log API instead of hal.h / rtapi.h.
 #include "emcglb.h"
 #include <stdio.h>
 
-#include "launcher/pkg/cmodule/gomc_hal.h"
-#include "launcher/pkg/cmodule/gomc_log.h"
+#include "gomc/pkg/cmodule/gomc_hal.h"
+#include "gomc/pkg/cmodule/gomc_log.h"
 #include "inihal_gomc.hh"
 
 static int debug=0;

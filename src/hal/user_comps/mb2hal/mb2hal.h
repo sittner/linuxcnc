@@ -35,7 +35,7 @@
 
 #include <modbus.h>
 
-#include "launcher/pkg/cmodule/gomc_env.h"
+#include "gomc/pkg/cmodule/gomc_env.h"
 
 #define MB2HAL_MAX_LINKS            32
 #define MB2HAL_MAX_DEVICE_LENGTH    32

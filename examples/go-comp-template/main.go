@@ -13,10 +13,10 @@ import (
 	"fmt"
 	"log/slog"
 
-	hal "github.com/sittner/linuxcnc/src/launcher/pkg/hal"
+	hal "github.com/sittner/linuxcnc/src/gomc/pkg/hal"
 
-	"github.com/sittner/linuxcnc/src/launcher/pkg/gomodule"
-	"github.com/sittner/linuxcnc/src/launcher/pkg/inifile"
+	"github.com/sittner/linuxcnc/src/gomc/pkg/gomodule"
+	"github.com/sittner/linuxcnc/src/gomc/pkg/inifile"
 )
 
 // passthroughModule is a minimal HAL component that copies an input float pin

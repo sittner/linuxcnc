@@ -47,7 +47,7 @@ go.work: go.mod
 	GOTOOLCHAIN=local $(GOMC_GO) work init
 	GOTOOLCHAIN=local $(GOMC_GO) work use .
 	GOTOOLCHAIN=local $(GOMC_GO) work edit \
-		-replace github.com/sittner/linuxcnc/src/launcher=$(GOMC_LAUNCHER_DIR)
+		-replace github.com/sittner/linuxcnc/src/gomc=$(GOMC_LAUNCHER_DIR)
 
 $(PLUGIN_SO): main.go go.mod go.work
 	CGO_ENABLED=1 \

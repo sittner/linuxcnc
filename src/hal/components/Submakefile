@@ -162,7 +162,7 @@ hal/components/conv_u32_s32.comp: hal/components/conv.comp.in hal/components/mkc
 
 ifeq ($(BUILD_GOLANG),yes)
 
-CMOD_INCLUDE := launcher/pkg/cmodule
+CMOD_INCLUDE := gomc/pkg/cmodule
 CMOD_CFLAGS  := -fPIC -Os -Wall -shared -o
 
 # Step 1: .comp → .c via modcompile
@@ -179,7 +179,7 @@ objects/cmod/%.c: hal/components/%.comp ../bin/modcompile
 
 # Step 2b: kinematics comps need the GMI kins API header path.
 # These override the generic pattern rule above for kins modules.
-CMOD_GMI_KINS_API := launcher/generated/gmi/kins
+CMOD_GMI_KINS_API := gomc/generated/gmi/kins
 CMOD_KINS_CFLAGS := -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I $(CMOD_GMI_KINS_API) -lm
 
 ../cmod/userkins.so: objects/cmod/userkins.c $(CMOD_GMI_KINS_API)/kins_api.h
@@ -198,8 +198,8 @@ CMOD_KINS_CFLAGS := -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I $(CMOD_GMI_KIN
 	$(Q)$(CC) $(CMOD_KINS_CFLAGS) -o $@ $<
 
 # Step 2c: homecomp needs the GMI home + mot API header paths.
-CMOD_GMI_HOME_API := launcher/generated/gmi/home
-CMOD_GMI_MOT_API := launcher/generated/gmi/mot
+CMOD_GMI_HOME_API := gomc/generated/gmi/home
+CMOD_GMI_MOT_API := gomc/generated/gmi/mot
 CMOD_HOME_CFLAGS := -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I $(CMOD_GMI_HOME_API) -I $(CMOD_GMI_MOT_API) -lm
 
 ../cmod/homecomp.so: objects/cmod/homecomp.c $(CMOD_GMI_HOME_API)/home_api.h $(CMOD_GMI_MOT_API)/mot_api.h
@@ -208,7 +208,7 @@ CMOD_HOME_CFLAGS := -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I $(CMOD_GMI_HOM
 	$(Q)$(CC) $(CMOD_HOME_CFLAGS) -o $@ $<
 
 # Step 2d: manualtoolchange needs the GMI manualtoolchange API header path.
-CMOD_GMI_MTC_API := launcher/generated/gmi/manualtoolchange
+CMOD_GMI_MTC_API := gomc/generated/gmi/manualtoolchange
 CMOD_MTC_CFLAGS := -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I $(CMOD_GMI_MTC_API) -lm
 
 ../cmod/manualtoolchange.so: objects/cmod/manualtoolchange.c $(CMOD_GMI_MTC_API)/manualtoolchange_api.h

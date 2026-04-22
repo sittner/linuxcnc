@@ -78,7 +78,7 @@
 #include <rtapi_string.h>
 #include "tooldata.hh"
 
-#include "launcher/pkg/cmodule/gomc_env.h"
+#include "gomc/pkg/cmodule/gomc_env.h"
 
 #define UNEXPECTED_MSG fprintf(stderr,"UNEXPECTED %s %d",__FILE__,__LINE__);
 

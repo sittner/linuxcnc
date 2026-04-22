@@ -36,7 +36,7 @@ gmicompile --server-c hal.gmi -o hal_api.h
 gmicompile --client-c halcmd.gmi -o halcmd_client
 ```
 
-The compiler is built from Go source in `src/launcher/cmd/gmicompile/`.
+The compiler is built from Go source in `src/gomc/cmd/gmicompile/`.
 
 ### Runtime Library (`libgmi`)
 
@@ -56,7 +56,7 @@ Generated code goes to `src/generated/` (gitignored).
 
 ```bash
 # Build gmicompile
-cd src/launcher && go build ./cmd/gmicompile
+cd src/gomc && go build ./cmd/gmicompile
 
 # Build libgmi (via main Makefile)
 make  # includes src/gmi/lib/Submakefile

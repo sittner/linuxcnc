@@ -2,7 +2,7 @@
 # GMI code generation
 # ---------------------------------------------------------------------------
 # Runs gmicompile on .gmi IDL files to produce C headers and Go cgo shims.
-# Generated output goes to launcher/generated/gmi/<api>/ so it is:
+# Generated output goes to gomc/generated/gmi/<api>/ so it is:
 #   - Inside the Go module (importable)
 #   - Separate from hand-written code
 #   - Gitignored (not checked in)
@@ -20,7 +20,7 @@ GMICOMPILE := ../bin/gmicompile
 GMI_KINS_IDL := gmi/idl/kins.gmi
 
 # Generated output directory (relative to src/)
-GMI_KINS_GEN := launcher/generated/gmi/kins
+GMI_KINS_GEN := gomc/generated/gmi/kins
 
 # --- kins API ---
 # gmicompile --server-c produces both the .h and _cgo.go in one invocation.
@@ -40,7 +40,7 @@ TARGETS += $(GMI_KINS_GEN)/kins_api.h
 # --- tp API ---
 
 GMI_TP_IDL := gmi/idl/tp.gmi
-GMI_TP_GEN := launcher/generated/gmi/tp
+GMI_TP_GEN := gomc/generated/gmi/tp
 
 $(GMI_TP_GEN)/tp_api.h: $(GMI_TP_IDL) $(GMICOMPILE)
 	$(ECHO) "Generating GMI tp API from $(GMI_TP_IDL)"
@@ -54,7 +54,7 @@ TARGETS += $(GMI_TP_GEN)/tp_api.h
 # --- home API ---
 
 GMI_HOME_IDL := gmi/idl/home.gmi
-GMI_HOME_GEN := launcher/generated/gmi/home
+GMI_HOME_GEN := gomc/generated/gmi/home
 
 $(GMI_HOME_GEN)/home_api.h: $(GMI_HOME_IDL) $(GMICOMPILE)
 	$(ECHO) "Generating GMI home API from $(GMI_HOME_IDL)"
@@ -68,7 +68,7 @@ TARGETS += $(GMI_HOME_GEN)/home_api.h
 # --- mot API (reverse callbacks: motmod → tpmod/homemod) ---
 
 GMI_MOT_IDL := gmi/idl/mot.gmi
-GMI_MOT_GEN := launcher/generated/gmi/mot
+GMI_MOT_GEN := gomc/generated/gmi/mot
 
 $(GMI_MOT_GEN)/mot_api.h: $(GMI_MOT_IDL) $(GMICOMPILE)
 	$(ECHO) "Generating GMI mot API from $(GMI_MOT_IDL)"
@@ -82,7 +82,7 @@ TARGETS += $(GMI_MOT_GEN)/mot_api.h
 # --- manualtoolchange API ---
 
 GMI_MTC_IDL := gmi/idl/manualtoolchange.gmi
-GMI_MTC_GEN := launcher/generated/gmi/manualtoolchange
+GMI_MTC_GEN := gomc/generated/gmi/manualtoolchange
 
 $(GMI_MTC_GEN)/manualtoolchange_api.h: $(GMI_MTC_IDL) $(GMICOMPILE)
 	$(ECHO) "Generating GMI manualtoolchange API from $(GMI_MTC_IDL)"
@@ -108,6 +108,6 @@ TARGETS += $(GMI_MTC_PY)
 clean: gmi-codegen-clean
 .PHONY: gmi-codegen-clean
 gmi-codegen-clean:
-	rm -rf launcher/generated/
+	rm -rf gomc/generated/
 
 endif # BUILD_GOLANG
