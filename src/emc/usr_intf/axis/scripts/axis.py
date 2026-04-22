@@ -78,6 +78,105 @@ else:
 
 if hal_present == 1:
     import hal
+    from gmi.axisui_ws_client import (
+        AxisuiWatchThread, JogInputs, SliderInputs, NotificationInputs
+    )
+
+# ---------------------------------------------------------------------------
+# WSCompat: compatibility wrapper that routes HAL pin access through WebSocket.
+# This allows existing code using comp["pin"] to work unchanged.
+# ---------------------------------------------------------------------------
+
+class WSCompat:
+    """Dict-like HAL pin proxy over WebSocket watch channel."""
+
+    # Map old axis.py pin names → (state_attr, field_name)
+    _INPUT_MAP = {
+        "jog.disable":             ("_jog", "disable"),
+        "jog.x-plus":              ("_jog", "x_plus"),
+        "jog.x-minus":             ("_jog", "x_minus"),
+        "jog.y-plus":              ("_jog", "y_plus"),
+        "jog.y-minus":             ("_jog", "y_minus"),
+        "jog.z-plus":              ("_jog", "z_plus"),
+        "jog.z-minus":             ("_jog", "z_minus"),
+        "jog.a-plus":              ("_jog", "a_plus"),
+        "jog.a-minus":             ("_jog", "a_minus"),
+        "jog.b-plus":              ("_jog", "b_plus"),
+        "jog.b-minus":             ("_jog", "b_minus"),
+        "jog.c-plus":              ("_jog", "c_plus"),
+        "jog.c-minus":             ("_jog", "c_minus"),
+        "jog.u-plus":              ("_jog", "u_plus"),
+        "jog.u-minus":             ("_jog", "u_minus"),
+        "jog.v-plus":              ("_jog", "v_plus"),
+        "jog.v-minus":             ("_jog", "v_minus"),
+        "jog.w-plus":              ("_jog", "w_plus"),
+        "jog.w-minus":             ("_jog", "w_minus"),
+        "sliders.scale":           ("_sliders", "scale"),
+        "sliders.scale-abs":       ("_sliders", "scale_abs"),
+        "sliders.spinoverride":    ("_sliders", "spinoverride"),
+        "sliders.spinoverride-abs":("_sliders", "spinoverride_abs"),
+        "sliders.feedoverride":    ("_sliders", "feedoverride"),
+        "sliders.feedoverride-abs":("_sliders", "feedoverride_abs"),
+        "sliders.rapidoverride":   ("_sliders", "rapidoverride"),
+        "sliders.rapidoverride-abs":("_sliders", "rapidoverride_abs"),
+        "sliders.jogspeed":        ("_sliders", "jogspeed"),
+        "sliders.jogspeed-abs":    ("_sliders", "jogspeed_abs"),
+        "sliders.ajogspeed":       ("_sliders", "ajogspeed"),
+        "sliders.ajogspeed-abs":   ("_sliders", "ajogspeed_abs"),
+        "sliders.maxvel":          ("_sliders", "maxvel"),
+        "sliders.maxvel-abs":      ("_sliders", "maxvel_abs"),
+        "notifications-clear":     ("_notif", "notifications_clear"),
+        "notifications-clear-info":("_notif", "notifications_clear_info"),
+        "notifications-clear-error":("_notif", "notifications_clear_error"),
+        "resume-inhibit":          ("_notif", "resume_inhibit"),
+    }
+
+    def __init__(self, ws_thread):
+        self._ws = ws_thread
+        self._jog = JogInputs()
+        self._sliders = SliderInputs()
+        self._notif = NotificationInputs()
+
+    def _on_jog(self, state):
+        self._jog = state
+
+    def _on_sliders(self, state):
+        self._sliders = state
+
+    def _on_notif(self, state):
+        self._notif = state
+
+    def __getitem__(self, pin):
+        entry = self._INPUT_MAP.get(pin)
+        if entry:
+            attr, field = entry
+            return getattr(getattr(self, attr), field)
+        raise KeyError(pin)
+
+    def __setitem__(self, pin, value):
+        if pin == "is-running":
+            self._ws.set_is_running(bool(value))
+        elif pin == "has-notifications":
+            self._ws.set_has_notifications(bool(value))
+        elif pin == "error":
+            self._ws.set_error(bool(value))
+        elif pin == "abort":
+            self._ws.set_abort(bool(value))
+        elif pin == "jog.increment":
+            self._ws.set_jog_increment(float(value))
+        elif pin.startswith("jog."):
+            # jog.x = True/False — batch handled by set_jog_axis
+            pass  # handled by axis_activated() via set_jog_axis
+        else:
+            pass  # ignore unknown pins (user_hal_pins compat)
+
+    def newpin(self, *args, **kwargs):
+        """No-op: pins are created by the axisui cmod."""
+        pass
+
+    def ready(self):
+        """No-op: the axisui cmod component is already ready."""
+        pass
 
 import configparser
 
@@ -988,9 +1087,6 @@ class HalJogHandler:
         self.jog_plus = False
         self.jog_minus = False
 
-        comp.newpin(self.pin_plus, hal.HAL_BIT, hal.HAL_IN)
-        comp.newpin(self.pin_minus, hal.HAL_BIT, hal.HAL_IN)
-
     def process(self):
         if comp["jog.disable"]:
             jog_plus = False
@@ -1026,9 +1122,6 @@ class HalScaleHandler:
         self.last_absval = 0
         self.last_scale_abs = 0
         self.abs_locked = False
-
-        comp.newpin(self.pin, hal.HAL_S32, hal.HAL_IN)
-        comp.newpin(self.abs_pin, hal.HAL_S32, hal.HAL_IN)
 
     def process(self):
         if self.locked:
@@ -3077,15 +3170,8 @@ class TclCommands(nf.TclCommands):
     def axis_activated(*args):
         # this only makes sense if HAL is present on this machine
         if not hal_present: return
-        comp['jog.x'] = vars.ja_rbutton.get() == "x"
-        comp['jog.y'] = vars.ja_rbutton.get() == "y"
-        comp['jog.z'] = vars.ja_rbutton.get() == "z"
-        comp['jog.a'] = vars.ja_rbutton.get() == "a"
-        comp['jog.b'] = vars.ja_rbutton.get() == "b"
-        comp['jog.c'] = vars.ja_rbutton.get() == "c"
-        comp['jog.u'] = vars.ja_rbutton.get() == "u"
-        comp['jog.v'] = vars.ja_rbutton.get() == "v"
-        comp['jog.w'] = vars.ja_rbutton.get() == "w"
+        axis = vars.ja_rbutton.get()
+        _ws_thread.set_jog_axis(axis)
 
     def set_teleop_mode():
         set_motion_teleop(vars.teleop_mode.get())
@@ -4048,29 +4134,16 @@ t.bind("<Button-5>", scroll_down)
 t.configure(state="disabled")
 
 if hal_present == 1 :
-    comp = hal.component("axisui")
-    comp.newpin("is-running", hal.HAL_BIT, hal.HAL_OUT)
-    comp.newpin("jog.x", hal.HAL_BIT, hal.HAL_OUT)
-    comp.newpin("jog.y", hal.HAL_BIT, hal.HAL_OUT)
-    comp.newpin("jog.z", hal.HAL_BIT, hal.HAL_OUT)
-    comp.newpin("jog.a", hal.HAL_BIT, hal.HAL_OUT)
-    comp.newpin("jog.b", hal.HAL_BIT, hal.HAL_OUT)
-    comp.newpin("jog.c", hal.HAL_BIT, hal.HAL_OUT)
-    comp.newpin("jog.u", hal.HAL_BIT, hal.HAL_OUT)
-    comp.newpin("jog.v", hal.HAL_BIT, hal.HAL_OUT)
-    comp.newpin("jog.w", hal.HAL_BIT, hal.HAL_OUT)
-    comp.newpin("jog.increment", hal.HAL_FLOAT, hal.HAL_OUT)
-    comp.newpin("jog.disable", hal.HAL_BIT, hal.HAL_IN)
-    comp.newpin("notifications-clear",hal.HAL_BIT,hal.HAL_IN)
-    comp.newpin("notifications-clear-info",hal.HAL_BIT,hal.HAL_IN)
-    comp.newpin("notifications-clear-error",hal.HAL_BIT,hal.HAL_IN)
-    comp.newpin("has-notifications",hal.HAL_BIT,hal.HAL_OUT)
-    comp.newpin("resume-inhibit",hal.HAL_BIT,hal.HAL_IN)
-    comp.newpin("error", hal.HAL_BIT, hal.HAL_OUT)
-    comp.newpin("abort", hal.HAL_BIT, hal.HAL_OUT)
+    # Connect to the axisui cmod via WebSocket watch channel.
+    # The cmod owns the HAL pins; we communicate via WS.
+    ws_url = "ws://localhost:5080/ws/watch"
+    _ws_thread = AxisuiWatchThread(ws_url)
+    comp = WSCompat(_ws_thread)
+    _ws_thread.subscribe_get_jog_inputs(callback=comp._on_jog)
+    _ws_thread.subscribe_get_slider_inputs(callback=comp._on_sliders)
+    _ws_thread.subscribe_get_notification_inputs(callback=comp._on_notif)
+    _ws_thread.start()
 
-    comp.newpin("sliders.scale", hal.HAL_FLOAT, hal.HAL_IN)
-    comp.newpin("sliders.scale-abs", hal.HAL_FLOAT, hal.HAL_IN)
     hal_scalehandlers.append(HalScaleHandler("sliders.spinoverride", widgets.spinoverride))
     hal_scalehandlers.append(HalScaleHandler("sliders.feedoverride", widgets.feedoverride))
     hal_scalehandlers.append(HalScaleHandler("sliders.rapidoverride", widgets.rapidoverride))
@@ -4389,11 +4462,9 @@ if os.path.exists(rcfile):
 
 # call an empty function that can be overridden
 # by an .axisrc user_hal_pins() function
-# then set HAL component ready if the .axisui didn't
+# The axisui cmod is always ready — this is preserved for user_hal_pins() compat.
 if hal_present == 1 :
     user_hal_pins()
-    if not hal.component_is_ready('axisui'):
-        comp.ready()
 
 _dynamic_tabs(inifile)
 if hal_present == 1:
@@ -4413,5 +4484,7 @@ live_plotter.update()
 live_plotter.error_task()
 o.mainloop()
 live_plotter.stop()
+if hal_present == 1:
+    _ws_thread.stop()
 
 # vim:sw=4:sts=4:et:

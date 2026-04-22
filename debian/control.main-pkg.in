@@ -22,6 +22,7 @@ Depends:
     python3-opengl,
     python3-configobj,
     python3-xlib,
+    python3-websockets,
     libgtksourceview-4-dev,
     tcl@TCLTK_VERSION@,
     tk@TCLTK_VERSION@,

@@ -216,6 +216,15 @@ CMOD_MTC_CFLAGS := -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I $(CMOD_GMI_MTC_
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) $(CMOD_MTC_CFLAGS) -o $@ $<
 
+# Step 2e: axisui needs the GMI axisui API header path.
+CMOD_GMI_AXISUI_API := gomc/generated/gmi/axisui
+CMOD_AXISUI_CFLAGS := -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I $(CMOD_GMI_AXISUI_API) -lm
+
+../cmod/axisui.so: objects/cmod/axisui.c $(CMOD_GMI_AXISUI_API)/axisui_api.h
+	$(ECHO) "Compiling cmod (axisui) $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) $(CMOD_AXISUI_CFLAGS) -o $@ $<
+
 TARGETS += $(CMOD_TARGETS)
 modules: $(CMOD_TARGETS)
 

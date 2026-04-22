@@ -1,0 +1,260 @@
+component axisui "AXIS GUI interface — HAL pins with WebSocket API for axis.py";
+
+description
+"""
+Provides HAL pins that the AXIS GUI uses for jog buttons, slider overrides,
+notification control, and status output.  Replaces the direct Python HAL
+bindings in axis.py with a cmod that gomc-server exposes via WebSocket.
+
+Pin groups:
+  Jog buttons (IN, bit):   jog-x-plus/minus .. jog-w-plus/minus, jog-disable
+  Jog selection (OUT, bit): jog-x .. jog-w
+  Jog increment (OUT, float): jog-increment
+  Slider encoders (IN, s32):  sliders-feedoverride[-abs] .. sliders-maxvel[-abs]
+  Slider scale (IN, float):   sliders-scale, sliders-scale-abs
+  Notification ctrl (IN, bit): notifications-clear[-info/-error], resume-inhibit
+  Status (OUT, bit):           is-running, has-notifications, error, abort
+""";
+
+// --- Jog button inputs (from physical buttons / pendants) ---
+pin in bit jog_x_plus "Jog X+";
+pin in bit jog_x_minus "Jog X-";
+pin in bit jog_y_plus "Jog Y+";
+pin in bit jog_y_minus "Jog Y-";
+pin in bit jog_z_plus "Jog Z+";
+pin in bit jog_z_minus "Jog Z-";
+pin in bit jog_a_plus "Jog A+";
+pin in bit jog_a_minus "Jog A-";
+pin in bit jog_b_plus "Jog B+";
+pin in bit jog_b_minus "Jog B-";
+pin in bit jog_c_plus "Jog C+";
+pin in bit jog_c_minus "Jog C-";
+pin in bit jog_u_plus "Jog U+";
+pin in bit jog_u_minus "Jog U-";
+pin in bit jog_v_plus "Jog V+";
+pin in bit jog_v_minus "Jog V-";
+pin in bit jog_w_plus "Jog W+";
+pin in bit jog_w_minus "Jog W-";
+pin in bit jog_disable "Disable all HAL-driven jogging";
+
+// --- Jog axis selection outputs (set by UI) ---
+pin out bit jog_x "X axis selected for jogging";
+pin out bit jog_y "Y axis selected";
+pin out bit jog_z "Z axis selected";
+pin out bit jog_a "A axis selected";
+pin out bit jog_b "B axis selected";
+pin out bit jog_c "C axis selected";
+pin out bit jog_u "U axis selected";
+pin out bit jog_v "V axis selected";
+pin out bit jog_w "W axis selected";
+
+// --- Jog increment output (set by UI) ---
+pin out float jog_increment "Current jog increment (0 = continuous)";
+
+// --- Slider encoder inputs ---
+pin in float sliders_scale "Relative encoder scale factor";
+pin in float sliders_scale_abs "Absolute encoder scale factor";
+pin in s32 sliders_feedoverride "Feed override encoder (relative)";
+pin in s32 sliders_feedoverride_abs "Feed override encoder (absolute)";
+pin in s32 sliders_rapidoverride "Rapid override encoder (relative)";
+pin in s32 sliders_rapidoverride_abs "Rapid override encoder (absolute)";
+pin in s32 sliders_spinoverride "Spindle override encoder (relative)";
+pin in s32 sliders_spinoverride_abs "Spindle override encoder (absolute)";
+pin in s32 sliders_jogspeed "Jog speed encoder (relative)";
+pin in s32 sliders_jogspeed_abs "Jog speed encoder (absolute)";
+pin in s32 sliders_ajogspeed "Angular jog speed encoder (relative)";
+pin in s32 sliders_ajogspeed_abs "Angular jog speed encoder (absolute)";
+pin in s32 sliders_maxvel "Max velocity encoder (relative)";
+pin in s32 sliders_maxvel_abs "Max velocity encoder (absolute)";
+
+// --- Notification control inputs ---
+pin in bit notifications_clear "Rising edge clears all notifications";
+pin in bit notifications_clear_info "Rising edge clears info notifications";
+pin in bit notifications_clear_error "Rising edge clears error notifications";
+pin in bit resume_inhibit "Inhibit resume button";
+
+// --- Status outputs (set by UI) ---
+pin out bit is_running "True while the UI is running";
+pin out bit has_notifications "True when notifications are present";
+pin out bit error_pin "True when error notification is active";
+pin out bit abort_pin "Pulsed true on abort";
+
+function _ nofp;
+
+gmi_provide axisui;
+license "GPL";
+;;
+
+/* Thread function: no logic needed — pins are read/written via GMI.
+ * The function must exist for halcompile but is effectively a no-op. */
+FUNCTION(_) {
+    (void)period; /* unused */
+}
+
+/* --- GMI callbacks ---
+ * The .comp preprocessor defines pin access macros (e.g. #define jog_disable ...)
+ * that collide with GMI struct field names.  Undefine them here so struct member
+ * access works correctly.  We re-access pins via __comp_inst->hal-> directly.
+ */
+#undef jog_disable
+#undef jog_x_plus
+#undef jog_x_minus
+#undef jog_y_plus
+#undef jog_y_minus
+#undef jog_z_plus
+#undef jog_z_minus
+#undef jog_a_plus
+#undef jog_a_minus
+#undef jog_b_plus
+#undef jog_b_minus
+#undef jog_c_plus
+#undef jog_c_minus
+#undef jog_u_plus
+#undef jog_u_minus
+#undef jog_v_plus
+#undef jog_v_minus
+#undef jog_w_plus
+#undef jog_w_minus
+#undef jog_x
+#undef jog_y
+#undef jog_z
+#undef jog_a
+#undef jog_b
+#undef jog_c
+#undef jog_u
+#undef jog_v
+#undef jog_w
+#undef jog_increment
+#undef sliders_scale
+#undef sliders_scale_abs
+#undef sliders_feedoverride
+#undef sliders_feedoverride_abs
+#undef sliders_rapidoverride
+#undef sliders_rapidoverride_abs
+#undef sliders_spinoverride
+#undef sliders_spinoverride_abs
+#undef sliders_jogspeed
+#undef sliders_jogspeed_abs
+#undef sliders_ajogspeed
+#undef sliders_ajogspeed_abs
+#undef sliders_maxvel
+#undef sliders_maxvel_abs
+#undef notifications_clear
+#undef notifications_clear_info
+#undef notifications_clear_error
+#undef resume_inhibit
+#undef is_running
+#undef has_notifications
+#undef error_pin
+#undef abort_pin
+
+/* Direct pin access helper — works after #undef */
+#define PIN(name) (*(__comp_inst->hal->name))
+
+/* Watch: return all jog input pin states */
+static axisui_jog_inputs_t gmi_axisui_get_jog_inputs(void *ctx) {
+    inst_t *__comp_inst = (inst_t *)ctx;
+    axisui_jog_inputs_t s;
+    s.disable   = PIN(jog_disable);
+    s.x_plus    = PIN(jog_x_plus);
+    s.x_minus   = PIN(jog_x_minus);
+    s.y_plus    = PIN(jog_y_plus);
+    s.y_minus   = PIN(jog_y_minus);
+    s.z_plus    = PIN(jog_z_plus);
+    s.z_minus   = PIN(jog_z_minus);
+    s.a_plus    = PIN(jog_a_plus);
+    s.a_minus   = PIN(jog_a_minus);
+    s.b_plus    = PIN(jog_b_plus);
+    s.b_minus   = PIN(jog_b_minus);
+    s.c_plus    = PIN(jog_c_plus);
+    s.c_minus   = PIN(jog_c_minus);
+    s.u_plus    = PIN(jog_u_plus);
+    s.u_minus   = PIN(jog_u_minus);
+    s.v_plus    = PIN(jog_v_plus);
+    s.v_minus   = PIN(jog_v_minus);
+    s.w_plus    = PIN(jog_w_plus);
+    s.w_minus   = PIN(jog_w_minus);
+    return s;
+}
+
+/* Watch: return all slider encoder input values */
+static axisui_slider_inputs_t gmi_axisui_get_slider_inputs(void *ctx) {
+    inst_t *__comp_inst = (inst_t *)ctx;
+    axisui_slider_inputs_t s;
+    s.scale                = PIN(sliders_scale);
+    s.scale_abs            = PIN(sliders_scale_abs);
+    s.feedoverride         = PIN(sliders_feedoverride);
+    s.feedoverride_abs     = PIN(sliders_feedoverride_abs);
+    s.rapidoverride        = PIN(sliders_rapidoverride);
+    s.rapidoverride_abs    = PIN(sliders_rapidoverride_abs);
+    s.spinoverride         = PIN(sliders_spinoverride);
+    s.spinoverride_abs     = PIN(sliders_spinoverride_abs);
+    s.jogspeed             = PIN(sliders_jogspeed);
+    s.jogspeed_abs         = PIN(sliders_jogspeed_abs);
+    s.ajogspeed            = PIN(sliders_ajogspeed);
+    s.ajogspeed_abs        = PIN(sliders_ajogspeed_abs);
+    s.maxvel               = PIN(sliders_maxvel);
+    s.maxvel_abs           = PIN(sliders_maxvel_abs);
+    return s;
+}
+
+/* Watch: return notification control input states */
+static axisui_notification_inputs_t gmi_axisui_get_notification_inputs(void *ctx) {
+    inst_t *__comp_inst = (inst_t *)ctx;
+    axisui_notification_inputs_t s;
+    s.notifications_clear       = PIN(notifications_clear);
+    s.notifications_clear_info  = PIN(notifications_clear_info);
+    s.notifications_clear_error = PIN(notifications_clear_error);
+    s.resume_inhibit            = PIN(resume_inhibit);
+    return s;
+}
+
+/* Command: set which axis is selected for jogging */
+static bool gmi_axisui_set_jog_axis(void *ctx, const char *axis) {
+    inst_t *__comp_inst = (inst_t *)ctx;
+    PIN(jog_x) = (axis[0] == 'x');
+    PIN(jog_y) = (axis[0] == 'y');
+    PIN(jog_z) = (axis[0] == 'z');
+    PIN(jog_a) = (axis[0] == 'a');
+    PIN(jog_b) = (axis[0] == 'b');
+    PIN(jog_c) = (axis[0] == 'c');
+    PIN(jog_u) = (axis[0] == 'u');
+    PIN(jog_v) = (axis[0] == 'v');
+    PIN(jog_w) = (axis[0] == 'w');
+    return true;
+}
+
+/* Command: set jog increment */
+static bool gmi_axisui_set_jog_increment(void *ctx, double increment) {
+    inst_t *__comp_inst = (inst_t *)ctx;
+    PIN(jog_increment) = increment;
+    return true;
+}
+
+/* Command: set is-running output */
+static bool gmi_axisui_set_is_running(void *ctx, bool running) {
+    inst_t *__comp_inst = (inst_t *)ctx;
+    PIN(is_running) = running;
+    return true;
+}
+
+/* Command: set has-notifications output */
+static bool gmi_axisui_set_has_notifications(void *ctx, bool has) {
+    inst_t *__comp_inst = (inst_t *)ctx;
+    PIN(has_notifications) = has;
+    return true;
+}
+
+/* Command: set error output */
+static bool gmi_axisui_set_error(void *ctx, bool err) {
+    inst_t *__comp_inst = (inst_t *)ctx;
+    PIN(error_pin) = err;
+    return true;
+}
+
+/* Command: set abort output */
+static bool gmi_axisui_set_abort(void *ctx, bool ab) {
+    inst_t *__comp_inst = (inst_t *)ctx;
+    PIN(abort_pin) = ab;
+    return true;
+}

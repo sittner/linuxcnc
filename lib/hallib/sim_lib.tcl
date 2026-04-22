@@ -297,6 +297,14 @@ proc use_hal_manualtoolchange {} {
   net tool:prep-number => iocontrol.tool-prep-number
 } ;# use_hal_manualtoolchange
 
+proc use_axisui {} {
+  # Load the axisui cmod which provides HAL pins for AXIS GUI
+  # interaction (jog buttons, slider overrides, notifications, status).
+  # The cmod also exposes a WebSocket watch API that axis.py connects to.
+  load axisui
+  addf axisui servo-thread
+} ;# use_axisui
+
 proc simulated_home {number_of_joints} {
   # uses sim_home_switch component
   set switch_names ""

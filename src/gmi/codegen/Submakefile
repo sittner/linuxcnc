@@ -106,6 +106,34 @@ $(GMI_MTC_PY): $(GMI_MTC_IDL) $(GMICOMPILE_BIN)
 
 TARGETS += $(GMI_MTC_PY)
 
+# --- axisui API (watch-enabled: server-c + server-ws + client-python-ws) ---
+
+GMI_AXISUI_IDL := gmi/idl/axisui.gmi
+GMI_AXISUI_GEN := gomc/generated/gmi/axisui
+
+$(GMI_AXISUI_GEN)/axisui_api.h: $(GMI_AXISUI_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI axisui API from $(GMI_AXISUI_IDL)"
+	@mkdir -p $(GMI_AXISUI_GEN)
+	$(Q)$(GMICOMPILE) --server-c $(GMI_AXISUI_IDL) -o $(GMI_AXISUI_GEN)/axisui_api.h
+
+$(GMI_AXISUI_GEN)/axisui_cgo.go: $(GMI_AXISUI_GEN)/axisui_api.h
+
+$(GMI_AXISUI_GEN)/axisui_ws.go: $(GMI_AXISUI_IDL) $(GMI_AXISUI_GEN)/axisui_cgo.go $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI axisui WebSocket server from $(GMI_AXISUI_IDL)"
+	$(Q)$(GMICOMPILE) --server-ws $(GMI_AXISUI_IDL) -o $(GMI_AXISUI_GEN)/axisui_ws.go
+
+TARGETS += $(GMI_AXISUI_GEN)/axisui_api.h $(GMI_AXISUI_GEN)/axisui_ws.go
+
+GMI_AXISUI_PY_WS := ../lib/python/gmi/axisui_ws_client.py
+
+$(GMI_AXISUI_PY_WS): $(GMI_AXISUI_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI axisui Python WebSocket client from $(GMI_AXISUI_IDL)"
+	@mkdir -p $(dir $(GMI_AXISUI_PY_WS))
+	@touch $(dir $(GMI_AXISUI_PY_WS))__init__.py
+	$(Q)$(GMICOMPILE) --client-python-ws $(GMI_AXISUI_IDL) -o $(GMI_AXISUI_PY_WS)
+
+TARGETS += $(GMI_AXISUI_PY_WS)
+
 clean: gmi-codegen-clean
 .PHONY: gmi-codegen-clean
 gmi-codegen-clean:
