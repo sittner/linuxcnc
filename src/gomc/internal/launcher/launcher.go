@@ -383,14 +383,6 @@ func (l *Launcher) Run() (runErr error) {
 		return fmt.Errorf("C module init failed: %w", err)
 	}
 
-	// Phase 1c: Auto-load display-specific cmod components.
-	// Displays like AXIS require a companion cmod (axisui) for HAL pin
-	// management and WebSocket watch channels.  Load it automatically so
-	// every INI config doesn't need an explicit HALFILE entry.
-	if err := l.loadDisplayModules(); err != nil {
-		return fmt.Errorf("display module auto-load failed: %w", err)
-	}
-
 	// Phase 2: Execute HAL wiring commands (net, addf, setp, etc.).
 	if err := halResult.Execute(); err != nil {
 		if !l.opts.ContinueOnError {
