@@ -446,13 +446,79 @@ func buildServer() {
 	}
 
 	outPath := filepath.Join(binDir, "gomc-server")
-	cmd := exec.Command(gobin, "build", "-o", outPath, "./cmd/gomc-server")
+
+	// Build ldflags to inject compile-time config into the new binary.
+	// modcompile already has these values baked in, so we propagate them.
+	pkg := "github.com/sittner/linuxcnc/src/gomc/internal/config"
+	ldflags := fmt.Sprintf(
+		"-X '%s.EMC2Home=%s' "+
+			"-X '%s.EMC2BinDir=%s' "+
+			"-X '%s.EMC2TclDir=%s' "+
+			"-X '%s.EMC2HelpDir=%s' "+
+			"-X '%s.EMC2RtlibDir=%s' "+
+			"-X '%s.EMC2CmodDir=%s' "+
+			"-X '%s.EMC2CmodIncludeDir=%s' "+
+			"-X '%s.EMC2LauncherDir=%s' "+
+			"-X '%s.GoBinary=%s' "+
+			"-X '%s.EMC2ConfigPath=%s' "+
+			"-X '%s.EMC2NCFilesDir=%s' "+
+			"-X '%s.EMC2LangDir=%s' "+
+			"-X '%s.EMC2ImageDir=%s' "+
+			"-X '%s.EMC2TclLibDir=%s' "+
+			"-X '%s.HalibDir=%s' "+
+			"-X '%s.EMC2Version=%s' "+
+			"-X '%s.RunInPlace=%s' "+
+			"-X '%s.DefaultNmlFile=%s' "+
+			"-X '%s.ModExt=%s' "+
+			"-X '%s.KernelVers=%s'",
+		pkg, config.EMC2Home,
+		pkg, config.EMC2BinDir,
+		pkg, config.EMC2TclDir,
+		pkg, config.EMC2HelpDir,
+		pkg, config.EMC2RtlibDir,
+		pkg, config.EMC2CmodDir,
+		pkg, config.EMC2CmodIncludeDir,
+		pkg, config.EMC2LauncherDir,
+		pkg, config.GoBinary,
+		pkg, config.EMC2ConfigPath,
+		pkg, config.EMC2NCFilesDir,
+		pkg, config.EMC2LangDir,
+		pkg, config.EMC2ImageDir,
+		pkg, config.EMC2TclLibDir,
+		pkg, config.HalibDir,
+		pkg, config.EMC2Version,
+		pkg, config.RunInPlace,
+		pkg, config.DefaultNmlFile,
+		pkg, config.ModExt,
+		pkg, config.KernelVers,
+	)
+
+	cmd := exec.Command(gobin, "build", "-ldflags", ldflags, "-o", outPath, "./cmd/gomc-server")
 	cmd.Dir = serverDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	// Propagate CGO flags for liblinuxcnchal linkage.
-	libDir := filepath.Join(config.EMC2Home, "lib")
-	cmd.Env = append(os.Environ(), "CGO_LDFLAGS=-Wl,-rpath,"+libDir)
+
+	// CGO needs to find headers and libraries.
+	// RIP: headers in src/, libs in lib/ under EMC2Home.
+	// Installed: headers in includedir, libs in libdir.
+	var cgoC, cgoLD string
+	if config.RunInPlace == "yes" {
+		srcDir := filepath.Join(config.EMC2Home, "src")
+		cgoC = fmt.Sprintf("-I%s -I%s/hal -I%s/rtapi -I%s/../include",
+			srcDir, srcDir, srcDir, srcDir)
+		libDir := filepath.Join(config.EMC2Home, "lib")
+		cgoLD = fmt.Sprintf("-L%s -Wl,-rpath,%s", libDir, libDir)
+	} else {
+		// Installed: use standard paths relative to EMC2Home.
+		incDir := filepath.Join(config.EMC2Home, "include", "linuxcnc")
+		libDir := filepath.Join(config.EMC2Home, "lib")
+		cgoC = "-I" + incDir
+		cgoLD = fmt.Sprintf("-L%s -Wl,-rpath,%s", libDir, libDir)
+	}
+	cmd.Env = append(os.Environ(),
+		"CGO_CFLAGS="+cgoC,
+		"CGO_LDFLAGS="+cgoLD,
+	)
 
 	fmt.Fprintf(os.Stderr, "Building gomc-server...\n")
 	if err := cmd.Run(); err != nil {

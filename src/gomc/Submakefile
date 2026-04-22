@@ -192,20 +192,40 @@ gomc-clean:
 # Install
 install: gomc-install
 .PHONY: gomc-install
-gomc-install: ../bin/gomc-server ../bin/ads-xml-gen ../bin/halcmd $(LAUNCHER_PKG_FILES) $(HAL_GO_EXAMPLES)
+gomc-install: ../bin/gomc-server ../bin/ads-xml-gen ../bin/modcompile ../bin/halcmd $(LAUNCHER_PKG_FILES) $(HAL_GO_EXAMPLES)
 	$(DIR) $(DESTDIR)$(EMC2_BIN_DIR)
 	$(INSTALL) -m 0755 ../bin/gomc-server $(DESTDIR)$(EMC2_BIN_DIR)/gomc-server
 	$(INSTALL) -m 0755 ../bin/ads-xml-gen $(DESTDIR)$(EMC2_BIN_DIR)/ads-xml-gen
+	$(INSTALL) -m 0755 ../bin/modcompile $(DESTDIR)$(EMC2_BIN_DIR)/modcompile
 	$(INSTALL) -m 0755 ../bin/halcmd $(DESTDIR)$(EMC2_BIN_DIR)/halcmd
 	$(FILE) $(HAL_GO_EXAMPLES) $(DESTDIR)$(EMC2_BIN_DIR)/
-	# Install gomc public packages for external Go module development
-	$(DIR) $(DESTDIR)$(datadir)/linuxcnc/gomc/pkg/hal
-	$(DIR) $(DESTDIR)$(datadir)/linuxcnc/gomc/pkg/gomc
-	$(DIR) $(DESTDIR)$(datadir)/linuxcnc/gomc/pkg/inifile
-	$(Q)for f in $(LAUNCHER_PKG_FILES); do \
-		dest=$(DESTDIR)$(datadir)/linuxcnc/gomc/$$(echo $$f | sed 's|^../share/linuxcnc/gomc/||'); \
-		mkdir -p $$(dirname $$dest); \
-		$(INSTALL) -m 0644 $$f $$dest; \
+	# Install full gomc source tree for modcompile rebuild/add-gomod support.
+	# This allows `sudo modcompile add-gomod` to rebuild gomc-server on
+	# installed systems (requires Go toolchain).
+	$(DIR) $(DESTDIR)$(datadir)/linuxcnc/gomc
+	$(Q)cd gomc && find . \
+		-name '*_test.go' -prune -o \
+		-path './pkg/hal/examples' -prune -o \
+		-path './pkg/hal/tests' -prune -o \
+		-path './internal/gmi/kinstest' -prune -o \
+		-type f \( -name '*.go' -o -name 'go.mod' -o -name 'go.sum' -o -name 'packages.conf' \) \
+		-print | while read f; do \
+			dest=$(DESTDIR)$(datadir)/linuxcnc/gomc/$$f; \
+			mkdir -p $$(dirname $$dest); \
+			$(INSTALL) -m 0644 $$f $$dest; \
+		done
+	# Install cmodule headers (needed for modcompile --compile on installed systems)
+	$(DIR) $(DESTDIR)$(datadir)/linuxcnc/gomc/pkg/cmodule
+	$(Q)for f in gomc/pkg/cmodule/gomc_*.h gomc/pkg/cmodule/cmodule.h; do \
+		[ -f "$$f" ] && $(INSTALL) -m 0644 $$f \
+			$(DESTDIR)$(datadir)/linuxcnc/gomc/pkg/cmodule/$$(basename $$f); \
 	done
+	# Install generated GMI headers and Go shims
+	$(Q)cd gomc && find generated -type f \( -name '*.h' -o -name '*.go' \) \
+		2>/dev/null | while read f; do \
+			dest=$(DESTDIR)$(datadir)/linuxcnc/gomc/$$f; \
+			mkdir -p $$(dirname $$dest); \
+			$(INSTALL) -m 0644 $$f $$dest; \
+		done
 
 endif # BUILD_GOLANG
