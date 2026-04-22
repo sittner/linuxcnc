@@ -165,6 +165,9 @@ func main() {
 	case "rebuild":
 		cmdRebuild()
 		return
+	case "regenerate-imports":
+		cmdRegenerateImports()
+		return
 	case "add-gomod":
 		force := false
 		var dir string
@@ -575,6 +578,14 @@ func cmdRebuild() {
 	buildServer()
 }
 
+// cmdRegenerateImports only regenerates imports_generated.go from packages.conf,
+// without building gomc-server.  Used by Makefile to avoid race conditions with
+// parallel builds (-j).
+func cmdRegenerateImports() {
+	reg := loadRegistry()
+	regenerate(reg)
+}
+
 // cmdAddGomod copies an external Go package into external/<name>/ and rebuilds.
 func cmdAddGomod(dir string, force bool) {
 	absDir, err := filepath.Abs(dir)
@@ -657,86 +668,85 @@ func cmdAddGomod(dir string, force bool) {
 	buildServer()
 }
 
-
 // mergeGoDeps reads require directives from an external module's go.mod and
 // runs "go get" in the gomc module directory for each third-party dependency.
 func mergeGoDeps(extGoModPath string) {
-gobin := config.GoBinary
-if gobin == "" {
-gobin = "go"
-}
-gomcDir := config.EMC2GomcDir
+	gobin := config.GoBinary
+	if gobin == "" {
+		gobin = "go"
+	}
+	gomcDir := config.EMC2GomcDir
 
-// Parse external go.mod.
-editCmd := exec.Command(gobin, "mod", "edit", "-json", extGoModPath)
-editCmd.Env = append(os.Environ(), "GOTOOLCHAIN=local")
-out, err := editCmd.Output()
-if err != nil {
-fmt.Fprintf(os.Stderr, "modcompile add-gomod: reading external go.mod: %v\n", err)
-os.Exit(1)
-}
+	// Parse external go.mod.
+	editCmd := exec.Command(gobin, "mod", "edit", "-json", extGoModPath)
+	editCmd.Env = append(os.Environ(), "GOTOOLCHAIN=local")
+	out, err := editCmd.Output()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "modcompile add-gomod: reading external go.mod: %v\n", err)
+		os.Exit(1)
+	}
 
-var modInfo struct {
-Require []struct {
-Path    string
-Version string
-}
-Replace []struct {
-Old struct{ Path string }
-New struct{ Path string }
-}
-}
-if err := json.Unmarshal(out, &modInfo); err != nil {
-fmt.Fprintf(os.Stderr, "modcompile add-gomod: parsing external go.mod: %v\n", err)
-os.Exit(1)
-}
+	var modInfo struct {
+		Require []struct {
+			Path    string
+			Version string
+		}
+		Replace []struct {
+			Old struct{ Path string }
+			New struct{ Path string }
+		}
+	}
+	if err := json.Unmarshal(out, &modInfo); err != nil {
+		fmt.Fprintf(os.Stderr, "modcompile add-gomod: parsing external go.mod: %v\n", err)
+		os.Exit(1)
+	}
 
-// Collect local replace targets to skip (stub dirs, etc.)
-localReplaces := make(map[string]bool)
-for _, r := range modInfo.Replace {
-if strings.HasPrefix(r.New.Path, ".") || strings.HasPrefix(r.New.Path, "/") {
-localReplaces[r.Old.Path] = true
-}
-}
+	// Collect local replace targets to skip (stub dirs, etc.)
+	localReplaces := make(map[string]bool)
+	for _, r := range modInfo.Replace {
+		if strings.HasPrefix(r.New.Path, ".") || strings.HasPrefix(r.New.Path, "/") {
+			localReplaces[r.Old.Path] = true
+		}
+	}
 
-// Build list of deps to add.
-var getArgs []string
-for _, req := range modInfo.Require {
-if localReplaces[req.Path] {
-continue
-}
-if strings.HasPrefix(req.Path, "github.com/sittner/linuxcnc/") {
-continue
-}
-getArgs = append(getArgs, req.Path+"@"+req.Version)
-}
+	// Build list of deps to add.
+	var getArgs []string
+	for _, req := range modInfo.Require {
+		if localReplaces[req.Path] {
+			continue
+		}
+		if strings.HasPrefix(req.Path, "github.com/sittner/linuxcnc/") {
+			continue
+		}
+		getArgs = append(getArgs, req.Path+"@"+req.Version)
+	}
 
-if len(getArgs) == 0 {
-return
-}
+	if len(getArgs) == 0 {
+		return
+	}
 
-fmt.Fprintf(os.Stderr, "Adding %d dependencies to gomc go.mod...\n", len(getArgs))
+	fmt.Fprintf(os.Stderr, "Adding %d dependencies to gomc go.mod...\n", len(getArgs))
 
-args := append([]string{"get"}, getArgs...)
-getCmd := exec.Command(gobin, args...)
-getCmd.Dir = gomcDir
-getCmd.Env = append(os.Environ(), "GOTOOLCHAIN=local")
-getCmd.Stdout = os.Stdout
-getCmd.Stderr = os.Stderr
-if err := getCmd.Run(); err != nil {
-fmt.Fprintf(os.Stderr, "modcompile add-gomod: go get failed: %v\n", err)
-os.Exit(1)
-}
+	args := append([]string{"get"}, getArgs...)
+	getCmd := exec.Command(gobin, args...)
+	getCmd.Dir = gomcDir
+	getCmd.Env = append(os.Environ(), "GOTOOLCHAIN=local")
+	getCmd.Stdout = os.Stdout
+	getCmd.Stderr = os.Stderr
+	if err := getCmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "modcompile add-gomod: go get failed: %v\n", err)
+		os.Exit(1)
+	}
 
-// Tidy to clean up unused deps from previous installs.
-tidyCmd := exec.Command(gobin, "mod", "tidy")
-tidyCmd.Dir = gomcDir
-tidyCmd.Env = append(os.Environ(), "GOTOOLCHAIN=local")
-tidyCmd.Stdout = os.Stdout
-tidyCmd.Stderr = os.Stderr
-if err := tidyCmd.Run(); err != nil {
-fmt.Fprintf(os.Stderr, "modcompile add-gomod: go mod tidy warning: %v\n", err)
-}
+	// Tidy to clean up unused deps from previous installs.
+	tidyCmd := exec.Command(gobin, "mod", "tidy")
+	tidyCmd.Dir = gomcDir
+	tidyCmd.Env = append(os.Environ(), "GOTOOLCHAIN=local")
+	tidyCmd.Stdout = os.Stdout
+	tidyCmd.Stderr = os.Stderr
+	if err := tidyCmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "modcompile add-gomod: go mod tidy warning: %v\n", err)
+	}
 }
 
 // cmdRmGomod removes a Go package from the registry, deletes its source, and rebuilds.
@@ -781,7 +791,6 @@ func cmdRmGomod(name string) {
 	goModTidy()
 	buildServer()
 }
-
 
 // goModTidy runs "go mod tidy" in the gomc module directory to clean up
 // unused dependencies (e.g. after removing an external module).

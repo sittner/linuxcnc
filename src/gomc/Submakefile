@@ -77,7 +77,7 @@ gomc/go.mod: gomc/go.mod.in
 	$(Q)test -f $@ || cp $< $@
 
 $(IMPORTS_GENERATED): gomc/packages.conf ../bin/modcompile
-	$(Q)test -f $@ || cd gomc && $(TOP)/bin/modcompile rebuild
+	$(Q)test -f $@ || cd gomc && $(TOP)/bin/modcompile regenerate-imports
 
 # Build the gomc-server binary.
 #
