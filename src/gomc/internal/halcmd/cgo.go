@@ -351,6 +351,11 @@ static void hal_shim_rtapi_app_cleanup(void) {
     rt_msg_queue_consume_all();
 }
 
+// --- loadusr child PID tracking (forward declarations for unload_all) ---
+static pid_t *loadusr_pids;
+static int    loadusr_pid_count;
+static int    loadusr_pid_cap;
+
 // hal_shim_unload_all unloads all HAL components:
 //   - Userspace components: send SIGTERM to their owning process
 //   - Realtime components: unload via direct rtapi_dlclose (in-process)
@@ -378,6 +383,26 @@ static int hal_shim_unload_all(int except_id) {
         next = comp->next_ptr;
     }
     rtapi_mutex_give(&(hal_data->mutex));
+
+    // Phase 1b: send SIGTERM to tracked loadusr PIDs that may not have
+    // registered as HAL components (e.g. pure REST/WS client processes).
+    // Skip PIDs that already appeared in the HAL component list above.
+    {
+        int i;
+        for (i = 0; i < loadusr_pid_count; i++) {
+            pid_t p = loadusr_pids[i];
+            if (p > 0 && p != ourpid) {
+                // kill(pid, 0) checks if process exists without sending a signal
+                if (kill(p, 0) == 0) {
+                    kill(p, SIGTERM);
+                }
+            }
+        }
+        loadusr_pid_count = 0;
+        free(loadusr_pids);
+        loadusr_pids = NULL;
+        loadusr_pid_cap = 0;
+    }
 
     // Phase 2: collect realtime component names then unload in-process
     {
@@ -852,6 +877,24 @@ static int hal_shim_net(const char *sig_name, const char *pin_names, int num_pin
 // component to become ready or to disappear.
 #define HAL_SHIM_POLL_USECS 10000
 
+// --- loadusr child PID tracking ---
+// Processes spawned by loadusr that may not register as HAL components
+// (e.g. pure REST/WS clients like manualtoolchange_ui) need explicit
+// SIGTERM during cleanup.  We track all loadusr PIDs here; unload_all
+// signals them alongside HAL-registered components.
+// Variables declared above (before hal_shim_unload_all).
+
+static void loadusr_track_pid(pid_t pid) {
+    if (loadusr_pid_count >= loadusr_pid_cap) {
+        int newcap = loadusr_pid_cap == 0 ? 16 : loadusr_pid_cap * 2;
+        pid_t *tmp = (pid_t *)realloc(loadusr_pids, (size_t)newcap * sizeof(pid_t));
+        if (!tmp) return; // OOM — silently skip
+        loadusr_pids = tmp;
+        loadusr_pid_cap = newcap;
+    }
+    loadusr_pids[loadusr_pid_count++] = pid;
+}
+
 // hal_shim_loadusr starts a user-space process.
 // flags: 1=wait_ready, 2=wait_exit, 4=no_stdin
 // wait_name: component name to wait for (if wait_ready is set), or NULL to derive from prog.
@@ -894,6 +937,9 @@ static int hal_shim_loadusr(int flags, const char *wait_name, int timeout_s,
             return -spawn_ret;
         }
     }
+
+    // Track the child PID for cleanup (in case it never registers with HAL).
+    loadusr_track_pid(pid);
 
     // Parent process
     if (wait_exit) {
