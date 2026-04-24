@@ -140,6 +140,19 @@ $(GMI_AXISUI_PY_WS): $(GMI_AXISUI_IDL) $(GMICOMPILE_BIN)
 
 TARGETS += $(GMI_AXISUI_PY_WS)
 
+# --- pyvcp REST/WS compat layer (hand-written, not generated) ---
+
+GMI_PYVCP_COMPAT_SRC := gmi/python/pyvcp_compat.py
+GMI_PYVCP_COMPAT_DST := ../lib/python/gmi/pyvcp_compat.py
+
+$(GMI_PYVCP_COMPAT_DST): $(GMI_PYVCP_COMPAT_SRC)
+	$(ECHO) "Installing pyvcp_compat.py"
+	@mkdir -p $(dir $(GMI_PYVCP_COMPAT_DST))
+	@touch $(dir $(GMI_PYVCP_COMPAT_DST))__init__.py
+	$(Q)cp $< $@
+
+TARGETS += $(GMI_PYVCP_COMPAT_DST)
+
 clean: gmi-codegen-clean
 .PHONY: gmi-codegen-clean
 gmi-codegen-clean:
