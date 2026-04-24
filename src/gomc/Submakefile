@@ -130,7 +130,7 @@ GOMC_PKG_FILES := \
 ../share/linuxcnc/gomc/go.mod: gomc/go.mod
 	$(ECHO) Generating gomc share go.mod
 	@mkdir -p $(dir $@)
-	$(Q)printf 'module github.com/sittner/linuxcnc/src/gomc\n\ngo 1.21\n' > $@
+	$(Q)printf 'module github.com/sittner/linuxcnc/src/gomc\n\ngo 1.22\n' > $@
 
 # ---------------------------------------------------------------------------
 # HAL Go example / test binaries (standalone processes using the hal package)

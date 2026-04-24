@@ -107,7 +107,7 @@ Pins have a direction that specifies how data flows:
 This package uses CGO to interface with the LinuxCNC HAL library. To build
 programs using this package, you need:
 
-  - Go 1.21 or later
+  - Go 1.22 or later
   - LinuxCNC development headers
   - CGO_ENABLED=1
 
