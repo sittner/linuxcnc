@@ -188,6 +188,7 @@ $(GMI_HALCMD_GEN_GO): gmi/idl/halcmd.gmi ../bin/modcompile
 	$(ECHO) Generating halcmd REST client
 	@mkdir -p $(dir $@)
 	$(Q)../bin/modcompile gmi --client-go $(TOP)/src/gmi/idl/halcmd.gmi -o $@
+	$(Q)../bin/modcompile add-gmi generated/gmi/halcmd
 
 ../bin/halcmd: $(GOMC_SRC_BASE) $(GMI_HALCMD_GEN_GO)
 	$(ECHO) Building halcmd - Go REST client

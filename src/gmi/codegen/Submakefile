@@ -32,6 +32,7 @@ $(GMI_KINS_GEN)/kins_api.h: $(GMI_KINS_IDL) $(GMICOMPILE_BIN)
 	$(ECHO) "Generating GMI kins API from $(GMI_KINS_IDL)"
 	@mkdir -p $(GMI_KINS_GEN)
 	$(Q)$(GMICOMPILE) --server-c $(GMI_KINS_IDL) -o $(GMI_KINS_GEN)/kins_api.h
+	$(Q)$(GMICOMPILE_BIN) add-gmi generated/gmi/kins
 
 $(GMI_KINS_GEN)/kins_cgo.go: $(GMI_KINS_GEN)/kins_api.h
 
@@ -47,6 +48,7 @@ $(GMI_TP_GEN)/tp_api.h: $(GMI_TP_IDL) $(GMICOMPILE_BIN)
 	$(ECHO) "Generating GMI tp API from $(GMI_TP_IDL)"
 	@mkdir -p $(GMI_TP_GEN)
 	$(Q)$(GMICOMPILE) --server-c $(GMI_TP_IDL) -o $(GMI_TP_GEN)/tp_api.h
+	$(Q)$(GMICOMPILE_BIN) add-gmi generated/gmi/tp
 
 $(GMI_TP_GEN)/tp_cgo.go: $(GMI_TP_GEN)/tp_api.h
 
@@ -61,6 +63,7 @@ $(GMI_HOME_GEN)/home_api.h: $(GMI_HOME_IDL) $(GMICOMPILE_BIN)
 	$(ECHO) "Generating GMI home API from $(GMI_HOME_IDL)"
 	@mkdir -p $(GMI_HOME_GEN)
 	$(Q)$(GMICOMPILE) --server-c $(GMI_HOME_IDL) -o $(GMI_HOME_GEN)/home_api.h
+	$(Q)$(GMICOMPILE_BIN) add-gmi generated/gmi/home
 
 $(GMI_HOME_GEN)/home_cgo.go: $(GMI_HOME_GEN)/home_api.h
 
@@ -75,6 +78,7 @@ $(GMI_MOT_GEN)/mot_api.h: $(GMI_MOT_IDL) $(GMICOMPILE_BIN)
 	$(ECHO) "Generating GMI mot API from $(GMI_MOT_IDL)"
 	@mkdir -p $(GMI_MOT_GEN)
 	$(Q)$(GMICOMPILE) --server-c $(GMI_MOT_IDL) -o $(GMI_MOT_GEN)/mot_api.h
+	$(Q)$(GMICOMPILE_BIN) add-gmi generated/gmi/mot
 
 $(GMI_MOT_GEN)/mot_cgo.go: $(GMI_MOT_GEN)/mot_api.h
 
@@ -89,6 +93,7 @@ $(GMI_MTC_GEN)/manualtoolchange_api.h: $(GMI_MTC_IDL) $(GMICOMPILE_BIN)
 	$(ECHO) "Generating GMI manualtoolchange API from $(GMI_MTC_IDL)"
 	@mkdir -p $(GMI_MTC_GEN)
 	$(Q)$(GMICOMPILE) --server-c $(GMI_MTC_IDL) -o $(GMI_MTC_GEN)/manualtoolchange_api.h
+	$(Q)$(GMICOMPILE_BIN) add-gmi generated/gmi/manualtoolchange
 
 $(GMI_MTC_GEN)/manualtoolchange_cgo.go: $(GMI_MTC_GEN)/manualtoolchange_api.h
 
@@ -115,6 +120,7 @@ $(GMI_AXISUI_GEN)/axisui_api.h: $(GMI_AXISUI_IDL) $(GMICOMPILE_BIN)
 	$(ECHO) "Generating GMI axisui API from $(GMI_AXISUI_IDL)"
 	@mkdir -p $(GMI_AXISUI_GEN)
 	$(Q)$(GMICOMPILE) --server-c $(GMI_AXISUI_IDL) -o $(GMI_AXISUI_GEN)/axisui_api.h
+	$(Q)$(GMICOMPILE_BIN) add-gmi generated/gmi/axisui
 
 $(GMI_AXISUI_GEN)/axisui_cgo.go: $(GMI_AXISUI_GEN)/axisui_api.h
 

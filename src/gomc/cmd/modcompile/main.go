@@ -192,6 +192,21 @@ func main() {
 		cmdRmGomod(os.Args[2])
 		return
 
+	case "add-gmi":
+		if len(os.Args) < 3 {
+			fmt.Fprintln(os.Stderr, "modcompile add-gmi: missing import path argument")
+			os.Exit(1)
+		}
+		cmdAddGmi(os.Args[2])
+		return
+	case "rm-gmi":
+		if len(os.Args) < 3 {
+			fmt.Fprintln(os.Stderr, "modcompile rm-gmi: missing import path argument")
+			os.Exit(1)
+		}
+		cmdRmGmi(os.Args[2])
+		return
+
 	// GMI code generation subcommand
 	case "gmi":
 		cmdGMI(os.Args[2:])
@@ -790,6 +805,35 @@ func cmdRmGomod(name string) {
 	regenerate(reg)
 	goModTidy()
 	buildServer()
+}
+
+// cmdAddGmi adds a GMI package to the registry idempotently.
+// importPath is relative to the gomc module, e.g. "generated/gmi/axisui".
+func cmdAddGmi(importPath string) {
+	reg := loadRegistry()
+	if reg.Add(pkgreg.Entry{Type: pkgreg.TypeGMI, ImportPath: importPath}) {
+		if err := reg.WriteFile(packagesConfPath()); err != nil {
+			fmt.Fprintf(os.Stderr, "modcompile add-gmi: writing packages.conf: %v\n", err)
+			os.Exit(1)
+		}
+		regenerate(reg)
+	}
+}
+
+// cmdRmGmi removes a GMI package from the registry.
+func cmdRmGmi(importPath string) {
+	reg := loadRegistry()
+	if !reg.Remove(importPath) {
+		fmt.Fprintf(os.Stderr, "modcompile rm-gmi: %s not found in registry\n", importPath)
+		os.Exit(1)
+	}
+
+	if err := reg.WriteFile(packagesConfPath()); err != nil {
+		fmt.Fprintf(os.Stderr, "modcompile rm-gmi: writing packages.conf: %v\n", err)
+		os.Exit(1)
+	}
+
+	regenerate(reg)
 }
 
 // goModTidy runs "go mod tidy" in the gomc module directory to clean up

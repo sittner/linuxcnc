@@ -8,13 +8,8 @@
 #
 # IMPORT_PATH — relative path within the gomc module for blank import
 
-# Core GMI dispatch (generated, part of this module)
-gmi generated/gmi/kins
-gmi generated/gmi/tp
-gmi generated/gmi/home
-gmi generated/gmi/mot
-gmi generated/gmi/manualtoolchange
-gmi generated/gmi/halcmd
+# Core GMI dispatch entries are auto-added by "modcompile add-gmi"
+# during code generation (see gmi/codegen/Submakefile).
 
 # Go modules (in-tree and installed external)
 gomod internal/adsmodule
