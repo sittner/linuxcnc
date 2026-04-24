@@ -10,12 +10,12 @@ import (
 const (
 	// defaultRESTAddr is the default listen address for the REST API server.
 	// Can be overridden via [GMC]REST_ADDR in the INI file.
-	defaultRESTAddr = "localhost:5080"
+	defaultRESTAddr = "127.0.0.1:5080"
 )
 
 // startAPIServer starts the REST API server in the background.
 // The listen address is read from [GMC]REST_ADDR in the INI file,
-// defaulting to "localhost:5080".
+// defaulting to "127.0.0.1:5080".
 func (l *Launcher) startAPIServer() {
 	addr := defaultRESTAddr
 	if l.ini != nil {

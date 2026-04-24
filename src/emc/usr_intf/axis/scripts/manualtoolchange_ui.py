@@ -12,6 +12,7 @@ BASE = os.path.abspath(os.path.join(os.path.dirname(sys.argv[0]), ".."))
 gettext.install("linuxcnc", localedir=os.path.join(BASE, "share", "locale"))
 
 # Generated REST client (from manualtoolchange.gmi via gmicompile --client-python)
+import gmi
 from gmi.manualtoolchange_client import ManualtoolchangeClient
 
 import nf
@@ -20,7 +21,7 @@ import tkinter
 
 
 def main():
-    rest_url = os.environ.get("GMC_REST_URL", "http://localhost:5080/")
+    rest_url = gmi.rest_url()
     instance = os.environ.get("GMC_MTC_INSTANCE", "manualtoolchange")
     # The generated client builds base_url + "/api/v1/manualtoolchange",
     # but the REST server routes by instance name. Override the prefix
@@ -32,7 +33,7 @@ def main():
     # registered with the API prefix as instance name.  Since modcompile
     # registers as "manualtoolchange.0", we adjust the base_url to
     # route correctly.
-    base = rest_url.rstrip("/")
+    base = rest_url
     # Override client's base_url after construction to use the right instance
     client = ManualtoolchangeClient(rest_url)
     client.base_url = f"{base}/api/v1/{instance}"

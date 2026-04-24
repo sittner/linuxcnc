@@ -78,6 +78,7 @@ else:
 
 if hal_present == 1:
     import hal
+    import gmi
     from gmi.axisui_ws_client import (
         AxisuiWatchThread, JogInputs, SliderInputs, NotificationInputs
     )
@@ -4141,8 +4142,7 @@ if hal_present == 1 :
 
     # Connect to the axisui cmod via WebSocket watch channel.
     # The cmod owns the HAL pins; we communicate via WS.
-    ws_url = "ws://localhost:5080/api/v1/watch"
-    _ws_thread = AxisuiWatchThread(ws_url, instance="axisui")
+    _ws_thread = AxisuiWatchThread(gmi.ws_url(), instance="axisui")
     comp = WSCompat(_ws_thread)
     _ws_thread.subscribe_get_jog_inputs(callback=comp._on_jog)
     _ws_thread.subscribe_get_slider_inputs(callback=comp._on_sliders)

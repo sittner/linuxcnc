@@ -4,7 +4,7 @@
 // It communicates with the LinuxCNC launcher via REST API.
 //
 // Environment variables:
-//   GMC_REST_URL - Base URL of the REST server (default: http://localhost:5080)
+//   GMC_REST_URL - Base URL of the REST server (default: http://127.0.0.1:5080)
 //
 // Usage:
 //   halcmd [options] [command] [args...]
@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	defaultRestURL = "http://localhost:5080"
+	defaultRestURL = "http://127.0.0.1:5080"
 	envRestURL     = "GMC_REST_URL"
 )
 
