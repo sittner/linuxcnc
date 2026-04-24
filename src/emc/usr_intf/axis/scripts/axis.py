@@ -3578,7 +3578,6 @@ vars.machine.set(inifile.find("EMC", "MACHINE"))
 extensions = inifile.findall("FILTER", "PROGRAM_EXTENSION")
 extensions = [e.split(None, 1) for e in extensions]
 extensions = tuple([(v, tuple(k.split(","))) for k, v in extensions])
-postgui_halfile = inifile.findall("HAL", "POSTGUI_HALFILE") or None
 max_feed_override = float(inifile.find("DISPLAY", "MAX_FEED_OVERRIDE") or 1.0)
 max_spindle_override = float(inifile.find("DISPLAY", "MAX_SPINDLE_OVERRIDE") or max_feed_override)
 min_spindle_override = float(inifile.find("DISPLAY", "MIN_SPINDLE_OVERRIDE") or 0)
@@ -4325,13 +4324,6 @@ def check_dynamic_tabs():
                              (" ".join(cmd), r))
         raise SystemExit(r)
     else:
-        if postgui_halfile is not None:
-            for f in postgui_halfile:
-                if f.lower().endswith('.tcl'):
-                    res = os.spawnvp(os.P_WAIT, "haltcl", ["haltcl", "-i", vars.emcini.get(), f])
-                else:
-                    res = os.spawnvp(os.P_WAIT, "halcmd", ["halcmd", "-i", vars.emcini.get(), "-f", f])
-                if res: raise SystemExit(res)
         root_window.deiconify()
         destroy_splash()
         return
