@@ -3853,7 +3853,7 @@ static int32_t gmi_tp_get_run_dir(void *ctx) { (void)ctx; return g_tp->reverse_r
 
 // ─── Callbacks table ────────────────────────────────────────────────────
 
-static tp_callbacks_t tp_cmod_callbacks = GMI_TP_CALLBACKS;
+static const tp_callbacks_t tp_cmod_callbacks = GMI_TP_CALLBACKS;
 
 // ─── cmod lifecycle ─────────────────────────────────────────────────────
 
@@ -3881,7 +3881,6 @@ int New(const cmod_env_t *env, const char *name,
     (void)argc; (void)argv;
     tp_cmod_api = env->api;
 
-    tp_cmod_callbacks.ctx = NULL;
     int rc = tp_api_register(env->api, "default", &tp_cmod_callbacks);
     if (rc != 0) {
         gomc_log_errorf(env->log, name,

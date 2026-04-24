@@ -1463,7 +1463,7 @@ static int32_t gmi_home_get_at_index_search_wait(void *ctx, int32_t jno) { (void
 
 // ─── Callbacks table ────────────────────────────────────────────────────
 
-static home_callbacks_t home_cmod_callbacks = GMI_HOME_CALLBACKS;
+static const home_callbacks_t home_cmod_callbacks = GMI_HOME_CALLBACKS;
 
 // ─── cmod lifecycle ─────────────────────────────────────────────────────
 
@@ -1487,7 +1487,6 @@ int New(const cmod_env_t *env, const char *name,
     (void)argc; (void)argv;
     home_cmod_api = env->api;
 
-    home_cmod_callbacks.ctx = NULL;
     int rc = home_api_register(env->api, "default", &home_cmod_callbacks);
     if (rc != 0) {
         gomc_log_errorf(env->log, name,
