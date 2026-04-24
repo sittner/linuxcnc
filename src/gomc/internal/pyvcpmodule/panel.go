@@ -301,17 +301,14 @@ func extractPins(widgetName string, children, attrs map[string]string, counters 
 		return pins
 
 	case "dial":
-		// FLOAT OUT + optional param_pin FLOAT IN
+		// FLOAT OUT + param_pin FLOAT IN (always created, like Python pyvcp)
+		autoBase := autoName("dial", counters) // always increment counter
 		if halpin == "" {
-			halpin = autoName("dial", counters) + ".out"
+			halpin = autoBase + ".out"
 		}
 		halparam := getParam(children, attrs, "halparam")
-		n := counters["dial"] - 1 // autoName already incremented
-		if n < 0 {
-			n = 0
-		}
 		if halparam == "" {
-			halparam = "dial." + strconv.Itoa(n) + ".param_pin"
+			halparam = autoBase + ".param_pin"
 		}
 		pins := []*pinDef{
 			{name: halparam, halType: halFloat, dir: halIn},
