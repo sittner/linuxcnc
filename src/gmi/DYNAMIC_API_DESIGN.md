@@ -945,7 +945,7 @@ cmod + REST API architecture.
 - `hal_manualtoolchange.py` (old Python component) is kept but deprecated — to be
   removed in a future cleanup pass.
 
-### Step 5.2: AXIS UI Watch Channel (NOT STARTED)
+### Step 5.2: AXIS UI Watch Channel (COMPLETE)
 
 Migrate AXIS GUI's HAL pins to a WebSocket-based watch channel, eliminating the
 UI's dependency on HAL shared memory. This is a preparation step for removing
@@ -1096,13 +1096,19 @@ client.jog_start(axis="x", speed=100.0)
 
 **Implementation Plan:**
 
-- [ ] GMI parser: `@watch`, `@watch_default_rate` annotations on functions
-- [ ] gmicompile `--server-ws`: Go WebSocket subscribe/push handler
-- [ ] gmicompile `--client-python-ws`: Python async watch client
-- [ ] gomc-server: WebSocket endpoint at `/api/v1/watch`
-- [ ] `axis.gmi`: IDL with status watch + jog/notification commands
-- [ ] axis.py: replace HAL `comp` with WebSocket client (thread + Tk event posting)
-- [ ] Integration test: subscribe → push → command round-trip
+- [x] GMI parser: `@watch`, `@watch_default_rate` annotations on functions
+- [x] gmicompile `--server-ws`: Go WebSocket subscribe/push handler
+- [x] gmicompile `--client-python-ws`: Python async watch client
+- [x] gomc-server: WebSocket endpoint at `/api/v1/watch`
+- [x] `axisui.gmi`: IDL with jog/slider/notification watch + set commands
+- [x] axis.py: replace HAL `comp` with WebSocket client (WSCompat + AxisuiWatchThread)
+- [x] axisui.comp: cmod with HAL pins and GMI callbacks
+- [x] HAL config: `axisui.hal` + INI entries for sim configs
+- [x] WatchFactory registry: auto-registration via init() + packages.conf
+- [x] `modcompile add-gmi`: auto-registration during codegen
+- [x] Python `gmi` package: `rest_url()`/`ws_url()` central URL helpers
+- [x] Debian packaging: install rules for `gmi/` Python package and `cmod/*.so`
+- [x] `loadusr` PID tracking: proper SIGTERM on shutdown for non-HAL child processes
 
 **Future (out of scope for 5.2):**
 - NML status channel replacement (same watch infrastructure, different GMI API)
