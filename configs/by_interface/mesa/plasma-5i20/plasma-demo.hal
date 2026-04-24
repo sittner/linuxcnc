@@ -77,7 +77,9 @@ net zenable joint.2.amp-enable-out => stepgen.2.enable
 net estop-out <= iocontrol.user-enable-out
 net estop-out => iocontrol.emc-enable-in
 
-#loadusr -W manualtoolchange
+#load manualtoolchange
+#addf manualtoolchange servo-thread
+#loadusr manualtoolchange_ui
 #net tool-change iocontrol.tool-change => manualtoolchange.change
 #net tool-changed iocontrol.tool-changed <= manualtoolchange.changed
 #net tool-number iocontrol.tool-prep-number => manualtoolchange.number
