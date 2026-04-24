@@ -4134,6 +4134,11 @@ t.bind("<Button-5>", scroll_down)
 t.configure(state="disabled")
 
 if hal_present == 1 :
+    # Create a minimal HAL component so axis.py can call HAL query functions
+    # (e.g. component_exists).  The actual UI pins live in the axisui cmod.
+    _hal_comp = hal.component("axisui-display")
+    _hal_comp.ready()
+
     # Connect to the axisui cmod via WebSocket watch channel.
     # The cmod owns the HAL pins; we communicate via WS.
     ws_url = "ws://localhost:5080/api/v1/watch"
