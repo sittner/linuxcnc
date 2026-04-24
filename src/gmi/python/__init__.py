@@ -29,3 +29,18 @@ def component_exists(name: str) -> bool:
             return len(data) > 0
     except Exception:
         return False
+
+
+def pin_has_writer(name: str) -> bool:
+    """Check if a HAL pin's signal has any writers via the halcmd REST API."""
+    import json
+    import urllib.request
+    url = rest_url() + "/api/v1/halcmd0/pins?pattern=" + name
+    try:
+        with urllib.request.urlopen(url, timeout=2) as resp:
+            data = json.loads(resp.read())
+            if data:
+                return data[0].get("has_writer", False)
+            return False
+    except Exception:
+        return False

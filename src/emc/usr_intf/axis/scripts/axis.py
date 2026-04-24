@@ -77,7 +77,6 @@ else:
     hal_present = 1;
 
 if hal_present == 1:
-    import hal
     import gmi
     from gmi.axisui_ws_client import (
         AxisuiWatchThread, JogInputs, SliderInputs, NotificationInputs
@@ -4390,7 +4389,7 @@ def forget(widget, *pins):
     if "AXIS_NO_AUTOCONFIGURE" in os.environ: return
     if hal_present == 1:
         for p in pins:
-            if hal.pin_has_writer(p): return
+            if gmi.pin_has_writer(p): return
     m = widget.winfo_manager()
     if m in ("grid", "pack"):
         widget.tk.call(m, "forget", widget._w)
@@ -4419,10 +4418,10 @@ forget(widgets.spinoverridef,
 has_limit_switch = 0
 for j in range(linuxcnc.MAX_JOINTS):
     try:
-        if hal.pin_has_writer("joint.%d.neg-lim-sw-in" % j):
+        if gmi.pin_has_writer("joint.%d.neg-lim-sw-in" % j):
             has_limit_switch=1
             break
-        if hal.pin_has_writer("joint.%d.pos-lim-sw-in" % j):
+        if gmi.pin_has_writer("joint.%d.pos-lim-sw-in" % j):
             has_limit_switch=1
             break
     except NameError as detail:

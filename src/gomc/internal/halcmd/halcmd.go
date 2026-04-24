@@ -487,6 +487,7 @@ type PinInfo struct {
 	Value     string `json:"value"`
 	Signal    string `json:"signal,omitempty"`
 	Owner     string `json:"owner"`
+	HasWriter bool   `json:"has_writer"`
 }
 
 // ParamInfo holds all attributes of a HAL parameter.

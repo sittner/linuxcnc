@@ -1359,6 +1359,7 @@ typedef struct {
     char value[64];
     int  type_;  // hal_type_t
     int  dir;    // hal_pin_dir_t
+    int  has_writer; // 1 if linked signal has writers > 0
 } hal_shim_pin_info_t;
 
 typedef struct {
@@ -1463,9 +1464,11 @@ static int hal_shim_show_pins(const char *pattern, hal_shim_pin_info_t *arr, int
             if (pin->signal != 0) {
                 sig = (hal_sig_t *)SHMPTR(pin->signal);
                 snprintf(arr[count].signal, sizeof(arr[count].signal), "%s", sig->name);
+                arr[count].has_writer = (sig->writers > 0) ? 1 : 0;
                 d_ptr = SHMPTR(sig->data_ptr);
             } else {
                 arr[count].signal[0] = '\0';
+                arr[count].has_writer = 0;
                 d_ptr = (void *)&pin->dummysig;
             }
             hal_shim_format_value(pin->type, d_ptr,
@@ -2569,6 +2572,7 @@ func halShowPins(pattern string) ([]PinInfo, error) {
 				Value:     C.GoString(&arr[i].value[0]),
 				Signal:    C.GoString(&arr[i].signal[0]),
 				Owner:     C.GoString(&arr[i].owner[0]),
+				HasWriter: arr[i].has_writer != 0,
 			}
 		}
 		return result, nil
