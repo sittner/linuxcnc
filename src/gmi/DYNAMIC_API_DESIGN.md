@@ -16,7 +16,7 @@ intended to replace NML with a modern, type-safe approach.
 | 5: Python Client | ✅ Complete | 3 |
 | 5.1: Manualtoolchange REST | ✅ Complete | — |
 | 5.2: AXIS UI Watch Channel | ✅ Complete | 2 |
-| 5.3: PyVCP REST/WebSocket | ❌ Not Started | — |
+| 5.3: PyVCP REST/WebSocket | ✅ Complete | — |
 | 6: Polish | ❌ Not Started | — |
 | 7: Remove Go Plugins | ✅ Complete | — |
 
@@ -933,7 +933,7 @@ cmod + REST API architecture.
 - [x] `bin/manualtoolchange_ui` — installed UI script
 - [x] Generated cgo uses `internal/apiserver` (correct import path)
 - [x] `packages.conf` entry present — cgo dispatch compiled into gomc-server
-- [x] `lib/python/gmi/__init__.py` — created at build time by codegen Submakefile
+- [x] `lib/python/gmi/__init__.py` — hand-written source in `src/gmi/python/`, copied at build time
 - [x] All HAL configs migrated from `hal_manualtoolchange` to `manualtoolchange` cmod
 - [x] `sim_lib.tcl` `use_hal_manualtoolchange` proc updated (3-line cmod form)
 - [x] `stepconf/build_HAL.py` and `pncconf/build_HAL.py` updated
@@ -1116,29 +1116,21 @@ client.jog_start(axis="x", speed=100.0)
 - Multiple simultaneous UI clients (watch supports this by design)
 - Remote UI over network (WebSocket works through reverse proxies)
 
-### Step 5.3: PyVCP REST/WebSocket Migration (NOT STARTED)
+### Step 5.3: PyVCP REST/WebSocket Migration (COMPLETE)
 
-Migrate PyVCP from direct HAL shared memory access to REST + WebSocket,
-eliminating the UI's dependency on HAL shared memory. PyVCP panels become
+Migrated PyVCP from direct HAL shared memory access to REST + WebSocket,
+eliminating the UI's dependency on HAL shared memory. PyVCP panels are now
 pure display/input frontends communicating through the gomc-server.
-
-**Motivation:**
-- PyVCP currently creates HAL components directly in the Python UI process,
-  requiring HAL shared memory access
-- Mid-term goal: UI processes must not access HAL shared memory
-- Multiple PyVCP instances (side panel + embedded tabs) each create separate
-  HAL components — this must be preserved
-- Reuses the watch channel infrastructure from Step 5.2
 
 **Architecture:**
 
-A Go module (gomod, like ads-server) inside gomc-server handles HAL pin
-management. The Python frontend becomes a pure display client:
+A Go module (pyvcpmodule) inside gomc-server owns the HAL component.
+The Python frontend is a pure display client:
 
 ```
 pyvcp (Tk frontend)              gomc-server
     │                               │
-    ├─ GET /xml?panel=name ────────►│  Download panel XML
+    ├─ GET /panel/{name} ─────────►│  Fetch panel info + pin defs
     │                               │
     ├─ WebSocket (persistent) ◄────►│  Pin value push (100ms)
     │   set_pin commands ──────────►│  Write output pin values
@@ -1149,199 +1141,134 @@ pyvcp (Tk frontend)              gomc-server
     │                          via pkg/hal/ Go bindings
 ```
 
-**Server-Side: pyvcpmodule (gomod)**
-
-A compiled-in Go module (same pattern as `internal/adsmodule/`):
+**Server-Side: pyvcpmodule**
 
 ```
 src/gomc/internal/pyvcpmodule/
 ├── module.go        # init() → RegisterModule("pyvcp", factory)
-├── panel.go         # XML parsing, HAL component creation, pin management
-└── watch.go         # GMI watch callbacks for pin state push
+│                    # REST dispatch (get_panel), WS watch (watch_pins, set_pin)
+│                    # Panel registry, WatchRegistry for subscriptions
+└── panel.go         # XML parsing for 20 widget types → HAL pin creation
+                     # autoName counters match Python pyvcp_widgets.py naming
 ```
 
 Startup flow:
-1. gomc-server starts pyvcpmodule
-2. Module reads `[DISPLAY]PYVCP` from INI → parses XML → extracts pin definitions
+1. gomc-server loads pyvcpmodule via `[HAL]GOMOD = pyvcp` INI directive
+2. Module reads XML path from module config → parses XML → extracts pin definitions
 3. Creates real HAL component with required pins via `pkg/hal/` Go bindings
-4. Registers GMI callbacks for REST + WebSocket endpoints
-5. `comp.ready()` — pins visible to halcmd, connectable in HAL files
+4. Registers REST + WebSocket endpoints as API instance "pyvcp"
+5. `comp.Ready()` — pins visible to halcmd, connectable in HAL files
 
-Multiple panels supported: AXIS `[DISPLAY]PYVCP` (side panel) and
-`EMBED_TAB_COMMAND=pyvcp ...` (tab panels) each register as separate
-named panels. Each creates its own HAL component.
+**REST Endpoints (registered on apiserver as instance "pyvcp"):**
 
-**GMI IDL (`gmi/idl/pyvcp.gmi`):**
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/v1/pyvcp/panel/{name}` | Fetch panel info (name, XML, pin defs) |
 
-```gmi
-@api pyvcp
-@version 1
-@prefix "pyvcp"
-@rest_export true
+**WebSocket Commands (via `/api/v1/watch`):**
 
-enum HalType {
-    BIT = 1
-    FLOAT = 2
-    S32 = 3
-    U32 = 4
-}
+| Command | Purpose |
+|---------|---------|
+| `watch_pins` | Subscribe to pin value push at 100ms |
+| `set_pin` | Write a pin value (name + string-encoded value) |
 
-enum PinDir {
-    IN = 16
-    OUT = 32
-    IO = 48
-}
+**Client-Side: PyVCPCompat + pyvcp_compat.py**
 
-type PinDef {
-    name: string
-    hal_type: HalType
-    dir: PinDir
-}
+Hand-written (not generated) drop-in replacement for `hal.component`:
 
-type PinValue {
-    name: string
-    value: string       // string-encoded: "1"/"0" for bit, "3.14" for float, etc.
-}
-
-type PanelInfo {
-    name: string        // panel/component name
-    xml: string         // full XML content
-    pins: []PinDef      // pin definitions extracted from XML
-}
-
-# REST: GET /api/v1/pyvcp/panels
-func list_panels() -> []string
-
-# REST: GET /api/v1/pyvcp/panel/{name}
-func get_panel(name: string) -> PanelInfo
-
-# WebSocket: push pin values at 100ms
-@watch true
-@watch_default_rate 100ms
-func watch_pins(panel: string) -> []PinValue
-
-# WebSocket: command — set output pin value
-func set_pin(panel: string, name: string, value: string) -> bool
+```
+src/gmi/python/pyvcp_compat.py → lib/python/gmi/pyvcp_compat.py (build copy)
 ```
 
-**Client-Side: pyvcp Frontend Changes**
+- `PyVCPCompat` class: `__getitem__`/`__setitem__` interface, backed by WebSocket
+- `_WatchThread`: asyncio WebSocket client in background thread
+- `_flush_loop()`: batches outgoing `set_pin` writes
+- Fetches panel info via REST on init, subscribes to watch_pins
+- Widget code (`pyvcp_widgets.py`) requires zero changes
 
-Minimal changes to existing PyVCP code. The widget classes stay intact —
-only the HAL access layer is replaced:
+**AXIS Integration:**
 
-| Current (shared memory) | New (REST/WebSocket) |
-|------------------------|----------------------|
-| `hal.component("pyvcp")` | `GET /panel/{name}` to fetch XML + pin defs |
-| `comp.newpin(name, type, dir)` | Pins already created server-side |
-| `comp[pin] = value` (write) | `set_pin(panel, name, value)` via WebSocket |
-| `value = comp[pin]` (read) | Read from local dict updated by WebSocket push |
-| `comp.ready()` | Not needed — server calls ready() |
-| 100ms `after()` Tk poll | WebSocket push triggers Tk update via thread |
+`vcpparse.py` has a new `create_vcp_rest()` function that:
+1. Fetches panel info from REST (`GET /api/v1/pyvcp/panel/{name}`)
+2. Creates `PyVCPCompat` instead of `hal.component`
+3. Builds widget tree from XML (existing code path)
 
-Implementation approach (same pattern as Step 5.2 AXIS migration):
+AXIS calls `vcpparse.create_vcp_rest(f, compname="pyvcp")` — the return
+value is unused since `PyVCPCompat` is self-contained (WebSocket thread).
 
-1. **`PyVCPCompat` class** — drop-in replacement for `hal.component` that
-   wraps the WebSocket client. Implements `__getitem__`/`__setitem__` so
-   existing widget code (`pycomp[pin]`) works unchanged.
+**HAL Module Elimination from axis.py:**
 
-2. **`PyVCPWatchThread`** — background thread running WebSocket client,
-   posts pin updates to Tk mainloop via `event_generate()`.
+With PyVCP migrated, the `hal` Python module is no longer imported by axis.py.
+All HAL queries now go through the gomc REST API via the `gmi` package:
 
-3. **`vcpparse.py` changes** — `create_vcp()` fetches XML from REST endpoint
-   instead of reading file. Creates `PyVCPCompat` instead of `hal.component`.
+| Old (hal module, needs shared memory) | New (gmi REST) |
+|---------------------------------------|----------------|
+| `hal.component("axisui-display")` | Removed (axisui cmod owns pins) |
+| `hal.component_exists(name)` | `gmi.component_exists(name)` |
+| `hal.pin_has_writer(name)` | `gmi.pin_has_writer(name)` |
 
-Widget code changes: **none**. The `update(pycomp)` methods already use
-`pycomp[self.halpin]` which the compat layer intercepts.
+**gmi Python Package (`src/gmi/python/__init__.py`):**
 
-**Generated Code (gmicompile):**
+Now a hand-written source file (previously an empty `@touch` build artifact).
+Contains central helpers used by axis.py and other UI code:
 
-| Flag | Output | Purpose |
-|------|--------|---------|
-| `--server-go` | Go server types + dispatch | Register/dispatch in gomc-server |
-| `--client-python` | `pyvcp_client.py` | REST client (panel info, pin defs) |
-| `--client-python-ws` | `pyvcp_ws_client.py` | WebSocket client (watch + set_pin) |
+- `rest_url()` / `ws_url()` — URL helpers from `GMC_REST_URL` env var
+- `component_exists(name)` — `GET /api/v1/halcmd0/components?pattern={name}`
+- `pin_has_writer(name)` — `GET /api/v1/halcmd0/pins?pattern={name}`, checks `has_writer` field
 
-**Pin Value Encoding:**
+**halcmd REST Enhancement:**
 
-All pin values are string-encoded for uniform handling:
-- `HAL_BIT`: `"1"` / `"0"`
-- `HAL_FLOAT`: `"3.14159"` (JSON number as string)
-- `HAL_S32`: `"-42"`
-- `HAL_U32`: `"42"`
+Added `has_writer` field to the pins endpoint to support `pin_has_writer()`:
 
-The compat layer handles type conversion based on pin definitions received
-from `get_panel()`.
+- `hal_shim_pin_info_t` C struct: new `int has_writer` field
+- `hal_shim_show_pins`: sets `has_writer = (sig->writers > 0)` when pin is linked
+- `PinInfo` Go struct: new `HasWriter bool` field (JSON: `"has_writer"`)
+- Exposed via `GET /api/v1/halcmd0/pins?pattern={name}` response
 
-**XML Parsing in Go:**
+**Build System:**
 
-The gomod needs to extract pin definitions from PyVCP XML without fully
-understanding widget semantics. Approach: walk XML elements, match known
-widget names to pin patterns:
+- `gmi/codegen/Submakefile`: dedicated copy rule for `__init__.py` (source → build)
+- Other GMI Python targets depend on `$(GMI_INIT_DST)` instead of `@touch`
+- `pyvcp_compat.py` copy rule (same pattern)
+- `packages.conf.in`: pyvcpmodule compiled into gomc-server
 
-| Widget | Pins Created |
-|--------|-------------|
-| `led`, `rectled` | 1× BIT IN |
-| `button` | 1× BIT OUT |
-| `checkbutton` | 1× BIT OUT + optional BIT IN (disable) |
-| `dial`, `jogwheel` | 1× FLOAT OUT + optional FLOAT IN (param) |
-| `scale`, `spinbox` | 1× FLOAT OUT |
-| `bar`, `meter` | 1× FLOAT IN |
-| `number` | 1× FLOAT IN (or S32/U32 via `<format>`) |
-| `s32` | 1× S32 IN |
-| `u32` | 1× U32 IN |
-| `multilabel` | 1× U32 IN |
-| `radiobutton` | 1× S32 OUT per group |
+**INI Configuration:**
 
-Pin names follow existing convention: `{compname}.{halpin}` as specified
-in XML `<halpin>` elements, with fallback to widget type + index.
+```ini
+[HAL]
+GOMOD = pyvcp xml=pyvcp_demo1.xml
+HALFILE = pyvcp_rest.hal
+HALFILE = custom.hal    # was POSTGUI_HALFILE — moved since gomod creates pins before GUI
 
-**Embedded-in-AXIS Case:**
+[DISPLAY]
+PYVCP = pyvcp_demo1.xml
+```
 
-AXIS already has WebSocket infrastructure from Step 5.2. For the embedded
-PyVCP panel:
-- AXIS tells gomc-server to create the pyvcp panel (via REST or startup config)
-- AXIS creates the Tk frame in its window
-- `vcpparse.create_vcp()` builds widgets using `PyVCPCompat` backed by
-  the pyvcp WebSocket channel
-- Same `gmi` Python package used by both AXIS watch and PyVCP watch
+No `POSTGUI_HALFILE` needed — the Go module creates HAL pins during module
+init (before AXIS starts), so `custom.hal` can `net` pins as a regular HALFILE.
 
-**Standalone Case (`bin/pyvcp`):**
-
-Standalone pyvcp becomes a thin Tk wrapper:
-1. Parse CLI args (panel name, `-c compname`)
-2. REST: `get_panel(name)` → receive XML + pin defs
-3. Build widget tree from XML (existing vcpparse code)
-4. WebSocket: subscribe `watch_pins(panel)` at 100ms
-5. Tk mainloop with WebSocket thread
-
-**Panel Registration:**
-
-Panels can be registered in two ways:
-1. **INI-driven** (at gomc-server startup): `[DISPLAY]PYVCP = file.xml` →
-   pyvcpmodule reads INI, creates panel automatically
-2. **REST-driven** (dynamic): `POST /panel` with XML content → creates
-   panel on demand (for EMBED_TAB_COMMAND use case)
-
-**Deliverables:**
-- [ ] `gmi/idl/pyvcp.gmi` — IDL with REST + watch endpoints
-- [ ] `internal/pyvcpmodule/` — gomod: XML parse, HAL component, GMI callbacks
-- [ ] Generated dispatch (`pyvcp_cgo.go`) — compiled into gomc-server via packages.conf
-- [ ] Generated Python client (`pyvcp_client.py` + `pyvcp_ws_client.py`)
-- [ ] `PyVCPCompat` class — drop-in `hal.component` replacement using WebSocket
-- [ ] `PyVCPWatchThread` — background WebSocket thread for Tk integration
-- [ ] `vcpparse.py` changes — REST XML fetch, `PyVCPCompat` creation
-- [ ] `bin/pyvcp` changes — standalone mode using REST/WebSocket
-- [ ] AXIS integration — embedded panel via gomc-server
-- [ ] HAL config updates — pyvcp panel startup ordering
-- [ ] packages.conf entry — pyvcpmodule compiled into gomc-server
+**Completed:**
+- [x] `internal/pyvcpmodule/module.go` — gomod: REST dispatch, WebSocket watch, panel registry
+- [x] `internal/pyvcpmodule/panel.go` — XML parser for 20 widget types, HAL pin creation
+- [x] `src/gmi/python/pyvcp_compat.py` — PyVCPCompat + WatchThread (WebSocket client)
+- [x] `src/gmi/python/__init__.py` — package init with `rest_url()`, `ws_url()`,
+      `component_exists()`, `pin_has_writer()` helpers
+- [x] `gmi/codegen/Submakefile` — build rules for `__init__.py` + `pyvcp_compat.py` copy
+- [x] `vcpparse.py` — `create_vcp_rest()` function for REST/WS panel creation
+- [x] `axis.py` — uses `gmi.component_exists()`, `gmi.pin_has_writer()`, no `import hal`
+- [x] `halcmd/cgo.go` — `has_writer` in `hal_shim_pin_info_t` + `PinInfo`
+- [x] `halcmd/halcmd.go` — `HasWriter bool` field on `PinInfo`
+- [x] `packages.conf.in` — pyvcpmodule entry
+- [x] `configs/sim/pyvcp_demo/pyvcp_rest.ini` — sim config (no POSTGUI_HALFILE)
+- [x] Pin naming: dial/spinbox/scale always use `autoName()` counters (matches Python)
 
 **Notes:**
-- Widget code (`pyvcp_widgets.py`) requires zero changes — the compat layer
-  preserves the `pycomp[pin]` interface
-- The 100ms update rate matches existing PyVCP polling interval
-- Panel XML is served verbatim — no server-side widget rendering
-- HAL pins created by pyvcpmodule are real HAL pins, fully visible to halcmd
-  and connectable in HAL files exactly as before
+- Widget code (`pyvcp_widgets.py`) required zero changes
+- No GMI IDL file — pyvcpmodule uses hand-written REST/WS dispatch (not gmicompile-generated)
+- The 100ms WebSocket push rate matches existing PyVCP polling interval
+- Panel XML is parsed server-side; widgets are built client-side from the same XML
+- HAL pins are real HAL pins, fully visible to halcmd and connectable in HAL files
+- `axis.py` no longer imports the `hal` Python module at all
 
 ### Step 6: Polish (NOT STARTED)
 - [ ] Error handling standardization
