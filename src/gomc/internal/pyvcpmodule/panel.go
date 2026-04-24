@@ -338,14 +338,15 @@ func extractPins(widgetName string, children, attrs map[string]string, counters 
 
 	case "spinbox":
 		// FLOAT OUT, optional param_pin FLOAT IN
+		autoBase := autoName("spinbox", counters) // always increment counter
 		if halpin == "" {
-			halpin = autoName("spinbox", counters)
+			halpin = autoBase
 		}
 		pins := []*pinDef{{name: halpin, halType: halFloat, dir: halOut}}
 		if getBoolParam(children, attrs, "param_pin") {
 			halparam := getParam(children, attrs, "halparam")
 			if halparam == "" {
-				halparam = halpin + ".param_pin"
+				halparam = autoBase + ".param_pin"
 			}
 			pins = append(pins, &pinDef{name: halparam, halType: halFloat, dir: halIn})
 		}
@@ -353,8 +354,9 @@ func extractPins(widgetName string, children, attrs map[string]string, counters 
 
 	case "scale":
 		// S32 OUT (-i) + FLOAT OUT (-f), optional param_pin FLOAT IN
+		autoBase := autoName("scale", counters) // always increment counter
 		if halpin == "" {
-			halpin = autoName("scale", counters)
+			halpin = autoBase
 		}
 		pins := []*pinDef{
 			{name: halpin + "-i", halType: halS32, dir: halOut},
@@ -363,7 +365,7 @@ func extractPins(widgetName string, children, attrs map[string]string, counters 
 		if getBoolParam(children, attrs, "param_pin") {
 			halparam := getParam(children, attrs, "halparam")
 			if halparam == "" {
-				halparam = halpin + ".param_pin"
+				halparam = autoBase + ".param_pin"
 			}
 			pins = append(pins, &pinDef{name: halparam, halType: halFloat, dir: halIn})
 		}
