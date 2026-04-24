@@ -4168,10 +4168,14 @@ if hal_present == 1 :
             f.grid(row=4, column=0, columnspan=6, sticky="nw", padx=4, pady=4)
         else:
             f.grid(row=0, column=4, rowspan=6, sticky="nw", padx=4, pady=4)
-        vcpparse.filename = vcp
-        vcpcomp = hal.component("pyvcp")
-        vcpparse.create_vcp(f, vcpcomp)
-        vcpcomp.ready()
+        try:
+            vcpcomp = vcpparse.create_vcp_rest(f, compname="pyvcp")
+        except Exception:
+            # Fallback to legacy HAL mode if REST not available.
+            vcpparse.filename = vcp
+            vcpcomp = hal.component("pyvcp")
+            vcpparse.create_vcp(f, vcpcomp)
+            vcpcomp.ready()
         vcp_frame = f
         root_window.bind("<Control-e>", commands.toggle_show_pyvcppanel)
         help2 += [("Ctrl-E", _("toggle PYVCP panel visibility"))]
@@ -4293,9 +4297,14 @@ def _dynamic_tabs(inifile):
                 print("Incorrect number of parameters")
                 continue
             try:
+                tab_compname = t.lower().replace(' ','_')
                 f.pack(fill="y", expand=0)
-                vcpparse.filename = pyvcp[1]
-                vcpparse.create_vcp(f, comp=None, compname=t.lower().replace(' ','_'))
+                try:
+                    vcpparse.create_vcp_rest(f, compname=tab_compname)
+                except Exception:
+                    # Fallback to legacy HAL mode if REST not available.
+                    vcpparse.filename = pyvcp[1]
+                    vcpparse.create_vcp(f, comp=None, compname=tab_compname)
             except Exception as e:
                 print("Invalid PyVCP tab configuration: EMBED_TAB COMMAND =", c)
                 print(e)
