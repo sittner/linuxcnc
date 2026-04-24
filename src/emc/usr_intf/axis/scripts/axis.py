@@ -4134,11 +4134,6 @@ t.bind("<Button-5>", scroll_down)
 t.configure(state="disabled")
 
 if hal_present == 1 :
-    # Create a minimal HAL component so axis.py can call HAL query functions
-    # (e.g. component_exists).  The actual UI pins live in the axisui cmod.
-    _hal_comp = hal.component("axisui-display")
-    _hal_comp.ready()
-
     # Connect to the axisui cmod via WebSocket watch channel.
     # The cmod owns the HAL pins; we communicate via WS.
     _ws_thread = AxisuiWatchThread(gmi.ws_url(), instance="axisui")
@@ -4158,7 +4153,7 @@ if hal_present == 1 :
     for i, a in enumerate("xyzabcuvw"):
         hal_joghandlers.append(HalJogHandler(a))
 
-    vars.has_ladder.set(hal.component_exists('classicladder_rt'))
+    vars.has_ladder.set(gmi.component_exists('classicladder_rt'))
 
     if vcp:
         import vcpparse
@@ -4167,7 +4162,7 @@ if hal_present == 1 :
             f.grid(row=4, column=0, columnspan=6, sticky="nw", padx=4, pady=4)
         else:
             f.grid(row=0, column=4, rowspan=6, sticky="nw", padx=4, pady=4)
-        vcpcomp = vcpparse.create_vcp_rest(f, compname="pyvcp")
+        vcpparse.create_vcp_rest(f, compname="pyvcp")
         vcp_frame = f
         root_window.bind("<Control-e>", commands.toggle_show_pyvcppanel)
         help2 += [("Ctrl-E", _("toggle PYVCP panel visibility"))]
