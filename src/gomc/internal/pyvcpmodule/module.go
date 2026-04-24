@@ -133,6 +133,11 @@ func newPyVCPModule(ini *inifile.IniFile, logger *slog.Logger, name string, args
 	}
 
 	// Register WebSocket watch API.
+	// Ensure the default watch registry exists (may not be created yet
+	// if the REST server hasn't started).
+	if apiserver.DefaultWatchRegistry() == nil {
+		apiserver.SetDefaultWatchRegistry(apiserver.NewWatchRegistry())
+	}
 	watchAPI := newPyVCPWatchAPI(name, unsafe.Pointer(cb))
 	apiserver.DefaultWatchRegistry().Register(watchAPI)
 
