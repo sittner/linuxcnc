@@ -118,7 +118,7 @@ func (g *clientPyWSGen) emitClient() {
 	g.printf("    - Subscribing to watch functions (server pushes updates at a configured rate)\n")
 	g.printf("    - Calling command functions (request/response over the same connection)\n")
 	g.printf("    \"\"\"\n\n")
-	g.printf("    def __init__(self, url: str, api: str = %q, instance: str = \"default\"):\n", g.api.Name)
+	g.printf("    def __init__(self, url: str, api: str = %q, instance: str = %q):\n", g.api.Name, g.api.Name)
 	g.printf("        self.url = url\n")
 	g.printf("        self.api = api\n")
 	g.printf("        self.instance = instance\n")
@@ -279,7 +279,7 @@ func (g *clientPyWSGen) emitThreadedWrapper() {
 	g.printf("        thread.stop()\n")
 	g.printf("    \"\"\"\n\n")
 
-	g.printf("    def __init__(self, url: str, api: str = %q, instance: str = \"default\"):\n", g.api.Name)
+	g.printf("    def __init__(self, url: str, api: str = %q, instance: str = %q):\n", g.api.Name, g.api.Name)
 	g.printf("        self._url = url\n")
 	g.printf("        self._api = api\n")
 	g.printf("        self._instance = instance\n")

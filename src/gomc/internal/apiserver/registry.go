@@ -154,3 +154,26 @@ func RegisterMeta(meta *APIMeta) {
 func GetMeta(name string, version int) *APIMeta {
 	return metaRegistry[metaKey(name, version)]
 }
+
+// ─── Watch Factory Registry ───
+//
+// WatchAPIFactory creates a WatchAPI for a given instance from the C callbacks
+// pointer.  Generated _ws.go packages register a factory in init() so the
+// generic gomc_api_register_cb can wire watch APIs without knowing the concrete
+// generated types.
+
+// WatchAPIFactory creates a WatchAPI from an instance name and C callbacks ptr.
+type WatchAPIFactory func(instance string, callbacks unsafe.Pointer) *WatchAPI
+
+var watchFactoryRegistry = map[string]WatchAPIFactory{}
+
+// RegisterWatchFactory registers a factory for the given API name.
+// Called from generated _ws.go packages' init() functions.
+func RegisterWatchFactory(apiName string, f WatchAPIFactory) {
+	watchFactoryRegistry[apiName] = f
+}
+
+// GetWatchFactory looks up a registered watch factory by API name.
+func GetWatchFactory(apiName string) WatchAPIFactory {
+	return watchFactoryRegistry[apiName]
+}

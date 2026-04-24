@@ -220,6 +220,17 @@ func gomc_api_register_cb(ctx unsafe.Pointer, apiName *C.char, version C.int,
 			return -1
 		}
 	}
+
+	// If a watch factory exists for this API, create and register the WatchAPI.
+	if factory := apiserver.GetWatchFactory(name); factory != nil {
+		watchReg := apiserver.DefaultWatchRegistry()
+		if watchReg == nil {
+			watchReg = apiserver.NewWatchRegistry()
+			apiserver.SetDefaultWatchRegistry(watchReg)
+		}
+		watchReg.Register(factory(instance, callbacks))
+	}
+
 	return 0
 }
 

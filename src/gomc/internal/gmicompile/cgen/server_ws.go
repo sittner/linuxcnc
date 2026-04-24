@@ -179,6 +179,12 @@ func (g *serverWSGen) emitRegisterWatch() {
 
 	g.printf("\t}\n")
 	g.printf("}\n")
+
+	// Emit init() to register the watch factory so gomc_api_register_cb
+	// can create WatchAPIs without knowing the concrete generated types.
+	g.printf("\nfunc init() {\n")
+	g.printf("\tapiserver.RegisterWatchFactory(%q, NewWatchAPI)\n", g.api.Name)
+	g.printf("}\n")
 }
 
 // parseRateLiteral converts "50ms", "1s", etc. to a Go time.Duration literal.
