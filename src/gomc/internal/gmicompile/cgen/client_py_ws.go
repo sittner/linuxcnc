@@ -302,7 +302,10 @@ func (g *clientPyWSGen) emitThreadedWrapper() {
 	g.printf("        if self._loop:\n")
 	g.printf("            self._loop.call_soon_threadsafe(self._loop.stop)\n")
 	g.printf("        if self._thread:\n")
-	g.printf("            self._thread.join(timeout=2)\n\n")
+	g.printf("            self._thread.join(timeout=2)\n")
+	g.printf("        if self._thread and self._thread.is_alive() and self._loop:\n")
+	g.printf("            # Force-close the event loop if thread didn't stop cleanly\n")
+	g.printf("            self._loop.call_soon_threadsafe(self._loop.stop)\n\n")
 
 	// _run
 	g.printf("    def _run(self):\n")
@@ -311,7 +314,11 @@ func (g *clientPyWSGen) emitThreadedWrapper() {
 	g.printf("        self._loop.run_until_complete(self._connect_and_subscribe())\n")
 	g.printf("        self._started.set()\n")
 	g.printf("        self._loop.run_forever()\n")
-	g.printf("        self._loop.run_until_complete(self._client.close())\n\n")
+	g.printf("        try:\n")
+	g.printf("            self._loop.run_until_complete(asyncio.wait_for(self._client.close(), timeout=1))\n")
+	g.printf("        except Exception:\n")
+	g.printf("            pass\n")
+	g.printf("        self._loop.close()\n\n")
 
 	// _connect_and_subscribe
 	g.printf("    async def _connect_and_subscribe(self):\n")
