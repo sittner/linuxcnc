@@ -78,6 +78,14 @@ def main():
 
     app.after(1000, poll)
 
+    # Handle SIGTERM from launcher shutdown (via HAL UnloadAll).
+    # Tkinter's mainloop swallows SystemExit raised by the default
+    # SIGTERM handler, so we schedule app.destroy() from the signal.
+    import signal
+    def _on_sigterm(signum, frame):
+        app.after(0, app.destroy)
+    signal.signal(signal.SIGTERM, _on_sigterm)
+
     try:
         app.mainloop()
     except KeyboardInterrupt:
