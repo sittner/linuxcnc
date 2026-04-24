@@ -79,16 +79,44 @@ pin out bit has_notifications "True when notifications are present";
 pin out bit error_pin "True when error notification is active";
 pin out bit abort_pin "Pulsed true on abort";
 
+// --- Watchdog ---
+param rw s32 timeout_ms = 500 "Client heartbeat timeout in ms (0 = disabled)";
+variable int64_t last_heartbeat_ns;
+
 function _ nofp;
 
 gmi_provide axisui;
 license "GPL";
 ;;
 
-/* Thread function: no logic needed — pins are read/written via GMI.
- * The function must exist for halcompile but is effectively a no-op. */
+/* Thread function: watchdog for client heartbeat.
+ * If no set_is_running(true) call arrives within timeout_ms, reset all
+ * output pins to safe defaults.  axis.py calls set_is_running(true) every
+ * update cycle (~100ms), so a 500ms default catches UI crashes quickly. */
 FUNCTION(_) {
-    (void)period; /* unused */
+    (void)period;
+    if (timeout_ms <= 0) return;  /* watchdog disabled */
+
+    int64_t now = rtapi_get_time();
+    if (last_heartbeat_ns == 0) {
+        last_heartbeat_ns = now;  /* first call — initialize */
+        return;
+    }
+
+    int64_t elapsed_ns = now - last_heartbeat_ns;
+    int64_t timeout_ns = (int64_t)timeout_ms * 1000000LL;
+
+    if (elapsed_ns > timeout_ns && is_running) {
+        /* Client heartbeat expired — reset all OUT pins */
+        jog_x = 0; jog_y = 0; jog_z = 0;
+        jog_a = 0; jog_b = 0; jog_c = 0;
+        jog_u = 0; jog_v = 0; jog_w = 0;
+        jog_increment = 0;
+        is_running = 0;
+        has_notifications = 0;
+        error_pin = 0;
+        abort_pin = 0;
+    }
 }
 
 /* --- GMI callbacks ---
@@ -147,9 +175,12 @@ FUNCTION(_) {
 #undef has_notifications
 #undef error_pin
 #undef abort_pin
+#undef timeout_ms
+#undef last_heartbeat_ns
 
 /* Direct pin access helper — works after #undef */
 #define PIN(name) (*(__comp_inst->hal->name))
+#define VAR(name) (__comp_inst->name)
 
 /* Watch: return all jog input pin states */
 static axisui_jog_inputs_t gmi_axisui_get_jog_inputs(void *ctx) {
@@ -231,10 +262,13 @@ static bool gmi_axisui_set_jog_increment(void *ctx, double increment) {
     return true;
 }
 
-/* Command: set is-running output */
+/* Command: set is-running output (also serves as heartbeat) */
 static bool gmi_axisui_set_is_running(void *ctx, bool running) {
     inst_t *__comp_inst = (inst_t *)ctx;
     PIN(is_running) = running;
+    if (running) {
+        VAR(last_heartbeat_ns) = rtapi_get_time();
+    }
     return true;
 }
 
