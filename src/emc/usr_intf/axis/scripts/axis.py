@@ -214,7 +214,7 @@ class AxisPreferences(cp):
 if sys.argv[1] != "-ini":
     raise SystemExit("-ini must be first argument")
 
-inifile = linuxcnc.ini(sys.argv[2])
+inifile = gmi.IniFile()
 
 ap = AxisPreferences()
 

@@ -29,6 +29,7 @@ import (
 	"github.com/sittner/linuxcnc/src/gomc/internal/config"
 	"github.com/sittner/linuxcnc/src/gomc/internal/halfile"
 	"github.com/sittner/linuxcnc/src/gomc/internal/halrest"
+	"github.com/sittner/linuxcnc/src/gomc/internal/inirest"
 	"github.com/sittner/linuxcnc/src/gomc/internal/lockfile"
 	"github.com/sittner/linuxcnc/src/gomc/internal/realtime"
 	"github.com/sittner/linuxcnc/src/gomc/pkg/inifile"
@@ -179,6 +180,11 @@ func (l *Launcher) Run() (runErr error) {
 		return err
 	}
 	l.ini = ini
+
+	// Register the INI REST API handler (exposes parsed INI via /api/v1/ini0/query).
+	if err := inirest.Register(apiserver.DefaultRegistry(), l.ini); err != nil {
+		l.logger.Warn("failed to register INI REST API", "error", err)
+	}
 
 	// If the INI file contains #INCLUDE directives, write a fully-expanded copy
 	// alongside the original (e.g. "foo.ini.expanded") and update the path used

@@ -44,3 +44,56 @@ def pin_has_writer(name: str) -> bool:
             return False
     except Exception:
         return False
+
+
+class IniFile:
+    """Drop-in replacement for linuxcnc.ini() that fetches values via REST.
+
+    Matches the linuxcnc.ini API:
+      - find(section, key) -> str | None
+      - findall(section, key) -> list[str]
+    """
+
+    def __init__(self):
+        self._cache = {}  # (section, key) -> str or None (find)
+        self._cache_all = {}  # (section, key) -> list[str] (findall)
+
+    def find(self, section, key):
+        """Return the first value for section/key, or None if not found."""
+        cache_key = (section, key)
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+        result = self._query([{"section": section, "key": key}])
+        if result and len(result) == 1:
+            val = result[0].get("value")
+            self._cache[cache_key] = val
+            return val
+        self._cache[cache_key] = None
+        return None
+
+    def findall(self, section, key):
+        """Return all values for section/key as a list."""
+        cache_key = (section, key)
+        if cache_key in self._cache_all:
+            return self._cache_all[cache_key]
+        result = self._query([{"section": section, "key": key, "all": True}])
+        if result and len(result) == 1:
+            vals = result[0].get("values", [])
+            self._cache_all[cache_key] = vals
+            return vals
+        self._cache_all[cache_key] = []
+        return []
+
+    def _query(self, items):
+        """Issue a bulk query to the INI REST endpoint."""
+        import json
+        import urllib.request
+        url = rest_url() + "/api/v1/ini0/query"
+        data = json.dumps(items).encode("utf-8")
+        req = urllib.request.Request(
+            url, data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return json.loads(resp.read())

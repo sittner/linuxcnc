@@ -17,11 +17,11 @@ intended to replace NML with a modern, type-safe approach.
 | 5.1: Manualtoolchange REST | ✅ Complete | — |
 | 5.2: AXIS UI Watch Channel | ✅ Complete | 2 |
 | 5.3: PyVCP REST/WebSocket | ✅ Complete | — |
-| 5.4: INI REST Migration | ❌ Not Started | — |
+| 5.4: INI REST Migration | ✅ Complete | 6 |
 | 6: Polish | ❌ Not Started | — |
 | 7: Remove Go Plugins | ✅ Complete | — |
 
-**Total: 75 tests passing**
+**Total: 81 tests passing**
 
 **Inter-module call patterns tested:**
 - cmod→cmod ✅ (directtest)
@@ -1271,7 +1271,7 @@ init (before AXIS starts), so `custom.hal` can `net` pins as a regular HALFILE.
 - HAL pins are real HAL pins, fully visible to halcmd and connectable in HAL files
 - `axis.py` no longer imports the `hal` Python module at all
 
-### Step 5.4: INI File REST Migration (NOT STARTED)
+### Step 5.4: INI File REST Migration (COMPLETE)
 
 Replace direct INI file parsing in axis.py (`linuxcnc.ini()`) with REST
 queries to gomc-server, eliminating the `liblinuxcnc` C extension dependency
@@ -1366,10 +1366,10 @@ Alternative: lazy mode — `find()`/`findall()` issue individual REST calls
 with local cache. Simpler but more round-trips on first access.
 
 **Deliverables:**
-- [ ] `internal/inirest/inirest.go` — Go REST module with `POST /query`
-- [ ] `src/gmi/python/__init__.py` — `IniFile` class with bulk fetch + `.find()`/`.findall()`
-- [ ] `axis.py` — replace `linuxcnc.ini()` with `gmi.IniFile()`, remove INI-related `import`
-- [ ] Tests for inirest endpoint
+- [x] `internal/inirest/inirest.go` — Go REST module with `POST /query`
+- [x] `src/gmi/python/__init__.py` — `IniFile` class with bulk fetch + `.find()`/`.findall()`
+- [x] `axis.py` — replace `linuxcnc.ini()` with `gmi.IniFile()`, remove INI-related `import`
+- [x] Tests for inirest endpoint
 
 **Notes:**
 - No GMI IDL file — inirest uses hand-written REST dispatch (same pattern as
