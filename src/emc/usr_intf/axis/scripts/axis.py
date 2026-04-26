@@ -68,7 +68,8 @@ import nf
 import locale
 import bwidget
 from math import hypot, atan2, sin, cos, pi, sqrt
-import linuxcnc
+import linuxcnc  # kept for positionlogger + version only
+from gmi.constants import *
 from glnav import *
 
 if "AXIS_NO_HAL" in os.environ:
@@ -229,21 +230,21 @@ rs274.options.install(root_window)
 root_window.tk.call("set", "version", linuxcnc.version)
 
 try:
-    root_window.tk.call("set","::MAX_JOINTS"         ,linuxcnc.MAX_JOINTS)
-    root_window.tk.call("set","::MAX_AXIS"           ,linuxcnc.MAX_AXIS)
-    root_window.tk.call("set","::STATE_ESTOP"        ,linuxcnc.STATE_ESTOP)
-    root_window.tk.call("set","::STATE_ESTOP_RESET"  ,linuxcnc.STATE_ESTOP_RESET)
-    root_window.tk.call("set","::STATE_OFF"          ,linuxcnc.STATE_OFF)
-    root_window.tk.call("set","::STATE_ON"           ,linuxcnc.STATE_ON)
-    root_window.tk.call("set","::TASK_MODE_MANUAL"   ,linuxcnc.MODE_MANUAL)
-    root_window.tk.call("set","::TASK_MODE_MDI"      ,linuxcnc.MODE_MDI)
-    root_window.tk.call("set","::TASK_MODE_AUTO"     ,linuxcnc.MODE_AUTO)
-    root_window.tk.call("set","::INTERP_IDLE"        ,linuxcnc.INTERP_IDLE)
-    root_window.tk.call("set","::INTERP_READING"     ,linuxcnc.INTERP_READING)
-    root_window.tk.call("set","::INTERP_PAUSED"      ,linuxcnc.INTERP_PAUSED)
-    root_window.tk.call("set","::INTERP_WAITING"     ,linuxcnc.INTERP_WAITING)
-    root_window.tk.call("set","::TRAJ_MODE_FREE"     ,linuxcnc.TRAJ_MODE_FREE)
-    root_window.tk.call("set","::KINEMATICS_IDENTITY",linuxcnc.KINEMATICS_IDENTITY)
+    root_window.tk.call("set","::MAX_JOINTS"         ,MAX_JOINTS)
+    root_window.tk.call("set","::MAX_AXIS"           ,MAX_AXIS)
+    root_window.tk.call("set","::STATE_ESTOP"        ,STATE_ESTOP)
+    root_window.tk.call("set","::STATE_ESTOP_RESET"  ,STATE_ESTOP_RESET)
+    root_window.tk.call("set","::STATE_OFF"          ,STATE_OFF)
+    root_window.tk.call("set","::STATE_ON"           ,STATE_ON)
+    root_window.tk.call("set","::TASK_MODE_MANUAL"   ,MODE_MANUAL)
+    root_window.tk.call("set","::TASK_MODE_MDI"      ,MODE_MDI)
+    root_window.tk.call("set","::TASK_MODE_AUTO"     ,MODE_AUTO)
+    root_window.tk.call("set","::INTERP_IDLE"        ,INTERP_IDLE)
+    root_window.tk.call("set","::INTERP_READING"     ,INTERP_READING)
+    root_window.tk.call("set","::INTERP_PAUSED"      ,INTERP_PAUSED)
+    root_window.tk.call("set","::INTERP_WAITING"     ,INTERP_WAITING)
+    root_window.tk.call("set","::TRAJ_MODE_FREE"     ,TRAJ_MODE_FREE)
+    root_window.tk.call("set","::KINEMATICS_IDENTITY",KINEMATICS_IDENTITY)
     nf.source_lib_tcl(root_window,"axis.tcl")
 except TclError:
     print(root_window.tk.call("set", "errorInfo"))
@@ -369,7 +370,7 @@ def install_help(app):
     Label(keys, text="    ").grid(row=0, column=2)
 
 def joints_mode():
-    return s.motion_mode == linuxcnc.TRAJ_MODE_FREE
+    return s.motion_mode == TRAJ_MODE_FREE
 
 def set_motion_teleop(value):
     if running(): return
@@ -413,7 +414,7 @@ def from_internal_linear_unit(v, unit=None):
 
 def masked_axes_count():
     ct = 0
-    for i in range(linuxcnc.MAX_JOINTS):
+    for i in range(MAX_JOINTS):
         if s.axis_mask & (1<<i): ct +=1
     return ct
 
@@ -823,7 +824,7 @@ class LivePlotter:
             return False
         try:
             self.stat = linuxcnc.stat()
-        except linuxcnc.error:
+        except Exception:
             return False
         self.last_task_mode = self.stat.task_mode
         self.last_motion_mode  = self.stat.motion_mode
@@ -864,7 +865,7 @@ class LivePlotter:
         error = e.poll()
         while error:
             kind, text = error
-            if kind in (linuxcnc.NML_ERROR, linuxcnc.OPERATOR_ERROR):
+            if kind in (NML_ERROR, OPERATOR_ERROR):
                 icon = "error"
             else:
                 icon = "info"
@@ -877,7 +878,7 @@ class LivePlotter:
             return
         try:
             self.stat.poll()
-        except linuxcnc.error as detail:
+        except Exception as detail:
             print("error", detail)
             del self.stat
             return
@@ -886,15 +887,15 @@ class LivePlotter:
         if continuous_jog_in_progress and not manual_tab_visible():
             jjogmode = get_jog_mode()
             for idx in cjogindices:
-                 c.jog(linuxcnc.JOG_STOP, jjogmode,idx)
+                 c.jog(JOG_STOP, jjogmode,idx)
             continuous_jog_in_progress = 0
             cjogindices = []
 
-        if  (   (self.stat.motion_mode == linuxcnc.TRAJ_MODE_COORD)
-            and (self.stat.task_mode   == linuxcnc.MODE_MANUAL)
+        if  (   (self.stat.motion_mode == TRAJ_MODE_COORD)
+            and (self.stat.task_mode   == MODE_MANUAL)
             ):
             set_motion_teleop(1)
-        if      ( (self.stat.motion_mode == linuxcnc.TRAJ_MODE_TELEOP)
+        if      ( (self.stat.motion_mode == TRAJ_MODE_TELEOP)
             and   not vars.teleop_mode.get() ):
             vars.teleop_mode.set(1)
 
@@ -906,11 +907,11 @@ class LivePlotter:
         enable_tab_change = False
         if (     enable_tab_change
             and (self.stat.task_mode != self.last_task_mode)):
-            if (self.stat.task_mode == linuxcnc.MODE_MANUAL):
+            if (self.stat.task_mode == MODE_MANUAL):
                 root_window.tk.eval(pane_top + ".tabs raise manual")
-            if (self.stat.task_mode == linuxcnc.MODE_MDI):
+            if (self.stat.task_mode == MODE_MDI):
                 root_window.tk.eval(pane_top + ".tabs raise mdi")
-            if (self.stat.task_mode == linuxcnc.MODE_AUTO):
+            if (self.stat.task_mode == MODE_AUTO):
                 # not sure if anything needs to be done for this
                 pass
         self.last_task_mode = self.stat.task_mode
@@ -989,8 +990,8 @@ class LivePlotter:
             for handler in hal_scalehandlers:
                 handler.process()
             if (comp["jog.disable"] or
-                    self.stat.task_state != linuxcnc.STATE_ON or
-                    self.stat.interp_state != linuxcnc.INTERP_IDLE):
+                    self.stat.task_state != STATE_ON or
+                    self.stat.interp_state != INTERP_IDLE):
                 widgets.jogminus.configure(state="disabled")
                 widgets.jogplus.configure(state="disabled")
             else:
@@ -1194,8 +1195,8 @@ class HalScaleHandler:
 
 def running(do_poll=True):
     if do_poll: s.poll()
-    return ( (s.task_mode == linuxcnc.MODE_AUTO or s.task_mode == linuxcnc.MODE_MDI)
-             and s.interp_state != linuxcnc.INTERP_IDLE)
+    return ( (s.task_mode == MODE_AUTO or s.task_mode == MODE_MDI)
+             and s.interp_state != INTERP_IDLE)
 
 
 def manual_tab_visible():
@@ -1210,8 +1211,8 @@ initiated action (whether an MDI command or a jog) is acceptable.
 
 This means this function returns True when the mdi tab is visible."""
     if do_poll: s.poll()
-    if s.task_state != linuxcnc.STATE_ON: return False
-    return s.interp_state == linuxcnc.INTERP_IDLE or (s.task_mode == linuxcnc.MODE_MDI and s.queued_mdi_commands < vars.max_queued_mdi_commands.get())
+    if s.task_state != STATE_ON: return False
+    return s.interp_state == INTERP_IDLE or (s.task_mode == MODE_MDI and s.queued_mdi_commands < vars.max_queued_mdi_commands.get())
 
 # If LinuxCNC is not already in one of the modes given, switch it to the
 # first (task) mode MANUAL,MDI,AUTO
@@ -1406,7 +1407,7 @@ loaded_file = None
 def open_file_guts(f, filtered=False, addrecent=True):
     s.poll()
     save_task_mode = s.task_mode
-    ensure_mode(linuxcnc.MODE_MANUAL)
+    ensure_mode(MODE_MANUAL)
     if addrecent:
         add_recent_file(f)
     if not filtered:
@@ -1639,7 +1640,7 @@ widget_list=[
        ("unhomemenu", Menu, ".menu.machine.unhome"),
       ]
 widget_list.append( ("joints", Radiobutton, tabs_manual + ".joints") )
-for j in range(linuxcnc.MAX_JOINTS):
+for j in range(MAX_JOINTS):
     widget_list.append( ("joint_"+str(j),
                           Radiobutton,
                           tabs_manual + ".joints.joint"+str(j)) )
@@ -1663,7 +1664,7 @@ widgets.axis_w.configure(value="w")
 
 def activate_ja_widget(i, force=0):
     if not force and not manual_ok(): return
-    if get_jog_mode() and (not kins_is_trivkins or (kins_is_trivkins and s.kinematics_type == linuxcnc.KINEMATICS_BOTH)):
+    if get_jog_mode() and (not kins_is_trivkins or (kins_is_trivkins and s.kinematics_type == KINEMATICS_BOTH)):
         # free jogging (joints) if:
         #   non-trivkins config or
         #   trivkins config and kinstype = both
@@ -2160,7 +2161,7 @@ def ja_from_rbutton():
 
     try: # ja may be a joint number or an axis coordinate letter
         a = int(ja) # invalid for types: 'str' or 'unicode'
-        if a not in list(range(linuxcnc.MAX_JOINTS)):
+        if a not in list(range(MAX_JOINTS)):
             print("ja_from_rbutton:Unexpected joint number",a)
             return "" # can not continue
     except ValueError:
@@ -2171,7 +2172,7 @@ def ja_from_rbutton():
         # joint jogging
         if lathe_historical_config():
             a = "xyzabcuvw".index(ja)
-        elif kins_is_trivkins and s.kinematics_type == linuxcnc.KINEMATICS_IDENTITY:
+        elif kins_is_trivkins and s.kinematics_type == KINEMATICS_IDENTITY:
             # note: if duplicate_coord_letters,
             #       use index for first occurrence of the letter
             a = trajcoordinates.index(ja)
@@ -2194,26 +2195,26 @@ def go_home(num):
 #-----------------------------------------------------------
 # convenience functions
 def motion_modename(x):
-    if x ==   linuxcnc.TRAJ_MODE_FREE: return "FREE"
-    if x ==  linuxcnc.TRAJ_MODE_COORD: return "COORD"
-    if x == linuxcnc.TRAJ_MODE_TELEOP: return "TELEOP"
+    if x ==   TRAJ_MODE_FREE: return "FREE"
+    if x ==  TRAJ_MODE_COORD: return "COORD"
+    if x == TRAJ_MODE_TELEOP: return "TELEOP"
 
 def task_modename(x):
-    if x ==    linuxcnc.MODE_MDI: return "MDI"
-    if x == linuxcnc.MODE_MANUAL: return "MANUAL"
-    if x ==   linuxcnc.MODE_AUTO: return "AUTO"
+    if x ==    MODE_MDI: return "MDI"
+    if x == MODE_MANUAL: return "MANUAL"
+    if x ==   MODE_AUTO: return "AUTO"
 
 def task_statename(x):
-    if x ==       linuxcnc.STATE_ESTOP: return "STATE_ESTOP"
-    if x == linuxcnc.STATE_ESTOP_RESET: return "STATE_ESTOP_RESET"
-    if x ==         linuxcnc.STATE_OFF: return "STATE_OFF"
-    if x ==          linuxcnc.STATE_ON: return "STATE_ON"
+    if x ==       STATE_ESTOP: return "STATE_ESTOP"
+    if x == STATE_ESTOP_RESET: return "STATE_ESTOP_RESET"
+    if x ==         STATE_OFF: return "STATE_OFF"
+    if x ==          STATE_ON: return "STATE_ON"
 
 def interp_statename(x):
-    if x ==    linuxcnc.INTERP_IDLE: return "IDLE"
-    if x == linuxcnc.INTERP_READING: return "READING"
-    if x ==  linuxcnc.INTERP_PAUSED: return "PAUSED"
-    if x == linuxcnc.INTERP_WAITING: return "WAITING"
+    if x ==    INTERP_IDLE: return "IDLE"
+    if x == INTERP_READING: return "READING"
+    if x ==  INTERP_PAUSED: return "PAUSED"
+    if x == INTERP_WAITING: return "WAITING"
 
 def get_states():
     s.poll()
@@ -2260,7 +2261,7 @@ class TclCommands(nf.TclCommands):
         c.set_block_delete(vars.block_delete.get())
         ap.putpref("block_delete", vars.block_delete.get())
         c.wait_complete()
-        ensure_mode(linuxcnc.MODE_MANUAL)
+        ensure_mode(MODE_MANUAL)
         s.poll()
         o.tkRedraw()
         reload_file(False)
@@ -2450,17 +2451,17 @@ class TclCommands(nf.TclCommands):
 
     def estop_clicked(event=None):
         s.poll()
-        if s.task_state == linuxcnc.STATE_ESTOP:
-            c.state(linuxcnc.STATE_ESTOP_RESET)
+        if s.task_state == STATE_ESTOP:
+            c.state(STATE_ESTOP_RESET)
         else:
-            c.state(linuxcnc.STATE_ESTOP)
+            c.state(STATE_ESTOP)
 
     def onoff_clicked(event=None):
         s.poll()
-        if s.task_state == linuxcnc.STATE_ESTOP_RESET:
-            c.state(linuxcnc.STATE_ON)
+        if s.task_state == STATE_ESTOP_RESET:
+            c.state(STATE_ON)
         else:
-            c.state(linuxcnc.STATE_OFF)
+            c.state(STATE_OFF)
 
     def open_file(*event):
         if running(): return
@@ -2587,64 +2588,64 @@ class TclCommands(nf.TclCommands):
 
         global program_start_line, program_start_line_last
         program_start_line_last = program_start_line;
-        ensure_mode(linuxcnc.MODE_AUTO)
-        c.auto(linuxcnc.AUTO_RUN, program_start_line)
+        ensure_mode(MODE_AUTO)
+        c.auto(AUTO_RUN, program_start_line)
         program_start_line = 0
         t.tag_remove("ignored", "0.0", "end")
         o.set_highlight_line(None)
 
     def task_step(*event):
-        if s.task_mode != linuxcnc.MODE_AUTO or s.interp_state != linuxcnc.INTERP_IDLE:
+        if s.task_mode != MODE_AUTO or s.interp_state != INTERP_IDLE:
             o.set_highlight_line(None)
             if run_warn(): return
-        ensure_mode(linuxcnc.MODE_AUTO)
-        c.auto(linuxcnc.AUTO_STEP)
+        ensure_mode(MODE_AUTO)
+        c.auto(AUTO_STEP)
 
     def task_pause(*event):
-        if s.task_mode != linuxcnc.MODE_AUTO or s.interp_state not in (linuxcnc.INTERP_READING, linuxcnc.INTERP_WAITING):
+        if s.task_mode != MODE_AUTO or s.interp_state not in (INTERP_READING, INTERP_WAITING):
             return
-        ensure_mode(linuxcnc.MODE_AUTO)
-        c.auto(linuxcnc.AUTO_PAUSE)
+        ensure_mode(MODE_AUTO)
+        c.auto(AUTO_PAUSE)
 
     def task_reverse(*event):
         s.poll()
-        if s.task_mode != linuxcnc.MODE_AUTO:
+        if s.task_mode != MODE_AUTO:
             return
 
-        ensure_mode(linuxcnc.MODE_AUTO)
-        c.auto(linuxcnc.AUTO_REVERSE)
+        ensure_mode(MODE_AUTO)
+        c.auto(AUTO_REVERSE)
 
     def task_forward(*event):
         s.poll()
-        if s.task_mode != linuxcnc.MODE_AUTO:
+        if s.task_mode != MODE_AUTO:
             return
 
-        ensure_mode(linuxcnc.MODE_AUTO)
-        c.auto(linuxcnc.AUTO_FORWARD)
+        ensure_mode(MODE_AUTO)
+        c.auto(AUTO_FORWARD)
 
     def task_resume(*event):
         s.poll()
         if not s.paused:
             return
-        if s.task_mode not in (linuxcnc.MODE_AUTO, linuxcnc.MODE_MDI):
+        if s.task_mode not in (MODE_AUTO, MODE_MDI):
             return
-        ensure_mode(linuxcnc.MODE_AUTO, linuxcnc.MODE_MDI)
-        c.auto(linuxcnc.AUTO_RESUME)
+        ensure_mode(MODE_AUTO, MODE_MDI)
+        c.auto(AUTO_RESUME)
 
     def task_pauseresume(*event):
-        if s.task_mode not in (linuxcnc.MODE_AUTO, linuxcnc.MODE_MDI):
+        if s.task_mode not in (MODE_AUTO, MODE_MDI):
             return
-        ensure_mode(linuxcnc.MODE_AUTO, linuxcnc.MODE_MDI)
+        ensure_mode(MODE_AUTO, MODE_MDI)
         s.poll()
         if s.paused:
             global resume_inhibit
             if resume_inhibit: return
-            c.auto(linuxcnc.AUTO_RESUME)
-        elif s.interp_state != linuxcnc.INTERP_IDLE:
-            c.auto(linuxcnc.AUTO_PAUSE)
+            c.auto(AUTO_RESUME)
+        elif s.interp_state != INTERP_IDLE:
+            c.auto(AUTO_PAUSE)
 
     def task_stop(*event):
-        if s.task_mode == linuxcnc.MODE_AUTO and vars.running_line.get() != 0:
+        if s.task_mode == MODE_AUTO and vars.running_line.get() != 0:
             o.set_highlight_line(vars.running_line.get())
         comp["abort"] = True
         c.abort()
@@ -2698,7 +2699,7 @@ class TclCommands(nf.TclCommands):
         if command != "":
             command= command.lstrip().rstrip()
             vars.mdi_command.set("")
-            ensure_mode(linuxcnc.MODE_MDI)
+            ensure_mode(MODE_MDI)
             widgets.mdi_history.selection_clear(0, "end")
             ## check if input is already in list. If so, then delete old element
             #idx = 0
@@ -2817,20 +2818,20 @@ class TclCommands(nf.TclCommands):
         s.poll()
         if not manual_ok(): return
         if  (     all_homed()
-             and (s.motion_mode == linuxcnc.TRAJ_MODE_TELEOP)
+             and (s.motion_mode == TRAJ_MODE_TELEOP)
                   or
-                 (s.motion_mode == linuxcnc.TRAJ_MODE_COORD)
+                 (s.motion_mode == TRAJ_MODE_COORD)
             ):
             set_motion_teleop(1)
         else:
-            ensure_mode(linuxcnc.MODE_MANUAL)
+            ensure_mode(MODE_MANUAL)
             set_motion_teleop(0)
 
     def ensure_mdi(*event):
         # called from axis.tcl on tab raisecmd
         if not manual_ok(): return
         set_motion_teleop(0)
-        ensure_mode(linuxcnc.MODE_MDI)
+        ensure_mode(MODE_MDI)
         set_motion_teleop(1)
         s.poll()
 
@@ -2927,7 +2928,7 @@ class TclCommands(nf.TclCommands):
 
     def home_all_joints(event=None):
         if not manual_ok(): return
-        ensure_mode(linuxcnc.MODE_MANUAL)
+        ensure_mode(MODE_MANUAL)
         isHomed = all_homed()
         doHoming=True
         if isHomed:
@@ -2936,7 +2937,7 @@ class TclCommands(nf.TclCommands):
             go_home(-1)
 
     def unhome_all_joints(event=None):
-        ensure_mode(linuxcnc.MODE_MANUAL)
+        ensure_mode(MODE_MANUAL)
         set_motion_teleop(0)
         c.unhome(-1)
 
@@ -2944,7 +2945,7 @@ class TclCommands(nf.TclCommands):
         if not manual_ok(): return
         jora = vars.ja_rbutton.get()
         if jora in trajcoordinates:
-            if s.kinematics_type != linuxcnc.KINEMATICS_IDENTITY:
+            if s.kinematics_type != KINEMATICS_IDENTITY:
                 print(_("home_joint <%s> Use joint mode for homing")%jora)
                 return
             if jora in duplicate_coord_letters:
@@ -2959,22 +2960,22 @@ class TclCommands(nf.TclCommands):
         if s.homed[jnum]:
             doHoming=prompt_areyousure(_("Warning"),_("This joint is already homed, are you sure you want to re-home?"))
         if doHoming:
-            ensure_mode(linuxcnc.MODE_MANUAL)
+            ensure_mode(MODE_MANUAL)
             go_home(jnum)
 
     def home_joint_number(num):
         # invoked by machine menu/home widgets
-        ensure_mode(linuxcnc.MODE_MANUAL)
+        ensure_mode(MODE_MANUAL)
         go_home(num)
 
     def unhome_joint_number(num):
         # invoked by machine menu/unhome widgets
-        ensure_mode(linuxcnc.MODE_MANUAL)
+        ensure_mode(MODE_MANUAL)
         set_motion_teleop(0)
         c.unhome(num)
 
     def clear_offset(num):
-        ensure_mode(linuxcnc.MODE_MDI)
+        ensure_mode(MODE_MDI)
         s.poll()
         if num == "G92":
             clear_command = "G92.1"
@@ -2984,7 +2985,7 @@ class TclCommands(nf.TclCommands):
                 if s.axis_mask & (1<<i): clear_command += " %c0" % a
         c.mdi(clear_command)
         c.wait_complete()
-        ensure_mode(linuxcnc.MODE_MANUAL)
+        ensure_mode(MODE_MANUAL)
         s.poll()
         o.tkRedraw()
         reload_file(False)
@@ -3007,7 +3008,7 @@ class TclCommands(nf.TclCommands):
 
         save_task_mode = s.task_mode
         vars.touch_off_system.set(system)
-        ensure_mode(linuxcnc.MODE_MDI)
+        ensure_mode(MODE_MDI)
         s.poll()
 
         linear_axis = vars.ja_rbutton.get() in "xyzuvw"
@@ -3048,7 +3049,7 @@ class TclCommands(nf.TclCommands):
 
         save_task_mode = s.task_mode
         vars.touch_off_system.set(system)
-        ensure_mode(linuxcnc.MODE_MDI)
+        ensure_mode(MODE_MDI)
         s.poll()
 
         linear_axis = vars.ja_rbutton.get() in "xyzuvw"
@@ -3077,7 +3078,7 @@ class TclCommands(nf.TclCommands):
 
     def brake(event=None):
         if not manual_ok(): return
-        ensure_mode(linuxcnc.MODE_MANUAL)
+        ensure_mode(MODE_MANUAL)
         c.brake(vars.brake.get())
     def flood(event=None):
         c.flood(vars.flood.get())
@@ -3085,20 +3086,20 @@ class TclCommands(nf.TclCommands):
         c.mist(vars.mist.get())
     def spindle(event=None):
         if not manual_ok(): return
-        ensure_mode(linuxcnc.MODE_MANUAL)
+        ensure_mode(MODE_MANUAL)
         d = vars.spindledir.get()
         if d == 0:
             c.spindle(d)
         else:
             c.spindle(d, default_spindle_speed)
     def spindle_increase(event=None):
-        c.spindle(linuxcnc.SPINDLE_INCREASE)
+        c.spindle(SPINDLE_INCREASE)
     def spindle_decrease(event=None):
-        c.spindle(linuxcnc.SPINDLE_DECREASE)
+        c.spindle(SPINDLE_DECREASE)
     def spindle_constant(event=None):
         if not manual_ok(): return
-        ensure_mode(linuxcnc.MODE_MANUAL)
-        c.spindle(linuxcnc.SPINDLE_CONSTANT)
+        ensure_mode(MODE_MANUAL)
+        c.spindle(SPINDLE_CONSTANT)
     def set_first_line(lineno):
         if not manual_ok(): return
         set_first_line(lineno)
@@ -3114,17 +3115,17 @@ class TclCommands(nf.TclCommands):
         if not manual_ok(): return
         s.poll()
         if s.spindle[0]['direction'] == 0:
-            c.spindle(linuxcnc.SPINDLE_FORWARD,default_spindle_speed)
+            c.spindle(SPINDLE_FORWARD,default_spindle_speed)
         else:
-            c.spindle(linuxcnc.SPINDLE_OFF)
+            c.spindle(SPINDLE_OFF)
 
     def spindle_backward_toggle(*args):
         if not manual_ok(): return "break"
         s.poll()
         if s.spindle[0]['direction'] == 0:
-            c.spindle(linuxcnc.SPINDLE_REVERSE,default_spindle_speed)
+            c.spindle(SPINDLE_REVERSE,default_spindle_speed)
         else:
-            c.spindle(linuxcnc.SPINDLE_OFF)
+            c.spindle(SPINDLE_OFF)
         return "break" # bound to F10, don't activate menu
 
     def brake_on(*args):
@@ -3140,7 +3141,7 @@ class TclCommands(nf.TclCommands):
 
     def toggle_teleop_mode(*args):
         s.poll()
-        set_motion_teleop(not (s.motion_mode == linuxcnc.TRAJ_MODE_TELEOP))
+        set_motion_teleop(not (s.motion_mode == TRAJ_MODE_TELEOP))
 
     def toggle_coord_type(*args):
         vars.coord_type.set(not vars.coord_type.get())
@@ -3148,11 +3149,11 @@ class TclCommands(nf.TclCommands):
 
     def toggle_override_limits(*args):
         s.poll()
-        if s.interp_state != linuxcnc.INTERP_IDLE: return
+        if s.interp_state != INTERP_IDLE: return
         if s.joint[0]['override_limits']:
-            ensure_mode(linuxcnc.MODE_AUTO)
+            ensure_mode(MODE_AUTO)
         else:
-            ensure_mode(linuxcnc.MODE_MANUAL)
+            ensure_mode(MODE_MANUAL)
             c.override_limits()
 
     def cycle_view(*args):
@@ -3325,7 +3326,7 @@ def set_rapidrate(n):
 
 def activate_ja_widget_or_set_feedrate(jora):
     # note: call with integers only
-    if joints_mode() and s.kinematics_type != linuxcnc.KINEMATICS_IDENTITY:
+    if joints_mode() and s.kinematics_type != KINEMATICS_IDENTITY:
         if jora == 10: jora = 0
         activate_ja_widget(jora,True)
         return
@@ -3452,27 +3453,27 @@ def jog(*args):
 
 def get_jog_mode():
     s.poll()
-    if  (    (s.kinematics_type == linuxcnc.KINEMATICS_IDENTITY)
+    if  (    (s.kinematics_type == KINEMATICS_IDENTITY)
         and  all_homed() ):
         teleop_mode = 1
         jjogmode = False
     else:
         # check motion_mode since other guis (halui) could alter it
-        if s.motion_mode == linuxcnc.TRAJ_MODE_FREE:
+        if s.motion_mode == TRAJ_MODE_FREE:
             teleop_mode = 0
             jjogmode = True
         else:
             teleop_mode = 1
             jjogmode = False
-    if (   (    jjogmode and s.motion_mode != linuxcnc.TRAJ_MODE_FREE)
-        or (not jjogmode and s.motion_mode != linuxcnc.TRAJ_MODE_TELEOP) ):
+    if (   (    jjogmode and s.motion_mode != TRAJ_MODE_FREE)
+        or (not jjogmode and s.motion_mode != TRAJ_MODE_TELEOP) ):
         set_motion_teleop(teleop_mode)
     return jjogmode
 
-# Note: require linuxcnc.MAX_JOINTS >= linuxcnc.MAX_AXIS
-jog_after = [None]  * linuxcnc.MAX_JOINTS
-jog_cont  = [False] * linuxcnc.MAX_JOINTS
-jogging   = [0]     * linuxcnc.MAX_JOINTS
+# Note: require MAX_JOINTS >= MAX_AXIS
+jog_after = [None]  * MAX_JOINTS
+jog_cont  = [False] * MAX_JOINTS
+jogging   = [0]     * MAX_JOINTS
 def jog_on(a, b):
     if not manual_ok() or not manual_tab_visible() or running(): return
     if a < 3 or a > 5:
@@ -3488,13 +3489,13 @@ def jog_on(a, b):
         s.poll()
         if s.state != 1: return
         distance = parse_increment(jogincr)
-        jog(linuxcnc.JOG_INCREMENT, jjogmode, a, b, distance)
+        jog(JOG_INCREMENT, jjogmode, a, b, distance)
         jog_cont[a] = False
     else:
         global continuous_jog_in_progress,cjogindices
         continuous_jog_in_progress = True
         if not a in cjogindices: cjogindices.append(a)
-        jog(linuxcnc.JOG_CONTINUOUS, jjogmode, a, b)
+        jog(JOG_CONTINUOUS, jjogmode, a, b)
         jog_cont[a] = True
         jogging[a] = b
     activate_ja_widget(a)
@@ -3511,7 +3512,7 @@ def jog_off_actual(a):
     jogging[a] = 0
     jjogmode = get_jog_mode()
     if jog_cont[a]:
-        jog(linuxcnc.JOG_STOP, jjogmode, a)
+        jog(JOG_STOP, jjogmode, a)
 
 def jog_off_all():
     for i in range(6):
@@ -3601,8 +3602,8 @@ for j in range(jointcount):
     joint_type[j] = inifile.find(section, "TYPE") or "LINEAR"
     joint_sequence[j]  = inifile.find(section, "HOME_SEQUENCE") or ""
 
-axis_type = [None] * linuxcnc.MAX_AXIS
-for a in range(linuxcnc.MAX_AXIS):
+axis_type = [None] * MAX_AXIS
+for a in range(MAX_AXIS):
     # supply defaults, supersede with INI [AXIS_*]TYPE
     letter = "xyzabcuvw"[a]
     if not (letter in trajcoordinates): continue
@@ -3715,9 +3716,8 @@ root_window.tk.eval("${pane_top}.maxvel.s set [setval $maxvel_speed $max_maxvel]
 widgets.feedoverride.configure(to=max_feed_override)
 widgets.rapidoverride.configure(to=100)
 widgets.spinoverride.configure(from_=min_spindle_override, to=max_spindle_override)
-nmlfile = inifile.find("EMC", "NML_FILE")
-if nmlfile:
-    linuxcnc.nmlfile = os.path.join(os.path.dirname(sys.argv[2]), nmlfile)
+# NML file path is handled internally by the emcgateway gomod.
+# No need to set linuxcnc.nmlfile here.
 vars.coord_type.set(inifile.find("DISPLAY", "POSITION_OFFSET") == "RELATIVE")
 vars.display_type.set(inifile.find("DISPLAY", "POSITION_FEEDBACK") == "COMMANDED")
 coordinate_display = inifile.find("DISPLAY", "POSITION_UNITS")
@@ -3775,12 +3775,12 @@ else:
     update_ms = int(ct)
 interpname = inifile.find("TASK", "INTERPRETER") or ""
 
-s = linuxcnc.stat();
+s = gmi.Stat();
 s.poll()
 
 statfail=0
 statwait=.01
-while ((s.joints == 0) or (s.kinematics_type < linuxcnc.KINEMATICS_IDENTITY)):
+while ((s.joints == 0) or (s.kinematics_type < KINEMATICS_IDENTITY)):
     print("waiting for s.joints<%d>, s.kinematics_type<%d>"%(s.joints,s.kinematics_type))
     time.sleep(statwait)
     statfail+=1
@@ -3798,7 +3798,7 @@ if s.num_extrajoints > 0:
     # show_offsets)
     vars.show_offsets.set(False)
 
-if s.kinematics_type == linuxcnc.KINEMATICS_IDENTITY:
+if s.kinematics_type == KINEMATICS_IDENTITY:
     ja_name = _("Axes")
 else:
     ja_name = _("Joints")
@@ -3871,7 +3871,7 @@ def aletter_for_jnum(jnum):
         if jnum == 2: return "Z"
     if kins_is_trivkins:
         return trivkinscoords.upper()[jnum]
-    if s.kinematics_type != linuxcnc.KINEMATICS_IDENTITY:
+    if s.kinematics_type != KINEMATICS_IDENTITY:
         raise SystemExit("aletter_for_jnum: Must be KINEMATICS_IDENTITY")
     else:
         guess = trajcoordinates.upper()[jnum]
@@ -3881,7 +3881,7 @@ def aletter_for_jnum(jnum):
 num_joints = s.joints
 gave_individual_homing_message = ""
 for jnum in range(num_joints):
-    if s.kinematics_type == linuxcnc.KINEMATICS_IDENTITY:
+    if s.kinematics_type == KINEMATICS_IDENTITY:
         ja_name = _("Axis ")
         ja_id = aletter_for_jnum(jnum)
         if ja_id.lower() in duplicate_coord_letters:
@@ -3914,7 +3914,7 @@ for jnum in range(num_joints):
             _("Unhome %(name)s _%(id)s") % {"name":ja_name, "id":ja_id})
 
 astep_size = step_size = 1
-for a in range(linuxcnc.MAX_AXIS):
+for a in range(MAX_AXIS):
     a = "XYZABCUVW"[a]
     if s.axis_mask & (1<<i) == 0: continue
     section = "AXIS_%s" % a
@@ -4014,14 +4014,14 @@ root_window.bind("<KeyRelease-equal>", commands.jog_stop)
 opts, args = getopt.getopt(sys.argv[1:], 'd:')
 
 # forget axis radiobuttons not in axis_mask
-for i in range(linuxcnc.MAX_AXIS):
+for i in range(MAX_AXIS):
     if s.axis_mask & (1<<i): continue
     letter = "xyzabcuvw"[i]
     c = getattr(widgets, "axis_%s" % letter)
     c.grid_forget()
 
 # forget joint radiobuttons for joints > num_joints
-for i in range(num_joints, linuxcnc.MAX_JOINTS):
+for i in range(num_joints, MAX_JOINTS):
     c = getattr(widgets, "joint_%d" % i)
     c.grid_forget()
 
@@ -4030,8 +4030,8 @@ if  (       (s.axis_mask & 56 == 0)  # 56==0x38== 000111000 (ABC)
     ):
     widgets.ajogspeed.grid_forget()
 
-c = linuxcnc.command()
-e = linuxcnc.error_channel()
+c = gmi.Command()
+e = gmi.ErrorChannel()
 
 c.set_block_delete(vars.block_delete.get())
 c.wait_complete()
@@ -4348,7 +4348,7 @@ def balance_ja():
     h = max(widgets.axes.winfo_reqheight(), widgets.joints.winfo_reqheight())
     widgets.axes.configure(width=w, height=h)
     widgets.joints.configure(width=w, height=h)
-if s.kinematics_type != linuxcnc.KINEMATICS_IDENTITY:
+if s.kinematics_type != KINEMATICS_IDENTITY:
     set_motion_teleop(0)
     widgets.joints.grid_propagate(0)
     widgets.axes.grid_propagate(0)
@@ -4416,7 +4416,7 @@ forget(widgets.spinoverridef,
        "spindle.0.speed-out", "spindle.0.speed-out-abs", "spindle.0.speed-out-rps", "spindle.0.speed-out-rps-abs")
 
 has_limit_switch = 0
-for j in range(linuxcnc.MAX_JOINTS):
+for j in range(MAX_JOINTS):
     try:
         if gmi.pin_has_writer("joint.%d.neg-lim-sw-in" % j):
             has_limit_switch=1

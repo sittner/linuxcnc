@@ -18,6 +18,27 @@ def ws_url() -> str:
     return base + "/api/v1/watch"
 
 
+# Re-export wrapper classes for convenience.
+# These are lazy-imported to avoid pulling in websockets at module load
+# (not all callers need stat/error channels).
+def Stat():
+    """Create a gmi.Stat instance (drop-in for linuxcnc.stat())."""
+    from gmi.stat import Stat as _Stat
+    return _Stat()
+
+
+def Command():
+    """Create a gmi.Command instance (drop-in for linuxcnc.command())."""
+    from gmi.command import Command as _Command
+    return _Command()
+
+
+def ErrorChannel():
+    """Create a gmi.ErrorChannel instance (drop-in for linuxcnc.error_channel())."""
+    from gmi.error import ErrorChannel as _ErrorChannel
+    return _ErrorChannel()
+
+
 def component_exists(name: str) -> bool:
     """Check if a HAL component exists via the halcmd REST API."""
     import json
