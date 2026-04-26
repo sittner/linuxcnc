@@ -18,6 +18,7 @@ intended to replace NML with a modern, type-safe approach.
 | 5.2: AXIS UI Watch Channel | ✅ Complete | 2 |
 | 5.3: PyVCP REST/WebSocket | ✅ Complete | — |
 | 5.4: INI REST Migration | ✅ Complete | 6 |
+| 5.5: NML Gateway (stat/cmd/error) | ❌ Not Started | — |
 | 6: Polish | ❌ Not Started | — |
 | 7: Remove Go Plugins | ✅ Complete | — |
 
@@ -1419,6 +1420,293 @@ The `_query()` method accepts a list for future bulk optimization if needed.
   entries when `Get()` returns empty string
 - Instance name is `"ini"` (no numeric suffix — instance identity is the name itself,
   consistent with halcmd, pyvcp, and all other singleton APIs)
+
+### Step 5.5: NML Gateway — stat/command/error via GMI (NOT STARTED)
+
+Replace the remaining `liblinuxcnc` dependency in axis.py by exposing
+`linuxcnc.stat()`, `linuxcnc.command()`, and `linuxcnc.error_channel()`
+through GMI REST/WebSocket endpoints. A gateway module translates between
+GMI and the existing NML C API, allowing axis.py to drop `import linuxcnc`
+entirely without rewriting the task controller internals.
+
+**Motivation:**
+- After Steps 5.3 (HAL) and 5.4 (INI), the only `liblinuxcnc` dependency
+  left in axis.py is the NML interface: `stat()`, `command()`, `error_channel()`
+- These account for ~155 `linuxcnc.*` references (90 constants, 40 stat,
+  30 command, 3 error)
+- Rewriting the task controller's internal NML usage is months of work;
+  a gateway decouples the UI migration from the internal migration
+- Once axis.py is on GMI, the internal NML→GMI migration can proceed
+  incrementally without UI-visible changes
+
+**Architecture: Gateway Pattern**
+
+```
+axis.py (pure REST/WS)       gomc-server
+    │                               │
+    ├─ WS: watch stat ◄───────────►│  stat push @50ms (position, mode, state)
+    │                               │
+    ├─ WS/REST: commands ──────────►│  state(), auto(), jog(), mdi(), spindle()
+    │                               │
+    ├─ WS: watch errors ◄─────────►│  error/info message push
+    │                               │
+    │                          emcgateway (gomod)
+    │                               │
+    │                          NML C API (via cgo)
+    │                               │  stat: emcStatus poll → struct → JSON
+    │                               │  cmd:  GMI call → NML message → task
+    │                               │  err:  NML error poll → watch push
+    │                               │
+    │                          [future: replace with direct cmod API]
+```
+
+The gateway is an **anti-corruption layer**: axis.py codes against the clean
+GMI interface. When NML is later replaced internally, only the gateway
+implementation changes — axis.py is unaffected.
+
+**Why gomod (not cmod):**
+- The NML stat struct is large (~50 fields, nested structs, arrays)
+- Go's JSON marshaling handles this naturally
+- cgo can call the existing NML C functions (`emcStatusBuffer`, `emcCommandBuffer`)
+- Watch channel infrastructure (50ms push) is already proven in Go (axisui, pyvcp)
+- A cmod would need manual C→JSON serialization for the stat struct
+
+**Scope — what axis.py uses from `linuxcnc`:**
+
+| Category | Count | `linuxcnc.*` Usage | GMI Replacement |
+|----------|-------|--------------------|-----------------|
+| Constants | ~90 | `MODE_MANUAL`, `STATE_ON`, `INTERP_IDLE`, `JOG_STOP`, etc. | Pure-Python `gmi.constants` module |
+| stat() | ~40 | `s.task_state`, `s.motion_mode`, `s.joints`, `s.position`, etc. | Watch channel: `gmi.Stat` (WS @50ms) |
+| command() | ~30 | `c.state()`, `c.auto()`, `c.jog()`, `c.mdi()`, `c.spindle()`, etc. | REST/WS commands: `gmi.Command` |
+| error_channel() | ~3 | `e.poll()` → `(kind, text)` | Watch channel: errors pushed via WS |
+| positionlogger | ~2 | `linuxcnc.positionlogger(stat, ...)` | New impl using `gmi.Stat` watch data |
+| nmlfile | ~2 | `linuxcnc.nmlfile` path | Removed (gateway handles NML internally) |
+
+**GMI IDL Definitions:**
+
+Three IDL files covering the NML interface:
+
+```gmi
+# gmi/idl/emcstat.gmi — Machine status (read-only, watchable)
+@api emcstat
+@version 1
+@prefix "emcstat"
+@rest_export true
+
+type Position {
+    x: f64; y: f64; z: f64
+    a: f64; b: f64; c: f64
+    u: f64; v: f64; w: f64
+}
+
+type StatTaskInfo {
+    mode: i32               # MODE_MANUAL/MDI/AUTO
+    state: i32              # STATE_ESTOP/OFF/ON
+    interp_state: i32       # INTERP_IDLE/READING/PAUSED/WAITING
+    exec_state: i32
+    file: string
+    command: string
+    line: i32               # current/running line numbers
+    running_line: i32
+    motion_line: i32
+    read_line: i32
+    queued_mdi_commands: i32
+    optional_stop: bool
+    block_delete: bool
+}
+
+type StatMotionInfo {
+    mode: i32               # TRAJ_MODE_FREE/COORD/TELEOP
+    enabled: bool
+    in_position: bool
+    paused: bool
+    feed_rate: f64
+    rapid_rate: f64
+    velocity: f64
+    distance_to_go: f64
+    dtg: Position           # per-axis distance to go
+    current_vel: f64
+    feed_override_enabled: bool
+}
+
+type JointInfo {
+    type: i32
+    homed: bool
+    homing: bool
+    enabled: bool
+    fault: bool
+    min_soft_limit: f64
+    max_soft_limit: f64
+    min_hard_limit: bool
+    max_hard_limit: bool
+    override_limits: bool
+    velocity: f64
+}
+
+type SpindleInfo {
+    speed: f64
+    direction: i32
+    brake: bool
+    increasing: bool
+    enabled: bool
+    override: f64
+    override_enabled: bool
+}
+
+type StatFull {
+    task: StatTaskInfo
+    motion: StatMotionInfo
+    position: Position          # actual position
+    probed_position: Position
+    g5x_offset: Position
+    g92_offset: Position
+    tool_offset: Position
+    rotation_xy: f64
+    joints: []JointInfo
+    spindle: []SpindleInfo
+    active_gcodes: []i32
+    active_mcodes: []i32
+    active_settings: []f64
+    kinematics_type: i32
+    joints_count: i32
+    axis_mask: i32
+    flood: bool
+    mist: bool
+    tool_in_spindle: i32
+    pocket_prepped: i32
+}
+
+@watch true
+@watch_default_rate 50ms
+func get_stat() -> StatFull
+```
+
+```gmi
+# gmi/idl/emccmd.gmi — Machine commands (write-only)
+@api emccmd
+@version 1
+@prefix "emccmd"
+@rest_export true
+
+func set_state(state: i32) -> i32
+func set_mode(mode: i32) -> i32
+func auto_cmd(cmd: i32, line: i32) -> i32       # AUTO_RUN/STEP/PAUSE/RESUME
+func mdi(command: string) -> i32
+func jog(type: i32, jjog: bool, axis: i32, velocity: f64, distance: f64) -> i32
+func jog_stop(jjog: bool, axis: i32) -> i32
+func spindle(cmd: i32, speed: f64, spindle: i32) -> i32
+func home(joint: i32) -> i32
+func unhome(joint: i32) -> i32
+func override_limits() -> i32
+func set_teleop(enable: bool) -> i32
+func set_feed_override(rate: f64) -> i32
+func set_spindle_override(rate: f64, spindle: i32) -> i32
+func set_rapid_override(rate: f64) -> i32
+func flood(on: bool) -> i32
+func mist(on: bool) -> i32
+func brake(on: bool, spindle: i32) -> i32
+func abort() -> i32
+func task_plan_synch() -> i32
+func set_optional_stop(on: bool) -> i32
+func set_block_delete(on: bool) -> i32
+func load_tool_table() -> i32
+```
+
+```gmi
+# gmi/idl/emcerror.gmi — Error/info messages (watchable)
+@api emcerror
+@version 1
+@prefix "emcerror"
+@rest_export true
+
+type ErrorMessage {
+    kind: i32       # NML_ERROR, OPERATOR_ERROR, NML_TEXT, OPERATOR_TEXT
+    text: string
+}
+
+@watch true
+@watch_default_rate 200ms
+func get_errors() -> []ErrorMessage
+```
+
+**Implementation Plan:**
+
+1. **`gmi.constants` module** — Pure Python, no REST needed. Define all
+   `linuxcnc.*` integer constants (`MODE_MANUAL=2`, `STATE_ON=4`, etc.)
+   in `src/gmi/python/constants.py`. axis.py imports from `gmi.constants`
+   instead of `linuxcnc`. Constants are stable — they match C header values
+   that haven't changed in years.
+
+2. **Gateway gomod: `internal/emcgateway/`** — Compiled into gomc-server.
+   Uses cgo to call NML C API (`emcStatusBuffer`, `emcCommandBuffer`,
+   `emcErrorBuffer`). Three subsystems:
+   - **stat**: polls NML status at 50ms, serves via watch channel
+   - **command**: translates GMI function calls → NML command messages
+   - **error**: polls NML error buffer, pushes new messages via watch
+
+3. **Python client classes in `gmi`:**
+   - `gmi.Stat` — subscribes to `emcstat.get_stat` watch channel, maintains
+     local cache of all stat fields. Attribute access (`stat.task_state`)
+     reads from cache. Drop-in for `linuxcnc.stat()`.
+   - `gmi.Command` — wraps REST/WS calls to `emccmd.*` functions. Method
+     names match `linuxcnc.command()`: `cmd.state()`, `cmd.auto()`,
+     `cmd.jog()`, `cmd.mdi()`, etc.
+   - `gmi.ErrorChannel` — subscribes to `emcerror.get_errors` watch, queues
+     messages. `poll()` returns `(kind, text)` like `linuxcnc.error_channel()`.
+
+4. **axis.py migration** — Mechanical substitution:
+   - `import linuxcnc` → `import gmi; from gmi.constants import *`
+   - `s = linuxcnc.stat()` → `s = gmi.Stat()`
+   - `c = linuxcnc.command()` → `c = gmi.Command()`
+   - `e = linuxcnc.error_channel()` → `e = gmi.ErrorChannel()`
+   - `linuxcnc.MODE_MANUAL` → `MODE_MANUAL` (imported from constants)
+   - `linuxcnc.positionlogger` → reimplemented using `gmi.Stat` watch data
+   - Remove `linuxcnc.nmlfile` handling entirely
+
+5. **positionlogger replacement** — The current `linuxcnc.positionlogger`
+   is a C extension that directly reads the stat buffer for backplot.
+   Replace with a Python class that logs positions from the `gmi.Stat`
+   watch stream. The 50ms watch rate is sufficient for backplot resolution.
+
+**Stat Polling vs Watch:**
+
+The current `linuxcnc.stat()` requires explicit `s.poll()` calls (Tk `after`
+at 100ms). The GMI watch channel pushes updates at 50ms — better latency,
+no poll overhead. The `gmi.Stat` class updates its internal dict on each
+push and optionally fires a callback (for Tk `event_generate` integration,
+same pattern as axisui 5.2).
+
+**NML Connection Lifecycle:**
+
+The gateway connects to NML as part of gomc-server startup (same process
+that runs the task controller). No external NML socket — it's in-process
+shared memory access, same as the current `linuxcnc.stat()` but from Go
+instead of Python.
+
+**Deliverables:**
+- [ ] `gmi/idl/emcstat.gmi` — stat watch IDL
+- [ ] `gmi/idl/emccmd.gmi` — command IDL
+- [ ] `gmi/idl/emcerror.gmi` — error watch IDL
+- [ ] `internal/emcgateway/` — gomod with NML↔GMI translation via cgo
+- [ ] `src/gmi/python/constants.py` — pure-Python constants module
+- [ ] `src/gmi/python/stat.py` — `Stat` class (watch-based)
+- [ ] `src/gmi/python/command.py` — `Command` class (REST/WS)
+- [ ] `src/gmi/python/error.py` — `ErrorChannel` class (watch-based)
+- [ ] axis.py — replace all `linuxcnc.*` with `gmi.*`, remove `import linuxcnc`
+- [ ] positionlogger replacement using watch data
+- [ ] Tests for gateway endpoints
+
+**Notes:**
+- The gateway pattern is a proven approach (same as manualtoolchange cmod
+  wrapping existing C code behind GMI)
+- axis.py migration is 100% mechanical once the gateway + Python clients exist
+- The `emcstat` watch channel handles the same data volume as the existing
+  NML stat buffer (~2KB per update at 50ms = ~40KB/s, trivial for localhost WS)
+- Once the internal NML→GMI migration is done (future), the gateway becomes
+  a passthrough and can be removed — axis.py is unaffected
+- The IDL definitions above are drafts — the actual `emcStatus_t` struct has
+  more fields; the IDL should expose what axis.py actually reads (the ~40
+  stat references), not the entire NML struct
 
 ### Step 6: Polish (NOT STARTED)
 - [ ] Error handling standardization
