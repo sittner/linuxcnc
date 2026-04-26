@@ -680,6 +680,9 @@ src/gomc/                   # Go module: github.com/sittner/linuxcnc/src/gomc
 │   │   └── cleanup.go       # Shutdown sequence
 │   ├── halrest/             # Server-side REST handler for halcmd API (Step 4.5)
 │   │   └── halrest.go       # Dispatches REST calls to internal/halcmd
+│   ├── inirest/             # Server-side REST handler for INI file access (Step 5.4)
+│   │   ├── inirest.go       # POST /query dispatch, reads from launcher's parsed INI
+│   │   └── inirest_test.go  # 6 tests (single, missing, empty, findall, bulk)
 │   └── gmicompile/          # Code generator (parses .gmi → C/Go)
 │       ├── ast/             # AST types
 │       ├── parser/          # IDL parser (8 tests)
@@ -1286,7 +1289,7 @@ for INI access.
   server-internal NML→GMI migration
 
 **Scope:**
-- 81 `inifile.find()` / `inifile.findall()` calls in axis.py across
+- 82 `inifile.find()` / `inifile.findall()` calls in axis.py across
   sections: DISPLAY, TRAJ, EMC, RS274NGC, EMCIO, KINS, FILTER, TASK,
   JOINT_N, AXIS_X/A/B/C, GMC
 - Read-only — axis.py never writes to INI
@@ -1330,40 +1333,72 @@ Content-Type: application/json
 ```
 
 - `all: true` → uses `findall()` semantics, returns `values` array
-- Missing keys return `{"value": null}`
-- Single round-trip for all ~81 lookups at startup (~1-2ms local)
+- Missing keys return `{}` (no `value` field — `omitempty` on the pointer)
+- Empty-value keys return `{"value": ""}` (key exists but value is empty)
+- Single round-trip for all ~82 lookups at startup (~1-2ms local)
 
 **Implementation Plan:**
 
 1. **Go: `internal/inirest/`** — new REST module, registers as "ini" instance on
    apiserver, single `POST /query` dispatch function, reads from launcher's
-   parsed `inifile.INI` (no re-parsing)
-2. **Python: `gmi.IniFile` class** — issues bulk POST on construction,
-   caches all results, exposes `.find(section, key)` / `.findall(section, key)`
-   with same return types as `linuxcnc.ini`
+   parsed `inifile.INI` (no re-parsing). Registered in `launcher.go` right
+   after INI parsing, before `startAPIServer()`.
+2. **Python: `gmi.IniFile` class** — lazy per-call REST with local cache.
+   Each `.find()` / `.findall()` call issues a single-item POST on first
+   access, caches the result, and returns from cache on subsequent calls.
+   Separate caches for find (single value) and findall (value list).
 3. **axis.py** — replace `inifile = linuxcnc.ini(sys.argv[2])` with
-   `inifile = gmi.IniFile()`, all 81 `.find()`/`.findall()` calls work unchanged
+   `inifile = gmi.IniFile()`, all 82 `.find()`/`.findall()` calls work unchanged
 4. **Remove `import linuxcnc` for INI** — but keep it for `stat()`, `command()`,
    `error_channel()` until NML migration (future step)
 
-**Python Client Pattern:**
+**Python Client (implemented):**
 
 ```python
 class IniFile:
     def __init__(self):
-        # Prefetch all keys used by axis.py in one bulk request
-        self._cache = {}  # (section, key) → value or [values]
+        self._cache = {}      # (section, key) -> str or None
+        self._cache_all = {}  # (section, key) -> list[str]
 
     def find(self, section, key):
-        return self._cache.get((section, key))
+        """Return first value for section/key, or None if not found."""
+        cache_key = (section, key)
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+        result = self._query([{"section": section, "key": key}])
+        if result and len(result) == 1:
+            val = result[0].get("value")
+            self._cache[cache_key] = val
+            return val
+        self._cache[cache_key] = None
+        return None
 
     def findall(self, section, key):
-        v = self._cache.get((section, key))
-        return v if isinstance(v, list) else ([v] if v else [])
+        """Return all values for section/key as a list."""
+        cache_key = (section, key)
+        if cache_key in self._cache_all:
+            return self._cache_all[cache_key]
+        result = self._query([{"section": section, "key": key, "all": True}])
+        if result and len(result) == 1:
+            vals = result[0].get("values", [])
+            self._cache_all[cache_key] = vals
+            return vals
+        self._cache_all[cache_key] = []
+        return []
+
+    def _query(self, items):
+        """Issue a bulk query to the INI REST endpoint."""
+        url = rest_url() + "/api/v1/ini/query"
+        data = json.dumps(items).encode("utf-8")
+        req = urllib.request.Request(url, data=data,
+            headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return json.loads(resp.read())
 ```
 
-Alternative: lazy mode — `find()`/`findall()` issue individual REST calls
-with local cache. Simpler but more round-trips on first access.
+The lazy approach was chosen over bulk prefetch for simplicity — each call
+is a single round-trip (~0.1ms localhost), cached after first access.
+The `_query()` method accepts a list for future bulk optimization if needed.
 
 **Deliverables:**
 - [x] `internal/inirest/inirest.go` — Go REST module with `POST /query`
@@ -1377,8 +1412,13 @@ with local cache. Simpler but more round-trips on first access.
 - Other UIs (touchy, gmoccapy, gscreen) also use `linuxcnc.ini()` — the REST
   endpoint benefits them all, but migration is per-UI
 - The endpoint is read-only by design (INI is parsed once at startup)
-- The `IniFile` class should match `linuxcnc.ini` return types exactly:
+- The `IniFile` class matches `linuxcnc.ini` return types exactly:
   `find()` returns `str | None`, `findall()` returns `list[str]`
+- The Go dispatch distinguishes "key not found" (empty JSON object) from
+  "key exists with empty value" (`{"value": ""}`) by checking `GetSection()`
+  entries when `Get()` returns empty string
+- Instance name is `"ini"` (no numeric suffix — instance identity is the name itself,
+  consistent with halcmd, pyvcp, and all other singleton APIs)
 
 ### Step 6: Polish (NOT STARTED)
 - [ ] Error handling standardization
