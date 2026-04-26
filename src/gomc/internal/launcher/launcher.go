@@ -181,7 +181,7 @@ func (l *Launcher) Run() (runErr error) {
 	}
 	l.ini = ini
 
-	// Register the INI REST API handler (exposes parsed INI via /api/v1/ini0/query).
+	// Register the INI REST API handler (exposes parsed INI via /api/v1/ini/query).
 	if err := inirest.Register(apiserver.DefaultRegistry(), l.ini); err != nil {
 		l.logger.Warn("failed to register INI REST API", "error", err)
 	}

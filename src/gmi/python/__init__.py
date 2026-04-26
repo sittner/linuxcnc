@@ -22,7 +22,7 @@ def component_exists(name: str) -> bool:
     """Check if a HAL component exists via the halcmd REST API."""
     import json
     import urllib.request
-    url = rest_url() + "/api/v1/halcmd0/components?pattern=" + name
+    url = rest_url() + "/api/v1/halcmd/components?pattern=" + name
     try:
         with urllib.request.urlopen(url, timeout=2) as resp:
             data = json.loads(resp.read())
@@ -35,7 +35,7 @@ def pin_has_writer(name: str) -> bool:
     """Check if a HAL pin's signal has any writers via the halcmd REST API."""
     import json
     import urllib.request
-    url = rest_url() + "/api/v1/halcmd0/pins?pattern=" + name
+    url = rest_url() + "/api/v1/halcmd/pins?pattern=" + name
     try:
         with urllib.request.urlopen(url, timeout=2) as resp:
             data = json.loads(resp.read())
@@ -88,7 +88,7 @@ class IniFile:
         """Issue a bulk query to the INI REST endpoint."""
         import json
         import urllib.request
-        url = rest_url() + "/api/v1/ini0/query"
+        url = rest_url() + "/api/v1/ini/query"
         data = json.dumps(items).encode("utf-8")
         req = urllib.request.Request(
             url, data=data,

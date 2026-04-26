@@ -257,7 +257,7 @@ For cmod calling other APIs (lookup at startup, direct calls at runtime):
 halcmd_callbacks_t *halcmd_api_get(const char *instance, int required_version);
 
 // Direct function calls via callbacks struct (no dispatch, no overhead):
-// halcmd_callbacks_t *api = halcmd_api_get("halcmd0", 1);
+// halcmd_callbacks_t *api = halcmd_api_get("halcmd", 1);
 // int rc = api->list_pins("*", &result, &len);
 ```
 
@@ -293,7 +293,7 @@ For gomod calling other APIs (lookup at startup):
 func GetHalcmdAPI(instance string, requiredVersion int) (HalcmdCallbacks, error)
 
 // Direct calls via returned interface (no dispatch table overhead):
-// api, _ := GetHalcmdAPI("halcmd0", 1)
+// api, _ := GetHalcmdAPI("halcmd", 1)
 // pins, err := api.ListPins("*")
 ```
 
@@ -302,8 +302,8 @@ func GetHalcmdAPI(instance string, requiredVersion int) (HalcmdCallbacks, error)
 ### External REST → cmod (or gomod — identical path)
 
 ```
-1. HTTP request: GET /api/v1/hal0/pin/axis.0.pos-cmd
-2. HTTP server looks up "hal0" in registry → RegisteredAPI
+1. HTTP request: GET /api/v1/hal/pin/axis.0.pos-cmd
+2. HTTP server looks up "hal" in registry → RegisteredAPI
 3. HTTP server matches (GET, "/pin/{name}") → funcIndex
 4. HTTP server calls api.Meta.Funcs[funcIndex].Dispatch(api.Callbacks, body)
 5. Generated dispatch wrapper (Go):
@@ -321,7 +321,7 @@ API is backed by a cmod or gomod — both produce the same `DispatchFunc` table.
 
 ```
 Prerequisites (done at module init):
-  - gomod called GetHalAPI("hal0", 1)
+  - gomod called GetHalAPI("hal", 1)
   - Returned HalCallbacks wraps resolved C callback pointers
 
 At runtime:
@@ -337,7 +337,7 @@ At runtime:
 
 ```
 Prerequisites (done at module init):
-  - cmod called halcmd_api_get("halcmd0", 1)
+  - cmod called halcmd_api_get("halcmd", 1)
   - Returned opaque pointer is cast to halcmd_callbacks_t*
 
 At runtime:
@@ -353,7 +353,7 @@ At runtime:
 
 ```
 Prerequisites (done at module init):
-  - cmod called hal_api_get("hal0", 1)
+  - cmod called hal_api_get("hal", 1)
   - Returned opaque pointer is cast to hal_callbacks_t*
 
 At runtime (can be from RT context if callback is RT-safe):
@@ -535,14 +535,14 @@ Clients call through the callbacks struct directly — zero overhead:
 
 ```c
 // cmod→cmod: direct C function pointer call (RT-safe)
-hal_callbacks_t *api = (hal_callbacks_t *)gmi_get_api("hal0", 1);
+hal_callbacks_t *api = (hal_callbacks_t *)gmi_get_api("hal", 1);
 hal_pin_info_t info;
 int rc = api->pin_read("axis.0.pos-cmd", &info);
 ```
 
 ```go
 // gomod→gomod: direct Go interface call
-api, _ := GetHalAPI("hal0", 1)  // returns HalCallbacks interface
+api, _ := GetHalAPI("hal", 1)  // returns HalCallbacks interface
 info, err := api.PinRead("axis.0.pos-cmd")
 ```
 
@@ -1214,8 +1214,8 @@ Now a hand-written source file (previously an empty `@touch` build artifact).
 Contains central helpers used by axis.py and other UI code:
 
 - `rest_url()` / `ws_url()` — URL helpers from `GMC_REST_URL` env var
-- `component_exists(name)` — `GET /api/v1/halcmd0/components?pattern={name}`
-- `pin_has_writer(name)` — `GET /api/v1/halcmd0/pins?pattern={name}`, checks `has_writer` field
+- `component_exists(name)` — `GET /api/v1/halcmd/components?pattern={name}`
+- `pin_has_writer(name)` — `GET /api/v1/halcmd/pins?pattern={name}`, checks `has_writer` field
 
 **halcmd REST Enhancement:**
 
@@ -1224,7 +1224,7 @@ Added `has_writer` field to the pins endpoint to support `pin_has_writer()`:
 - `hal_shim_pin_info_t` C struct: new `int has_writer` field
 - `hal_shim_show_pins`: sets `has_writer = (sig->writers > 0)` when pin is linked
 - `PinInfo` Go struct: new `HasWriter bool` field (JSON: `"has_writer"`)
-- Exposed via `GET /api/v1/halcmd0/pins?pattern={name}` response
+- Exposed via `GET /api/v1/halcmd/pins?pattern={name}` response
 
 **Build System:**
 
@@ -1312,7 +1312,7 @@ axis.py                          gomc-server
 **REST Endpoint:**
 
 ```
-POST /api/v1/ini0/query
+POST /api/v1/ini/query
 Content-Type: application/json
 
 [

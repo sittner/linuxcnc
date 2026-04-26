@@ -21,17 +21,17 @@ func testMeta(name string, version int, rest bool) *APIMeta {
 func TestRegisterAndGet(t *testing.T) {
 	r := NewRegistry()
 
-	err := r.Register("hal", 1, "hal0", fakeCallbacks)
+	err := r.Register("hal", 1, "hal", fakeCallbacks)
 	if err != nil {
 		t.Fatalf("Register: unexpected error: %v", err)
 	}
 
-	api := r.Get("hal0")
+	api := r.Get("hal")
 	if api == nil {
 		t.Fatal("Get: returned nil for registered instance")
 	}
-	if api.Instance != "hal0" {
-		t.Errorf("Instance = %q, want %q", api.Instance, "hal0")
+	if api.Instance != "hal" {
+		t.Errorf("Instance = %q, want %q", api.Instance, "hal")
 	}
 	if api.APIName != "hal" {
 		t.Errorf("APIName = %q, want %q", api.APIName, "hal")
@@ -44,11 +44,11 @@ func TestRegisterAndGet(t *testing.T) {
 func TestRegisterDuplicate(t *testing.T) {
 	r := NewRegistry()
 
-	if err := r.Register("hal", 1, "hal0", fakeCallbacks); err != nil {
+	if err := r.Register("hal", 1, "hal", fakeCallbacks); err != nil {
 		t.Fatalf("first Register: %v", err)
 	}
 
-	err := r.Register("hal", 1, "hal0", fakeCallbacks)
+	err := r.Register("hal", 1, "hal", fakeCallbacks)
 	if err != syscall.EEXIST {
 		t.Errorf("duplicate Register: got %v, want EEXIST", err)
 	}
@@ -67,9 +67,9 @@ func TestRegisterInvalidArgs(t *testing.T) {
 
 func TestGetAPIVersionMatch(t *testing.T) {
 	r := NewRegistry()
-	r.Register("hal", 2, "hal0", fakeCallbacks)
+	r.Register("hal", 2, "hal", fakeCallbacks)
 
-	cb, err := r.GetAPI("hal", "hal0", 2)
+	cb, err := r.GetAPI("hal", "hal", 2)
 	if err != nil {
 		t.Fatalf("GetAPI: %v", err)
 	}
@@ -80,9 +80,9 @@ func TestGetAPIVersionMatch(t *testing.T) {
 
 func TestGetAPIVersionMismatch(t *testing.T) {
 	r := NewRegistry()
-	r.Register("hal", 2, "hal0", fakeCallbacks)
+	r.Register("hal", 2, "hal", fakeCallbacks)
 
-	_, err := r.GetAPI("hal", "hal0", 1)
+	_, err := r.GetAPI("hal", "hal", 1)
 	if err != syscall.EINVAL {
 		t.Errorf("version mismatch: got %v, want EINVAL", err)
 	}
@@ -107,8 +107,8 @@ func TestGetNotFound(t *testing.T) {
 
 func TestInstances(t *testing.T) {
 	r := NewRegistry()
-	r.Register("hal", 1, "hal0", fakeCallbacks)
-	r.Register("halcmd", 1, "halcmd0", fakeCallbacks)
+	r.Register("hal", 1, "hal", fakeCallbacks)
+	r.Register("halcmd", 1, "halcmd", fakeCallbacks)
 
 	names := r.Instances()
 	if len(names) != 2 {
@@ -119,20 +119,20 @@ func TestInstances(t *testing.T) {
 	for _, n := range names {
 		found[n] = true
 	}
-	if !found["hal0"] || !found["halcmd0"] {
-		t.Errorf("Instances = %v, want hal0 + halcmd0", names)
+	if !found["hal"] || !found["halcmd"] {
+		t.Errorf("Instances = %v, want hal + halcmd", names)
 	}
 }
 
 func TestMultipleAPIs(t *testing.T) {
 	r := NewRegistry()
-	r.Register("hal", 1, "hal0", fakeCallbacks)
-	r.Register("halcmd", 1, "halcmd0", fakeCallbacks)
+	r.Register("hal", 1, "hal", fakeCallbacks)
+	r.Register("halcmd", 1, "halcmd", fakeCallbacks)
 
-	if r.Get("hal0") == nil {
-		t.Error("hal0 not found")
+	if r.Get("hal") == nil {
+		t.Error("hal not found")
 	}
-	if r.Get("halcmd0") == nil {
-		t.Error("halcmd0 not found")
+	if r.Get("halcmd") == nil {
+		t.Error("halcmd not found")
 	}
 }
