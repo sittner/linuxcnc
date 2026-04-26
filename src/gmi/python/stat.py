@@ -102,42 +102,44 @@ class Stat:
         # Task fields (s.task_mode → data["task"]["mode"])
         task = data.get("task", {})
         _TASK_MAP = {
-            "task_mode": "mode",
-            "task_state": "state",
-            "interp_state": "interp_state",
-            "exec_state": "exec_state",
-            "file": "file",
-            "command": "command",
-            "motion_line": "motion_line",       # NOTE: also in motion
-            "current_line": "current_line",
-            "read_line": "read_line",
-            "queued_mdi_commands": "queued_mdi_commands",
-            "optional_stop": "optional_stop",
-            "block_delete": "block_delete",
-            "task_paused": "task_paused",
-            "g5x_index": "g5x_index",
+            "task_mode": ("mode", 0),
+            "task_state": ("state", 0),
+            "interp_state": ("interp_state", 0),
+            "exec_state": ("exec_state", 0),
+            "file": ("file", ""),
+            "command": ("command", ""),
+            "motion_line": ("motion_line", 0),
+            "current_line": ("current_line", 0),
+            "read_line": ("read_line", 0),
+            "queued_mdi_commands": ("queued_mdi_commands", 0),
+            "optional_stop": ("optional_stop", 0),
+            "block_delete": ("block_delete", 0),
+            "task_paused": ("task_paused", 0),
+            "g5x_index": ("g5x_index", 0),
         }
         if name in _TASK_MAP:
-            return task.get(_TASK_MAP[name])
+            key, default = _TASK_MAP[name]
+            return task.get(key, default)
 
         # Motion fields (s.motion_mode → data["motion"]["mode"])
         motion = data.get("motion", {})
         _MOTION_MAP = {
-            "motion_mode": "mode",
-            "enabled": "enabled",
-            "inpos": "in_position",
-            "paused": "paused",
-            "feedrate": "feedrate",
-            "rapidrate": "rapidrate",
-            "max_velocity": "max_velocity",
-            "velocity": "velocity",
-            "distance_to_go": "distance_to_go",
-            "dtg": "dtg",
-            "current_vel": "current_vel",
-            "motion_id": "motion_id",
+            "motion_mode": ("mode", 0),
+            "enabled": ("enabled", False),
+            "inpos": ("in_position", False),
+            "paused": ("paused", False),
+            "feedrate": ("feedrate", 0.0),
+            "rapidrate": ("rapidrate", 0.0),
+            "max_velocity": ("max_velocity", 0.0),
+            "velocity": ("velocity", 0.0),
+            "distance_to_go": ("distance_to_go", 0.0),
+            "dtg": ("dtg", 0.0),
+            "current_vel": ("current_vel", 0.0),
+            "motion_id": ("motion_id", 0),
         }
         if name in _MOTION_MAP:
-            return motion.get(_MOTION_MAP[name])
+            key, default = _MOTION_MAP[name]
+            return motion.get(key, default)
 
         # Position fields (return as 9-tuple for linuxcnc.stat() compat)
         _POS_FIELDS = {
@@ -184,21 +186,22 @@ class Stat:
         if name == "limit":
             return tuple(data.get("limit", [0] * 16))
 
-        # Remaining scalars
+        # Remaining scalars — (json_key, default) so we never return None
         _SCALAR_MAP = {
-            "kinematics_type": "kinematics_type",
-            "num_extrajoints": "num_extrajoints",
-            "axis_mask": "axis_mask",
-            "flood": "flood",
-            "mist": "mist",
-            "tool_in_spindle": "tool_in_spindle",
-            "pocket_prepped": "pocket_prepped",
-            "linear_units": "linear_units",
-            "state": "state",
-            "rotation_xy": "rotation_xy",
+            "kinematics_type": ("kinematics_type", 0),
+            "num_extrajoints": ("num_extrajoints", 0),
+            "axis_mask": ("axis_mask", 0),
+            "flood": ("flood", 0),
+            "mist": ("mist", 0),
+            "tool_in_spindle": ("tool_in_spindle", 0),
+            "pocket_prepped": ("pocket_prepped", -1),
+            "linear_units": ("linear_units", 1.0),
+            "state": ("state", 0),
+            "rotation_xy": ("rotation_xy", 0.0),
         }
         if name in _SCALAR_MAP:
-            return data.get(_SCALAR_MAP[name])
+            key, default = _SCALAR_MAP[name]
+            return data.get(key, default)
 
         raise AttributeError(f"Stat has no attribute {name!r}")
 
