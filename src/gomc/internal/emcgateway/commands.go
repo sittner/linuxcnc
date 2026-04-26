@@ -29,11 +29,11 @@ type cmdMdiReq struct {
 	Command string `json:"command"`
 }
 type cmdJogReq struct {
-	JogType      int     `json:"jog_type"`
-	Jjogmode     bool    `json:"jjogmode"`
-	AxisOrJoint  int     `json:"axis_or_joint"`
-	Velocity     float64 `json:"velocity"`
-	Distance     float64 `json:"distance"`
+	JogType     int     `json:"jog_type"`
+	Jjogmode    bool    `json:"jjogmode"`
+	AxisOrJoint int     `json:"axis_or_joint"`
+	Velocity    float64 `json:"velocity"`
+	Distance    float64 `json:"distance"`
 }
 type cmdJogStopReq struct {
 	Jjogmode    bool `json:"jjogmode"`
