@@ -45,19 +45,33 @@ class Stat:
         """Start background thread for WebSocket watch."""
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
-        self._connected.wait(timeout=5)
+        self._connected.wait(timeout=10)
 
     def _run(self):
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
-        self._loop.run_until_complete(self._connect_and_subscribe())
+        try:
+            self._loop.run_until_complete(self._connect_and_subscribe())
+        except Exception as e:
+            import sys
+            print(f"gmi.Stat: WebSocket connect failed: {e}", file=sys.stderr)
+            self._connected.set()
+            return
         self._connected.set()
         self._loop.run_forever()
         self._loop.close()
 
     async def _connect_and_subscribe(self):
         url = ws_url()
-        self._ws = await websockets.connect(url)
+        # Retry connection — REST server may not be ready yet.
+        for attempt in range(20):
+            try:
+                self._ws = await websockets.connect(url)
+                break
+            except (OSError, ConnectionRefusedError):
+                await asyncio.sleep(0.25)
+        else:
+            raise ConnectionError(f"gmi.Stat: could not connect to {url} after retries")
         # Subscribe to emcstat.get_stat at 50ms
         msg = {
             "action": "subscribe",
@@ -77,16 +91,29 @@ class Stat:
                     data = msg.get("data", {})
                     with self._lock:
                         self._data = data
+                elif msg.get("type") == "error":
+                    import sys
+                    print(f"gmi.Stat: watch error: {msg}", file=sys.stderr)
         except asyncio.CancelledError:
             pass
-        except Exception:
-            pass
+        except Exception as e:
+            import sys
+            print(f"gmi.Stat: recv error: {e}", file=sys.stderr)
 
     def poll(self):
         """No-op. Data is pushed by the watch channel automatically."""
         pass
 
     # ─── Flat attribute access (matching linuxcnc.stat() API) ───
+
+    # Names that need special handling — skip the generic data[name] lookup.
+    _SPECIAL_NAMES = {
+        "joints", "joint", "spindle", "axis", "dtg",
+        "position", "actual_position", "probed_position",
+        "g5x_offset", "g92_offset", "tool_offset",
+        "joint_actual_position", "gcodes", "mcodes", "settings",
+        "homed", "limit",
+    }
 
     def __getattr__(self, name):
         if name.startswith("_"):
@@ -95,8 +122,8 @@ class Stat:
         with self._lock:
             data = self._data
 
-        # Direct top-level fields
-        if name in data:
+        # Direct top-level fields (only for non-special names)
+        if name not in self._SPECIAL_NAMES and name in data:
             return data[name]
 
         # Task fields (s.task_mode → data["task"]["mode"])
@@ -133,7 +160,6 @@ class Stat:
             "max_velocity": ("max_velocity", 0.0),
             "velocity": ("velocity", 0.0),
             "distance_to_go": ("distance_to_go", 0.0),
-            "dtg": ("dtg", 0.0),
             "current_vel": ("current_vel", 0.0),
             "motion_id": ("motion_id", 0),
         }
@@ -149,6 +175,11 @@ class Stat:
         if name in _POS_FIELDS:
             pos = data.get(name, {})
             return _pos_to_tuple(pos)
+
+        # dtg — position inside motion struct
+        if name == "dtg":
+            motion = data.get("motion", {})
+            return _pos_to_tuple(motion.get("dtg", {}))
 
         # joint_actual_position — array of 16 floats
         if name == "joint_actual_position":

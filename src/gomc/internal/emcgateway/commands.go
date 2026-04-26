@@ -4,6 +4,7 @@ package emcgateway
 
 /*
 #include "nml_shim.h"
+#include <stdlib.h>
 */
 import "C"
 
@@ -30,14 +31,14 @@ type cmdMdiReq struct {
 }
 type cmdJogReq struct {
 	JogType     int     `json:"jog_type"`
-	Jjogmode    bool    `json:"jjogmode"`
+	Jjogmode    flexInt `json:"jjogmode"`
 	AxisOrJoint int     `json:"axis_or_joint"`
 	Velocity    float64 `json:"velocity"`
 	Distance    float64 `json:"distance"`
 }
 type cmdJogStopReq struct {
-	Jjogmode    bool `json:"jjogmode"`
-	AxisOrJoint int  `json:"axis_or_joint"`
+	Jjogmode    flexInt `json:"jjogmode"`
+	AxisOrJoint int     `json:"axis_or_joint"`
 }
 type cmdSpindleReq struct {
 	Cmd        int     `json:"cmd"`
@@ -49,8 +50,8 @@ type cmdJointReq struct {
 	Joint int `json:"joint"`
 }
 type cmdBoolReq struct {
-	Enable bool `json:"enable,omitempty"`
-	On     bool `json:"on,omitempty"`
+	Enable flexInt `json:"enable,omitempty"`
+	On     flexInt `json:"on,omitempty"`
 }
 type cmdRateReq struct {
 	Rate float64 `json:"rate"`
@@ -63,8 +64,8 @@ type cmdVelocityReq struct {
 	Velocity float64 `json:"velocity"`
 }
 type cmdBrakeReq struct {
-	On         bool `json:"on"`
-	SpindleNum int  `json:"spindle_num"`
+	On         flexInt `json:"on"`
+	SpindleNum int     `json:"spindle_num"`
 }
 type cmdFileReq struct {
 	File string `json:"file"`
@@ -74,6 +75,27 @@ type cmdTimeoutReq struct {
 }
 
 // ─── Helpers ───
+
+// flexInt accepts both JSON numbers (0, 1) and booleans (true, false).
+type flexInt int
+
+func (f *flexInt) UnmarshalJSON(b []byte) error {
+	s := string(b)
+	if s == "true" {
+		*f = 1
+		return nil
+	}
+	if s == "false" {
+		*f = 0
+		return nil
+	}
+	var n int
+	if err := json.Unmarshal(b, &n); err != nil {
+		return err
+	}
+	*f = flexInt(n)
+	return nil
+}
 
 func cmdResult(rc C.int) (json.RawMessage, error) {
 	if rc != 0 {
@@ -131,11 +153,7 @@ func (gw *emcGateway) cmdJog(req json.RawMessage) (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	jjog := 0
-	if r.Jjogmode {
-		jjog = 1
-	}
-	return cmdResult(C.nml_shim_jog(C.int(r.JogType), C.int(jjog),
+	return cmdResult(C.nml_shim_jog(C.int(r.JogType), C.int(r.Jjogmode),
 		C.int(r.AxisOrJoint), C.double(r.Velocity), C.double(r.Distance)))
 }
 
@@ -144,11 +162,7 @@ func (gw *emcGateway) cmdJogStop(req json.RawMessage) (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	jjog := 0
-	if r.Jjogmode {
-		jjog = 1
-	}
-	return cmdResult(C.nml_shim_jog_stop(C.int(jjog), C.int(r.AxisOrJoint)))
+	return cmdResult(C.nml_shim_jog_stop(C.int(r.Jjogmode), C.int(r.AxisOrJoint)))
 }
 
 func (gw *emcGateway) cmdSpindle(req json.RawMessage) (json.RawMessage, error) {
@@ -185,11 +199,7 @@ func (gw *emcGateway) cmdTeleopEnable(req json.RawMessage) (json.RawMessage, err
 	if err != nil {
 		return nil, err
 	}
-	en := 0
-	if r.Enable {
-		en = 1
-	}
-	return cmdResult(C.nml_shim_teleop_enable(C.int(en)))
+	return cmdResult(C.nml_shim_teleop_enable(C.int(r.Enable)))
 }
 
 func (gw *emcGateway) cmdSetFeedOverride(req json.RawMessage) (json.RawMessage, error) {
@@ -229,11 +239,7 @@ func (gw *emcGateway) cmdFlood(req json.RawMessage) (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	on := 0
-	if r.On {
-		on = 1
-	}
-	return cmdResult(C.nml_shim_flood(C.int(on)))
+	return cmdResult(C.nml_shim_flood(C.int(r.On)))
 }
 
 func (gw *emcGateway) cmdMist(req json.RawMessage) (json.RawMessage, error) {
@@ -241,11 +247,7 @@ func (gw *emcGateway) cmdMist(req json.RawMessage) (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	on := 0
-	if r.On {
-		on = 1
-	}
-	return cmdResult(C.nml_shim_mist(C.int(on)))
+	return cmdResult(C.nml_shim_mist(C.int(r.On)))
 }
 
 func (gw *emcGateway) cmdBrake(req json.RawMessage) (json.RawMessage, error) {
@@ -253,11 +255,7 @@ func (gw *emcGateway) cmdBrake(req json.RawMessage) (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	on := 0
-	if r.On {
-		on = 1
-	}
-	return cmdResult(C.nml_shim_brake(C.int(on), C.int(r.SpindleNum)))
+	return cmdResult(C.nml_shim_brake(C.int(r.On), C.int(r.SpindleNum)))
 }
 
 func (gw *emcGateway) cmdAbort(req json.RawMessage) (json.RawMessage, error) {
@@ -273,11 +271,7 @@ func (gw *emcGateway) cmdSetOptionalStop(req json.RawMessage) (json.RawMessage, 
 	if err != nil {
 		return nil, err
 	}
-	on := 0
-	if r.On {
-		on = 1
-	}
-	return cmdResult(C.nml_shim_set_optional_stop(C.int(on)))
+	return cmdResult(C.nml_shim_set_optional_stop(C.int(r.On)))
 }
 
 func (gw *emcGateway) cmdSetBlockDelete(req json.RawMessage) (json.RawMessage, error) {
@@ -285,11 +279,7 @@ func (gw *emcGateway) cmdSetBlockDelete(req json.RawMessage) (json.RawMessage, e
 	if err != nil {
 		return nil, err
 	}
-	on := 0
-	if r.On {
-		on = 1
-	}
-	return cmdResult(C.nml_shim_set_block_delete(C.int(on)))
+	return cmdResult(C.nml_shim_set_block_delete(C.int(r.On)))
 }
 
 func (gw *emcGateway) cmdLoadToolTable(req json.RawMessage) (json.RawMessage, error) {

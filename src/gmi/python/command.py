@@ -37,8 +37,14 @@ class Command:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read())
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return json.loads(resp.read())
+        except urllib.error.HTTPError as e:
+            import sys
+            err_body = e.read().decode("utf-8", errors="replace")
+            print(f"gmi.Command: {e.code} {url}: {err_body}", file=sys.stderr)
+            raise
 
     def state(self, state: int):
         """Set task state (STATE_ESTOP, STATE_ON, etc.)."""

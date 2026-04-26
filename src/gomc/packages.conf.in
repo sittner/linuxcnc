@@ -14,4 +14,5 @@
 # Go modules (in-tree and installed external)
 gomod internal/adsmodule
 gomod internal/pyvcpmodule
+gomod internal/emcgateway
 

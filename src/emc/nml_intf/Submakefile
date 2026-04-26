@@ -8,7 +8,8 @@ LIBEMCSRCS := \
     emc/nml_intf/emcargs.cc \
     emc/nml_intf/emcops.cc \
     emc/nml_intf/canon_position.cc \
-    emc/nml_intf/interpl.cc
+    emc/nml_intf/interpl.cc \
+    emc/nml_intf/nml_shim.cc
 USERSRCS += $(LIBEMCSRCS)
 
 $(call TOOBJSDEPS, $(LIBEMCSRCS)) : EXTRAFLAGS=-fPIC
