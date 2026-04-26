@@ -18,7 +18,7 @@ intended to replace NML with a modern, type-safe approach.
 | 5.2: AXIS UI Watch Channel | ✅ Complete | 2 |
 | 5.3: PyVCP REST/WebSocket | ✅ Complete | — |
 | 5.4: INI REST Migration | ✅ Complete | 6 |
-| 5.5: NML Gateway (stat/cmd/error) | ❌ Not Started | — |
+| 5.5: NML Gateway (stat/cmd/error) | 🔄 In Progress | — |
 | 6: Polish | ❌ Not Started | — |
 | 7: Remove Go Plugins | ✅ Complete | — |
 
@@ -1421,7 +1421,7 @@ The `_query()` method accepts a list for future bulk optimization if needed.
 - Instance name is `"ini"` (no numeric suffix — instance identity is the name itself,
   consistent with halcmd, pyvcp, and all other singleton APIs)
 
-### Step 5.5: NML Gateway — stat/command/error via GMI (NOT STARTED)
+### Step 5.5: NML Gateway — stat/command/error via GMI (IN PROGRESS)
 
 Replace the remaining `liblinuxcnc` dependency in axis.py by exposing
 `linuxcnc.stat()`, `linuxcnc.command()`, and `linuxcnc.error_channel()`
@@ -1749,48 +1749,40 @@ func get_errors() -> []ErrorMessage
 
 **Implementation Plan:**
 
-1. **IDL files** — Write `emcstat.gmi`, `emccmd.gmi`, `emcerror.gmi` with
-   all types, enums, and functions. Run gmicompile to generate Go server
-   dispatch and Python clients.
+1. ✅ **IDL files** — `emcstat.gmi`, `emccmd.gmi`, `emcerror.gmi` written with
+   all types, enums, and functions. (gmicompile code generation pending)
 
-2. **C++ NML shim: `emc/nml_intf/nml_shim.cc` + `nml_shim.h`** — `extern "C"`
-   wrapper around the NML C++ API:
-   - `nml_shim_init(nml_file)` — open stat/cmd/error NML channels
-   - `nml_shim_poll_stat(nml_stat_t *out)` — peek stat, copy to C struct
-   - `nml_shim_send_*(...)` — one function per command type
-   - `nml_shim_poll_errors(nml_error_t *out, int max)` — poll error buffer
-   - `nml_shim_shutdown()` — close channels
-   The C struct (`nml_stat_t`) mirrors `StatFull` but in C types. Compiled
-   as `.o` and linked into gomc-server.
+2. ✅ **C++ NML shim: `emc/nml_intf/nml_shim.cc` + `nml_shim.h`** — `extern "C"`
+   wrapper around the NML C++ API. Covers stat polling, 25 commands, error
+   polling, init/shutdown lifecycle. Not yet compiled into gomc-server.
 
-3. **Gateway gomod: `internal/emcgateway/`** — Compiled into gomc-server.
-   Implements the generated callback interfaces (`EmcstatCallbacks`,
-   `EmccmdCallbacks`, `EmcerrorCallbacks`). Uses cgo to call the NML shim.
-   Three subsystems:
-   - **stat**: calls `nml_shim_poll_stat()`, converts C→Go struct, returns via watch
-   - **command**: translates Go function calls → `nml_shim_send_*()` via cgo
-   - **error**: calls `nml_shim_poll_errors()`, returns new messages via watch
+3. ✅ **Gateway gomod: `internal/emcgateway/`** — Hand-written (not yet
+   IDL-generated). 4 files: `module.go`, `types.go`, `convert.go`,
+   `commands.go`. Registers REST meta + watch factories for emcstat/emccmd/
+   emcerror. Uses cgo to call the NML shim. Not yet in packages.conf.
 
-4. **Python wrapper classes** — Hand-written, use generated WS/REST clients:
-   - `gmi.Stat` — subscribes to `emcstat.get_stat` watch channel, maintains
-     local state dict. Attribute access (`stat.task_mode`) reads from cache.
-     `poll()` is a no-op (data pushed automatically).
-   - `gmi.Command` — wraps REST calls to `emccmd.*` functions. Method
-     names match `linuxcnc.command()`: `cmd.state()`, `cmd.auto()`, etc.
-   - `gmi.ErrorChannel` — subscribes to `emcerror.get_errors` watch, queues
-     messages. `poll()` returns `(kind, text)` like `linuxcnc.error_channel()`.
+4. ✅ **Python wrapper classes** — Hand-written with sensible defaults for
+   all fields when watch data isn't available yet:
+   - `gmi.Stat` — WS watch @50ms, `__getattr__` maps flat names to nested JSON
+   - `gmi.Command` — REST POST to emccmd endpoints
+   - `gmi.ErrorChannel` — WS watch @200ms, deque-based message queue
+   - `gmi.constants` — flat constants (`MODE_MANUAL=1`, etc.) for `import *`
+   - Submakefile rules copy all 4 files to `lib/python/gmi/`
 
-5. **axis.py migration** — Mechanical substitution:
-   - `import linuxcnc` kept ONLY for `positionlogger` (deferred to Step 6)
-   - `s = linuxcnc.stat()` → `s = gmi.Stat()`
-   - `c = linuxcnc.command()` → `c = gmi.Command()`
-   - `e = linuxcnc.error_channel()` → `e = gmi.ErrorChannel()`
-   - `linuxcnc.MODE_MANUAL` → `TaskMode.MANUAL` (from generated client)
-   - `linuxcnc.nmlfile` handling removed (gateway handles NML internally)
+5. ✅ **axis.py migration** — ~134 `linuxcnc.*` references replaced:
+   - `s = gmi.Stat()`, `c = gmi.Command()`, `e = gmi.ErrorChannel()`
+   - All `linuxcnc.CONSTANT` → bare `CONSTANT` (via `from gmi.constants import *`)
+   - `except linuxcnc.error` → `except Exception`
+   - `linuxcnc.nmlfile` handling removed
+   - Kept: `linuxcnc.version`, `linuxcnc.positionlogger` (deferred to Step 6)
 
-6. **Build system** — Submakefile rules for NML shim compilation,
-   packages.conf entries for generated gmi dispatch, install rules for
-   Python wrapper classes and generated clients.
+6. 🔲 **Build system** — Remaining work:
+   - Compile `nml_shim.cc` and link into gomc-server (CGO_LDFLAGS)
+   - Add `gomod internal/emcgateway` to `packages.conf.in`
+   - Add `[HAL] GOMOD = emcgateway` to sim INI configs
+   - Run gmicompile on IDL files for Go dispatch generation
+
+7. 🔲 **Tests** — Gateway endpoint tests, end-to-end axis.py startup test
 
 **NML Connection Lifecycle:**
 
@@ -1832,19 +1824,22 @@ instead of Python.
    positionlogger only until then.
 
 **Deliverables:**
-- [ ] `gmi/idl/emcstat.gmi` — stat types, enums (TaskMode, TaskState, etc.), watch function
-- [ ] `gmi/idl/emccmd.gmi` — command enums (AutoCmd, JogType, SpindleCmd), command functions
-- [ ] `gmi/idl/emcerror.gmi` — error types/enums, error watch function
-- [ ] `emc/nml_intf/nml_shim.cc` + `nml_shim.h` — C shim wrapping NML C++ API with `extern "C"`
-- [ ] `internal/emcgateway/` — gomod implementing IDL callbacks via cgo→NML shim
-- [ ] Generated Python clients: `emcstat_client.py`, `emccmd_client.py`, `emcerror_client.py`
-- [ ] `src/gmi/python/stat.py` — `Stat` class (watch-based, drop-in for `linuxcnc.stat()`)
-- [ ] `src/gmi/python/command.py` — `Command` class (REST/WS, drop-in for `linuxcnc.command()`)
-- [ ] `src/gmi/python/error.py` — `ErrorChannel` class (watch-based, drop-in for `linuxcnc.error_channel()`)
-- [ ] axis.py — replace `linuxcnc.stat/command/error_channel` with `gmi.*`,
-      keep minimal `import linuxcnc` for positionlogger only
-- [ ] Build system: Submakefile rules, packages.conf entries
+- [x] `gmi/idl/emcstat.gmi` — stat types, enums (TaskMode, TaskState, etc.), watch function
+- [x] `gmi/idl/emccmd.gmi` — command enums (AutoCmd, JogType, SpindleCmd), command functions
+- [x] `gmi/idl/emcerror.gmi` — error types/enums, error watch function
+- [x] `emc/nml_intf/nml_shim.cc` + `nml_shim.h` — C shim wrapping NML C++ API with `extern "C"`
+- [x] `internal/emcgateway/` — gomod implementing callbacks via cgo→NML shim
+- [x] `src/gmi/python/stat.py` — `Stat` class (watch-based, drop-in for `linuxcnc.stat()`)
+- [x] `src/gmi/python/command.py` — `Command` class (REST/WS, drop-in for `linuxcnc.command()`)
+- [x] `src/gmi/python/error.py` — `ErrorChannel` class (watch-based, drop-in for `linuxcnc.error_channel()`)
+- [x] `src/gmi/python/constants.py` — flat constants for backward compat (`from gmi.constants import *`)
+- [x] `gmi/codegen/Submakefile` — copy rules for Python wrapper files
+- [x] axis.py — replaced ~134 `linuxcnc.*` refs with `gmi.*` / bare constants,
+      kept minimal `import linuxcnc` for positionlogger + version only
+- [ ] Build system: compile `nml_shim.cc` into gomc-server, `packages.conf` entry for emcgateway
+- [ ] Generate Go dispatch from IDL files (gmicompile runs)
 - [ ] Tests for gateway endpoints
+- [ ] End-to-end test: axis.py startup with emcgateway loaded
 
 **Notes:**
 - The gateway pattern is a proven approach (same as manualtoolchange cmod
