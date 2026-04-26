@@ -17,6 +17,7 @@ intended to replace NML with a modern, type-safe approach.
 | 5.1: Manualtoolchange REST | ✅ Complete | — |
 | 5.2: AXIS UI Watch Channel | ✅ Complete | 2 |
 | 5.3: PyVCP REST/WebSocket | ✅ Complete | — |
+| 5.4: INI REST Migration | ❌ Not Started | — |
 | 6: Polish | ❌ Not Started | — |
 | 7: Remove Go Plugins | ✅ Complete | — |
 
@@ -1269,6 +1270,115 @@ init (before AXIS starts), so `custom.hal` can `net` pins as a regular HALFILE.
 - Panel XML is parsed server-side; widgets are built client-side from the same XML
 - HAL pins are real HAL pins, fully visible to halcmd and connectable in HAL files
 - `axis.py` no longer imports the `hal` Python module at all
+
+### Step 5.4: INI File REST Migration (NOT STARTED)
+
+Replace direct INI file parsing in axis.py (`linuxcnc.ini()`) with REST
+queries to gomc-server, eliminating the `liblinuxcnc` C extension dependency
+for INI access.
+
+**Motivation:**
+- axis.py currently uses `linuxcnc.ini(sys.argv[2])` to parse the INI file
+  directly from disk via the C `liblinuxcnc` extension
+- With HAL removed (Step 5.3), INI is the next `liblinuxcnc` dependency to eliminate
+- Remaining `liblinuxcnc` deps (`linuxcnc.stat()`, `linuxcnc.command()`,
+  `linuxcnc.error_channel()`) depend on NML and will be removed after the
+  server-internal NML→GMI migration
+
+**Scope:**
+- 81 `inifile.find()` / `inifile.findall()` calls in axis.py across
+  sections: DISPLAY, TRAJ, EMC, RS274NGC, EMCIO, KINS, FILTER, TASK,
+  JOINT_N, AXIS_X/A/B/C, GMC
+- Read-only — axis.py never writes to INI
+
+**Architecture:**
+
+gomc-server already has a full INI parser (`pkg/inifile/`) and the parsed
+INI is available in the launcher. A new REST module exposes it:
+
+```
+axis.py                          gomc-server
+    │                               │
+    ├─ POST /api/v1/ini/query ─────►│  Bulk INI lookup
+    │  [{section, key}, ...]        │  returns all values in one response
+    │◄──────────────────────────────┤
+    │  [{value: "..."}, ...]        │
+    │                               │
+    │                          internal/inirest/
+    │                               │
+    │                          pkg/inifile/ (already parsed)
+```
+
+**REST Endpoint:**
+
+```
+POST /api/v1/ini0/query
+Content-Type: application/json
+
+[
+  {"section": "DISPLAY", "key": "GEOMETRY"},
+  {"section": "DISPLAY", "key": "MAX_FEED_OVERRIDE"},
+  {"section": "FILTER", "key": "PROGRAM_EXTENSION", "all": true}
+]
+
+→ 200 OK
+[
+  {"value": "XYZABCUVW"},
+  {"value": "1.5"},
+  {"values": [".nc", ".ngc"]}
+]
+```
+
+- `all: true` → uses `findall()` semantics, returns `values` array
+- Missing keys return `{"value": null}`
+- Single round-trip for all ~81 lookups at startup (~1-2ms local)
+
+**Implementation Plan:**
+
+1. **Go: `internal/inirest/`** — new REST module, registers as "ini" instance on
+   apiserver, single `POST /query` dispatch function, reads from launcher's
+   parsed `inifile.INI` (no re-parsing)
+2. **Python: `gmi.IniFile` class** — issues bulk POST on construction,
+   caches all results, exposes `.find(section, key)` / `.findall(section, key)`
+   with same return types as `linuxcnc.ini`
+3. **axis.py** — replace `inifile = linuxcnc.ini(sys.argv[2])` with
+   `inifile = gmi.IniFile()`, all 81 `.find()`/`.findall()` calls work unchanged
+4. **Remove `import linuxcnc` for INI** — but keep it for `stat()`, `command()`,
+   `error_channel()` until NML migration (future step)
+
+**Python Client Pattern:**
+
+```python
+class IniFile:
+    def __init__(self):
+        # Prefetch all keys used by axis.py in one bulk request
+        self._cache = {}  # (section, key) → value or [values]
+
+    def find(self, section, key):
+        return self._cache.get((section, key))
+
+    def findall(self, section, key):
+        v = self._cache.get((section, key))
+        return v if isinstance(v, list) else ([v] if v else [])
+```
+
+Alternative: lazy mode — `find()`/`findall()` issue individual REST calls
+with local cache. Simpler but more round-trips on first access.
+
+**Deliverables:**
+- [ ] `internal/inirest/inirest.go` — Go REST module with `POST /query`
+- [ ] `src/gmi/python/__init__.py` — `IniFile` class with bulk fetch + `.find()`/`.findall()`
+- [ ] `axis.py` — replace `linuxcnc.ini()` with `gmi.IniFile()`, remove INI-related `import`
+- [ ] Tests for inirest endpoint
+
+**Notes:**
+- No GMI IDL file — inirest uses hand-written REST dispatch (same pattern as
+  halrest and pyvcpmodule), not gmicompile-generated code
+- Other UIs (touchy, gmoccapy, gscreen) also use `linuxcnc.ini()` — the REST
+  endpoint benefits them all, but migration is per-UI
+- The endpoint is read-only by design (INI is parsed once at startup)
+- The `IniFile` class should match `linuxcnc.ini` return types exactly:
+  `find()` returns `str | None`, `findall()` returns `list[str]`
 
 ### Step 6: Polish (NOT STARTED)
 - [ ] Error handling standardization
