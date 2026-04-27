@@ -580,8 +580,7 @@ extern "C" int nml_shim_poll_errors(nml_error_t *errors, int max_errors)
             break;
         }
 
-        strncpy(errors[count].text, text, NML_SHIM_LINELEN - 1);
-        errors[count].text[NML_SHIM_LINELEN - 1] = '\0';
+        snprintf(errors[count].text, NML_SHIM_LINELEN, "%s", text);
         count++;
     }
 

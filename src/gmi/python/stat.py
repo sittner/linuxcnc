@@ -25,6 +25,50 @@ except ImportError:
 from gmi import ws_url
 
 
+class _ToolEntry:
+    """Minimal stub for a tool table entry.
+
+    Supports both indexed access (entry[0], entry[3], entry[10]) and
+    named attributes (.xoffset, etc.) matching the linuxcnc C extension.
+    Returns zeros for all fields — a proper implementation needs a
+    dedicated tool data API endpoint.
+    """
+    _fields = (
+        0,     # [0]  id (tool number)
+        0.0,   # [1]  xoffset
+        0.0,   # [2]  yoffset
+        0.0,   # [3]  zoffset
+        0.0,   # [4]  aoffset
+        0.0,   # [5]  boffset
+        0.0,   # [6]  coffset
+        0.0,   # [7]  uoffset
+        0.0,   # [8]  voffset
+        0.0,   # [9]  woffset
+        0.0,   # [10] diameter
+        0.0,   # [11] frontangle
+        0.0,   # [12] backangle
+        0,     # [13] orientation
+    )
+
+    def __getitem__(self, idx):
+        return self._fields[idx]
+
+    def __bool__(self):
+        return self._fields[0] != 0
+
+    @property
+    def xoffset(self):
+        return self._fields[1]
+
+    @property
+    def zoffset(self):
+        return self._fields[3]
+
+    @property
+    def diameter(self):
+        return self._fields[10]
+
+
 class Stat:
     """Drop-in replacement for linuxcnc.stat().
 
@@ -217,6 +261,11 @@ class Stat:
         if name == "limit":
             return tuple(data.get("limit", [0] * 16))
 
+        # tool_table — not available via NML stat (uses tooldata_get shared memory).
+        # Return a minimal stub so axis.py doesn't crash.
+        if name == "tool_table":
+            return self._stub_tool_table()
+
         # Remaining scalars — (json_key, default) so we never return None
         _SCALAR_MAP = {
             "kinematics_type": ("kinematics_type", 0),
@@ -235,6 +284,15 @@ class Stat:
             return data.get(key, default)
 
         raise AttributeError(f"Stat has no attribute {name!r}")
+
+    def _stub_tool_table(self):
+        """Return a minimal tool_table stub.
+
+        tool_table is not available through NML stat (it uses tooldata_get
+        shared memory). This stub prevents crashes; a proper implementation
+        will need a dedicated API endpoint.
+        """
+        return [_ToolEntry()] * 56  # linuxcnc uses CANON_POCKETS_MAX (56)
 
     def stop(self):
         """Stop the background WebSocket thread."""

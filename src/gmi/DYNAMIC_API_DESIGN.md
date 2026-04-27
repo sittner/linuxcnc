@@ -1874,6 +1874,13 @@ server/client architecture:
   `rotation_offsets` state (`gui_respect_offsets`, `gui_rot_offsets`) that
   is set by the Python GUI. Server sends raw 9-axis positions.
 
+- **Known gap — `tool_table`**: `stat.tool_table` is currently a stub
+  returning zeroed entries. The real tool table data lives in shared memory
+  (`tooldata_get()` / `tooldata_mmap`), NOT in the NML stat struct.
+  A dedicated REST/WS endpoint is needed (e.g. `GET /api/v1/tooltable`,
+  watch func `get_tool_table`). Until then, axis.py tool display shows
+  "No tool". This is a separate work item, not part of the NML gateway.
+
 ### Step 6: Polish (NOT STARTED)
 - [ ] Error handling standardization
 - [ ] Logging/tracing

@@ -278,25 +278,26 @@ class PositionLogger:
 
         if self._changed:
             npts = self._npts
+            base = ctypes.addressof(self._points)
+            color_off = 3 * ctypes.sizeof(ctypes.c_float)
             # Set up interleaved vertex+color arrays.
+            # PyOpenGL needs ctypes.c_void_p for pointer arguments.
             if self._is_xyuv:
+                stride = ctypes.sizeof(_LoggerPoint) // 2
                 _gl.glVertexPointer(
-                    3, _gl.GL_FLOAT,
-                    ctypes.sizeof(_LoggerPoint) // 2,
-                    ctypes.addressof(self._points))
+                    3, _gl.GL_FLOAT, stride,
+                    ctypes.c_void_p(base))
                 _gl.glColorPointer(
-                    4, _gl.GL_UNSIGNED_BYTE,
-                    ctypes.sizeof(_LoggerPoint) // 2,
-                    ctypes.addressof(self._points) + 3 * ctypes.sizeof(ctypes.c_float))
+                    4, _gl.GL_UNSIGNED_BYTE, stride,
+                    ctypes.c_void_p(base + color_off))
             else:
+                stride = ctypes.sizeof(_LoggerPoint)
                 _gl.glVertexPointer(
-                    3, _gl.GL_FLOAT,
-                    ctypes.sizeof(_LoggerPoint),
-                    ctypes.addressof(self._points))
+                    3, _gl.GL_FLOAT, stride,
+                    ctypes.c_void_p(base))
                 _gl.glColorPointer(
-                    4, _gl.GL_UNSIGNED_BYTE,
-                    ctypes.sizeof(_LoggerPoint),
-                    ctypes.addressof(self._points) + 3 * ctypes.sizeof(ctypes.c_float))
+                    4, _gl.GL_UNSIGNED_BYTE, stride,
+                    ctypes.c_void_p(base + color_off))
             _gl.glEnableClientState(_gl.GL_COLOR_ARRAY)
             _gl.glEnableClientState(_gl.GL_VERTEX_ARRAY)
             self._changed = False
