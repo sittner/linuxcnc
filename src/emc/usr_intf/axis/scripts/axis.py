@@ -3230,7 +3230,6 @@ vars = nf.Variables(root_window,
     ("task_paused", IntVar),
     ("interp_state", IntVar),
     ("task_mode", IntVar),
-    ("has_ladder", IntVar),
     ("has_editor", IntVar),
     ("ja_rbutton", StringVar),
     ("tto_g11", BooleanVar),
@@ -4146,8 +4145,6 @@ if hal_present == 1 :
 
     for i, a in enumerate("xyzabcuvw"):
         hal_joghandlers.append(HalJogHandler(a))
-
-    vars.has_ladder.set(gmi.component_exists('classicladder_rt'))
 
     if vcp:
         import vcpparse
