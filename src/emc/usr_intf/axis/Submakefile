@@ -1,10 +1,12 @@
 
 EMCMODULESRCS := emc/usr_intf/axis/extensions/emcmodule.cc
 TOGLMODULESRCS := emc/usr_intf/axis/extensions/_toglmodule.c
-PYSRCS += $(EMCMODULESRCS) $(TOGLMODULESRCS)
+GLHELPERSSRCS := emc/usr_intf/axis/extensions/glhelpers.cc
+PYSRCS += $(EMCMODULESRCS) $(TOGLMODULESRCS) $(GLHELPERSSRCS)
 
 EMCMODULE := ../lib/python/linuxcnc.so
 TOGLMODULE := ../lib/python/_togl.so
+GLHELPERSMODULE := ../lib/python/_glhelpers.so
 
 $(call TOOBJSDEPS, $(TOGLMODULESRCS)) : EXTRAFLAGS = $(ULFLAGS) $(TCL_CFLAGS)
 
@@ -19,7 +21,11 @@ $(TOGLMODULE): $(call TOOBJS, $(TOGLMODULESRCS))
 	$(ECHO) Linking python module $(notdir $@)
 	$(Q)$(CC) $(LDFLAGS) -shared -o $@ $(TCL_CFLAGS) $^ -L/usr/X11R6/lib -lX11 -lepoxy -lXmu $(TCL_LIBS)
 
-PYTARGETS += $(EMCMODULE) $(TOGLMODULE)
+$(GLHELPERSMODULE): $(call TOOBJS, $(GLHELPERSSRCS))
+	$(ECHO) Linking python module $(notdir $@)
+	$(Q)$(CXX) $(LDFLAGS) -shared -o $@ $^ -lm -lepoxy
+
+PYTARGETS += $(EMCMODULE) $(TOGLMODULE) $(GLHELPERSMODULE)
 
 PYSCRIPTS := axis.py axis-remote.py linuxcnctop.py manualtoolchange_ui.py \
 	mdi.py image-to-gcode.py lintini.py debuglevel.py teach-in.py tracking-test.py
