@@ -111,9 +111,12 @@ TARGETS += ../lib/flutter/libflutter_linux_gtk.so ../lib/flutter/icudtl.dat
 HALSCOPE_FLUTTER_DIR := hal/utils/halscope_flutter
 HALSCOPE_FLUTTER_BUNDLE := $(HALSCOPE_FLUTTER_DIR)/build/linux/x64/release/bundle
 
+HALSCOPE_FLUTTER_GEN := hal/utils/halscope_flutter/lib/generated
+
 .PHONY: halscope-flutter
-halscope-flutter: $(FLUTTER)
+halscope-flutter: $(FLUTTER) $(HALSCOPE_FLUTTER_GEN)/halscope_client.dart $(HALSCOPE_FLUTTER_GEN)/halscope_watch_client.dart
 	$(ECHO) "Building halscope Flutter app..."
+	$(Q)cd $(HALSCOPE_FLUTTER_DIR) && $(abspath $(FLUTTER)) pub get
 	$(Q)cd $(HALSCOPE_FLUTTER_DIR) && $(abspath $(FLUTTER)) build linux --release --no-pub
 
 # Deploy per-app files: libapp.so + flutter_assets

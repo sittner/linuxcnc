@@ -396,12 +396,12 @@ class HalscopeWsClient {
 
   Future<ScopeStatus> getStatus() async {
     final result = await call('get_status');
-    return result as ScopeStatus;
+    return ScopeStatus.fromJson(result as Map<String, dynamic>);
   }
 
   Future<List<String>> listPins({String? pattern}) async {
     final args = <String, dynamic>{
-      if (pattern != null) 'pattern': pattern,
+      'pattern': pattern == null ? null : pattern!,
     };
     final result = await call('list_pins', args);
     return (result as List).cast<String>();

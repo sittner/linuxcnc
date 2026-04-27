@@ -317,6 +317,9 @@ func (g *clientDartGen) emitClientMethod(fn ast.Func) {
 		if fn.Return.Kind == ast.TypeSlice && fn.Return.Elem != nil && fn.Return.Elem.Kind == ast.TypeNamed {
 			elemClass := toPascalCase(fn.Return.Elem.Name)
 			g.printf("    return (result as List? ?? []).map((e) => %s.fromJson(e as Map<String, dynamic>)).toList();\n", elemClass)
+		} else if fn.Return.Kind == ast.TypeSlice && fn.Return.Elem != nil && fn.Return.Elem.Kind == ast.TypePrimitive {
+			elemType := g.toDartType(*fn.Return.Elem)
+			g.printf("    return (result as List).cast<%s>();\n", elemType)
 		} else if fn.Return.Kind == ast.TypeNamed {
 			retClass := toPascalCase(fn.Return.Name)
 			g.printf("    return %s.fromJson(result as Map<String, dynamic>);\n", retClass)
@@ -336,11 +339,13 @@ func (g *clientDartGen) methodParams(fn ast.Func) string {
 	var required []string
 	var optional []string
 	for _, p := range fn.Params {
-		dartType := g.toDartType(p.Type)
 		paramName := toDartField(p.Name)
 		if p.Type.Nullable {
-			optional = append(optional, fmt.Sprintf("%s? %s", dartType, paramName))
+			// toDartType already appends ? for nullable types
+			dartType := g.toDartType(p.Type)
+			optional = append(optional, fmt.Sprintf("%s %s", dartType, paramName))
 		} else {
+			dartType := g.toDartType(p.Type)
 			required = append(required, fmt.Sprintf("required %s %s", dartType, paramName))
 		}
 	}
