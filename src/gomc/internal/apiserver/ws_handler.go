@@ -17,16 +17,22 @@ import (
 // Generated code produces these from the registered callbacks.
 type WatchFunc func() (json.RawMessage, error)
 
+// BinaryWatchFunc is called periodically by the watch server to produce a
+// binary snapshot. Used for bulk data (e.g. scope sample buffers) where JSON
+// would be too large.
+type BinaryWatchFunc func() ([]byte, error)
+
 // CommandFunc handles a command sent by the client over the WebSocket.
 // req is the JSON-encoded arguments; returns the JSON-encoded response.
 type CommandFunc func(req json.RawMessage) (json.RawMessage, error)
 
 // WatchFuncMeta describes a watchable function.
 type WatchFuncMeta struct {
-	Name        string        // e.g. "get_status"
-	DefaultRate time.Duration // e.g. 50ms
-	Watch       WatchFunc
-	Delta       bool // If true, diff JSON top-level keys per connection.
+	Name        string          // e.g. "get_status"
+	DefaultRate time.Duration   // e.g. 50ms
+	Watch       WatchFunc       // JSON watch (mutually exclusive with BinaryWatch)
+	BinaryWatch BinaryWatchFunc // Binary watch — sent as binary frames
+	Delta       bool            // If true, diff JSON top-level keys per connection.
 }
 
 // CommandMeta describes a command callable over the WebSocket.
@@ -185,6 +191,12 @@ func (c *wsConn) writeJSON(v interface{}) error {
 	return c.conn.Write(c.ctx, websocket.MessageText, data)
 }
 
+func (c *wsConn) writeBinary(data []byte) error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	return c.conn.Write(c.ctx, websocket.MessageBinary, data)
+}
+
 func (c *wsConn) sendError(msg string) {
 	c.writeJSON(wsError{Type: "error", Message: msg})
 }
@@ -277,7 +289,11 @@ func (c *wsConn) handleSubscribe(sub wsSubscribe) {
 	c.mu.Unlock()
 
 	// Start push goroutine
-	go c.pushLoop(subCtx, sub.API, sub.Instance, sub.Func, rate, watchMeta.Watch, watchMeta.Delta)
+	if watchMeta.BinaryWatch != nil {
+		go c.pushLoopBinary(subCtx, sub.Func, rate, watchMeta.BinaryWatch)
+	} else {
+		go c.pushLoop(subCtx, sub.API, sub.Instance, sub.Func, rate, watchMeta.Watch, watchMeta.Delta)
+	}
 }
 
 func (c *wsConn) handleUnsubscribe(unsub wsUnsubscribe) {
@@ -374,6 +390,36 @@ func (c *wsConn) pushLoop(ctx context.Context, apiName, instance, funcName strin
 				Func:     updateFunc,
 				Data:     sendData,
 			}); err != nil {
+				return // write failed — connection dead
+			}
+		}
+	}
+}
+
+// pushLoopBinary pushes binary watch data to the client as binary WebSocket
+// frames. The frame format is: funcName + '\0' + payload, so the client can
+// demux multiple binary watch subscriptions on one connection.
+func (c *wsConn) pushLoopBinary(ctx context.Context, funcName string, rate time.Duration, watch BinaryWatchFunc) {
+	ticker := time.NewTicker(rate)
+	defer ticker.Stop()
+
+	prefix := append([]byte(funcName), 0) // "func_name\0"
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			payload, err := watch()
+			if err != nil || payload == nil {
+				continue
+			}
+
+			frame := make([]byte, len(prefix)+len(payload))
+			copy(frame, prefix)
+			copy(frame[len(prefix):], payload)
+
+			if err := c.writeBinary(frame); err != nil {
 				return // write failed — connection dead
 			}
 		}

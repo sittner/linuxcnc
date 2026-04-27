@@ -1,0 +1,134 @@
+# halscope — HAL oscilloscope API
+#
+# RT capture cmod + WebSocket UI. The scope_rt cmod is loaded once via
+# HAL config and exposes this API for UI clients to configure channels,
+# trigger, and retrieve captured waveform data.
+#
+# The scope.sample RT function is exported via hal_export_funct() and
+# is NOT part of this API — it runs in the HAL thread context.
+
+@api halscope
+@version 1
+@prefix "halscope"
+@rest_export true
+
+const MAX_CHANNELS = 16
+const MAX_SAMPLES = 65536
+
+enum ScopeState {
+    IDLE = 0
+    INIT = 1
+    PRE_TRIG = 2
+    TRIG_WAIT = 3
+    POST_TRIG = 4
+    DONE = 5
+    RESET = 6
+}
+
+enum TrigEdge {
+    FALLING = 0
+    RISING = 1
+}
+
+enum HalType {
+    BIT = 1
+    FLOAT = 2
+    S32 = 3
+    U32 = 4
+    S64 = 5
+    U64 = 6
+}
+
+type ChannelConfig {
+    channel: i32
+    pin_name: string
+}
+
+type ChannelInfo {
+    channel: i32
+    pin_name: string
+    data_type: HalType
+    enabled: bool
+}
+
+type TriggerConfig {
+    channel: i32
+    level: f64
+    edge: TrigEdge
+    force: bool
+    auto_trig: bool
+}
+
+type CaptureConfig {
+    thread_name: string
+    rec_len: i32
+    sample_period_mult: i32
+    pre_trig: i32
+}
+
+type ScopeStatus {
+    state: ScopeState
+    samples: i32
+    rec_len: i32
+    pre_trig: i32
+    sample_len: i32
+    channels: []ChannelInfo
+}
+
+# --- Control functions (non-RT, called via REST/WS) ---
+
+# Reconfigure capture buffer. Only valid when state is IDLE or DONE.
+@method POST
+@path "/configure"
+func configure(config: CaptureConfig) -> i32
+
+# Assign a HAL pin/signal/param to a channel. The cmod resolves the
+# address internally — no SHMPTR passing.
+@method POST
+@path "/channel"
+func set_channel(ch: ChannelConfig) -> i32
+
+# Remove a channel from the capture set.
+@method DELETE
+@path "/channel/{channel}"
+func clear_channel(channel: i32) -> i32
+
+# Set trigger parameters.
+@method POST
+@path "/trigger"
+func set_trigger(trig: TriggerConfig) -> i32
+
+# Arm the capture (transitions IDLE/DONE → INIT → PRE_TRIG).
+@method POST
+@path "/arm"
+func arm() -> i32
+
+# Reset / abort an in-progress capture.
+@method POST
+@path "/reset"
+func reset() -> i32
+
+# Get current scope status.
+@method GET
+@path "/status"
+func get_status() -> ScopeStatus
+
+# List available HAL pins/signals that can be captured.
+@method GET
+@path "/pins"
+func list_pins(pattern: string?) -> []string
+
+# --- Watch functions (pushed to WS clients) ---
+
+# State changes pushed to all connected clients.
+@watch true
+@watch_default_rate 100ms
+func watch_state() -> ScopeStatus
+
+# Sample data delivered as binary WS frames on capture complete.
+# Binary layout: header (16 bytes) + raw sample data.
+# Header: [u32le sample_count] [u32le sample_len] [u32le start_offset] [u32le reserved]
+# Data: sample_count × sample_len × 8 bytes (scope_data_t values, little-endian)
+@watch true
+@watch_default_rate 100ms
+func watch_samples() -> []u8
