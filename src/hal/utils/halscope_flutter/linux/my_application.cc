@@ -4,8 +4,20 @@
 #ifdef GDK_WINDOWING_X11
 #include <gdk/gdkx.h>
 #endif
+#include <unistd.h>
+#include <linux/limits.h>
 
 #include "flutter/generated_plugin_registrant.h"
+
+// Resolve the directory containing this executable.
+static gchar* get_exe_dir() {
+  char buf[PATH_MAX];
+  ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+  if (len < 0) return g_strdup(".");
+  buf[len] = '\0';
+  gchar* dir = g_path_get_dirname(buf);
+  return dir;
+}
 
 struct _MyApplication {
   GtkApplication parent_instance;
@@ -50,6 +62,22 @@ static void my_application_activate(GApplication* application) {
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(
       project, self->dart_entrypoint_arguments);
+
+  // Resolve paths relative to executable:
+  //   bin/halscope              (this binary)
+  //   lib/flutter/              (shared: engine, icudtl.dat)
+  //   lib/flutter/halscope/     (per-app: libapp.so, flutter_assets/)
+  g_autofree gchar* exe_dir = get_exe_dir();
+  g_autofree gchar* flutter_dir = g_build_filename(exe_dir, "..", "lib", "flutter", NULL);
+  g_autofree gchar* app_dir = g_build_filename(flutter_dir, "halscope", NULL);
+
+  gchar* aot_path = g_build_filename(app_dir, "libapp.so", NULL);
+  gchar* assets_path = g_build_filename(app_dir, "flutter_assets", NULL);
+  gchar* icu_path = g_build_filename(flutter_dir, "icudtl.dat", NULL);
+
+  fl_dart_project_set_aot_library_path(project, aot_path);
+  fl_dart_project_set_assets_path(project, assets_path);
+  fl_dart_project_set_icu_data_path(project, icu_path);
 
   FlView* view = fl_view_new(project);
   gtk_widget_show(GTK_WIDGET(view));

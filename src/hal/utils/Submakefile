@@ -41,29 +41,7 @@ USERSRCS += $(HALMETERSRCS)
 	$(Q)$(CC) $(LDFLAGS) -o $@ $^  $(GTK_LIBS)
 TARGETS += ../bin/halmeter
 
-HALSCOPESRCS := \
-    hal/utils/scope.c \
-    hal/utils/scope_horiz.c \
-    hal/utils/scope_vert.c \
-    hal/utils/scope_trig.c \
-    hal/utils/scope_disp.c \
-    hal/utils/scope_files.c \
-    hal/utils/miscgtk.c
-
-USERSRCS += $(HALSCOPESRCS)
-
-../bin/halscope: $(call TOOBJS, $(HALSCOPESRCS)) ../lib/liblinuxcnchal.so.0
-	$(ECHO) Linking $(notdir $@)
-	$(Q)$(CC) $(LDFLAGS) -o $@ $^ $(GTK_LIBS) -lm
-TARGETS += ../bin/halscope
-
 HALGTKSRCS := \
-    hal/utils/scope.c \
-    hal/utils/scope_horiz.c \
-    hal/utils/scope_vert.c \
-    hal/utils/scope_trig.c \
-    hal/utils/scope_disp.c \
-    hal/utils/scope_files.c \
     hal/utils/meter.c \
     hal/utils/miscgtk.c
 $(call TOOBJSDEPS, $(HALGTKSRCS)) : EXTRAFLAGS = $(GTK_CFLAGS)
@@ -112,15 +90,43 @@ $(FLUTTER):
 	$(Q)$(FLUTTER) precache --linux >/dev/null 2>&1
 
 # ---------------------------------------------------------------------------
+# Shared Flutter runtime (engine + ICU data, used by all Flutter UIs)
+# ---------------------------------------------------------------------------
+FLUTTER_ENGINE_SRC := $(FLUTTER_DIR)/bin/cache/artifacts/engine/linux-x64-release
+FLUTTER_ENGINE_COMMON := $(FLUTTER_DIR)/bin/cache/artifacts/engine/linux-x64
+
+../lib/flutter/libflutter_linux_gtk.so: $(FLUTTER)
+	@mkdir -p $(dir $@)
+	$(Q)cp $(FLUTTER_ENGINE_SRC)/libflutter_linux_gtk.so $@
+
+../lib/flutter/icudtl.dat: $(FLUTTER)
+	@mkdir -p $(dir $@)
+	$(Q)cp $(FLUTTER_ENGINE_COMMON)/icudtl.dat $@
+
+TARGETS += ../lib/flutter/libflutter_linux_gtk.so ../lib/flutter/icudtl.dat
+
+# ---------------------------------------------------------------------------
 # halscope Flutter UI
 # ---------------------------------------------------------------------------
 HALSCOPE_FLUTTER_DIR := hal/utils/halscope_flutter
+HALSCOPE_FLUTTER_BUNDLE := $(HALSCOPE_FLUTTER_DIR)/build/linux/x64/release/bundle
 
 .PHONY: halscope-flutter
 halscope-flutter: $(FLUTTER)
 	$(ECHO) "Building halscope Flutter app..."
-	$(Q)cd $(HALSCOPE_FLUTTER_DIR) && $(abspath $(FLUTTER)) build linux --release
-	$(Q)cp $(HALSCOPE_FLUTTER_DIR)/build/linux/x64/release/bundle/halscope_flutter ../bin/halscope-flutter
+	$(Q)cd $(HALSCOPE_FLUTTER_DIR) && $(abspath $(FLUTTER)) build linux --release --no-pub
+
+# Deploy per-app files: libapp.so + flutter_assets
+../lib/flutter/halscope/.stamp: halscope-flutter
+	@mkdir -p ../lib/flutter/halscope
+	$(Q)cp $(HALSCOPE_FLUTTER_BUNDLE)/lib/libapp.so ../lib/flutter/halscope/
+	$(Q)cp -a $(HALSCOPE_FLUTTER_BUNDLE)/data/flutter_assets ../lib/flutter/halscope/
+	$(Q)touch $@
+
+# Real binary goes directly into bin/
+../bin/halscope: ../lib/flutter/halscope/.stamp ../lib/flutter/libflutter_linux_gtk.so ../lib/flutter/icudtl.dat
+	$(Q)cp $(HALSCOPE_FLUTTER_BUNDLE)/halscope $@
+TARGETS += ../bin/halscope
 
 
 ../bin/halcompile: ../bin/%: objects/hal/utils/%.py

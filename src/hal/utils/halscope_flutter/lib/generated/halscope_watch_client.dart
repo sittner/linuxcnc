@@ -399,12 +399,12 @@ class HalscopeWsClient {
     return result as ScopeStatus;
   }
 
-  Future<List<String>> listPins({String?? pattern}) async {
+  Future<List<String>> listPins({String? pattern}) async {
     final args = <String, dynamic>{
-      'pattern': pattern == null ? null : pattern!,
+      if (pattern != null) 'pattern': pattern,
     };
     final result = await call('list_pins', args);
-    return result as List<String>;
+    return (result as List).cast<String>();
   }
 
   /// Close the WebSocket connection.

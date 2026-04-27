@@ -4,9 +4,24 @@ project(halscope LANGUAGES CXX)
 set(BINARY_NAME "halscope")
 set(APPLICATION_ID "org.linuxcnc.halscope")
 
+# Install into the build output directory (not /usr/local).
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+  set(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}/bundle" CACHE PATH "" FORCE)
+endif()
+
 cmake_policy(SET CMP0063 NEW)
 
-set(CMAKE_INSTALL_RPATH "$ORIGIN/lib")
+set(CMAKE_INSTALL_RPATH "$ORIGIN/../lib/flutter")
+
+# Set FLUTTER_MANAGED_DIR before add_subdirectory so it points to the right place.
+set(FLUTTER_MANAGED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/flutter")
+
+# Find GTK (needed for target_link_libraries below).
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(GTK REQUIRED IMPORTED_TARGET gtk+-3.0)
+
+# Pull in Flutter engine and helper functions (defines apply_standard_settings).
+add_subdirectory("flutter")
 
 # Configure build options from the parent project.
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -36,10 +51,30 @@ target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 include(flutter/generated_plugins.cmake)
 
 # === Bundle === #
-# Install bundled plugin libraries next to the executable.
+# The Makefile copies the engine + icudtl.dat into the shared lib/flutter/ dir.
+# Here we only install per-app files into the bundle directory.
+
+# Install AOT compiled Dart code.
+set(AOT_LIB "${CMAKE_CURRENT_SOURCE_DIR}/../build/lib/libapp.so")
+install(FILES "${AOT_LIB}"
+  DESTINATION "${CMAKE_INSTALL_PREFIX}/lib"
+  COMPONENT Runtime)
+
+# Install flutter_assets.
+set(FLUTTER_ASSETS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../build/flutter_assets")
+install(DIRECTORY "${FLUTTER_ASSETS_DIR}"
+  DESTINATION "${CMAKE_INSTALL_PREFIX}/data"
+  COMPONENT Runtime)
+
+# Install ICU data (also in data/ for the engine to find it).
+install(FILES "${FLUTTER_ICU_DATA_FILE}"
+  DESTINATION "${CMAKE_INSTALL_PREFIX}/data"
+  COMPONENT Runtime)
+
+# Install bundled plugin libraries.
 foreach(bundled_library ${PLUGIN_BUNDLED_LIBRARIES})
   install(FILES "${bundled_library}"
-    DESTINATION "${CMAKE_INSTALL_PREFIX}"
+    DESTINATION "${CMAKE_INSTALL_PREFIX}/lib"
     COMPONENT Runtime)
 endforeach(bundled_library)
 

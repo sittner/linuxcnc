@@ -54,7 +54,7 @@ class _AddChannelDialogState extends State<AddChannelDialog> {
       final pattern = _searchController.text.isEmpty ? '*' : _searchController.text;
       final result = await widget.client.listPins(pattern: pattern);
       setState(() {
-        _pins = (result as List).cast<String>();
+        _pins = result;
         _loading = false;
         _selectedPin = null;
       });

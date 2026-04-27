@@ -321,7 +321,7 @@ class HalscopeClient {
     return ScopeStatus.fromJson(result as Map<String, dynamic>);
   }
 
-  Future<List<String>> listPins({String?? pattern}) async {
+  Future<List<String>> listPins({String? pattern}) async {
     const path = '/pins';
     final query = <String, String>{
       if (pattern != null) 'pattern': pattern.toString(),
@@ -330,7 +330,7 @@ class HalscopeClient {
         ? '$path?${query.entries.map((e) => '${e.key}=${Uri.encodeComponent(e.value)}').join('&')}'
         : path;
     final result = await _doRequest('GET', queryPath, body: null, hasResult: true);
-    return result as List<String>;
+    return (result as List).cast<String>();
   }
 
 }

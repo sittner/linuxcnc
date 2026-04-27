@@ -1549,6 +1549,30 @@ fi
 AC_SUBST([GO])
 AC_SUBST([HAVE_GOLANG])
 
+# Flutter desktop build dependencies (required when Golang/Flutter halscope is built)
+if test "x$HAVE_GOLANG" = "xyes"; then
+    AC_MSG_CHECKING([for ninja-build (Flutter dependency)])
+    AC_PATH_PROG([NINJA], [ninja], [no])
+    if test "x$NINJA" = "xno"; then
+        AC_MSG_ERROR([ninja-build is required for Flutter desktop builds. Install with: sudo apt install ninja-build])
+    fi
+    AC_MSG_RESULT([$NINJA])
+
+    AC_MSG_CHECKING([for cmake (Flutter dependency)])
+    AC_PATH_PROG([CMAKE], [cmake], [no])
+    if test "x$CMAKE" = "xno"; then
+        AC_MSG_ERROR([cmake is required for Flutter desktop builds. Install with: sudo apt install cmake])
+    fi
+    AC_MSG_RESULT([$CMAKE])
+
+    AC_MSG_CHECKING([for pkg-config (Flutter dependency)])
+    AC_PATH_PROG([PKGCONFIG], [pkg-config], [no])
+    if test "x$PKGCONFIG" = "xno"; then
+        AC_MSG_ERROR([pkg-config is required for Flutter desktop builds. Install with: sudo apt install pkg-config])
+    fi
+    AC_MSG_RESULT([$PKGCONFIG])
+fi
+
 # Check for IgH EtherCAT master library and libexpat (optional, for lcec driver)
 AC_ARG_ENABLE([ethercat],
     AS_HELP_STRING([--enable-ethercat], [Build EtherCAT HAL driver (requires IgH EtherCAT master and libexpat)]),
