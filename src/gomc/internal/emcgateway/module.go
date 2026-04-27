@@ -12,8 +12,8 @@
 package emcgateway
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/../../../emc/nml_intf -I${SRCDIR}/../../.. -I${SRCDIR}/../../../rtapi -I${SRCDIR}/../../../../include -I${SRCDIR}/../../../libnml/posemath -I${SRCDIR}/../../../libnml/rcs -I${SRCDIR}/../../../libnml/nml -I${SRCDIR}/../../../libnml/inifile -I${SRCDIR}/../../../libnml/os_intf -I${SRCDIR}/../../../emc -I${SRCDIR}/../../../emc/rs274ngc
-#cgo LDFLAGS: -L${SRCDIR}/../../../../lib -llinuxcnc -lnml -lposemath -lstdc++
+#cgo CFLAGS: -I${SRCDIR}/../../../emc/nml_intf -I${SRCDIR}/../../.. -I${SRCDIR}/../../../rtapi -I${SRCDIR}/../../../../include -I${SRCDIR}/../../../libnml/posemath -I${SRCDIR}/../../../libnml/rcs -I${SRCDIR}/../../../libnml/nml -I${SRCDIR}/../../../libnml/inifile -I${SRCDIR}/../../../libnml/os_intf -I${SRCDIR}/../../../emc -I${SRCDIR}/../../../emc/rs274ngc -I${SRCDIR}/../../../emc/tooldata
+#cgo LDFLAGS: -L${SRCDIR}/../../../../lib -llinuxcnc -lnml -lposemath -ltooldata -lstdc++
 
 #include "nml_shim.h"
 #include <stdlib.h>
@@ -90,6 +90,9 @@ func newEmcGateway(ini *inifile.IniFile, logger *slog.Logger, name string, args 
 	}
 	if err := apiserver.DefaultRegistry().Register("emcerror", 1, "emcerror", unsafe.Pointer(gw)); err != nil {
 		return nil, fmt.Errorf("emcgateway: register emcerror: %w", err)
+	}
+	if err := apiserver.DefaultRegistry().Register("tools", 1, "tools", unsafe.Pointer(gw)); err != nil {
+		return nil, fmt.Errorf("emcgateway: register tools: %w", err)
 	}
 
 	// Register WebSocket watch APIs.

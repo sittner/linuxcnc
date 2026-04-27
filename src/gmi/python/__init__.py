@@ -48,6 +48,12 @@ def positionlogger(stat_unused, c0, c1, c2, c3, c4, c5, geometry, is_xyuv=0):
     return PositionLogger(stat_unused, c0, c1, c2, c3, c4, c5, geometry, is_xyuv)
 
 
+def ToolTable():
+    """Create a gmi.ToolTable instance for REST tool table access."""
+    from gmi.tools import ToolTable as _ToolTable
+    return _ToolTable()
+
+
 def component_exists(name: str) -> bool:
     """Check if a HAL component exists via the halcmd REST API."""
     import json

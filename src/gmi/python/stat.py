@@ -26,29 +26,42 @@ from gmi import ws_url
 
 
 class _ToolEntry:
-    """Minimal stub for a tool table entry.
+    """A tool table entry supporting both indexed and named attribute access.
 
     Supports both indexed access (entry[0], entry[3], entry[10]) and
-    named attributes (.xoffset, etc.) matching the linuxcnc C extension.
-    Returns zeros for all fields — a proper implementation needs a
-    dedicated tool data API endpoint.
+    named attributes (.id, .xoffset, etc.) matching the linuxcnc C extension.
     """
-    _fields = (
-        0,     # [0]  id (tool number)
-        0.0,   # [1]  xoffset
-        0.0,   # [2]  yoffset
-        0.0,   # [3]  zoffset
-        0.0,   # [4]  aoffset
-        0.0,   # [5]  boffset
-        0.0,   # [6]  coffset
-        0.0,   # [7]  uoffset
-        0.0,   # [8]  voffset
-        0.0,   # [9]  woffset
-        0.0,   # [10] diameter
-        0.0,   # [11] frontangle
-        0.0,   # [12] backangle
-        0,     # [13] orientation
-    )
+    __slots__ = ("_fields",)
+
+    def __init__(self, toolno=0, xoffset=0.0, yoffset=0.0, zoffset=0.0,
+                 aoffset=0.0, boffset=0.0, coffset=0.0, uoffset=0.0,
+                 voffset=0.0, woffset=0.0, diameter=0.0, frontangle=0.0,
+                 backangle=0.0, orientation=0):
+        self._fields = (
+            toolno, xoffset, yoffset, zoffset, aoffset, boffset,
+            coffset, uoffset, voffset, woffset, diameter, frontangle,
+            backangle, orientation,
+        )
+
+    @classmethod
+    def from_dict(cls, d):
+        """Create from a REST API tool dict."""
+        return cls(
+            toolno=d.get("toolno", 0),
+            xoffset=d.get("x_offset", 0.0),
+            yoffset=d.get("y_offset", 0.0),
+            zoffset=d.get("z_offset", 0.0),
+            aoffset=d.get("a_offset", 0.0),
+            boffset=d.get("b_offset", 0.0),
+            coffset=d.get("c_offset", 0.0),
+            uoffset=d.get("u_offset", 0.0),
+            voffset=d.get("v_offset", 0.0),
+            woffset=d.get("w_offset", 0.0),
+            diameter=d.get("diameter", 0.0),
+            frontangle=d.get("frontangle", 0.0),
+            backangle=d.get("backangle", 0.0),
+            orientation=d.get("orientation", 0),
+        )
 
     def __getitem__(self, idx):
         return self._fields[idx]
@@ -57,16 +70,60 @@ class _ToolEntry:
         return self._fields[0] != 0
 
     @property
+    def id(self):
+        return self._fields[0]
+
+    @property
     def xoffset(self):
         return self._fields[1]
+
+    @property
+    def yoffset(self):
+        return self._fields[2]
 
     @property
     def zoffset(self):
         return self._fields[3]
 
     @property
+    def aoffset(self):
+        return self._fields[4]
+
+    @property
+    def boffset(self):
+        return self._fields[5]
+
+    @property
+    def coffset(self):
+        return self._fields[6]
+
+    @property
+    def uoffset(self):
+        return self._fields[7]
+
+    @property
+    def voffset(self):
+        return self._fields[8]
+
+    @property
+    def woffset(self):
+        return self._fields[9]
+
+    @property
     def diameter(self):
         return self._fields[10]
+
+    @property
+    def frontangle(self):
+        return self._fields[11]
+
+    @property
+    def backangle(self):
+        return self._fields[12]
+
+    @property
+    def orientation(self):
+        return self._fields[13]
 
 
 class Stat:
@@ -287,13 +344,30 @@ class Stat:
         raise AttributeError(f"Stat has no attribute {name!r}")
 
     def _stub_tool_table(self):
-        """Return a minimal tool_table stub.
+        """Fetch tool table via REST API.
 
-        tool_table is not available through NML stat (it uses tooldata_get
-        shared memory). This stub prevents crashes; a proper implementation
-        will need a dedicated API endpoint.
+        Returns a list indexed by pocket number, matching the linuxcnc
+        C extension's tool_table semantics. Index 0 is the spindle tool.
         """
-        return [_ToolEntry()] * 56  # linuxcnc uses CANON_POCKETS_MAX (56)
+        try:
+            from gmi.tools import ToolTable
+            tt = ToolTable()
+            tools = tt.list()
+        except Exception:
+            return [_ToolEntry()] * 56
+
+        # Build pocket-indexed list (same as linuxcnc's tool_table).
+        # Find max pocket to size the list.
+        max_pocket = 55
+        for t in tools:
+            p = t.get("pocketno", 0)
+            if p > max_pocket:
+                max_pocket = p
+        result = [_ToolEntry()] * (max_pocket + 1)
+        for t in tools:
+            p = t.get("pocketno", 0)
+            result[p] = _ToolEntry.from_dict(t)
+        return result
 
     def stop(self):
         """Stop the background WebSocket thread."""
