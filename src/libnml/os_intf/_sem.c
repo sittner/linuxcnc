@@ -146,12 +146,9 @@ int rcs_sem_wait_notimeout(rcs_sem_t * sem)
     sops.sem_num = 0;
     sops.sem_op = SEM_TAKE;
     sops.sem_flg = 0;
-    retval = semop(*sem, &sops, 1);
-    if (errno == EINTR) {
-	rcs_print_debug(PRINT_SEMAPHORE_ACTIVITY, "%s %d semop interrupted\n",
-	    __FILE__, __LINE__);
-	return retval;
-    }
+    do {
+        retval = semop(*sem, &sops, 1);
+    } while (retval < 0 && errno == EINTR);
 
     if (retval == -1) {
 	rcs_print_error
@@ -216,7 +213,9 @@ int rcs_sem_wait(rcs_sem_t * sem, double timeout)
         time.tv_sec = (long int) timeout;
         time.tv_nsec = (long int) ((timeout - time.tv_sec) * 1e9);
     }
-    retval = semtimedop(*sem, &sops, 1, &time);
+    do {
+        retval = semtimedop(*sem, &sops, 1, &time);
+    } while (retval < 0 && errno == EINTR);
 #else
     /* semtimedop was introduced with 2.4.22 kernels, prior to that, we need
        to mess around with timers & signals.. */
@@ -234,7 +233,9 @@ int rcs_sem_wait(rcs_sem_t * sem, double timeout)
         sigaction(SIGALRM, &sa, NULL);
         setitimer(ITIMER_REAL, &time, NULL);
     }
-    retval = semop(*sem, &sops, 1);
+    do {
+        retval = semop(*sem, &sops, 1);
+    } while (retval < 0 && errno == EINTR);
 #endif
 
 #if DEBUG
