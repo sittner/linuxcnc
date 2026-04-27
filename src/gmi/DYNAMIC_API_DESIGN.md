@@ -18,7 +18,7 @@ intended to replace NML with a modern, type-safe approach.
 | 5.2: AXIS UI Watch Channel | ✅ Complete | 2 |
 | 5.3: PyVCP REST/WebSocket | ✅ Complete | — |
 | 5.4: INI REST Migration | ✅ Complete | 6 |
-| 5.5: NML Gateway (stat/cmd/error) | 🔄 In Progress | — |
+| 5.5: NML Gateway (stat/cmd/error) | ✅ Complete | — |
 | 6: Polish | ❌ Not Started | — |
 | 7: Remove Go Plugins | ✅ Complete | — |
 
@@ -623,7 +623,19 @@ src/gmi/
 │   ├── kins.gmi            # Kinematics API (5 callbacks)
 │   ├── mot.gmi             # Motion reverse-callbacks (83 callbacks)
 │   ├── tp.gmi              # Trajectory planner API (29 callbacks)
+│   ├── emcstat.gmi         # Machine status (watchable, @rest_export true)
+│   ├── emccmd.gmi          # Machine commands (@rest_export true)
+│   ├── emcerror.gmi        # Error messages (watchable, @rest_export true)
 │   └── README.md
+├── python/                 # Hand-written Python client modules
+│   ├── __init__.py         # gmi package: rest_url(), ws_url(), IniFile, helpers
+│   ├── stat.py             # gmi.Stat (WS watch, drop-in for linuxcnc.stat())
+│   ├── command.py          # gmi.Command (WS commands, drop-in for linuxcnc.command())
+│   ├── error.py            # gmi.ErrorChannel (WS watch, drop-in for linuxcnc.error_channel())
+│   ├── constants.py        # Flat constants (MODE_MANUAL=1, etc.)
+│   ├── positionlogger.py   # gmi.PositionLogger (WS-based, vertex9/OpenGL)
+│   ├── pyvcp_compat.py     # PyVCPCompat (WS-based hal.component drop-in)
+│   └── tools.py            # Tool table REST client
 ├── lib/                    # C runtime library (libgmi) for REST clients
 │   ├── gmi.h               # Main include
 │   ├── gmi_http.c/h        # HTTP client (libcurl wrapper)
@@ -679,6 +691,13 @@ src/gomc/                   # Go module: github.com/sittner/linuxcnc/src/gomc
 │   │   ├── launcher.go      # Main server struct + startup
 │   │   ├── rest_server.go   # REST API server start/stop ([GMC]REST_ADDR)
 │   │   └── cleanup.go       # Shutdown sequence
+│   ├── emcgateway/           # NML↔GMI gateway (Step 5.5)
+│   │   ├── module.go        # init(), NML init/shutdown, stat/error watch, auto-loaded by launcher
+│   │   ├── types.go         # Go stat/joint/spindle structs, JSON tags
+│   │   ├── convert.go       # C stat struct → Go struct conversion
+│   │   ├── commands.go      # 25 NML command handlers (set_state, jog, mdi, etc.)
+│   │   ├── tools.go         # Tool table REST API (GET/PUT via tooldata_mmap C shim)
+│   │   └── poslog.go        # Server-side position sampler goroutine (100Hz)
 │   ├── halrest/             # Server-side REST handler for halcmd API (Step 4.5)
 │   │   └── halrest.go       # Dispatches REST calls to internal/halcmd
 │   ├── inirest/             # Server-side REST handler for INI file access (Step 5.4)
@@ -1421,7 +1440,7 @@ The `_query()` method accepts a list for future bulk optimization if needed.
 - Instance name is `"ini"` (no numeric suffix — instance identity is the name itself,
   consistent with halcmd, pyvcp, and all other singleton APIs)
 
-### Step 5.5: NML Gateway — stat/command/error via GMI (IN PROGRESS)
+### Step 5.5: NML Gateway — stat/command/error via GMI (COMPLETE)
 
 Replace the remaining `liblinuxcnc` dependency in axis.py by exposing
 `linuxcnc.stat()`, `linuxcnc.command()`, and `linuxcnc.error_channel()`
@@ -1776,13 +1795,13 @@ func get_errors() -> []ErrorMessage
    - `linuxcnc.nmlfile` handling removed
    - Kept: `linuxcnc.version`, `linuxcnc.positionlogger` (deferred to Step 6)
 
-6. 🔲 **Build system** — Remaining work:
-   - Compile `nml_shim.cc` and link into gomc-server (CGO_LDFLAGS)
-   - Add `gomod internal/emcgateway` to `packages.conf.in`
-   - Add `[HAL] GOMOD = emcgateway` to sim INI configs
-   - Run gmicompile on IDL files for Go dispatch generation
+6. � **Build system** — Remaining work:
+   - Compile `nml_shim.cc` and link into gomc-server (CGO_LDFLAGS) ✅
+   - Add `gomod internal/emcgateway` to `packages.conf.in` ✅
+   - Auto-load emcgateway when `[TASK]TASK` is set (launcher.go) ✅
+   - Run gmicompile on IDL files for Go dispatch generation (deferred — hand-written gateway sufficient)
 
-7. 🔲 **Tests** — Gateway endpoint tests, end-to-end axis.py startup test
+7. 🔲 **Tests** — Gateway endpoint tests (deferred to Step 6)
 
 **NML Connection Lifecycle:**
 
@@ -1814,14 +1833,38 @@ instead of Python.
    what axis.py reads. Other UIs (touchy, gmoccapy, gscreen) will migrate
    later and need the same endpoints.
 
-5. **Delta compression deferred**: Full JSON state pushed every 50ms
-   (~2-3KB = ~50KB/s, trivial for localhost). Delta/JSON-merge-patch
-   optimization is a Step 6 watch-infrastructure-level feature.
+5. **Delta compression implemented**: Per-connection delta encoding in
+   `pushLoop` (ws_handler.go). First message = full snapshot, subsequent
+   messages contain only changed top-level JSON keys. Python `stat.py`
+   uses `self._data.update(data)` to merge deltas. Reduces WS bandwidth
+   to near-zero when machine is idle.
 
-6. **positionlogger deferred**: `linuxcnc.positionlogger` (C extension for
-   backplot) kept for now. Reimplementation using `gmi.Stat` watch data
-   is Step 6 work. axis.py will retain a minimal `import linuxcnc` for
-   positionlogger only until then.
+6. **positionlogger complete**: Server-side `poslog.go` samples NML stat
+   at 100Hz, client-side `positionlogger.py` handles vertex9/colinearity/
+   OpenGL rendering. `_glhelpers.so` C extension extracted for GL geometry.
+   `import linuxcnc` fully removed from axis.py.
+
+7. **NML semaphore EINTR fix**: `libnml/os_intf/_sem.c` had missing EINTR
+   retry loops on `semtimedop`/`semop` calls. Go runtime's SIGURG for
+   goroutine preemption interrupted the syscalls, causing spurious
+   "Can't take semaphore" errors. Fixed with standard POSIX retry pattern.
+
+8. **pprof profiling**: Permanent `/debug/pprof/` endpoints added to the
+   API server for runtime CPU/memory profiling. Zero overhead when idle.
+
+9. **Auto-load emcgateway**: The launcher auto-loads `emcgateway` when
+   `[TASK]TASK` is configured, eliminating the need for `load emcgateway`
+   in HAL files. All ~80 axis sim configs work without modification.
+
+10. **Tool table REST API**: `GET/PUT /api/v1/tools/` endpoints backed by
+    `tooldata_mmap` via a C shim (`tool_shim.h/cc`). Python `gmi.tools`
+    module and `tooledit_widget.py` adapted. Returns entries in mmap index
+    order (not re-indexed by pocket number).
+
+11. **NML process name kept as `xemc`**: The gateway connects to NML as
+    process `xemc` (standard NML role name for display clients). Not
+    renamed to `gomc` since NML is being replaced — not worth the churn
+    of modifying `linuxcnc.nml` + all custom configs.
 
 **Deliverables:**
 - [x] `gmi/idl/emcstat.gmi` — stat types, enums (TaskMode, TaskState, etc.), watch function
@@ -1836,9 +1879,8 @@ instead of Python.
 - [x] `gmi/codegen/Submakefile` — copy rules for Python wrapper files
 - [x] Build system: `nml_shim.cc` in liblinuxcnc.a, `packages.conf` entry, gomc-server deps
 - [x] axis.py — stat/command/error/positionlogger/constants all use `gmi.*`;
-      `import linuxcnc` retained for GL helpers used by glcanon.py
-      (`draw_lines`, `line9`, `gui_respect_offsets`, `gui_rot_offsets`,
-      `draw_dwells`) — these need separate migration
+      `import linuxcnc` fully removed. GL helpers extracted to standalone
+      `_glhelpers.so` C extension (no NML/linuxcnc deps).
 - [x] `src/gmi/python/positionlogger.py` — `PositionLogger` class (WS-based, drop-in
       for `linuxcnc.positionlogger`); includes client-side vertex9, colinearity reduction,
       and OpenGL rendering via ctypes interleaved arrays
@@ -1848,9 +1890,8 @@ instead of Python.
 - [x] `nml_shim.h/cc` — added `motion_type` field to `nml_stat_t`
 - [x] `gmi/__init__.py` — `gmi.version` (from `LINUXCNCVERSION` env var),
       `gmi.positionlogger()` factory function
-- [ ] Generate Go dispatch from IDL files (gmicompile runs)
-- [ ] Tests for gateway endpoints
-- [ ] End-to-end test: axis.py startup with emcgateway loaded
+- [ ] Generate Go dispatch from IDL files (gmicompile runs — deferred, hand-written gateway sufficient)
+- [x] End-to-end: axis.py starts and runs with all sim configs via auto-loaded emcgateway
 
 **Position Logger Architecture:**
 
@@ -1877,12 +1918,11 @@ server/client architecture:
   `rotation_offsets` state (`gui_respect_offsets`, `gui_rot_offsets`) that
   is set by the Python GUI. Server sends raw 9-axis positions.
 
-- **Known gap — `tool_table`**: `stat.tool_table` is currently a stub
-  returning zeroed entries. The real tool table data lives in shared memory
-  (`tooldata_get()` / `tooldata_mmap`), NOT in the NML stat struct.
-  A dedicated REST/WS endpoint is needed (e.g. `GET /api/v1/tooltable`,
-  watch func `get_tool_table`). Until then, axis.py tool display shows
-  "No tool". This is a separate work item, not part of the NML gateway.
+- **Tool table**: Implemented as REST API backed by `tooldata_mmap` via
+  C shim (`tool_shim.h/cc`). `GET /api/v1/tools/` returns all entries in
+  mmap index order. `PUT /api/v1/tools/reload` triggers tool table reload.
+  Python `stat.tool_table` property fetches from REST. `tooledit_widget.py`
+  adapted to use `gmi` REST instead of direct mmap access.
 
 ### Step 6: Polish (NOT STARTED)
 - [ ] Error handling standardization
