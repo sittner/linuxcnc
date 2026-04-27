@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/pprof"
+	"strconv"
 	"strings"
 	"syscall"
 )
@@ -241,7 +242,25 @@ func encodeParams(pattern, requestPath string, query map[string][]string) []byte
 		return nil
 	}
 
-	data, _ := json.Marshal(params)
+	// Build a map[string]interface{} so numeric strings are encoded as
+	// JSON numbers.  This allows generated dispatch functions to unmarshal
+	// path/query params like {channel} = "0" into int32 fields.
+	typed := make(map[string]interface{}, len(params))
+	for k, v := range params {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			typed[k] = n
+		} else if f, err := strconv.ParseFloat(v, 64); err == nil {
+			typed[k] = f
+		} else if v == "true" {
+			typed[k] = true
+		} else if v == "false" {
+			typed[k] = false
+		} else {
+			typed[k] = v
+		}
+	}
+
+	data, _ := json.Marshal(typed)
 	return data
 }
 
