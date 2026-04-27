@@ -144,15 +144,13 @@ func handleListTools() ([]byte, error) {
 		return nil, err
 	}
 	lastIdx := int(C.tool_shim_last_index())
-	tools := make([]toolEntry, 0, lastIdx+1)
+	// Return ALL entries in mmap index order (including empty slots).
+	// Index 0 = spindle tool. Callers rely on positional indexing.
+	tools := make([]toolEntry, lastIdx+1)
 	for i := 0; i <= lastIdx; i++ {
 		var s C.tool_shim_entry_t
 		if C.tool_shim_get(C.int(i), &s) == 0 {
-			e := shimToEntry(&s)
-			// Skip empty entries (toolno == 0 and not pocket 0/spindle)
-			if i == 0 || e.Toolno != 0 {
-				tools = append(tools, e)
-			}
+			tools[i] = shimToEntry(&s)
 		}
 	}
 	return json.Marshal(tools)

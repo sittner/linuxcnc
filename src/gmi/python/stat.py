@@ -346,8 +346,9 @@ class Stat:
     def _stub_tool_table(self):
         """Fetch tool table via REST API.
 
-        Returns a list indexed by pocket number, matching the linuxcnc
+        Returns a list indexed by mmap index, matching the linuxcnc
         C extension's tool_table semantics. Index 0 is the spindle tool.
+        The REST API returns all entries in mmap index order.
         """
         try:
             from gmi.tools import ToolTable
@@ -356,18 +357,9 @@ class Stat:
         except Exception:
             return [_ToolEntry()] * 56
 
-        # Build pocket-indexed list (same as linuxcnc's tool_table).
-        # Find max pocket to size the list.
-        max_pocket = 55
-        for t in tools:
-            p = t.get("pocketno", 0)
-            if p > max_pocket:
-                max_pocket = p
-        result = [_ToolEntry()] * (max_pocket + 1)
-        for t in tools:
-            p = t.get("pocketno", 0)
-            result[p] = _ToolEntry.from_dict(t)
-        return result
+        # The REST API returns entries in mmap index order.
+        # Index 0 = spindle slot, same as the original C extension.
+        return [_ToolEntry.from_dict(t) for t in tools]
 
     def stop(self):
         """Stop the background WebSocket thread."""
