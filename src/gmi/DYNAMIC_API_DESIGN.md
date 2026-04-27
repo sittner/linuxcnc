@@ -1835,7 +1835,10 @@ instead of Python.
 - [x] `src/gmi/python/constants.py` — flat constants for backward compat (`from gmi.constants import *`)
 - [x] `gmi/codegen/Submakefile` — copy rules for Python wrapper files
 - [x] Build system: `nml_shim.cc` in liblinuxcnc.a, `packages.conf` entry, gomc-server deps
-- [x] axis.py — `import linuxcnc` fully removed, all refs use `gmi.*` / bare constants
+- [x] axis.py — stat/command/error/positionlogger/constants all use `gmi.*`;
+      `import linuxcnc` retained for GL helpers used by glcanon.py
+      (`draw_lines`, `line9`, `gui_respect_offsets`, `gui_rot_offsets`,
+      `draw_dwells`) — these need separate migration
 - [x] `src/gmi/python/positionlogger.py` — `PositionLogger` class (WS-based, drop-in
       for `linuxcnc.positionlogger`); includes client-side vertex9, colinearity reduction,
       and OpenGL rendering via ctypes interleaved arrays

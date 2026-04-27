@@ -68,6 +68,7 @@ import nf
 import locale
 import bwidget
 from math import hypot, atan2, sin, cos, pi, sqrt
+import linuxcnc  # still needed for GL helpers used by glcanon (draw_lines, line9, etc.)
 import gmi
 from gmi.constants import *
 from glnav import *
