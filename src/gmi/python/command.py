@@ -166,3 +166,7 @@ class Command:
         """
         result = self._post("/wait-complete", {"timeout": timeout})
         return result.get("result", -1)
+
+    def debug(self, level: int):
+        """Set debug level (bitmask of DEBUG_* flags)."""
+        self._post("/debug", {"debug": level})

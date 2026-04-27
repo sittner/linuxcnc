@@ -114,6 +114,7 @@ type statFull struct {
 	Homed               [16]bool       `json:"homed"`
 	Limit               [16]int        `json:"limit"`
 	State               int            `json:"state"`
+	Debug               int            `json:"debug"`
 }
 
 // ─── emcerror types ───

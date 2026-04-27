@@ -73,6 +73,9 @@ type cmdFileReq struct {
 type cmdTimeoutReq struct {
 	Timeout float64 `json:"timeout"`
 }
+type cmdDebugReq struct {
+	Debug int `json:"debug"`
+}
 
 // ─── Helpers ───
 
@@ -303,4 +306,12 @@ func (gw *emcGateway) cmdWaitComplete(req json.RawMessage) (json.RawMessage, err
 	}
 	rc := C.nml_shim_wait_complete(C.double(r.Timeout))
 	return json.Marshal(map[string]int{"result": int(rc)})
+}
+
+func (gw *emcGateway) cmdSetDebug(req json.RawMessage) (json.RawMessage, error) {
+	r, err := unmarshal[cmdDebugReq](req)
+	if err != nil {
+		return nil, err
+	}
+	return cmdResult(C.nml_shim_set_debug(C.int(r.Debug)))
 }

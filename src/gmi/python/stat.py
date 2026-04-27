@@ -207,6 +207,37 @@ class Stat:
         """No-op. Data is pushed by the watch channel automatically."""
         pass
 
+    # All known stat attribute names, for dir() support.
+    _ALL_ATTRS = {
+        # Task
+        "task_mode", "task_state", "interp_state", "exec_state",
+        "file", "command", "motion_line", "current_line", "read_line",
+        "queued_mdi_commands", "optional_stop", "block_delete",
+        "task_paused", "g5x_index",
+        # Motion
+        "motion_mode", "enabled", "inpos", "paused", "feedrate",
+        "rapidrate", "max_velocity", "velocity", "distance_to_go",
+        "current_vel", "motion_id",
+        # Positions
+        "position", "actual_position", "probed_position",
+        "g5x_offset", "g92_offset", "tool_offset", "dtg",
+        "joint_actual_position", "rotation_xy",
+        # Collections
+        "joints", "joint", "spindle", "axis",
+        "gcodes", "mcodes", "settings",
+        "homed", "limit",
+        # Scalars
+        "kinematics_type", "num_extrajoints", "axis_mask",
+        "flood", "mist", "tool_in_spindle", "pocket_prepped",
+        "linear_units", "angular_units", "state", "debug",
+        "tool_table",
+        # Methods
+        "poll", "stop",
+    }
+
+    def __dir__(self):
+        return sorted(self._ALL_ATTRS)
+
     # ─── Flat attribute access (matching linuxcnc.stat() API) ───
 
     # Names that need special handling — skip the generic data[name] lookup.
@@ -338,6 +369,7 @@ class Stat:
             "angular_units": ("angular_units", 1.0),
             "state": ("state", 0),
             "rotation_xy": ("rotation_xy", 0.0),
+            "debug": ("debug", 0),
         }
         if name in _SCALAR_MAP:
             key, default = _SCALAR_MAP[name]

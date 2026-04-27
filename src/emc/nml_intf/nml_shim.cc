@@ -224,6 +224,7 @@ extern "C" int nml_shim_poll_stat(nml_stat_t *out)
     /* RCS state */
     out->state               = st->status;
     out->echo_serial_number  = st->echo_serial_number;
+    out->debug               = st->debug;
 
     return 0;
 }
@@ -462,6 +463,13 @@ extern "C" int nml_shim_abort(void)
 extern "C" int nml_shim_task_plan_synch(void)
 {
     EMC_TASK_PLAN_SYNCH msg;
+    return send_cmd(&msg);
+}
+
+extern "C" int nml_shim_set_debug(int debug)
+{
+    EMC_SET_DEBUG msg;
+    msg.debug = debug;
     return send_cmd(&msg);
 }
 

@@ -140,6 +140,8 @@ typedef struct {
     int state;
     /* echo_serial_number for wait_complete */
     int echo_serial_number;
+    /* debug flags (emc_debug bitmask) */
+    int debug;
 } nml_stat_t;
 
 typedef struct {
@@ -248,6 +250,9 @@ int nml_shim_abort(void);
 
 /* Synchronize task planner. */
 int nml_shim_task_plan_synch(void);
+
+/* Set debug level (EMC_SET_DEBUG). */
+int nml_shim_set_debug(int debug);
 
 /* Set optional stop. */
 int nml_shim_set_optional_stop(int on);

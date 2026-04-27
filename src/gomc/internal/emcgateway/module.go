@@ -219,6 +219,7 @@ func newCmdWatchAPI(gw *emcGateway) *apiserver.WatchAPI {
 			{Name: "load_tool_table", Handler: gw.cmdLoadToolTable},
 			{Name: "program_open", Handler: gw.cmdProgramOpen},
 			{Name: "wait_complete", Handler: gw.cmdWaitComplete},
+			{Name: "set_debug", Handler: gw.cmdSetDebug},
 		},
 	}
 }
@@ -308,5 +309,6 @@ func emccmdRESTFuncs() []apiserver.FuncMeta {
 		{Name: "load_tool_table", Method: "POST", Path: "/load-tool-table", Dispatch: dispatch("load_tool_table", (*emcGateway).cmdLoadToolTable)},
 		{Name: "program_open", Method: "POST", Path: "/program-open", Dispatch: dispatch("program_open", (*emcGateway).cmdProgramOpen)},
 		{Name: "wait_complete", Method: "POST", Path: "/wait-complete", Dispatch: dispatch("wait_complete", (*emcGateway).cmdWaitComplete)},
+		{Name: "set_debug", Method: "POST", Path: "/debug", Dispatch: dispatch("set_debug", (*emcGateway).cmdSetDebug)},
 	}
 }

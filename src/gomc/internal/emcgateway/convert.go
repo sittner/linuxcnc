@@ -151,6 +151,9 @@ func convertStat(cs *C.nml_stat_t) *statFull {
 	s.LinearUnits = float64(cs.linear_units)
 	s.State = int(cs.state)
 
+	// Debug flags
+	s.Debug = int(cs.debug)
+
 	// Per-joint homed/limit arrays
 	for i := 0; i < maxJoints; i++ {
 		s.Homed[i] = cs.homed[i] != 0
