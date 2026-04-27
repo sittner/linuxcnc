@@ -276,6 +276,7 @@ class Stat:
             "tool_in_spindle": ("tool_in_spindle", 0),
             "pocket_prepped": ("pocket_prepped", -1),
             "linear_units": ("linear_units", 1.0),
+            "angular_units": ("angular_units", 1.0),
             "state": ("state", 0),
             "rotation_xy": ("rotation_xy", 0.0),
         }

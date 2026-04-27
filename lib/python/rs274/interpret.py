@@ -159,10 +159,10 @@ class StatMixin:
         return empty_spindle_data
 
     def get_external_angular_units(self):
-        return self.s.angular_units or 1.0
+        return float(self.s.angular_units or 1.0)
 
     def get_external_length_units(self):
-        return self.s.linear_units or 1.0
+        return float(self.s.linear_units or 1.0)
 
     def get_axis_mask(self):
         return self.s.axis_mask

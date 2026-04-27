@@ -807,6 +807,14 @@ static PyObject *parse_file(PyObject *self, PyObject *args) {
         result = pinterp->execute();
     }
 out_error:
+    if(pinterp && !interp_error)
+    {
+        // Emit a final next_line before closing — must happen while
+        // the interpreter is still open so sequence_number() is valid.
+        PyErr_Clear();
+        maybe_new_line();
+        if(PyErr_Occurred()) { interp_error = 1; }
+    }
     if(pinterp)
     {
         auto interp = dynamic_cast<Interp*>(pinterp);
@@ -827,9 +835,6 @@ out_error:
         }
         return NULL;
     }
-    PyErr_Clear();
-    maybe_new_line();
-    if(PyErr_Occurred()) { interp_error = 1; goto out_error; }
     PyObject *retval = PyTuple_New(2);
     PyTuple_SetItem(retval, 0, PyLong_FromLong(result));
     PyTuple_SetItem(retval, 1, PyLong_FromLong(last_sequence_number + error_line_offset));
