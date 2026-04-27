@@ -1,4 +1,4 @@
-#include "my_application.h"
+#include "halscope_app.h"
 
 #include <flutter_linux/flutter_linux.h>
 #ifdef GDK_WINDOWING_X11
@@ -19,23 +19,26 @@ static gchar* get_exe_dir() {
   return dir;
 }
 
-struct _MyApplication {
+struct _HalscopeApp {
   GtkApplication parent_instance;
   char** dart_entrypoint_arguments;
+  FlView* view;
 };
 
-G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
+G_DEFINE_TYPE(HalscopeApp, halscope_app, GTK_TYPE_APPLICATION)
 
-static void my_application_activate(GApplication* application) {
-  MyApplication* self = MY_APPLICATION(application);
-  GtkWindow* window =
-      GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
+static void halscope_app_activate(GApplication* application) {
+  HalscopeApp* self = HALSCOPE_APP(application);
 
-  // Use a header bar when running in GNOME as this is the common style used
-  // by applications and is the setup most users will be using (e.g. Ubuntu
-  // desktop).
-  // If running on X and not combatting with header combatting, use the
-  // temporary CSD.
+  // Avoid re-creating the window if already activated (e.g. from command_line).
+  GtkWindow* window = gtk_application_get_active_window(GTK_APPLICATION(application));
+  if (window != NULL) {
+    gtk_window_present(window);
+    return;
+  }
+
+  window = GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
+
   gboolean use_header_bar = TRUE;
 #ifdef GDK_WINDOWING_X11
   GdkScreen* screen = gtk_window_get_screen(window);
@@ -71,26 +74,26 @@ static void my_application_activate(GApplication* application) {
   g_autofree gchar* flutter_dir = g_build_filename(exe_dir, "..", "lib", "flutter", NULL);
   g_autofree gchar* app_dir = g_build_filename(flutter_dir, "halscope", NULL);
 
-  gchar* aot_path = g_build_filename(app_dir, "libapp.so", NULL);
-  gchar* assets_path = g_build_filename(app_dir, "flutter_assets", NULL);
-  gchar* icu_path = g_build_filename(flutter_dir, "icudtl.dat", NULL);
+  g_autofree gchar* aot_path = g_build_filename(app_dir, "libapp.so", NULL);
+  g_autofree gchar* assets_path = g_build_filename(app_dir, "flutter_assets", NULL);
+  g_autofree gchar* icu_path = g_build_filename(flutter_dir, "icudtl.dat", NULL);
 
   fl_dart_project_set_aot_library_path(project, aot_path);
   fl_dart_project_set_assets_path(project, assets_path);
   fl_dart_project_set_icu_data_path(project, icu_path);
 
-  FlView* view = fl_view_new(project);
-  gtk_widget_show(GTK_WIDGET(view));
-  gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(view));
+  self->view = fl_view_new(project);
+  gtk_widget_show(GTK_WIDGET(self->view));
+  gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(self->view));
 
-  fl_register_plugins(FL_PLUGIN_REGISTRY(view));
+  fl_register_plugins(FL_PLUGIN_REGISTRY(self->view));
 
-  gtk_widget_grab_focus(GTK_WIDGET(view));
+  gtk_widget_grab_focus(GTK_WIDGET(self->view));
 }
 
-static gint my_application_command_line(GApplication* application,
-                                        GApplicationCommandLine* command_line) {
-  MyApplication* self = MY_APPLICATION(application);
+static gint halscope_app_command_line(GApplication* application,
+                                      GApplicationCommandLine* command_line) {
+  HalscopeApp* self = HALSCOPE_APP(application);
   gchar** arguments =
       g_application_command_line_get_arguments(command_line, NULL);
   self->dart_entrypoint_arguments = g_strdupv(arguments + 1);
@@ -102,23 +105,24 @@ static gint my_application_command_line(GApplication* application,
   return 0;
 }
 
-static void my_application_dispose(GObject* object) {
-  MyApplication* self = MY_APPLICATION(object);
+static void halscope_app_dispose(GObject* object) {
+  HalscopeApp* self = HALSCOPE_APP(object);
   g_clear_pointer(&self->dart_entrypoint_arguments, g_strfreev);
-  G_OBJECT_CLASS(my_application_parent_class)->dispose(object);
+  g_clear_object(&self->view);
+  G_OBJECT_CLASS(halscope_app_parent_class)->dispose(object);
 }
 
-static void my_application_class_init(MyApplicationClass* klass) {
-  G_OBJECT_CLASS(klass)->dispose = my_application_dispose;
-  G_APPLICATION_CLASS(klass)->activate = my_application_activate;
-  G_APPLICATION_CLASS(klass)->command_line = my_application_command_line;
+static void halscope_app_class_init(HalscopeAppClass* klass) {
+  G_OBJECT_CLASS(klass)->dispose = halscope_app_dispose;
+  G_APPLICATION_CLASS(klass)->activate = halscope_app_activate;
+  G_APPLICATION_CLASS(klass)->command_line = halscope_app_command_line;
 }
 
-static void my_application_init(MyApplication* self) {}
+static void halscope_app_init(HalscopeApp* self) {}
 
-MyApplication* my_application_new() {
-  return MY_APPLICATION(g_object_new(
-      my_application_get_type(), "application-id", "org.linuxcnc.halscope",
+HalscopeApp* halscope_app_new() {
+  return HALSCOPE_APP(g_object_new(
+      halscope_app_get_type(), "application-id", "org.linuxcnc.halscope",
       "flags",
       G_APPLICATION_HANDLES_COMMAND_LINE | G_APPLICATION_NON_UNIQUE, NULL));
 }

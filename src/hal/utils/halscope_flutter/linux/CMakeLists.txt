@@ -32,7 +32,7 @@ endif()
 # not the value here, or `flutter run` will no longer work.
 add_executable(${BINARY_NAME}
   "main.cc"
-  "my_application.cc"
+  "halscope_app.cc"
   "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"
 )
 
