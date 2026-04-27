@@ -19,7 +19,8 @@ intended to replace NML with a modern, type-safe approach.
 | 5.3: PyVCP REST/WebSocket | ✅ Complete | — |
 | 5.4: INI REST Migration | ✅ Complete | 6 |
 | 5.5: NML Gateway (stat/cmd/error) | ✅ Complete | — |
-| 5.6: Halscope REST/WebSocket | ❌ Not Started | — |
+| 5.6: Dart Client Generation | ❌ Not Started | — |
+| 5.7: Halscope (cmod + Flutter UI) | ❌ Not Started | — |
 | 6: Polish | ❌ Not Started | — |
 | 7: Remove Go Plugins | ✅ Complete | — |
 
@@ -1925,10 +1926,112 @@ server/client architecture:
   Python `stat.tool_table` property fetches from REST. `tooledit_widget.py`
   adapted to use `gmi` REST instead of direct mmap access.
 
-### Step 5.6: Halscope — RT Capture cmod + WebSocket UI (NOT STARTED)
+### Step 5.6: Dart Client Generation (`--client-dart`) (NOT STARTED)
+
+Add Dart client code generation to gmicompile, enabling Flutter UIs to
+consume any GMI API. This is a prerequisite for Step 5.7 (Halscope Flutter)
+and all future Flutter-based UI migrations (halmeter, halshow, touchy, etc.).
+
+**Generated Output (per `.gmi` file):**
+
+For an API `halscope` with `@rest_export true`, `--client-dart` generates
+a single Dart library file with:
+
+1. **Enums** — Dart `enum` with integer mapping:
+   ```dart
+   enum ScopeState {
+     idle(0), init(1), preTrig(2), trigWait(3), postTrig(4), done(5), reset(6);
+     final int value;
+     const ScopeState(this.value);
+     static ScopeState fromValue(int v) => values.firstWhere((e) => e.value == v);
+   }
+   ```
+
+2. **Typed structs** — Dart classes with JSON serialization:
+   ```dart
+   class ScopeStatus {
+     final ScopeState state;
+     final int samples;
+     final int recLen;
+     final int preTrig;
+     final int sampleLen;
+
+     ScopeStatus({required this.state, required this.samples, ...});
+     factory ScopeStatus.fromJson(Map<String, dynamic> j) => ...;
+     Map<String, dynamic> toJson() => ...;
+   }
+   ```
+
+3. **REST client** — typed methods per API function:
+   ```dart
+   class HalscopeClient {
+     final String baseUrl;
+     final http.Client _http;
+
+     HalscopeClient({required this.baseUrl, http.Client? client})
+       : _http = client ?? http.Client();
+
+     Future<int> configure(CaptureConfig config) async { ... }
+     Future<int> setChannel(ChannelConfig ch) async { ... }
+     Future<ScopeStatus> getStatus() async { ... }
+   }
+   ```
+
+4. **WebSocket client** — subscribe/unsubscribe with typed callbacks,
+   binary frame support for `@binary true` watch functions:
+   ```dart
+   class HalscopeWsClient {
+     final String wsUrl;
+
+     /// Text frames: JSON state updates, delta-encoded
+     void watchState(void Function(ScopeStatus) onData) { ... }
+
+     /// Binary frames: raw sample buffer as Uint8List
+     void watchSamples(void Function(Uint8List) onData) { ... }
+
+     /// WS command calls (configure, arm, reset, etc.)
+     Future<int> call(String func, Map<String, dynamic> params) async { ... }
+
+     void dispose() { ... }
+   }
+   ```
+
+**IDL → Dart naming conventions:**
+- Type names: `PascalCase` (matches IDL)
+- Field names: `camelCase` (from IDL `snake_case`)
+- Enum values: `camelCase` (from IDL `UPPER_CASE`)
+- JSON keys: `snake_case` (matching server-side JSON output)
+
+**Codec details:**
+- `string` → `String`, `i32` → `int`, `i64` → `int`, `f64` → `double`,
+  `bool` → `bool`, `[]T` → `List<T>`, `[N]T` → `List<T>` (fixed-length
+  validated at deserialization), `T?` → `T?`
+- Binary watch payloads: raw `Uint8List`, client is responsible for
+  interpreting the byte layout (documented per-API)
+
+**Implementation Plan:**
+
+1. [ ] **Dart codegen in gmicompile** — `--client-dart` flag, templates
+       for enums, types, REST client, WS client
+2. [ ] **Binary WS frame support** — Extend `ws_handler.go` to send
+       `websocket.MessageBinary` for `@binary true` watch functions
+3. [ ] **Test with existing APIs** — Generate Dart clients for `halcmd`
+       and `emcstat`, validate against running gomc-server
+4. [ ] **Dart package structure** — `lib/dart/gmi/` output directory,
+       `pubspec.yaml` generation for the `gmi` Dart package
+
+**Deliverables:**
+- [ ] `--client-dart` in gmicompile (enums, types, REST client, WS client)
+- [ ] Binary WS frame support in `ws_handler.go`
+- [ ] Generated Dart clients for existing APIs (halcmd, emcstat) as validation
+- [ ] `lib/dart/gmi/` output package with `pubspec.yaml`
+- [ ] Tests
+
+### Step 5.7: Halscope — RT Capture cmod + Flutter UI (NOT STARTED)
 
 Migrate `halscope` from its current shared-memory architecture to the GMI
-infrastructure: a cmod for RT sample capture and a WebSocket-based UI client.
+infrastructure: a cmod for RT sample capture and a Flutter desktop UI
+consuming the generated Dart WS client from Step 5.6.
 
 **Current Architecture:**
 - `scope_rt.c` — RT component loaded on demand by the GUI, exports `scope.sample`
@@ -1945,22 +2048,23 @@ infrastructure: a cmod for RT sample capture and a WebSocket-based UI client.
 **Target Architecture:**
 
 ```
-  halscope UI (GTK3)          other clients (web, CLI, recorder)
-       │                              │
-       └──── WebSocket ───────────────┘
-                    │
-              gomc-server
-                    │
-              scope_rt (cmod)
-                    │
-              scope.sample (RT function, added to HAL thread)
+  Flutter halscope (desktop + web)       other clients (CLI, recorder)
+       │                                        │
+       └──────── WebSocket (text + binary) ─────┘
+                          │
+                    gomc-server
+                          │
+                    scope_rt (cmod)
+                          │
+                    scope.sample (RT function, added to HAL thread)
 ```
 
 - **`scope_rt` cmod**: Loaded once via `load scope_rt num_samples=16000` in
   HAL config. Registers the `halscope` API. Exports RT-safe `scope.sample`
   function. Sits idle until a client configures and arms capture.
-- **WebSocket API**: Clients connect, configure channels/trigger/buffer, arm
-  capture, and receive sample data + state transitions via WS push.
+- **Flutter UI**: Uses generated Dart WS client (`--client-dart` from Step 5.6).
+  Renders waveforms via Flutter `CustomPainter`. Runs as Linux desktop app
+  and optionally as web app.
 - **Multi-client broadcast**: All connected WS clients receive state change
   events and completed capture snapshots. Any client can configure/trigger
   (last-writer-wins for simplicity).
@@ -1975,15 +2079,20 @@ infrastructure: a cmod for RT sample capture and a WebSocket-based UI client.
    and eliminates the tight coupling to HAL shared memory layout.
 
 2. **Binary sample transport**: Sample buffer is up to ~2MB (16 × 16K × 8).
-   Use binary WebSocket frames for sample data delivery, not JSON. State
-   changes and control messages use JSON text frames.
+   Binary WebSocket frames deliver the raw sample buffer. The Flutter app
+   interprets the bytes directly via `ByteData` views — zero JSON overhead.
 
 3. **State push via WS**: All state transitions (IDLE→PRE_TRIG→DONE etc.)
-   are broadcast to connected clients as WS events. No polling needed.
+   are broadcast to connected clients as JSON text WS events. No polling.
 
 4. **Configure only when idle**: `configure()` enforces state == IDLE or
    DONE. If mid-capture, client must `reset()` first (maps to existing
    RESET state).
+
+5. **Flutter rendering**: `CustomPainter` draws waveforms from the binary
+   sample buffer. Flutter's 60fps rendering loop and GPU-accelerated canvas
+   replace GTK3's manual expose-event drawing. Pinch-to-zoom and scroll
+   come naturally from Flutter's gesture system.
 
 **GMI IDL:**
 
@@ -2058,34 +2167,47 @@ func watch_state() -> ScopeStatus
 func watch_samples() -> []u8
 ```
 
+**Binary sample buffer layout:**
+
+The `watch_samples` binary frame contains a header followed by raw sample data:
+```
+[4 bytes: sample_count (uint32 LE)]
+[4 bytes: sample_len (uint32 LE)]      // channels per sample
+[4 bytes: start_offset (uint32 LE)]    // first valid sample index
+[4 bytes: reserved]
+[sample_count × sample_len × 8 bytes: scope_data_t values (little-endian)]
+```
+Each `scope_data_t` is an 8-byte union (u8/u32/s32/f64) — the client
+knows the type per channel from `ChannelConfig` / `hal_type_t`.
+
 **RT-safe function (exported to HAL, not in IDL):**
 
 The `scope.sample` function is exported via `hal_export_funct()` as today.
 It runs in the HAL thread context and is not part of the REST/WS API.
 The cmod internally manages the buffer and state machine; the API functions
-manipulate the same `scope_shm_control_t`-equivalent struct that the RT
-function reads.
+manipulate the same control struct that the RT function reads.
 
 **Implementation Plan:**
 
 1. [ ] **IDL file** — `gmi/idl/halscope.gmi`
-2. [ ] **cmod** — `cmod/scope_rt/` implementing the halscope API callbacks
-       plus the RT `scope.sample` export. Replaces `src/hal/utils/scope_rt.c`.
-3. [ ] **WS binary frame support** — Extend `ws_handler.go` for binary
-       frame delivery (sample buffer push on capture complete).
-4. [ ] **GTK3 UI migration** — Modify `scope.c` + `scope_*.c` to use
-       generated REST/WS client instead of shared memory. Remove
-       `SCOPE_SHM_KEY` shared memory, `hal_init()`, and direct HAL
-       pointer access from the UI.
+2. [ ] **cmod** — `src/hal/utils/scope_rt_cmod.c` implementing the halscope
+       API callbacks plus the RT `scope.sample` export. Built as cmod,
+       output: `cmod/scope_rt.so`.
+3. [ ] **Flutter app** — `src/hal/utils/halscope_flutter/` with standard
+       Flutter desktop project structure. Uses generated `halscope` Dart
+       client from Step 5.6.
+4. [ ] **Waveform renderer** — `CustomPainter` interpreting binary sample
+       buffer, channel color/scale/offset, trigger marker, grid overlay.
 5. [ ] **Multi-client broadcast** — State events and sample snapshots
        pushed to all subscribed WS clients.
 6. [ ] **Tests** — Capture lifecycle, multi-client, binary frame delivery.
+7. [ ] **Retire old halscope** — Remove `scope.c`, `scope_*.c` (GTK3),
+       old `scope_rt.c` once Flutter UI is validated.
 
 **Deliverables:**
 - [ ] `gmi/idl/halscope.gmi`
-- [ ] `cmod/scope_rt/` (cmod replacing `src/hal/utils/scope_rt.c`)
-- [ ] Binary WS frame support in gomc-server
-- [ ] Updated `src/hal/utils/scope*.c` (UI using REST/WS client)
+- [ ] `src/hal/utils/scope_rt_cmod.c` (cmod replacing old `scope_rt.c`)
+- [ ] `src/hal/utils/halscope_flutter/` (Flutter desktop app)
 - [ ] HAL config example: `load scope_rt num_samples=16000`
 - [ ] Tests
 
