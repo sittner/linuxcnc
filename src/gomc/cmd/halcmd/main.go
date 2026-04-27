@@ -136,6 +136,7 @@ Commands:
   linkpp <pin1> <pin2>    Link pin to pin (implicit signal)
   unlinkp <pin>           Unlink pin from signal
   
+  load <mod> [args]       Load cmod plugin
   loadrt <mod> [args]     Load realtime module
   unloadrt <mod>          Unload realtime module
   loadusr [-W] [-i] <cmd> Load user component
@@ -341,6 +342,8 @@ func executeCommand(args []string) error {
 		return cmdUnlinkP(args)
 
 	// Modules
+	case "load":
+		return cmdLoad(args)
 	case "loadrt":
 		return cmdLoadRT(args)
 	case "unloadrt":
@@ -857,6 +860,29 @@ func cmdUnlinkP(args []string) error {
 		return err
 	}
 	return checkResult(result)
+}
+
+func cmdLoad(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("load requires module name")
+	}
+	module := args[0]
+	var modArgs []*string
+	for _, a := range args[1:] {
+		s := a
+		modArgs = append(modArgs, &s)
+	}
+	result, err := client.Load(module, modArgs)
+	if err != nil {
+		return err
+	}
+	if err := checkResult(result); err != nil {
+		return err
+	}
+	if result.Output != nil && *result.Output != "" && !quietMode {
+		fmt.Println(*result.Output)
+	}
+	return nil
 }
 
 func cmdLoadRT(args []string) error {

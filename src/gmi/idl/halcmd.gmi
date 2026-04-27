@@ -259,6 +259,12 @@ func unloadusr(name: string) -> CmdResult
 @rt_safe "false"
 func waitusr(name: string, timeout_ms: i32?) -> CmdResult
 
+# Load cmod plugin (load)
+@method "POST"
+@path "/load"
+@rt_safe "false"
+func load(module: string, args: []string?) -> CmdResult
+
 # Generic unload (deprecated - use unloadrt/unloadusr)
 @method "DELETE"
 @path "/module/{module}"

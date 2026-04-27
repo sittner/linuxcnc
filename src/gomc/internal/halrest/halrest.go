@@ -13,6 +13,18 @@ import (
 	hal "github.com/sittner/linuxcnc/src/gomc/pkg/hal"
 )
 
+// LoadModuleFunc is the callback signature for dynamically loading a
+// cmod plugin at runtime.  The launcher sets this via SetLoadModuleFunc.
+type LoadModuleFunc func(module string, args []string) error
+
+var loadModuleHook LoadModuleFunc
+
+// SetLoadModuleFunc sets the callback used by the "load" command to
+// dynamically load a cmod .so into gomc-server.
+func SetLoadModuleFunc(fn LoadModuleFunc) {
+	loadModuleHook = fn
+}
+
 // Register registers the halcmd REST API with the given registry.
 // This makes the /api/v1/halcmd/* endpoints available.
 func Register(reg *apiserver.Registry) error {
@@ -659,6 +671,25 @@ func dispatchNet(_ unsafe.Pointer, body []byte) ([]byte, error) {
 	return okResult()
 }
 
+func dispatchLoad(_ unsafe.Pointer, body []byte) ([]byte, error) {
+	if loadModuleHook == nil {
+		return errResult(fmt.Errorf("load: not supported (gomc-server launcher not initialized)"))
+	}
+	params, err := parseReq(body)
+	if err != nil {
+		return nil, err
+	}
+	module := getField(params, "module")
+	if module == "" {
+		return nil, fmt.Errorf("missing module name")
+	}
+	args := getStringSlice(params, "args")
+	if err := loadModuleHook(module, args); err != nil {
+		return errResult(err)
+	}
+	return okResult()
+}
+
 func dispatchLoadRT(_ unsafe.Pointer, body []byte) ([]byte, error) {
 	params, err := parseReq(body)
 	if err != nil {
@@ -982,6 +1013,7 @@ func buildFuncMetas() []apiserver.FuncMeta {
 		{Name: "net", Method: "POST", Path: "/net", Dispatch: dispatchNet},
 
 		// Module commands
+		{Name: "load", Method: "POST", Path: "/load", Dispatch: dispatchLoad},
 		{Name: "loadrt", Method: "POST", Path: "/loadrt", Dispatch: dispatchLoadRT},
 		{Name: "unloadrt", Method: "DELETE", Path: "/loadrt/{module}", Dispatch: dispatchUnloadRT},
 		{Name: "loadusr", Method: "POST", Path: "/loadusr", Dispatch: dispatchLoadUSR},

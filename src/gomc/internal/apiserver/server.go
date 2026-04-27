@@ -115,6 +115,16 @@ func (s *Server) handleAPIRequest(w http.ResponseWriter, r *http.Request) {
 		body = encodeParams(fn.Path, funcPath, r.URL.Query())
 	}
 
+	// For POST/PUT, merge path params into the JSON body so that
+	// dispatch functions can access e.g. /thread/{thread}/function
+	// params via the same getField() as body params.
+	if r.Method == http.MethodPost || r.Method == http.MethodPut {
+		pathParams := extractPathParams(fn.Path, funcPath)
+		if len(pathParams) > 0 {
+			body = mergePathParamsIntoBody(pathParams, body)
+		}
+	}
+
 	// Dispatch
 	resp, err := fn.Dispatch(api.Callbacks, body)
 	if err != nil {
@@ -194,6 +204,26 @@ func extractPathParams(pattern, requestPath string) map[string]string {
 		}
 	}
 	return params
+}
+
+// mergePathParamsIntoBody merges URL path parameters into a JSON body.
+// Path params do not overwrite existing body keys.
+func mergePathParamsIntoBody(pathParams map[string]string, body []byte) []byte {
+	var m map[string]interface{}
+	if len(body) > 0 {
+		if err := json.Unmarshal(body, &m); err != nil {
+			return body // leave as-is if body isn't valid JSON
+		}
+	} else {
+		m = make(map[string]interface{})
+	}
+	for k, v := range pathParams {
+		if _, exists := m[k]; !exists {
+			m[k] = v
+		}
+	}
+	data, _ := json.Marshal(m)
+	return data
 }
 
 // encodeParams builds a JSON object from path parameters and query string.

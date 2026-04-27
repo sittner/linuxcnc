@@ -139,6 +139,10 @@ func (l *Launcher) Run() (runErr error) {
 		l.logger.Warn("failed to register halcmd REST API", "error", err)
 	}
 
+	// Set the load-module hook so halcmd's \"load\" command can dynamically
+	// load cmod plugins at runtime via the REST API.
+	halrest.SetLoadModuleFunc(l.runtimeLoadModule)
+
 	l.setupEnvironment()
 
 	// Export INI file path and config directory so that child processes

@@ -359,6 +359,43 @@ func (l *Launcher) loadCPlugin(path string, name string, args []string) error {
 	return nil
 }
 
+// runtimeLoadModule loads a cmod plugin at runtime (called from the halcmd
+// "load" REST endpoint).  It resolves the path, calls loadCPlugin, Init,
+// and Start so the module is fully operational when the call returns.
+func (l *Launcher) runtimeLoadModule(module string, args []string) error {
+	path := resolveCModulePath(module)
+	if !cModuleExists(path) {
+		// Try as a Go module
+		return l.loadGoModule(module, args)
+	}
+
+	// Use the module basename (without .so) as the instance name.
+	name := strings.TrimSuffix(filepath.Base(path), ".so")
+
+	if err := l.loadCPlugin(path, name, args); err != nil {
+		return err
+	}
+
+	// The newly loaded module is the last one appended.
+	cm := l.cModules[len(l.cModules)-1]
+
+	// Init phase — look up other modules' APIs.
+	rc := C.cmod_call_init(cm.mod)
+	if rc != 0 {
+		return fmt.Errorf("C module %q Init() returned error code %d", name, int(rc))
+	}
+
+	// Start phase — begin operation.
+	rc = C.cmod_call_start(cm.mod)
+	if rc != 0 {
+		return fmt.Errorf("C module %q Start() returned error code %d", name, int(rc))
+	}
+	cm.started = true
+
+	l.logger.Info("runtime-loaded C module", "name", name, "path", path)
+	return nil
+}
+
 // initCModules calls Init() on all loaded C plugin modules in load order.
 // Init() runs after all modules' New() have completed (all APIs registered)
 // but before HAL wiring commands and Start().  Modules use Init() to look up
