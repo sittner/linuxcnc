@@ -907,6 +907,28 @@ func (l *Launcher) startDisplay() error {
 		Pdeathsig: syscall.SIGTERM,
 	}
 
+	// If GDB_DISPLAY=1 is set, wrap the display command with gdb so that
+	// segfaults produce an immediate backtrace.
+	if os.Getenv("GDB_DISPLAY") != "" {
+		gdbArgs := []string{
+			"-q",
+			"-ex", "run",
+			"-ex", "thread apply all bt full",
+			"-ex", "quit",
+			"--args",
+		}
+		gdbArgs = append(gdbArgs, cmd.Path)
+		gdbArgs = append(gdbArgs, cmd.Args[1:]...)
+		l.logger.Info("wrapping display with gdb (GDB_DISPLAY set)", "display", emcDisplay)
+		cmd = exec.Command("gdb", gdbArgs...)
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			Pdeathsig: syscall.SIGTERM,
+		}
+	}
+
 	if err := cmd.Run(); err != nil {
 		l.logger.Warn("display exited with error", "display", emcDisplay, "error", err)
 	}
