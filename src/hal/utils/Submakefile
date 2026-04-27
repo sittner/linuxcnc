@@ -70,6 +70,58 @@ $(call TOOBJSDEPS, $(HALGTKSRCS)) : EXTRAFLAGS = $(GTK_CFLAGS)
 $(call TOOBJS, $(HALGTKSRCS)): Makefile.inc
 endif
 
+# ---------------------------------------------------------------------------
+# halscope_rt cmod (replaces legacy scope_rt.c for GMI architecture)
+# ---------------------------------------------------------------------------
+ifeq ($(BUILD_GOLANG),yes)
+
+HALSCOPE_RT_CMOD_CFLAGS := \
+    -fPIC -Os -Wall -Wextra \
+    -DUSPACE -D_GNU_SOURCE -Drealtime \
+    -fno-strict-aliasing -fwrapv \
+    -I. -I../include -Igomc/pkg/cmodule -Igomc/generated/gmi/halscope
+
+../cmod/halscope_rt.so: hal/utils/halscope_rt.c \
+                        gomc/generated/gmi/halscope/halscope_api.h \
+                        $(wildcard gomc/pkg/cmodule/gomc_*.h) \
+                        | headers ../lib/liblinuxcnchal.so
+	$(ECHO) "Compiling cmod halscope_rt.so"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -shared $(HALSCOPE_RT_CMOD_CFLAGS) \
+	    -o $@ hal/utils/halscope_rt.c \
+	    -L../lib -llinuxcnchal -lm
+
+TARGETS += ../cmod/halscope_rt.so
+modules: ../cmod/halscope_rt.so
+
+endif # BUILD_GOLANG
+
+# ---------------------------------------------------------------------------
+# Flutter toolchain (downloaded on demand, cached in tools/)
+# ---------------------------------------------------------------------------
+FLUTTER_VERSION := 3.24.0
+FLUTTER_DIR := tools/flutter
+FLUTTER := $(FLUTTER_DIR)/bin/flutter
+
+$(FLUTTER):
+	@mkdir -p tools
+	$(ECHO) "Downloading Flutter SDK $(FLUTTER_VERSION)..."
+	$(Q)curl -sL https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_$(FLUTTER_VERSION)-stable.tar.xz \
+	    | tar xJ -C tools/
+	$(Q)$(FLUTTER) --disable-analytics >/dev/null 2>&1 || true
+	$(Q)$(FLUTTER) precache --linux >/dev/null 2>&1
+
+# ---------------------------------------------------------------------------
+# halscope Flutter UI
+# ---------------------------------------------------------------------------
+HALSCOPE_FLUTTER_DIR := hal/utils/halscope_flutter
+
+.PHONY: halscope-flutter
+halscope-flutter: $(FLUTTER)
+	$(ECHO) "Building halscope Flutter app..."
+	$(Q)cd $(HALSCOPE_FLUTTER_DIR) && $(abspath $(FLUTTER)) build linux --release
+	$(Q)cp $(HALSCOPE_FLUTTER_DIR)/build/linux/x64/release/bundle/halscope_flutter ../bin/halscope-flutter
+
 
 ../bin/halcompile: ../bin/%: objects/hal/utils/%.py
 	@$(ECHO) Syntax checking python script $(notdir $@)
