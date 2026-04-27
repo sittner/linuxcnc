@@ -167,6 +167,9 @@ SUBDIRS := \
     \
     rtapi \
     \
+    gomc \
+    gmi/codegen \
+    \
     hal/components hal/drivers hal/drivers/mesa-hostmot2 \
     hal/user_comps/devices hal/user_comps/mb2hal \
     hal/user_comps hal/user_comps/vismach hal/user_comps/vfs11_vfd hal/classicladder hal/utils hal/joint hal \
@@ -176,8 +179,6 @@ SUBDIRS := \
 	hal/user_comps/xhc-whb04b-6 \
 	hal/hal-ads-server \
 	hal/proto/ethercat \
-	gomc \
-	gmi/codegen \
     \
     emc/usr_intf/axis emc/usr_intf/touchy emc/usr_intf/stepconf emc/usr_intf/pncconf \
     emc/usr_intf/gremlin emc/usr_intf/gscreen emc/usr_intf/pyui emc/usr_intf/qtvcp \

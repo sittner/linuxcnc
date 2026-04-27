@@ -79,20 +79,20 @@ HALSCOPE_RT_CMOD_CFLAGS := \
     -fPIC -Os -Wall -Wextra \
     -DUSPACE -D_GNU_SOURCE -Drealtime \
     -fno-strict-aliasing -fwrapv \
-    -I. -I../include -Igomc/pkg/cmodule -Igomc/generated/gmi/halscope
+    -I. -I../include -Ihal -Igomc/pkg/cmodule -Igomc/generated/gmi/halscope
 
-../cmod/halscope_rt.so: hal/utils/halscope_rt.c \
-                        gomc/generated/gmi/halscope/halscope_api.h \
-                        $(wildcard gomc/pkg/cmodule/gomc_*.h) \
-                        | headers ../lib/liblinuxcnchal.so
-	$(ECHO) "Compiling cmod halscope_rt.so"
+../cmod/halscope.so: hal/utils/halscope_rt.c \
+                     gomc/generated/gmi/halscope/halscope_api.h \
+                     $(wildcard gomc/pkg/cmodule/gomc_*.h) \
+                     | headers ../lib/liblinuxcnchal.so
+	$(ECHO) "Compiling cmod halscope.so"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HALSCOPE_RT_CMOD_CFLAGS) \
 	    -o $@ hal/utils/halscope_rt.c \
 	    -L../lib -llinuxcnchal -lm
 
-TARGETS += ../cmod/halscope_rt.so
-modules: ../cmod/halscope_rt.so
+TARGETS += ../cmod/halscope.so
+modules: ../cmod/halscope.so
 
 endif # BUILD_GOLANG
 

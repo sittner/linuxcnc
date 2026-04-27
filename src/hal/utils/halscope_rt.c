@@ -342,7 +342,7 @@ static int resolve_hal_name(const char *name, hal_type_t *type, int *data_len, v
             sig = (hal_sig_t *)SHMPTR(pin->signal);
             *data_addr = SHMPTR(sig->data_ptr);
         } else {
-            *data_addr = hal_pin_dummysig(pin);
+            *data_addr = &pin->dummysig;
         }
         goto set_len;
     }
@@ -584,8 +584,8 @@ static void halscope_Destroy(struct cmod *self)
         free(s->buffer);
         s->buffer = NULL;
     }
-    if (s->comp_id > 0)
-        hal_exit(s->comp_id);
+    if (s->comp_id > 0 && s->env->hal)
+        s->env->hal->exit(s->env->hal->ctx, s->comp_id);
     free(s->name);
     free(s);
 }
@@ -630,7 +630,7 @@ int New(const cmod_env_t *env, const char *name,
     /* Allocate instance */
     s = calloc(1, sizeof(halscope_t));
     if (!s) {
-        env->log->err("halscope_rt: out of memory");
+        gomc_log_errorf(env->log, "halscope", "out of memory");
         return -ENOMEM;
     }
 
@@ -648,8 +648,9 @@ int New(const cmod_env_t *env, const char *name,
     /* Allocate sample buffer */
     s->buffer = calloc(num_samples, sizeof(scope_data_t));
     if (!s->buffer) {
-        env->log->err("halscope_rt: failed to allocate sample buffer (%d samples)",
-                       num_samples);
+        gomc_log_errorf(env->log, "halscope",
+                        "failed to allocate sample buffer (%d samples)",
+                        num_samples);
         free(s->name);
         free(s);
         return -ENOMEM;
@@ -657,50 +658,54 @@ int New(const cmod_env_t *env, const char *name,
 
     /* Init HAL component */
     if (env->hal == NULL) {
-        env->log->err("halscope_rt: HAL environment required");
+        gomc_log_errorf(env->log, "halscope", "HAL environment required");
         free(s->buffer);
         free(s->name);
         free(s);
         return -EINVAL;
     }
 
-    s->comp_id = env->hal->init(name, env->dl_handle,
-                                COMPONENT_TYPE_REALTIME);
+    s->comp_id = env->hal->init(env->hal->ctx, name, env->dl_handle,
+                                GOMC_HAL_COMP_REALTIME);
     if (s->comp_id < 0) {
-        env->log->err("halscope_rt: hal_init failed: %d", s->comp_id);
+        int err = s->comp_id;
+        gomc_log_errorf(env->log, "halscope", "hal_init failed: %d", err);
         free(s->buffer);
         free(s->name);
         free(s);
-        return s->comp_id;
+        return err;
     }
 
     /* Export the RT sample function */
-    retval = hal_export_funct("halscope.sample", halscope_sample,
-                              s, 1 /* uses_fp */, 0 /* reentrant */,
-                              s->comp_id);
+    retval = env->hal->export_funct(env->hal->ctx, "halscope.sample",
+                                    halscope_sample, s,
+                                    1 /* uses_fp */, 0 /* reentrant */,
+                                    s->comp_id);
     if (retval != 0) {
-        env->log->err("halscope_rt: failed to export sample function: %d", retval);
-        hal_exit(s->comp_id);
+        gomc_log_errorf(env->log, "halscope",
+                        "failed to export sample function: %d", retval);
+        env->hal->exit(env->hal->ctx, s->comp_id);
         free(s->buffer);
         free(s->name);
         free(s);
         return retval;
     }
 
-    env->hal->ready(s->comp_id);
+    env->hal->ready(env->hal->ctx, s->comp_id);
 
     /* Register GMI API */
     if (env->api != NULL) {
         halscope_cb.ctx = s;
         retval = halscope_api_register(env->api, name, &halscope_cb);
         if (retval != 0) {
-            env->log->err("halscope_rt: API register failed: %d", retval);
+            gomc_log_errorf(env->log, "halscope",
+                            "API register failed: %d", retval);
             /* Non-fatal — HAL function still works, just no REST/WS */
         }
     }
 
-    env->log->info("halscope_rt: loaded, %d samples, comp_id=%d",
-                    num_samples, s->comp_id);
+    gomc_log_infof(env->log, "halscope", "loaded, %d samples, comp_id=%d",
+                   num_samples, s->comp_id);
 
     *out = &s->base;
     return 0;

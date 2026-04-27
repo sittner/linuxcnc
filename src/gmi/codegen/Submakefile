@@ -174,6 +174,41 @@ GMI_PY_NML_DSTS := $(addprefix ../lib/python/gmi/,$(GMI_PY_NML_SRCS))
 
 TARGETS += $(GMI_PY_NML_DSTS)
 
+# --- halscope API (server-c + server-ws + Dart clients) ---
+
+GMI_HALSCOPE_IDL := gmi/idl/halscope.gmi
+GMI_HALSCOPE_GEN := gomc/generated/gmi/halscope
+
+$(GMI_HALSCOPE_GEN)/halscope_api.h: $(GMI_HALSCOPE_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI halscope API from $(GMI_HALSCOPE_IDL)"
+	@mkdir -p $(GMI_HALSCOPE_GEN)
+	$(Q)$(GMICOMPILE) --server-c $(GMI_HALSCOPE_IDL) -o $(GMI_HALSCOPE_GEN)/halscope_api.h
+	$(Q)$(GMICOMPILE_BIN) add-gmi generated/gmi/halscope
+
+$(GMI_HALSCOPE_GEN)/halscope_cgo.go: $(GMI_HALSCOPE_GEN)/halscope_api.h
+
+$(GMI_HALSCOPE_GEN)/halscope_ws.go: $(GMI_HALSCOPE_IDL) $(GMI_HALSCOPE_GEN)/halscope_cgo.go $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI halscope WebSocket server from $(GMI_HALSCOPE_IDL)"
+	$(Q)$(GMICOMPILE) --server-ws $(GMI_HALSCOPE_IDL) -o $(GMI_HALSCOPE_GEN)/halscope_ws.go
+
+TARGETS += $(GMI_HALSCOPE_GEN)/halscope_api.h $(GMI_HALSCOPE_GEN)/halscope_ws.go
+
+# --- halscope Dart clients (REST + WebSocket) ---
+
+HALSCOPE_FLUTTER_GEN := hal/utils/halscope_flutter/lib/generated
+
+$(HALSCOPE_FLUTTER_GEN)/halscope_client.dart: $(GMI_HALSCOPE_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating halscope Dart REST client"
+	@mkdir -p $(HALSCOPE_FLUTTER_GEN)
+	$(Q)$(GMICOMPILE) --client-dart $(GMI_HALSCOPE_IDL) -o $@
+
+$(HALSCOPE_FLUTTER_GEN)/halscope_watch_client.dart: $(GMI_HALSCOPE_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating halscope Dart WebSocket client"
+	@mkdir -p $(HALSCOPE_FLUTTER_GEN)
+	$(Q)$(GMICOMPILE) --client-dart-ws $(GMI_HALSCOPE_IDL) -o $@
+
+TARGETS += $(HALSCOPE_FLUTTER_GEN)/halscope_client.dart $(HALSCOPE_FLUTTER_GEN)/halscope_watch_client.dart
+
 clean: gmi-codegen-clean
 .PHONY: gmi-codegen-clean
 gmi-codegen-clean:
