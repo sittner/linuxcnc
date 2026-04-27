@@ -19,6 +19,7 @@ intended to replace NML with a modern, type-safe approach.
 | 5.3: PyVCP REST/WebSocket | ✅ Complete | — |
 | 5.4: INI REST Migration | ✅ Complete | 6 |
 | 5.5: NML Gateway (stat/cmd/error) | ✅ Complete | — |
+| 5.6: Halscope REST/WebSocket | ❌ Not Started | — |
 | 6: Polish | ❌ Not Started | — |
 | 7: Remove Go Plugins | ✅ Complete | — |
 
@@ -1923,6 +1924,170 @@ server/client architecture:
   mmap index order. `PUT /api/v1/tools/reload` triggers tool table reload.
   Python `stat.tool_table` property fetches from REST. `tooledit_widget.py`
   adapted to use `gmi` REST instead of direct mmap access.
+
+### Step 5.6: Halscope — RT Capture cmod + WebSocket UI (NOT STARTED)
+
+Migrate `halscope` from its current shared-memory architecture to the GMI
+infrastructure: a cmod for RT sample capture and a WebSocket-based UI client.
+
+**Current Architecture:**
+- `scope_rt.c` — RT component loaded on demand by the GUI, exports `scope.sample`
+  function added to a HAL thread. Captures up to 16 channels into a shared
+  memory ring buffer (up to 16K samples × 16 channels × 8 bytes).
+- `scope.c` + `scope_*.c` — GTK3 GUI that maps the same shared memory block
+  (`SCOPE_SHM_KEY = 0x130CF406`), configures channels/trigger/record length,
+  and renders waveforms.
+- Communication via `scope_shm_control_t` struct in shared memory with a
+  state machine (IDLE→INIT→PRE_TRIG→TRIG_WAIT→POST_TRIG→DONE→RESET).
+- GUI writes raw `SHMPTR` offsets into the control struct so the RT code
+  knows where to sample from — fragile and tightly coupled.
+
+**Target Architecture:**
+
+```
+  halscope UI (GTK3)          other clients (web, CLI, recorder)
+       │                              │
+       └──── WebSocket ───────────────┘
+                    │
+              gomc-server
+                    │
+              scope_rt (cmod)
+                    │
+              scope.sample (RT function, added to HAL thread)
+```
+
+- **`scope_rt` cmod**: Loaded once via `load scope_rt num_samples=16000` in
+  HAL config. Registers the `halscope` API. Exports RT-safe `scope.sample`
+  function. Sits idle until a client configures and arms capture.
+- **WebSocket API**: Clients connect, configure channels/trigger/buffer, arm
+  capture, and receive sample data + state transitions via WS push.
+- **Multi-client broadcast**: All connected WS clients receive state change
+  events and completed capture snapshots. Any client can configure/trigger
+  (last-writer-wins for simplicity).
+- **Decoupled lifetimes**: cmod stays loaded for the entire machine session.
+  UI can connect/disconnect/crash without affecting RT capture.
+
+**Key Design Changes:**
+
+1. **Channel setup via API**: Instead of GUI writing `SHMPTR` offsets into
+   shared memory, client calls `set_channel(ch: i32, pin_name: string)`.
+   The cmod resolves the HAL pin/signal/param address internally — safer
+   and eliminates the tight coupling to HAL shared memory layout.
+
+2. **Binary sample transport**: Sample buffer is up to ~2MB (16 × 16K × 8).
+   Use binary WebSocket frames for sample data delivery, not JSON. State
+   changes and control messages use JSON text frames.
+
+3. **State push via WS**: All state transitions (IDLE→PRE_TRIG→DONE etc.)
+   are broadcast to connected clients as WS events. No polling needed.
+
+4. **Configure only when idle**: `configure()` enforces state == IDLE or
+   DONE. If mid-capture, client must `reset()` first (maps to existing
+   RESET state).
+
+**GMI IDL:**
+
+```gmi
+@api halscope
+@version 1
+@prefix "halscope"
+@rest_export true
+
+const MAX_CHANNELS = 16
+const MAX_SAMPLES = 65536
+
+enum ScopeState {
+    IDLE = 0
+    INIT = 1
+    PRE_TRIG = 2
+    TRIG_WAIT = 3
+    POST_TRIG = 4
+    DONE = 5
+    RESET = 6
+}
+
+enum TrigEdge {
+    FALLING = 0
+    RISING = 1
+}
+
+type ChannelConfig {
+    channel: i32
+    pin_name: string
+}
+
+type TriggerConfig {
+    channel: i32
+    level: f64
+    edge: TrigEdge
+    force: bool
+    auto_trig: bool
+}
+
+type CaptureConfig {
+    thread_name: string
+    rec_len: i32
+    sample_period_mult: i32
+    pre_trig: i32
+}
+
+type ScopeStatus {
+    state: ScopeState
+    samples: i32
+    rec_len: i32
+    pre_trig: i32
+    sample_len: i32
+}
+
+# Control functions (non-RT, called via REST/WS)
+func configure(config: CaptureConfig) -> i32
+func set_channel(ch: ChannelConfig) -> i32
+func clear_channel(channel: i32) -> i32
+func set_trigger(trig: TriggerConfig) -> i32
+func arm() -> i32
+func reset() -> i32
+func get_status() -> ScopeStatus
+
+# Watch: pushes state changes + completed captures to WS clients
+@watch true
+func watch_state() -> ScopeStatus
+
+# Sample data delivered as binary WS frames on capture complete
+@watch true
+@binary true
+func watch_samples() -> []u8
+```
+
+**RT-safe function (exported to HAL, not in IDL):**
+
+The `scope.sample` function is exported via `hal_export_funct()` as today.
+It runs in the HAL thread context and is not part of the REST/WS API.
+The cmod internally manages the buffer and state machine; the API functions
+manipulate the same `scope_shm_control_t`-equivalent struct that the RT
+function reads.
+
+**Implementation Plan:**
+
+1. [ ] **IDL file** — `gmi/idl/halscope.gmi`
+2. [ ] **cmod** — `cmod/scope_rt/` implementing the halscope API callbacks
+       plus the RT `scope.sample` export. Replaces `src/hal/utils/scope_rt.c`.
+3. [ ] **WS binary frame support** — Extend `ws_handler.go` for binary
+       frame delivery (sample buffer push on capture complete).
+4. [ ] **GTK3 UI migration** — Modify `scope.c` + `scope_*.c` to use
+       generated REST/WS client instead of shared memory. Remove
+       `SCOPE_SHM_KEY` shared memory, `hal_init()`, and direct HAL
+       pointer access from the UI.
+5. [ ] **Multi-client broadcast** — State events and sample snapshots
+       pushed to all subscribed WS clients.
+6. [ ] **Tests** — Capture lifecycle, multi-client, binary frame delivery.
+
+**Deliverables:**
+- [ ] `gmi/idl/halscope.gmi`
+- [ ] `cmod/scope_rt/` (cmod replacing `src/hal/utils/scope_rt.c`)
+- [ ] Binary WS frame support in gomc-server
+- [ ] Updated `src/hal/utils/scope*.c` (UI using REST/WS client)
+- [ ] HAL config example: `load scope_rt num_samples=16000`
+- [ ] Tests
 
 ### Step 6: Polish (NOT STARTED)
 - [ ] Error handling standardization
