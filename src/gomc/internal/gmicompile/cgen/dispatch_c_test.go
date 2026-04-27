@@ -78,7 +78,7 @@ func TestGenerateDispatchC(t *testing.T) {
 	assertContains(t, out, `import "C"`)
 
 	// -- Static call wrappers (with ctx) --
-	assertContains(t, out, "static testapi_item_t * call_testapi_list_items(testapi_list_items_fn fn, void *ctx,")
+	assertContains(t, out, "static testapi_list_items_result_t call_testapi_list_items(testapi_list_items_fn fn, void *ctx,")
 	assertContains(t, out, "static testapi_item_t call_testapi_get_item(testapi_get_item_fn fn, void *ctx,")
 	assertContains(t, out, "static void call_testapi_delete_item(testapi_delete_item_fn fn, void *ctx,")
 

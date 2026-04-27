@@ -494,14 +494,15 @@ static halscope_scope_status_t halscope_get_status(void *ctx)
     return st;
 }
 
-static const char **halscope_list_pins(void *ctx, const char *pattern)
+static halscope_list_pins_result_t halscope_list_pins(void *ctx, const char *pattern)
 {
+    halscope_list_pins_result_t result = { .data = NULL, .len = 0 };
     (void)ctx;
     (void)pattern;
     /* This is a placeholder — the full implementation would iterate
        the HAL pin/signal/param lists matching the pattern.
-       For now, return NULL to indicate "not implemented". */
-    return NULL;
+       For now, return empty to indicate "not implemented". */
+    return result;
 }
 
 static halscope_scope_status_t halscope_watch_state(void *ctx)
@@ -509,13 +510,14 @@ static halscope_scope_status_t halscope_watch_state(void *ctx)
     return halscope_get_status(ctx);
 }
 
-static uint8_t *halscope_watch_samples(void *ctx)
+static halscope_watch_samples_result_t halscope_watch_samples(void *ctx)
 {
     halscope_t *s = (halscope_t *)ctx;
+    halscope_watch_samples_result_t result = { .data = NULL, .len = 0 };
 
     /* Only return samples when capture is complete */
     if (s->state != ST_DONE || s->buffer == NULL || s->samples == 0)
-        return NULL;
+        return result;
 
     /* Binary layout:
      *   [4 bytes: sample_count (uint32 LE)]
@@ -530,7 +532,7 @@ static uint8_t *halscope_watch_samples(void *ctx)
     int data_size = s->samples * s->sample_len * sizeof(scope_data_t);
     uint8_t *buf = malloc(header_size + data_size);
     if (!buf)
-        return NULL;
+        return result;
 
     /* Header */
     uint32_t *hdr = (uint32_t *)buf;
@@ -559,7 +561,9 @@ static uint8_t *halscope_watch_samples(void *ctx)
             pos = 0;
     }
 
-    return buf;
+    result.data = buf;
+    result.len = header_size + data_size;
+    return result;
 }
 
 /* ------------------------------------------------------------------ */

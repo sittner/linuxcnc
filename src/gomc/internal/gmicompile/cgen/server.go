@@ -192,11 +192,29 @@ func (g *serverGen) emitCallbackTypedefs() {
 		return
 	}
 	g.printf("// --- Callback Typedefs ---\n\n")
+
+	// Emit result structs for functions that return slices (need ptr + len).
+	for _, fn := range g.api.Funcs {
+		if fn.Return != nil && fn.Return.Kind == ast.TypeSlice {
+			fnSnake := toSnakeCase(fn.Name)
+			elemCType := g.toCType(*fn.Return.Elem)
+			g.printf("typedef struct {\n")
+			g.printf("    %s *data;\n", elemCType)
+			g.printf("    size_t len;\n")
+			g.printf("} %s_%s_result_t;\n\n", g.api.Name, fnSnake)
+		}
+	}
+
 	for _, fn := range g.api.Funcs {
 		// Direct return: function returns the declared type (or void).
 		retCType := "void"
 		if fn.Return != nil {
-			retCType = g.toCType(*fn.Return)
+			if fn.Return.Kind == ast.TypeSlice {
+				// Slice returns use the result struct
+				retCType = fmt.Sprintf("%s_%s_result_t", g.api.Name, toSnakeCase(fn.Name))
+			} else {
+				retCType = g.toCType(*fn.Return)
+			}
 		}
 		g.printf("typedef %s (*%s_%s_fn)(\n", retCType, g.api.Name, toSnakeCase(fn.Name))
 

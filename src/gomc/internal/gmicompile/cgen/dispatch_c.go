@@ -82,7 +82,11 @@ func (g *dispatchCGen) emitCallWrapper(fn ast.Func) {
 	// Determine return type: direct return or void
 	retCType := "void"
 	if fn.Return != nil {
-		retCType = toCTypeForAPI(apiName, *fn.Return)
+		if fn.Return.Kind == ast.TypeSlice {
+			retCType = fmt.Sprintf("%s_%s_result_t", apiName, fnSnake)
+		} else {
+			retCType = toCTypeForAPI(apiName, *fn.Return)
+		}
 	}
 
 	// Build parameter list: fn pointer + ctx + same params as callback typedef
@@ -609,23 +613,24 @@ func (g *dispatchCGen) emitReturnConvert(fn ast.Func) {
 		g.printf("\treturn json.Marshal(result)\n")
 
 	case ast.TypeSlice:
-		g.printf("\tn := int(outLen)\n")
+		// out is a result struct with .data (pointer) and .len (size_t)
+		g.printf("\tn := int(out.len)\n")
 		if ret.Elem.Kind == ast.TypeNamed && !g.isEnum(ret.Elem.Name) {
 			goElemType := toPascalCase(ret.Elem.Name)
 			converter := toLowerCamelRaw(ret.Elem.Name) + "CToGo"
 			g.printf("\tresult := make([]%s, n)\n", goElemType)
 			g.printf("\tif n > 0 {\n")
-			g.printf("\t\tcSlice := unsafe.Slice(outPtr, n)\n")
+			g.printf("\t\tcSlice := unsafe.Slice(out.data, n)\n")
 			g.printf("\t\tfor i := 0; i < n; i++ {\n")
 			g.printf("\t\t\tresult[i] = %s(&cSlice[i])\n", converter)
 			g.printf("\t\t}\n")
-			g.printf("\t\tC.free(unsafe.Pointer(outPtr))\n")
+			g.printf("\t\tC.free(unsafe.Pointer(out.data))\n")
 			g.printf("\t}\n")
 		} else {
 			goElemType := goTypeForDispatch(*ret.Elem)
 			g.printf("\tresult := make([]%s, n)\n", goElemType)
 			g.printf("\tif n > 0 {\n")
-			g.printf("\t\tcSlice := unsafe.Slice(outPtr, n)\n")
+			g.printf("\t\tcSlice := unsafe.Slice(out.data, n)\n")
 			g.printf("\t\tfor i := 0; i < n; i++ {\n")
 			if ret.Elem.Kind == ast.TypePrimitive && ret.Elem.Name == ast.PrimString {
 				g.printf("\t\t\tresult[i] = C.GoString(cSlice[i])\n")
@@ -633,7 +638,7 @@ func (g *dispatchCGen) emitReturnConvert(fn ast.Func) {
 				g.printf("\t\t\tresult[i] = %s(cSlice[i])\n", goElemType)
 			}
 			g.printf("\t\t}\n")
-			g.printf("\t\tC.free(unsafe.Pointer(outPtr))\n")
+			g.printf("\t\tC.free(unsafe.Pointer(out.data))\n")
 			g.printf("\t}\n")
 		}
 		g.printf("\treturn json.Marshal(result)\n")
