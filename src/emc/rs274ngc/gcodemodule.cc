@@ -27,6 +27,7 @@
 #include "canon.hh"
 #include "config.h"		// LINELEN
 #include "units.h"
+#include "tooldata.hh"
 
 int _task = 0; // control preview behaviour when remapping
 
@@ -723,6 +724,14 @@ static PyObject *parse_file(PyObject *self, PyObject *args) {
     int error_line_offset = 0;
     struct timeval t0, t1;
     int wait = 1;
+
+    // Ensure tool data mmap is available for the interpreter.
+    // Previously this was done implicitly by linuxcnc.stat().poll().
+    static bool tool_mmap_tried = false;
+    if (!tool_mmap_tried) {
+        tool_mmap_tried = true;
+        tool_mmap_user();
+    }
 
     if(!PyArg_ParseTuple(args, "sOO!|s:new-parse",
             &f, &callback, &PyList_Type, &initcodes, &interpname))
