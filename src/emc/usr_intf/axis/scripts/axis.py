@@ -68,7 +68,7 @@ import nf
 import locale
 import bwidget
 from math import hypot, atan2, sin, cos, pi, sqrt
-import linuxcnc  # kept for positionlogger + version only
+import gmi
 from gmi.constants import *
 from glnav import *
 
@@ -227,7 +227,7 @@ root_window.withdraw()
 nf.start(root_window)
 nf.makecommand(root_window, "_", _)
 rs274.options.install(root_window)
-root_window.tk.call("set", "version", linuxcnc.version)
+root_window.tk.call("set", "version", gmi.version)
 
 try:
     root_window.tk.call("set","::MAX_JOINTS"         ,MAX_JOINTS)
@@ -820,12 +820,7 @@ class LivePlotter:
 
     def start(self):
         if self.running.get(): return
-        if not os.path.exists(linuxcnc.nmlfile):
-            return False
-        try:
-            self.stat = linuxcnc.stat()
-        except Exception:
-            return False
+        self.stat = gmi.Stat()
         self.last_task_mode = self.stat.task_mode
         self.last_motion_mode  = self.stat.motion_mode
         def C(s):
@@ -833,7 +828,7 @@ class LivePlotter:
             s = o.colors[s]
             return [int(x * 255) for x in s + (a,)]
 
-        self.logger = linuxcnc.positionlogger(linuxcnc.stat(),
+        self.logger = gmi.positionlogger(None,
             C('backplotjog'),
             C('backplottraverse'),
             C('backplotfeed'),

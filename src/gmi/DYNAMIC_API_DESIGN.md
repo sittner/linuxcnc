@@ -1834,25 +1834,45 @@ instead of Python.
 - [x] `src/gmi/python/error.py` — `ErrorChannel` class (watch-based, drop-in for `linuxcnc.error_channel()`)
 - [x] `src/gmi/python/constants.py` — flat constants for backward compat (`from gmi.constants import *`)
 - [x] `gmi/codegen/Submakefile` — copy rules for Python wrapper files
-- [x] axis.py — replaced ~134 `linuxcnc.*` refs with `gmi.*` / bare constants,
-      kept minimal `import linuxcnc` for positionlogger + version only
-- [ ] Build system: compile `nml_shim.cc` into gomc-server, `packages.conf` entry for emcgateway
+- [x] Build system: `nml_shim.cc` in liblinuxcnc.a, `packages.conf` entry, gomc-server deps
+- [x] axis.py — `import linuxcnc` fully removed, all refs use `gmi.*` / bare constants
+- [x] `src/gmi/python/positionlogger.py` — `PositionLogger` class (WS-based, drop-in
+      for `linuxcnc.positionlogger`); includes client-side vertex9, colinearity reduction,
+      and OpenGL rendering via ctypes interleaved arrays
+- [x] `internal/emcgateway/poslog.go` — server-side position sampler goroutine;
+      polls NML stat at configurable rate, dedup on position+motion_type,
+      buffers raw 9-axis points for WS delivery via `get_positions` watch
+- [x] `nml_shim.h/cc` — added `motion_type` field to `nml_stat_t`
+- [x] `gmi/__init__.py` — `gmi.version` (from `LINUXCNCVERSION` env var),
+      `gmi.positionlogger()` factory function
 - [ ] Generate Go dispatch from IDL files (gmicompile runs)
 - [ ] Tests for gateway endpoints
 - [ ] End-to-end test: axis.py startup with emcgateway loaded
 
-**Notes:**
-- The gateway pattern is a proven approach (same as manualtoolchange cmod
-  wrapping existing C code behind GMI)
-- axis.py migration is 100% mechanical once the gateway + Python clients exist
-- The `emcstat` watch channel handles the same data volume as the existing
-  NML stat buffer (~2KB per update at 50ms = ~40KB/s, trivial for localhost WS)
-- Once the internal NML→GMI migration is done (future), the gateway becomes
-  a passthrough and can be removed — axis.py is unaffected
-- Constants that are LOCAL_* defines in emcmodule.cc (AUTO_RUN, JOG_STOP,
-  SPINDLE_FORWARD, etc.) become first-class GMI enum values
-- `tool_table` uses `tooldata_get()` (shared memory), not the NML stat struct —
-  it will need a separate migration path (not part of this step)
+**Position Logger Architecture:**
+
+The position logger replaces `linuxcnc.positionlogger` with a split
+server/client architecture:
+
+- **Server** (`poslog.go`): Goroutine samples NML stat at configurable rate
+  (default 100Hz). Extracts `position - toolOffset` (raw 9-axis) and
+  `motion_type` (0-5). Dedup: skips points where both are unchanged.
+  Points accumulate in a ring buffer (10K max, drops oldest 10% on overflow).
+  Delivered via the `get_positions` WatchFuncMeta at 200ms rate.
+
+- **Client** (`positionlogger.py`): Subscribes to `get_positions` watch.
+  Processes each chunk: applies `vertex9()` geometry transformation (ported
+  from C), colinearity reduction, motion_type→color mapping, and stores in
+  a ctypes `_LoggerPoint` array matching the C struct layout. OpenGL rendering
+  uses `glVertexPointer`/`glDrawArrays` on the interleaved vertex+color array.
+
+- **Protocol**: Standard WatchAPI — client subscribes, server pushes updates.
+  Logger start/stop/clear via WS command messages (`start_logger`,
+  `stop_logger`, `clear_logger`) dispatched on the `emcstat` API.
+
+- **Key decision**: `vertex9()` runs client-side because it depends on
+  `rotation_offsets` state (`gui_respect_offsets`, `gui_rot_offsets`) that
+  is set by the Python GUI. Server sends raw 9-axis positions.
 
 ### Step 6: Polish (NOT STARTED)
 - [ ] Error handling standardization

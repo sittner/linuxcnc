@@ -140,6 +140,7 @@ extern "C" int nml_shim_poll_stat(nml_stat_t *out)
     pose_to_pos(&st->motion.traj.dtg, &out->dtg);
     out->current_vel    = st->motion.traj.current_vel;
     out->motion_id      = st->motion.traj.id;
+    out->motion_type    = st->motion.traj.motion_type;
 
     /* Positions */
     pose_to_pos(&st->motion.traj.position, &out->position);

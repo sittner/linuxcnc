@@ -47,10 +47,13 @@ type emcGateway struct {
 	logger  *slog.Logger
 	nmlFile string
 	mu      sync.Mutex
+	poslog  posLogger
 }
 
 func (m *emcGateway) Start() error { return nil }
-func (m *emcGateway) Stop()        {}
+func (m *emcGateway) Stop() {
+	m.poslog.stopLogger()
+}
 func (m *emcGateway) Destroy() {
 	C.nml_shim_shutdown()
 }
@@ -115,6 +118,16 @@ func newStatWatchAPI(gw *emcGateway) *apiserver.WatchAPI {
 				DefaultRate: 50 * time.Millisecond,
 				Watch:       func() (json.RawMessage, error) { return gw.pollStat() },
 			},
+			{
+				Name:        "get_positions",
+				DefaultRate: 200 * time.Millisecond,
+				Watch:       func() (json.RawMessage, error) { return gw.pollPositions() },
+			},
+		},
+		Commands: []apiserver.CommandMeta{
+			{Name: "start_logger", Handler: gw.cmdStartLogger},
+			{Name: "stop_logger", Handler: gw.cmdStopLogger},
+			{Name: "clear_logger", Handler: gw.cmdClearLogger},
 		},
 	}
 }

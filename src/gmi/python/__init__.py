@@ -5,6 +5,9 @@ import os
 _DEFAULT_REST_URL = "http://127.0.0.1:5080"
 _ENV_VAR = "GMC_REST_URL"
 
+# Version string (matches linuxcnc.version).
+version = os.environ.get("LINUXCNCVERSION", "unknown")
+
 
 def rest_url() -> str:
     """Return the REST base URL (from GMC_REST_URL or default)."""
@@ -37,6 +40,12 @@ def ErrorChannel():
     """Create a gmi.ErrorChannel instance (drop-in for linuxcnc.error_channel())."""
     from gmi.error import ErrorChannel as _ErrorChannel
     return _ErrorChannel()
+
+
+def positionlogger(stat_unused, c0, c1, c2, c3, c4, c5, geometry, is_xyuv=0):
+    """Create a gmi.PositionLogger (drop-in for linuxcnc.positionlogger())."""
+    from gmi.positionlogger import PositionLogger
+    return PositionLogger(stat_unused, c0, c1, c2, c3, c4, c5, geometry, is_xyuv)
 
 
 def component_exists(name: str) -> bool:

@@ -103,6 +103,7 @@ typedef struct {
     double current_vel;
     int motion_id;
     int motion_line_traj;   /* motion.traj.id mapped to motion_line in traj */
+    int motion_type;        /* 0=jog, 1=traverse, 2=feed, 3=arc, 4=toolchange, 5=probing */
 
     /* Positions */
     nml_position_t position;
