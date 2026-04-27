@@ -151,6 +151,8 @@ class _ScopeScreenState extends State<ScopeScreen> {
 
   Future<void> _arm() async {
     try {
+      // Ensure trigger config is pushed before arming.
+      await _applyTrigger();
       await _client?.arm();
     } catch (e) {
       _showError(e);
