@@ -1,11 +1,22 @@
+import 'dart:io' show Platform;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import '../../generated/halscope_watch_client.dart';
 import 'add_channel_dialog.dart';
 import 'configure_dialog.dart';
-import 'trigger_dialog.dart';
 import 'waveform_painter.dart';
+
+const _defaultRestUrl = 'http://127.0.0.1:5080';
+
+/// Derive the WebSocket watch URL from GMC_REST_URL (or default).
+String _wsUrl() {
+  final rest = (Platform.environment['GMC_REST_URL'] ?? _defaultRestUrl)
+      .replaceFirst('https://', 'wss://')
+      .replaceFirst('http://', 'ws://');
+  final base = rest.endsWith('/') ? rest.substring(0, rest.length - 1) : rest;
+  return '$base/api/v1/watch';
+}
 
 /// Channel colors — matches classic halscope (same as waveform_painter).
 const _channelColors = [
@@ -27,7 +38,23 @@ const _channelColors = [
   Colors.brown,
 ];
 
+/// Run modes matching old GTK halscope.
+enum RunMode { normal, single, roll, stop }
+
 /// Main oscilloscope screen: waveform display + controls.
+///
+/// Layout mirrors the classic GTK halscope:
+///  ┌──────┬────────────────────────────┬───────────┐
+///  │ Vert │      Waveform Display      │  Trigger  │
+///  │ Scale│                            │  -------  │
+///  │  Pos │                            │  Source   │
+///  │      │                            │  Level    │
+///  │      │                            │  Edge     │
+///  │      │                            │  Force    │
+///  ├──────┴────────────────────────────┴───────────┤
+///  │ CH [1][2][3]... [+]  | Run [N][S][R][St]      │
+///  │ H-Zoom [slider] H-Pos [slider] | [Arm][Reset] │
+///  └───────────────────────────────────────────────┘
 class ScopeScreen extends StatefulWidget {
   const ScopeScreen({super.key});
 
@@ -40,20 +67,41 @@ class _ScopeScreenState extends State<ScopeScreen> {
   ScopeStatus? _status;
   Uint8List? _sampleData;
   bool _connected = false;
-  String _serverUrl = 'ws://localhost:5080/api/v1/watch';
+  late final String _serverUrl;
 
-  final _urlController = TextEditingController();
+  // --- Display state (client-side) ---
+  int _selectedChannel = -1; // which channel's vertical controls are active
+  RunMode _runMode = RunMode.normal;
+
+  // Per-channel vertical scale (log steps: -5..+5, 0 = auto)
+  final Map<int, double> _vScale = {};
+  // Per-channel vertical position (0.0 = center, -1.0 = bottom, 1.0 = top)
+  final Map<int, double> _vPosition = {};
+  // Per-channel vertical offset
+  final Map<int, double> _vOffset = {};
+
+  // Horizontal zoom (1.0 = fit all, higher = zoom in)
+  double _hZoom = 1.0;
+  // Horizontal position (0.0 = left edge, 1.0 = right edge)
+  double _hPosition = 0.5;
+
+  // Trigger controls (local state, sent on change)
+  int _trigChannel = 0;
+  double _trigLevel = 0.0;
+  TrigEdge _trigEdge = TrigEdge.rising;
+  bool _trigForce = false;
+  bool _trigAuto = true;
 
   @override
   void initState() {
     super.initState();
-    _urlController.text = _serverUrl;
+    _serverUrl = _wsUrl();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _connect());
   }
 
   @override
   void dispose() {
     _client?.dispose();
-    _urlController.dispose();
     super.dispose();
   }
 
@@ -61,15 +109,20 @@ class _ScopeScreenState extends State<ScopeScreen> {
 
   void _connect() {
     _client?.dispose();
-
-    _serverUrl = _urlController.text;
     _client = HalscopeWsClient(url: _serverUrl);
     _client!.connect();
 
     _client!.watchWatchState(
       rateMs: 100,
       onData: (status) {
-        setState(() => _status = status);
+        setState(() {
+          _status = status;
+          // Auto-rearm in normal mode when capture completes
+          if (_runMode == RunMode.normal &&
+              status.state == ScopeState.done) {
+            _arm();
+          }
+        });
       },
     );
 
@@ -81,16 +134,6 @@ class _ScopeScreenState extends State<ScopeScreen> {
     );
 
     setState(() => _connected = true);
-  }
-
-  void _disconnect() {
-    _client?.dispose();
-    _client = null;
-    setState(() {
-      _connected = false;
-      _status = null;
-      _sampleData = null;
-    });
   }
 
   // --- Actions with error handling ---
@@ -125,6 +168,44 @@ class _ScopeScreenState extends State<ScopeScreen> {
   Future<void> _clearChannel(int channel) async {
     try {
       await _client?.clearChannel(channel: channel);
+      setState(() {
+        _vScale.remove(channel);
+        _vPosition.remove(channel);
+        _vOffset.remove(channel);
+        if (_selectedChannel == channel) _selectedChannel = -1;
+      });
+    } catch (e) {
+      _showError(e);
+    }
+  }
+
+  Future<void> _applyTrigger() async {
+    try {
+      await _client?.setTrigger(
+        trig: TriggerConfig(
+          channel: _trigChannel,
+          level: _trigLevel,
+          edge: _trigEdge,
+          force: _trigForce,
+          autoTrig: _trigAuto,
+        ),
+      );
+    } catch (e) {
+      _showError(e);
+    }
+  }
+
+  Future<void> _forceTrigger() async {
+    try {
+      await _client?.setTrigger(
+        trig: TriggerConfig(
+          channel: _trigChannel,
+          level: _trigLevel,
+          edge: _trigEdge,
+          force: true,
+          autoTrig: _trigAuto,
+        ),
+      );
     } catch (e) {
       _showError(e);
     }
@@ -150,17 +231,6 @@ class _ScopeScreenState extends State<ScopeScreen> {
       builder: (_) => ConfigureDialog(
         client: _client!,
         currentStatus: _status,
-      ),
-    );
-  }
-
-  Future<void> _showTriggerDialog() async {
-    if (_client == null) return;
-    await showDialog<bool>(
-      context: context,
-      builder: (_) => TriggerDialog(
-        client: _client!,
-        activeChannels: _status?.channels ?? [],
       ),
     );
   }
@@ -201,6 +271,8 @@ class _ScopeScreenState extends State<ScopeScreen> {
     }
   }
 
+  List<ChannelInfo> get _channels => _status?.channels ?? [];
+
   // --- Build ---
 
   @override
@@ -208,22 +280,26 @@ class _ScopeScreenState extends State<ScopeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('HAL Oscilloscope'),
+        titleTextStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+        toolbarHeight: 36,
         actions: [
+          if (_status != null) ...[
+            _statusChip(_stateLabel(_status!.state), _stateColor(_status!.state)),
+            const SizedBox(width: 8),
+            _statusChip('${_status!.samples}/${_status!.recLen}', Colors.white70),
+            const SizedBox(width: 8),
+          ],
           IconButton(
             onPressed: _connected ? _showConfigureDialog : null,
-            icon: const Icon(Icons.settings),
-            tooltip: 'Configure',
+            icon: const Icon(Icons.settings, size: 18),
+            tooltip: 'Configure capture',
+            visualDensity: VisualDensity.compact,
           ),
-          IconButton(
-            onPressed: _connected ? _showTriggerDialog : null,
-            icon: const Icon(Icons.bolt),
-            tooltip: 'Trigger',
-          ),
-          const SizedBox(width: 8),
           Container(
-            margin: const EdgeInsets.symmetric(horizontal: 8),
+            margin: const EdgeInsets.symmetric(horizontal: 4),
             child: Icon(
               _connected ? Icons.link : Icons.link_off,
+              size: 16,
               color: _connected ? Colors.green : Colors.red,
             ),
           ),
@@ -231,128 +307,299 @@ class _ScopeScreenState extends State<ScopeScreen> {
       ),
       body: Column(
         children: [
-          _buildConnectionBar(),
-          if (_status != null) _buildStatusBar(),
-          if (_status != null && _status!.channels.isNotEmpty)
-            _buildChannelBar(),
-          Expanded(child: _buildWaveformDisplay()),
-          _buildControlBar(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildConnectionBar() {
-    return Padding(
-      padding: const EdgeInsets.all(8),
-      child: Row(
-        children: [
+          // Main area: vertical panel | waveform | trigger panel
           Expanded(
-            child: TextField(
-              controller: _urlController,
-              decoration: const InputDecoration(
-                labelText: 'Server URL',
-                isDense: true,
-                border: OutlineInputBorder(),
-              ),
-              enabled: !_connected,
+            child: Row(
+              children: [
+                _buildVerticalPanel(),
+                Expanded(child: _buildWaveformDisplay()),
+                _buildTriggerPanel(),
+              ],
             ),
           ),
-          const SizedBox(width: 8),
-          ElevatedButton.icon(
-            onPressed: _connected ? _disconnect : _connect,
-            icon: Icon(_connected ? Icons.link_off : Icons.link),
-            label: Text(_connected ? 'Disconnect' : 'Connect'),
+          // Bottom controls
+          _buildBottomBar(),
+        ],
+      ),
+    );
+  }
+
+  Widget _statusChip(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(text,
+          style: TextStyle(
+            fontSize: 11,
+            fontFamily: 'monospace',
+            fontWeight: FontWeight.bold,
+            color: color,
+          )),
+    );
+  }
+
+  // ──────────────────────────────────────────────
+  // LEFT: Vertical controls (per selected channel)
+  // ──────────────────────────────────────────────
+
+  Widget _buildVerticalPanel() {
+    final hasCh = _selectedChannel >= 0 &&
+        _channels.any((c) => c.channel == _selectedChannel);
+    final chColor = hasCh
+        ? _channelColors[_selectedChannel % _channelColors.length]
+        : Colors.grey;
+
+    return Container(
+      width: 64,
+      decoration: BoxDecoration(
+        border: Border(right: BorderSide(color: Colors.blueGrey.shade800)),
+      ),
+      child: Column(
+        children: [
+          // Header
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            color: chColor.withOpacity(0.15),
+            child: Center(
+              child: Text(
+                hasCh ? 'CH${_selectedChannel}' : 'VERT',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: chColor,
+                ),
+              ),
+            ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatusBar() {
-    final s = _status!;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      color: _stateColor(s.state).withOpacity(0.15),
-      child: Row(
-        children: [
-          _statusChip('State', _stateLabel(s.state), _stateColor(s.state)),
-          const SizedBox(width: 16),
-          _statusChip('Samples', '${s.samples}/${s.recLen}', null),
-          const SizedBox(width: 16),
-          _statusChip('Pre-trig', '${s.preTrig}', null),
-          const SizedBox(width: 16),
-          _statusChip('Channels', '${s.sampleLen}', null),
-        ],
-      ),
-    );
-  }
-
-  Widget _statusChip(String label, String value, Color? color) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text('$label: ',
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: Colors.white70)),
-        Text(value,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: color ?? Colors.white,
-              fontFamily: 'monospace',
-            )),
-      ],
-    );
-  }
-
-  Widget _buildChannelBar() {
-    final channels = _status!.channels;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      child: Row(
-        children: [
-          const Icon(Icons.timeline, size: 16, color: Colors.white54),
-          const SizedBox(width: 8),
+          // Scale label
+          const Padding(
+            padding: EdgeInsets.only(top: 4),
+            child: Text('Scale', style: TextStyle(fontSize: 9, color: Colors.white54)),
+          ),
+          // Scale slider (vertical)
           Expanded(
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              children: channels.map((ch) {
-                final color =
-                    _channelColors[ch.channel % _channelColors.length];
-                return Chip(
-                  avatar: CircleAvatar(
-                    backgroundColor: color,
-                    radius: 6,
-                  ),
-                  label: Text(
-                    'CH${ch.channel}: ${ch.pinName}',
+            child: RotatedBox(
+              quarterTurns: 3,
+              child: Slider(
+                value: hasCh ? (_vScale[_selectedChannel] ?? 0.0) : 0.0,
+                min: -5.0,
+                max: 5.0,
+                divisions: 20,
+                onChanged: hasCh
+                    ? (v) => setState(() => _vScale[_selectedChannel] = v)
+                    : null,
+                activeColor: chColor,
+              ),
+            ),
+          ),
+          // Position label
+          const Text('Pos', style: TextStyle(fontSize: 9, color: Colors.white54)),
+          // Position slider (vertical)
+          Expanded(
+            child: RotatedBox(
+              quarterTurns: 3,
+              child: Slider(
+                value: hasCh ? (_vPosition[_selectedChannel] ?? 0.0) : 0.0,
+                min: -1.0,
+                max: 1.0,
+                onChanged: hasCh
+                    ? (v) => setState(() => _vPosition[_selectedChannel] = v)
+                    : null,
+                activeColor: chColor,
+              ),
+            ),
+          ),
+          // Offset label + value
+          const Text('Offset', style: TextStyle(fontSize: 9, color: Colors.white54)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+            child: SizedBox(
+              height: 24,
+              child: TextField(
+                enabled: hasCh,
+                controller: TextEditingController(
+                  text: hasCh
+                      ? (_vOffset[_selectedChannel] ?? 0.0).toStringAsFixed(3)
+                      : '0',
+                ),
+                style: const TextStyle(fontSize: 10, fontFamily: 'monospace'),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  border: OutlineInputBorder(),
+                ),
+                onSubmitted: hasCh
+                    ? (v) {
+                        final val = double.tryParse(v);
+                        if (val != null) {
+                          setState(() => _vOffset[_selectedChannel] = val);
+                        }
+                      }
+                    : null,
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+        ],
+      ),
+    );
+  }
+
+  // ──────────────────────────────────────────────
+  // RIGHT: Trigger controls (always visible)
+  // ──────────────────────────────────────────────
+
+  Widget _buildTriggerPanel() {
+    final channels = _channels;
+
+    return Container(
+      width: 130,
+      decoration: BoxDecoration(
+        border: Border(left: BorderSide(color: Colors.blueGrey.shade800)),
+      ),
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Center(
+                child: Text('TRIGGER',
                     style: TextStyle(
-                      fontSize: 12,
-                      fontFamily: 'monospace',
-                      color: color,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white54)),
+              ),
+              const Divider(height: 8),
+              // Source channel
+              const Text('Source', style: TextStyle(fontSize: 9, color: Colors.white54)),
+              const SizedBox(height: 2),
+              DropdownButton<int>(
+                value: channels.any((c) => c.channel == _trigChannel)
+                    ? _trigChannel
+                    : (channels.isNotEmpty ? channels.first.channel : 0),
+                isDense: true,
+                isExpanded: true,
+                style: const TextStyle(fontSize: 11, fontFamily: 'monospace'),
+                items: channels.isEmpty
+                    ? [const DropdownMenuItem(value: 0, child: Text('—'))]
+                    : channels.map((ch) {
+                        final color =
+                            _channelColors[ch.channel % _channelColors.length];
+                        return DropdownMenuItem(
+                          value: ch.channel,
+                          child: Text('CH${ch.channel}',
+                              style: TextStyle(color: color, fontSize: 11)),
+                        );
+                      }).toList(),
+                onChanged: _connected
+                    ? (v) {
+                        if (v != null) {
+                          setState(() => _trigChannel = v);
+                          _applyTrigger();
+                        }
+                      }
+                    : null,
+              ),
+              const SizedBox(height: 6),
+              // Level
+              const Text('Level', style: TextStyle(fontSize: 9, color: Colors.white54)),
+              const SizedBox(height: 2),
+              SizedBox(
+                height: 24,
+                child: TextField(
+                  controller: TextEditingController(
+                      text: _trigLevel.toStringAsFixed(3)),
+                  style: const TextStyle(fontSize: 10, fontFamily: 'monospace'),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                    border: OutlineInputBorder(),
+                  ),
+                  onSubmitted: (v) {
+                    final val = double.tryParse(v);
+                    if (val != null) {
+                      setState(() => _trigLevel = val);
+                      _applyTrigger();
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(height: 6),
+              // Edge toggle
+              const Text('Edge', style: TextStyle(fontSize: 9, color: Colors.white54)),
+              const SizedBox(height: 2),
+              SegmentedButton<TrigEdge>(
+                segments: const [
+                  ButtonSegment(value: TrigEdge.rising, label: Text('↑', style: TextStyle(fontSize: 14))),
+                  ButtonSegment(value: TrigEdge.falling, label: Text('↓', style: TextStyle(fontSize: 14))),
+                ],
+                selected: {_trigEdge},
+                onSelectionChanged: _connected
+                    ? (v) {
+                        setState(() => _trigEdge = v.first);
+                        _applyTrigger();
+                      }
+                    : null,
+                style: ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+              const SizedBox(height: 8),
+              // Auto trigger toggle
+              Row(
+                children: [
+                  SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: Checkbox(
+                      value: _trigAuto,
+                      onChanged: _connected
+                          ? (v) {
+                              setState(() => _trigAuto = v ?? true);
+                              _applyTrigger();
+                            }
+                          : null,
+                      visualDensity: VisualDensity.compact,
                     ),
                   ),
-                  deleteIcon:
-                      const Icon(Icons.close, size: 14),
-                  onDeleted: () => _clearChannel(ch.channel),
-                  materialTapTargetSize:
-                      MaterialTapTargetSize.shrinkWrap,
-                  visualDensity: VisualDensity.compact,
-                );
-              }).toList(),
-            ),
+                  const SizedBox(width: 4),
+                  const Text('Auto', style: TextStyle(fontSize: 10)),
+                ],
+              ),
+              const SizedBox(height: 6),
+              // Force trigger button
+              SizedBox(
+                height: 28,
+                child: ElevatedButton(
+                  onPressed: _connected ? _forceTrigger : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange.shade900,
+                    padding: EdgeInsets.zero,
+                    textStyle: const TextStyle(fontSize: 10),
+                  ),
+                  child: const Text('Force'),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
+
+  // ──────────────────────────────────────────
+  // CENTER: Waveform display
+  // ──────────────────────────────────────────
 
   Widget _buildWaveformDisplay() {
     return Container(
-      margin: const EdgeInsets.all(8),
+      margin: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: Colors.black,
         border: Border.all(color: Colors.blueGrey.shade700),
@@ -364,6 +611,11 @@ class _ScopeScreenState extends State<ScopeScreen> {
           painter: WaveformPainter(
             sampleData: _sampleData,
             sampleLen: _status?.sampleLen ?? 0,
+            hZoom: _hZoom,
+            hPosition: _hPosition,
+            vScales: Map.from(_vScale),
+            vPositions: Map.from(_vPosition),
+            vOffsets: Map.from(_vOffset),
           ),
           size: Size.infinite,
         ),
@@ -371,7 +623,75 @@ class _ScopeScreenState extends State<ScopeScreen> {
     );
   }
 
-  Widget _buildControlBar() {
+  // ──────────────────────────────────────────
+  // BOTTOM: Channel buttons + H controls + Run mode + Arm/Reset
+  // ──────────────────────────────────────────
+
+  Widget _buildBottomBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: Colors.blueGrey.shade800)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Row 1: Channel buttons
+          _buildChannelButtons(),
+          const SizedBox(height: 4),
+          // Row 2: Horizontal controls + Run mode + Arm/Reset
+          _buildHorizontalAndRunControls(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChannelButtons() {
+    final channels = _channels;
+    return Row(
+      children: [
+        // Numbered channel buttons
+        Expanded(
+          child: Wrap(
+            spacing: 2,
+            runSpacing: 2,
+            children: [
+              ...channels.map((ch) {
+                final color =
+                    _channelColors[ch.channel % _channelColors.length];
+                final selected = ch.channel == _selectedChannel;
+                return _ChannelButton(
+                  channel: ch.channel,
+                  color: color,
+                  selected: selected,
+                  pinName: ch.pinName,
+                  onTap: () => setState(() =>
+                      _selectedChannel =
+                          selected ? -1 : ch.channel),
+                  onDelete: () => _clearChannel(ch.channel),
+                );
+              }),
+              // Add channel button
+              SizedBox(
+                height: 28,
+                child: OutlinedButton.icon(
+                  onPressed: _connected ? _showAddChannelDialog : null,
+                  icon: const Icon(Icons.add, size: 14),
+                  label: const Text('CH', style: TextStyle(fontSize: 10)),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHorizontalAndRunControls() {
     final isIdle = _status?.state == ScopeState.idle ||
         _status?.state == ScopeState.done ||
         _status == null;
@@ -379,38 +699,142 @@ class _ScopeScreenState extends State<ScopeScreen> {
         _status!.state != ScopeState.idle &&
         _status!.state != ScopeState.done;
 
-    return Padding(
-      padding: const EdgeInsets.all(8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          // Add Channel
-          OutlinedButton.icon(
-            onPressed: _connected ? _showAddChannelDialog : null,
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('Channel'),
+    return Row(
+      children: [
+        // Horizontal zoom
+        const Text('Zoom', style: TextStyle(fontSize: 9, color: Colors.white54)),
+        SizedBox(
+          width: 100,
+          child: Slider(
+            value: _hZoom,
+            min: 1.0,
+            max: 32.0,
+            onChanged: (v) => setState(() => _hZoom = v),
+            activeColor: Colors.blueGrey.shade300,
           ),
-          const SizedBox(width: 12),
-          // Arm
-          ElevatedButton.icon(
-            onPressed: _connected && isIdle ? _arm : null,
-            icon: const Icon(Icons.play_arrow),
-            label: const Text('Arm'),
+        ),
+        // Horizontal position
+        const Text('Pos', style: TextStyle(fontSize: 9, color: Colors.white54)),
+        SizedBox(
+          width: 100,
+          child: Slider(
+            value: _hPosition,
+            min: 0.0,
+            max: 1.0,
+            onChanged: (v) => setState(() => _hPosition = v),
+            activeColor: Colors.blueGrey.shade300,
+          ),
+        ),
+        const SizedBox(width: 8),
+        // Separator
+        Container(width: 1, height: 24, color: Colors.blueGrey.shade800),
+        const SizedBox(width: 8),
+        // Run mode
+        const Text('Run', style: TextStyle(fontSize: 9, color: Colors.white54)),
+        const SizedBox(width: 4),
+        SegmentedButton<RunMode>(
+          segments: const [
+            ButtonSegment(value: RunMode.normal, label: Text('N', style: TextStyle(fontSize: 10))),
+            ButtonSegment(value: RunMode.single, label: Text('S', style: TextStyle(fontSize: 10))),
+            ButtonSegment(value: RunMode.roll, label: Text('R', style: TextStyle(fontSize: 10))),
+            ButtonSegment(value: RunMode.stop, label: Text('St', style: TextStyle(fontSize: 10))),
+          ],
+          selected: {_runMode},
+          onSelectionChanged: (v) {
+            setState(() => _runMode = v.first);
+            if (_runMode == RunMode.stop) {
+              _reset();
+            }
+          },
+          style: ButtonStyle(
+            visualDensity: VisualDensity.compact,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+        ),
+        const Spacer(),
+        // Arm
+        SizedBox(
+          height: 28,
+          child: ElevatedButton.icon(
+            onPressed: _connected && isIdle && _runMode != RunMode.stop
+                ? _arm
+                : null,
+            icon: const Icon(Icons.play_arrow, size: 16),
+            label: const Text('Arm', style: TextStyle(fontSize: 11)),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green.shade800,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
             ),
           ),
-          const SizedBox(width: 12),
-          // Reset
-          ElevatedButton.icon(
+        ),
+        const SizedBox(width: 6),
+        // Reset
+        SizedBox(
+          height: 28,
+          child: ElevatedButton.icon(
             onPressed: _connected && isCapturing ? _reset : null,
-            icon: const Icon(Icons.stop),
-            label: const Text('Reset'),
+            icon: const Icon(Icons.stop, size: 16),
+            label: const Text('Reset', style: TextStyle(fontSize: 11)),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red.shade800,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
             ),
           ),
-        ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Compact channel toggle button with color coding and right-click delete.
+class _ChannelButton extends StatelessWidget {
+  final int channel;
+  final Color color;
+  final bool selected;
+  final String pinName;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+
+  const _ChannelButton({
+    required this.channel,
+    required this.color,
+    required this.selected,
+    required this.pinName,
+    required this.onTap,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onSecondaryTap: onDelete,
+      child: Tooltip(
+        message: '$pinName (right-click to remove)',
+        child: Material(
+          color: selected ? color.withOpacity(0.3) : Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(4),
+            side: BorderSide(color: color, width: selected ? 2 : 1),
+          ),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(4),
+            child: SizedBox(
+              width: 28,
+              height: 28,
+              child: Center(
+                child: Text(
+                  '${channel}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

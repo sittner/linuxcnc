@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../generated/halscope_watch_client.dart' as ws;
 
-/// Dialog to configure capture parameters: thread, record length, pre-trigger.
+/// Dialog to configure capture parameters: record length, pre-trigger.
 class ConfigureDialog extends StatefulWidget {
   final ws.HalscopeWsClient client;
   final ws.ScopeStatus? currentStatus;
@@ -17,7 +17,6 @@ class ConfigureDialog extends StatefulWidget {
 }
 
 class _ConfigureDialogState extends State<ConfigureDialog> {
-  late final TextEditingController _threadController;
   late final TextEditingController _recLenController;
   late final TextEditingController _preTrigController;
   late final TextEditingController _multController;
@@ -27,7 +26,6 @@ class _ConfigureDialogState extends State<ConfigureDialog> {
   void initState() {
     super.initState();
     final s = widget.currentStatus;
-    _threadController = TextEditingController(text: 'servo-thread');
     _recLenController =
         TextEditingController(text: '${s?.recLen ?? 4000}');
     _preTrigController =
@@ -37,7 +35,6 @@ class _ConfigureDialogState extends State<ConfigureDialog> {
 
   @override
   void dispose() {
-    _threadController.dispose();
     _recLenController.dispose();
     _preTrigController.dispose();
     _multController.dispose();
@@ -52,15 +49,6 @@ class _ConfigureDialogState extends State<ConfigureDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(
-              controller: _threadController,
-              decoration: const InputDecoration(
-                labelText: 'Thread name',
-                hintText: 'servo-thread',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
             TextField(
               controller: _recLenController,
               decoration: const InputDecoration(
@@ -111,9 +99,8 @@ class _ConfigureDialogState extends State<ConfigureDialog> {
     final recLen = int.tryParse(_recLenController.text);
     final preTrig = int.tryParse(_preTrigController.text);
     final mult = int.tryParse(_multController.text);
-    final thread = _threadController.text.trim();
 
-    if (recLen == null || preTrig == null || mult == null || thread.isEmpty) {
+    if (recLen == null || preTrig == null || mult == null) {
       setState(() => _error = 'Invalid input');
       return;
     }
@@ -121,7 +108,7 @@ class _ConfigureDialogState extends State<ConfigureDialog> {
     try {
       await widget.client.configure(
         config: ws.CaptureConfig(
-          threadName: thread,
+          threadName: '',  // Backend uses HAL config thread
           recLen: recLen,
           samplePeriodMult: mult,
           preTrig: preTrig,

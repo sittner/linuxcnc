@@ -38,7 +38,27 @@ class WaveformPainter extends CustomPainter {
   final Uint8List? sampleData;
   final int sampleLen;
 
-  WaveformPainter({this.sampleData, required this.sampleLen});
+  /// Horizontal zoom (1.0 = fit all, higher = zoom in).
+  final double hZoom;
+  /// Horizontal position (0.0 = left, 1.0 = right) within zoomed view.
+  final double hPosition;
+
+  /// Per-channel vertical scale (log steps, 0 = auto).
+  final Map<int, double> vScales;
+  /// Per-channel vertical position (-1..1, 0 = center).
+  final Map<int, double> vPositions;
+  /// Per-channel vertical offset.
+  final Map<int, double> vOffsets;
+
+  WaveformPainter({
+    this.sampleData,
+    required this.sampleLen,
+    this.hZoom = 1.0,
+    this.hPosition = 0.5,
+    this.vScales = const {},
+    this.vPositions = const {},
+    this.vOffsets = const {},
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -147,29 +167,65 @@ class WaveformPainter extends CustomPainter {
 
     if (values.isEmpty) return;
 
-    // Auto-scale: find min/max
-    double vMin = values[0];
-    double vMax = values[0];
-    for (final v in values) {
+    // Apply horizontal zoom: select visible sample range
+    final totalSamples = values.length;
+    final visibleSamples = (totalSamples / hZoom).clamp(1, totalSamples).toInt();
+    final maxStart = totalSamples - visibleSamples;
+    final startIdx = (maxStart * hPosition).round().clamp(0, maxStart);
+    final endIdx = (startIdx + visibleSamples).clamp(0, totalSamples);
+    final visibleValues = values.sublist(startIdx, endIdx);
+
+    if (visibleValues.isEmpty) return;
+
+    // Apply vertical offset
+    final vOff = vOffsets[ch] ?? 0.0;
+    final adjusted = visibleValues.map((v) => v - vOff).toList();
+
+    // Auto-scale: find min/max of visible data
+    double vMin = adjusted[0];
+    double vMax = adjusted[0];
+    for (final v in adjusted) {
       if (v < vMin) vMin = v;
       if (v > vMax) vMax = v;
     }
 
     // Add 5% margin
-    final range = vMax - vMin;
+    double range = vMax - vMin;
     if (range < 1e-15) {
       vMin -= 1;
       vMax += 1;
+      range = 2.0;
     } else {
       vMin -= range * 0.05;
       vMax += range * 0.05;
+      range = vMax - vMin;
+    }
+
+    // Apply vertical scale: scale step adjusts the visible range
+    //  0 = auto, negative = zoom out, positive = zoom in
+    final vScaleStep = vScales[ch] ?? 0.0;
+    if (vScaleStep != 0.0) {
+      final factor = 1.0 / (1.0 + vScaleStep * 0.2).clamp(0.1, 10.0);
+      final center = (vMin + vMax) / 2;
+      final halfRange = range * factor / 2;
+      vMin = center - halfRange;
+      vMax = center + halfRange;
+    }
+
+    // Apply vertical position shift
+    final vPos = vPositions[ch] ?? 0.0;
+    if (vPos != 0.0) {
+      final shift = (vMax - vMin) * vPos * 0.5;
+      vMin += shift;
+      vMax += shift;
     }
 
     // Build path
     final path = Path();
-    for (int i = 0; i < values.length; i++) {
-      final x = size.width * i / (values.length - 1).clamp(1, values.length);
-      final y = size.height * (1.0 - (values[i] - vMin) / (vMax - vMin));
+    final count = adjusted.length;
+    for (int i = 0; i < count; i++) {
+      final x = size.width * i / (count - 1).clamp(1, count);
+      final y = size.height * (1.0 - (adjusted[i] - vMin) / (vMax - vMin));
 
       if (i == 0) {
         path.moveTo(x, y);
@@ -184,6 +240,11 @@ class WaveformPainter extends CustomPainter {
   @override
   bool shouldRepaint(WaveformPainter oldDelegate) {
     return sampleData != oldDelegate.sampleData ||
-        sampleLen != oldDelegate.sampleLen;
+        sampleLen != oldDelegate.sampleLen ||
+        hZoom != oldDelegate.hZoom ||
+        hPosition != oldDelegate.hPosition ||
+        vScales != oldDelegate.vScales ||
+        vPositions != oldDelegate.vPositions ||
+        vOffsets != oldDelegate.vOffsets;
   }
 }
