@@ -406,6 +406,12 @@ func (l *Launcher) Run() (runErr error) {
 		if err := l.startTask(); err != nil {
 			return fmt.Errorf("starting task: %w", err)
 		}
+
+		// Auto-load the NML↔GMI gateway — required for all displays to
+		// communicate with the task controller via the GMI API.
+		if err := l.loadGoModule("emcgateway", nil); err != nil {
+			return fmt.Errorf("loading emcgateway: %w", err)
+		}
 	}
 
 	// 6b. Execute [HAL]HALCMD entries (step 4.3.8).
