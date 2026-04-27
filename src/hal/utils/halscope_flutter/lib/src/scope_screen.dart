@@ -2,7 +2,30 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import '../../generated/halscope_watch_client.dart';
+import 'add_channel_dialog.dart';
+import 'configure_dialog.dart';
+import 'trigger_dialog.dart';
 import 'waveform_painter.dart';
+
+/// Channel colors — matches classic halscope (same as waveform_painter).
+const _channelColors = [
+  Colors.yellow,
+  Colors.cyan,
+  Colors.green,
+  Colors.red,
+  Colors.white,
+  Colors.orange,
+  Colors.pink,
+  Colors.lightBlue,
+  Colors.lime,
+  Colors.purple,
+  Colors.teal,
+  Colors.amber,
+  Colors.indigo,
+  Colors.deepOrange,
+  Colors.lightGreen,
+  Colors.brown,
+];
 
 /// Main oscilloscope screen: waveform display + controls.
 class ScopeScreen extends StatefulWidget {
@@ -34,6 +57,8 @@ class _ScopeScreenState extends State<ScopeScreen> {
     super.dispose();
   }
 
+  // --- Connection ---
+
   void _connect() {
     _client?.dispose();
 
@@ -41,29 +66,21 @@ class _ScopeScreenState extends State<ScopeScreen> {
     _client = HalscopeWsClient(url: _serverUrl);
     _client!.connect();
 
-    // Subscribe to state updates
     _client!.watchWatchState(
       rateMs: 100,
       onData: (status) {
-        setState(() {
-          _status = status;
-        });
+        setState(() => _status = status);
       },
     );
 
-    // Subscribe to sample data (binary)
     _client!.watchWatchSamples(
       rateMs: 100,
       onData: (data) {
-        setState(() {
-          _sampleData = data;
-        });
+        setState(() => _sampleData = data);
       },
     );
 
-    setState(() {
-      _connected = true;
-    });
+    setState(() => _connected = true);
   }
 
   void _disconnect() {
@@ -76,15 +93,79 @@ class _ScopeScreenState extends State<ScopeScreen> {
     });
   }
 
+  // --- Actions with error handling ---
+
+  void _showError(Object e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(e.toString()),
+        backgroundColor: Colors.red.shade800,
+        duration: const Duration(seconds: 4),
+      ),
+    );
+  }
+
   Future<void> _arm() async {
-    if (_client == null) return;
-    await _client!.arm();
+    try {
+      await _client?.arm();
+    } catch (e) {
+      _showError(e);
+    }
   }
 
   Future<void> _reset() async {
-    if (_client == null) return;
-    await _client!.reset();
+    try {
+      await _client?.reset();
+    } catch (e) {
+      _showError(e);
+    }
   }
+
+  Future<void> _clearChannel(int channel) async {
+    try {
+      await _client?.clearChannel(channel: channel);
+    } catch (e) {
+      _showError(e);
+    }
+  }
+
+  // --- Dialogs ---
+
+  Future<void> _showAddChannelDialog() async {
+    if (_client == null) return;
+    await showDialog<bool>(
+      context: context,
+      builder: (_) => AddChannelDialog(
+        client: _client!,
+        activeChannels: _status?.channels ?? [],
+      ),
+    );
+  }
+
+  Future<void> _showConfigureDialog() async {
+    if (_client == null) return;
+    await showDialog<bool>(
+      context: context,
+      builder: (_) => ConfigureDialog(
+        client: _client!,
+        currentStatus: _status,
+      ),
+    );
+  }
+
+  Future<void> _showTriggerDialog() async {
+    if (_client == null) return;
+    await showDialog<bool>(
+      context: context,
+      builder: (_) => TriggerDialog(
+        client: _client!,
+        activeChannels: _status?.channels ?? [],
+      ),
+    );
+  }
+
+  // --- Helpers ---
 
   String _stateLabel(ScopeState? state) {
     if (state == null) return '—';
@@ -120,13 +201,25 @@ class _ScopeScreenState extends State<ScopeScreen> {
     }
   }
 
+  // --- Build ---
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('HAL Oscilloscope'),
         actions: [
-          // Connection status indicator
+          IconButton(
+            onPressed: _connected ? _showConfigureDialog : null,
+            icon: const Icon(Icons.settings),
+            tooltip: 'Configure',
+          ),
+          IconButton(
+            onPressed: _connected ? _showTriggerDialog : null,
+            icon: const Icon(Icons.bolt),
+            tooltip: 'Trigger',
+          ),
+          const SizedBox(width: 8),
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 8),
             child: Icon(
@@ -138,13 +231,11 @@ class _ScopeScreenState extends State<ScopeScreen> {
       ),
       body: Column(
         children: [
-          // Connection bar
           _buildConnectionBar(),
-          // Status bar
           if (_status != null) _buildStatusBar(),
-          // Waveform display
+          if (_status != null && _status!.channels.isNotEmpty)
+            _buildChannelBar(),
           Expanded(child: _buildWaveformDisplay()),
-          // Control bar
           _buildControlBar(),
         ],
       ),
@@ -216,6 +307,49 @@ class _ScopeScreenState extends State<ScopeScreen> {
     );
   }
 
+  Widget _buildChannelBar() {
+    final channels = _status!.channels;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Row(
+        children: [
+          const Icon(Icons.timeline, size: 16, color: Colors.white54),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: channels.map((ch) {
+                final color =
+                    _channelColors[ch.channel % _channelColors.length];
+                return Chip(
+                  avatar: CircleAvatar(
+                    backgroundColor: color,
+                    radius: 6,
+                  ),
+                  label: Text(
+                    'CH${ch.channel}: ${ch.pinName}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                      color: color,
+                    ),
+                  ),
+                  deleteIcon:
+                      const Icon(Icons.close, size: 14),
+                  onDeleted: () => _clearChannel(ch.channel),
+                  materialTapTargetSize:
+                      MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildWaveformDisplay() {
     return Container(
       margin: const EdgeInsets.all(8),
@@ -239,7 +373,8 @@ class _ScopeScreenState extends State<ScopeScreen> {
 
   Widget _buildControlBar() {
     final isIdle = _status?.state == ScopeState.idle ||
-        _status?.state == ScopeState.done;
+        _status?.state == ScopeState.done ||
+        _status == null;
     final isCapturing = _status != null &&
         _status!.state != ScopeState.idle &&
         _status!.state != ScopeState.done;
@@ -249,6 +384,14 @@ class _ScopeScreenState extends State<ScopeScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          // Add Channel
+          OutlinedButton.icon(
+            onPressed: _connected ? _showAddChannelDialog : null,
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Channel'),
+          ),
+          const SizedBox(width: 12),
+          // Arm
           ElevatedButton.icon(
             onPressed: _connected && isIdle ? _arm : null,
             icon: const Icon(Icons.play_arrow),
@@ -258,6 +401,7 @@ class _ScopeScreenState extends State<ScopeScreen> {
             ),
           ),
           const SizedBox(width: 12),
+          // Reset
           ElevatedButton.icon(
             onPressed: _connected && isCapturing ? _reset : null,
             icon: const Icon(Icons.stop),
