@@ -28,6 +28,7 @@ type dispatchCGen struct {
 	pkg    string
 	header string // C header filename, e.g. "hal_api.h"
 	err    error
+	tmpSeq int    // counter for unique temp variable names
 }
 
 func (g *dispatchCGen) printf(format string, args ...interface{}) {
@@ -325,9 +326,73 @@ func (g *dispatchCGen) emitFieldCToGo(goField, cExpr string, t ast.TypeRef) {
 			}
 		}
 	case ast.TypeSlice:
-		// Slice: pointer + length companion field
-		// This case is handled specially in dispatch funcs, not in struct converter
-		g.printf("\t\t// TODO: slice field %s\n", goField)
+		// Slice fields in C structs: pointer 'field' + companion 'field_len'.
+		// Convert to Go slice, freeing the C array after copy.
+		lenExpr := cExpr + "_len"
+		if t.Elem != nil {
+			switch t.Elem.Kind {
+			case ast.TypePrimitive:
+				if t.Elem.Name == ast.PrimString {
+					// []string: char** + len → []string
+					g.printf("\t\t%s: func() []string {\n", goField)
+					g.printf("\t\t\tn := int(%s)\n", lenExpr)
+					g.printf("\t\t\tif n == 0 || %s == nil { return nil }\n", cExpr)
+					g.printf("\t\t\tcSlice := unsafe.Slice(%s, n)\n", cExpr)
+					g.printf("\t\t\tresult := make([]string, n)\n")
+					g.printf("\t\t\tfor i := 0; i < n; i++ { result[i] = C.GoString(cSlice[i]) }\n")
+					g.printf("\t\t\tC.free(unsafe.Pointer(%s))\n", cExpr)
+					g.printf("\t\t\treturn result\n")
+					g.printf("\t\t}(),\n")
+				} else if t.Elem.Name == ast.PrimU8 {
+					// []u8: uint8_t* + len → []byte (binary data)
+					g.printf("\t\t%s: func() []byte {\n", goField)
+					g.printf("\t\t\tn := int(%s)\n", lenExpr)
+					g.printf("\t\t\tif n == 0 || %s == nil { return nil }\n", cExpr)
+					g.printf("\t\t\tresult := C.GoBytes(unsafe.Pointer(%s), C.int(n))\n", cExpr)
+					g.printf("\t\t\tC.free(unsafe.Pointer(%s))\n", cExpr)
+					g.printf("\t\t\treturn result\n")
+					g.printf("\t\t}(),\n")
+				} else {
+					// Other primitive slices: cast pointer, copy elements
+					goElem := goTypeForDispatch(*t.Elem)
+					g.printf("\t\t%s: func() []%s {\n", goField, goElem)
+					g.printf("\t\t\tn := int(%s)\n", lenExpr)
+					g.printf("\t\t\tif n == 0 || %s == nil { return nil }\n", cExpr)
+					g.printf("\t\t\tcSlice := unsafe.Slice(%s, n)\n", cExpr)
+					g.printf("\t\t\tresult := make([]%s, n)\n", goElem)
+					g.printf("\t\t\tfor i := 0; i < n; i++ { result[i] = %s(cSlice[i]) }\n", goElem)
+					g.printf("\t\t\tC.free(unsafe.Pointer(%s))\n", cExpr)
+					g.printf("\t\t\treturn result\n")
+					g.printf("\t\t}(),\n")
+				}
+			case ast.TypeNamed:
+				if g.isEnum(t.Elem.Name) {
+					goElem := toPascalCase(t.Elem.Name)
+					g.printf("\t\t%s: func() []%s {\n", goField, goElem)
+					g.printf("\t\t\tn := int(%s)\n", lenExpr)
+					g.printf("\t\t\tif n == 0 || %s == nil { return nil }\n", cExpr)
+					g.printf("\t\t\tcSlice := unsafe.Slice(%s, n)\n", cExpr)
+					g.printf("\t\t\tresult := make([]%s, n)\n", goElem)
+					g.printf("\t\t\tfor i := 0; i < n; i++ { result[i] = %s(cSlice[i]) }\n", goElem)
+					g.printf("\t\t\tC.free(unsafe.Pointer(%s))\n", cExpr)
+					g.printf("\t\t\treturn result\n")
+					g.printf("\t\t}(),\n")
+				} else {
+					// []Struct: use CToGo converter per element
+					goElem := toPascalCase(t.Elem.Name)
+					converter := toLowerCamelRaw(t.Elem.Name) + "CToGo"
+					g.printf("\t\t%s: func() []%s {\n", goField, goElem)
+					g.printf("\t\t\tn := int(%s)\n", lenExpr)
+					g.printf("\t\t\tif n == 0 || %s == nil { return nil }\n", cExpr)
+					g.printf("\t\t\tcSlice := unsafe.Slice(%s, n)\n", cExpr)
+					g.printf("\t\t\tresult := make([]%s, n)\n", goElem)
+					g.printf("\t\t\tfor i := 0; i < n; i++ { result[i] = %s(&cSlice[i]) }\n", converter)
+					g.printf("\t\t\tC.free(unsafe.Pointer(%s))\n", cExpr)
+					g.printf("\t\t\treturn result\n")
+					g.printf("\t\t}(),\n")
+				}
+			}
+		}
 	case ast.TypeArray:
 		g.printf("\t\t// TODO: array field %s\n", goField)
 	}
@@ -343,6 +408,12 @@ func (g *dispatchCGen) isEnum(name string) bool {
 }
 
 // --- GoToC Converters ---
+//
+// All GoToC converters use a uniform signature with a freeList parameter
+// for tracking C.CString allocations.  The caller (dispatch function)
+// creates the freeList and defers freeing all pointers after the C call
+// returns.  This ensures forward-compatibility: adding a string field
+// to any struct type doesn't change converter signatures.
 
 func (g *dispatchCGen) emitGoToCConverters() {
 	// Only emit for struct types (not enums).
@@ -359,52 +430,63 @@ func (g *dispatchCGen) emitGoToCConverters() {
 	g.printf("// --- GoToC Converters ---\n\n")
 
 	for _, t := range g.api.Types {
+		if g.isEnum(t.Name) {
+			continue
+		}
 		goName := toPascalCase(t.Name)
 		cType := fmt.Sprintf("C.%s_%s_t", g.api.Name, toSnakeCase(t.Name))
 		funcName := toLowerCamelRaw(t.Name) + "GoToC"
 
-		g.printf("func %s(src %s) %s {\n", funcName, goName, cType)
-		g.printf("\treturn %s{\n", cType)
+		g.printf("func %s(src %s, freeList *[]unsafe.Pointer) %s {\n", funcName, goName, cType)
+		g.printf("\tvar dst %s\n", cType)
 		for _, f := range t.Fields {
 			goField := toPascalCase(f.Name)
-			cField := cgoFieldAccess(toSnakeCase(f.Name))
+			cField := "dst." + cgoFieldAccess(toSnakeCase(f.Name))
 			g.emitFieldGoToC(cField, "src."+goField, f.Type)
 		}
-		g.printf("\t}\n")
+		g.printf("\treturn dst\n")
 		g.printf("}\n\n")
 	}
 }
 
+// emitFieldGoToC emits an imperative assignment for a single struct field.
+// String fields are allocated via C.CString and tracked in freeList.
 func (g *dispatchCGen) emitFieldGoToC(cField, goExpr string, t ast.TypeRef) {
 	switch t.Kind {
 	case ast.TypePrimitive:
 		switch t.Name {
+		case ast.PrimString:
+			g.tmpSeq++
+			tmp := fmt.Sprintf("_cs%d", g.tmpSeq)
+			g.printf("\t%s := C.CString(%s)\n", tmp, goExpr)
+			g.printf("\t*freeList = append(*freeList, unsafe.Pointer(%s))\n", tmp)
+			g.printf("\t%s = %s\n", cField, tmp)
 		case ast.PrimBool:
-			g.printf("\t\t%s: C.bool(%s),\n", cField, goExpr)
+			g.printf("\t%s = C.bool(%s)\n", cField, goExpr)
 		case ast.PrimI8:
-			g.printf("\t\t%s: C.int8_t(%s),\n", cField, goExpr)
+			g.printf("\t%s = C.int8_t(%s)\n", cField, goExpr)
 		case ast.PrimU8:
-			g.printf("\t\t%s: C.uint8_t(%s),\n", cField, goExpr)
+			g.printf("\t%s = C.uint8_t(%s)\n", cField, goExpr)
 		case ast.PrimI32:
-			g.printf("\t\t%s: C.int32_t(%s),\n", cField, goExpr)
+			g.printf("\t%s = C.int32_t(%s)\n", cField, goExpr)
 		case ast.PrimU32:
-			g.printf("\t\t%s: C.uint32_t(%s),\n", cField, goExpr)
+			g.printf("\t%s = C.uint32_t(%s)\n", cField, goExpr)
 		case ast.PrimI64:
-			g.printf("\t\t%s: C.int64_t(%s),\n", cField, goExpr)
+			g.printf("\t%s = C.int64_t(%s)\n", cField, goExpr)
 		case ast.PrimU64:
-			g.printf("\t\t%s: C.uint64_t(%s),\n", cField, goExpr)
+			g.printf("\t%s = C.uint64_t(%s)\n", cField, goExpr)
 		case ast.PrimF32:
-			g.printf("\t\t%s: C.float(%s),\n", cField, goExpr)
+			g.printf("\t%s = C.float(%s)\n", cField, goExpr)
 		case ast.PrimF64:
-			g.printf("\t\t%s: C.double(%s),\n", cField, goExpr)
+			g.printf("\t%s = C.double(%s)\n", cField, goExpr)
 		}
 	case ast.TypeNamed:
 		if g.isEnum(t.Name) {
 			cType := fmt.Sprintf("C.%s_%s_t", g.api.Name, toSnakeCase(t.Name))
-			g.printf("\t\t%s: %s(%s),\n", cField, cType, goExpr)
+			g.printf("\t%s = %s(%s)\n", cField, cType, goExpr)
 		} else {
 			converter := toLowerCamelRaw(t.Name) + "GoToC"
-			g.printf("\t\t%s: %s(%s),\n", cField, converter, goExpr)
+			g.printf("\t%s = %s(%s, freeList)\n", cField, converter, goExpr)
 		}
 	}
 }
@@ -431,6 +513,8 @@ func (g *dispatchCGen) emitOneDispatch(fn ast.Func) {
 
 	g.printf("func %s(callbacks unsafe.Pointer, req []byte) ([]byte, error) {\n", dispatchName)
 	g.printf("\tcb := (*%s)(callbacks)\n", cbsType)
+	g.printf("\tvar _freeList []unsafe.Pointer\n")
+	g.printf("\tdefer func() { for _, p := range _freeList { C.free(p) } }()\n")
 
 	// Unmarshal JSON params
 	if len(fn.Params) > 0 {
@@ -497,7 +581,7 @@ func (g *dispatchCGen) emitParamGoToC(cVar, goVar string, p ast.Param) {
 		switch t.Name {
 		case ast.PrimString:
 			g.printf("\t%s := C.CString(%s)\n", cVar, goVar)
-			g.printf("\tdefer C.free(unsafe.Pointer(%s))\n", cVar)
+			g.printf("\t_freeList = append(_freeList, unsafe.Pointer(%s))\n", cVar)
 		case ast.PrimBool:
 			g.printf("\t%s := C.bool(%s)\n", cVar, goVar)
 		case ast.PrimI8:
@@ -523,7 +607,7 @@ func (g *dispatchCGen) emitParamGoToC(cVar, goVar string, p ast.Param) {
 			g.printf("\t%s := %s(%s)\n", cVar, cType, goVar)
 		} else {
 			converter := toLowerCamelRaw(t.Name) + "GoToC"
-			g.printf("\t%s := %s(%s)\n", cVar, converter, goVar)
+			g.printf("\t%s := %s(%s, &_freeList)\n", cVar, converter, goVar)
 		}
 	case ast.TypeArray:
 		// Convert Go [N]T → C [N]T element by element.

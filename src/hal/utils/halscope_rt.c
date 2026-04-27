@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <fnmatch.h>
 
 #include "gomc_env.h"
 #include "halscope_api.h"
@@ -483,13 +484,33 @@ static halscope_scope_status_t halscope_get_status(void *ctx)
     st.pre_trig = s->pre_trig;
     st.sample_len = s->sample_len;
 
-    /* Build channel info list */
-    st.channels = NULL;
-    st.channels_len = 0;
-    /* Note: channels are returned in the REST/WS layer via JSON
-       serialization of the generated dispatch code. For now we only
-       return the scalar fields; channel details can be queried
-       separately or extended later. */
+    /* Build channel info list from active channels */
+    int n_active = 0;
+    for (int n = 0; n < MAX_CHANNELS; n++) {
+        if (s->channels[n].enabled)
+            n_active++;
+    }
+
+    if (n_active > 0) {
+        halscope_channel_info_t *info = calloc(n_active, sizeof(*info));
+        if (info) {
+            int idx = 0;
+            for (int n = 0; n < MAX_CHANNELS; n++) {
+                if (!s->channels[n].enabled)
+                    continue;
+                info[idx].channel = n;
+                info[idx].pin_name = s->channels[n].pin_name;
+                info[idx].data_type = (halscope_hal_type_t)s->channels[n].data_type;
+                info[idx].enabled = true;
+                idx++;
+            }
+            st.channels = info;
+            st.channels_len = n_active;
+        }
+    } else {
+        st.channels = NULL;
+        st.channels_len = 0;
+    }
 
     return st;
 }
@@ -498,10 +519,82 @@ static halscope_list_pins_result_t halscope_list_pins(void *ctx, const char *pat
 {
     halscope_list_pins_result_t result = { .data = NULL, .len = 0 };
     (void)ctx;
-    (void)pattern;
-    /* This is a placeholder — the full implementation would iterate
-       the HAL pin/signal/param lists matching the pattern.
-       For now, return empty to indicate "not implemented". */
+
+    const char *match = (pattern && pattern[0]) ? pattern : "*";
+
+    /* First pass: count matching names */
+    int count = 0;
+    int next;
+    hal_pin_t *pin;
+    hal_sig_t *sig;
+    hal_param_t *param;
+
+    rtapi_mutex_get(&hal_data->mutex);
+
+    next = hal_data->pin_list_ptr;
+    while (next != 0) {
+        pin = SHMPTR(next);
+        if (fnmatch(match, pin->name, 0) == 0)
+            count++;
+        next = pin->next_ptr;
+    }
+    next = hal_data->sig_list_ptr;
+    while (next != 0) {
+        sig = SHMPTR(next);
+        if (fnmatch(match, sig->name, 0) == 0)
+            count++;
+        next = sig->next_ptr;
+    }
+    next = hal_data->param_list_ptr;
+    while (next != 0) {
+        param = SHMPTR(next);
+        if (fnmatch(match, param->name, 0) == 0)
+            count++;
+        next = param->next_ptr;
+    }
+
+    if (count == 0) {
+        rtapi_mutex_give(&hal_data->mutex);
+        return result;
+    }
+
+    /* Allocate array of C strings */
+    const char **names = malloc(count * sizeof(const char *));
+    if (!names) {
+        rtapi_mutex_give(&hal_data->mutex);
+        return result;
+    }
+
+    /* Second pass: collect names (point into HAL shmem — valid while mutex held
+       and as long as components aren't unloaded; dispatch copies to Go strings
+       before we return) */
+    int idx = 0;
+    next = hal_data->pin_list_ptr;
+    while (next != 0 && idx < count) {
+        pin = SHMPTR(next);
+        if (fnmatch(match, pin->name, 0) == 0)
+            names[idx++] = pin->name;
+        next = pin->next_ptr;
+    }
+    next = hal_data->sig_list_ptr;
+    while (next != 0 && idx < count) {
+        sig = SHMPTR(next);
+        if (fnmatch(match, sig->name, 0) == 0)
+            names[idx++] = sig->name;
+        next = sig->next_ptr;
+    }
+    next = hal_data->param_list_ptr;
+    while (next != 0 && idx < count) {
+        param = SHMPTR(next);
+        if (fnmatch(match, param->name, 0) == 0)
+            names[idx++] = param->name;
+        next = param->next_ptr;
+    }
+
+    rtapi_mutex_give(&hal_data->mutex);
+
+    result.data = names;
+    result.len = idx;
     return result;
 }
 
