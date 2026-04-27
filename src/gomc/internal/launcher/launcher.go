@@ -910,16 +910,42 @@ func (l *Launcher) startDisplay() error {
 	// If GDB_DISPLAY=1 is set, wrap the display command with gdb so that
 	// segfaults produce an immediate backtrace.
 	if os.Getenv("GDB_DISPLAY") != "" {
+		// The display may be a Python script (e.g. axis) rather than a
+		// native binary.  Detect this by reading the first two bytes for
+		// a "#!" shebang and, if found, extract the interpreter so gdb
+		// can load the real executable.
+		execPath := cmd.Path
+		scriptArgs := cmd.Args[1:]
+		if f, err := os.Open(execPath); err == nil {
+			var magic [2]byte
+			if _, err := f.Read(magic[:]); err == nil && string(magic[:]) == "#!" {
+				scanner := bufio.NewScanner(f)
+				if scanner.Scan() {
+					interp := strings.TrimSpace(scanner.Text())
+					// shebang line (after "#!") may have args, e.g. "#!/usr/bin/env python3"
+					parts := strings.Fields(interp)
+					if len(parts) > 0 {
+						scriptArgs = append([]string{execPath}, scriptArgs...)
+						execPath = parts[len(parts)-1] // use last token (handles /usr/bin/env python3)
+						if len(parts) > 1 && parts[0] != execPath {
+							// e.g. /usr/bin/env python3 → insert env args between interpreter and script
+							scriptArgs = append(parts[1:len(parts)-1], scriptArgs...)
+						}
+					}
+				}
+			}
+			f.Close()
+		}
+
 		gdbArgs := []string{
 			"-q",
 			"-ex", "run",
 			"-ex", "thread apply all bt full",
 			"-ex", "quit",
-			"--args",
+			"--args", execPath,
 		}
-		gdbArgs = append(gdbArgs, cmd.Path)
-		gdbArgs = append(gdbArgs, cmd.Args[1:]...)
-		l.logger.Info("wrapping display with gdb (GDB_DISPLAY set)", "display", emcDisplay)
+		gdbArgs = append(gdbArgs, scriptArgs...)
+		l.logger.Info("wrapping display with gdb (GDB_DISPLAY set)", "display", emcDisplay, "exec", execPath)
 		cmd = exec.Command("gdb", gdbArgs...)
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
