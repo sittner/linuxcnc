@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"strings"
 	"syscall"
 )
@@ -28,6 +29,13 @@ func NewServer(registry *Registry, addr string) *Server {
 	}
 
 	s.mux.HandleFunc(s.prefix+"/", s.handleAPIRequest)
+
+	// pprof profiling endpoints — always available for diagnostics.
+	s.mux.HandleFunc("/debug/pprof/", pprof.Index)
+	s.mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	s.mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	s.mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	s.mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
 	s.server = &http.Server{
 		Addr:    addr,
