@@ -26,6 +26,7 @@ type WatchFuncMeta struct {
 	Name        string        // e.g. "get_status"
 	DefaultRate time.Duration // e.g. 50ms
 	Watch       WatchFunc
+	Delta       bool // If true, diff JSON top-level keys per connection.
 }
 
 // CommandMeta describes a command callable over the WebSocket.
@@ -276,7 +277,7 @@ func (c *wsConn) handleSubscribe(sub wsSubscribe) {
 	c.mu.Unlock()
 
 	// Start push goroutine
-	go c.pushLoop(subCtx, sub.API, sub.Instance, sub.Func, rate, watchMeta.Watch)
+	go c.pushLoop(subCtx, sub.API, sub.Instance, sub.Func, rate, watchMeta.Watch, watchMeta.Delta)
 }
 
 func (c *wsConn) handleUnsubscribe(unsub wsUnsubscribe) {
@@ -334,12 +335,14 @@ func (c *wsConn) handleCall(call wsCall) {
 	})
 }
 
-func (c *wsConn) pushLoop(ctx context.Context, apiName, instance, funcName string, rate time.Duration, watch WatchFunc) {
+func (c *wsConn) pushLoop(ctx context.Context, apiName, instance, funcName string, rate time.Duration, watch WatchFunc, delta bool) {
 	ticker := time.NewTicker(rate)
 	defer ticker.Stop()
 
 	// Resolve funcName for update messages — strip "get_" prefix for cleaner names
 	updateFunc := funcName
+
+	var prevMap map[string]json.RawMessage // per-connection delta state
 
 	for {
 		select {
@@ -351,17 +354,68 @@ func (c *wsConn) pushLoop(ctx context.Context, apiName, instance, funcName strin
 				// Log but don't kill the subscription — transient errors are normal
 				continue
 			}
+			if data == nil {
+				// No data — skip this tick.
+				continue
+			}
+
+			sendData := data
+			if delta {
+				sendData = c.deltaEncode(data, &prevMap)
+				if sendData == nil {
+					continue // nothing changed
+				}
+			}
+
 			if err := c.writeJSON(wsUpdate{
 				Type:     "update",
 				API:      apiName,
 				Instance: instance,
 				Func:     updateFunc,
-				Data:     data,
+				Data:     sendData,
 			}); err != nil {
 				return // write failed — connection dead
 			}
 		}
 	}
+}
+
+// deltaEncode compares current JSON with the per-connection previous state
+// and returns only changed top-level keys. Returns nil if nothing changed.
+// First call returns the full data.
+func (c *wsConn) deltaEncode(data json.RawMessage, prevMap *map[string]json.RawMessage) json.RawMessage {
+	var curMap map[string]json.RawMessage
+	if err := json.Unmarshal(data, &curMap); err != nil {
+		return data // can't parse — send full
+	}
+
+	prev := *prevMap
+	if prev == nil {
+		// First message — send full snapshot.
+		*prevMap = curMap
+		return data
+	}
+
+	// Build delta: only keys whose JSON bytes changed.
+	delta := make(map[string]json.RawMessage, len(curMap)/4)
+	for k, v := range curMap {
+		oldV, ok := prev[k]
+		if !ok || string(v) != string(oldV) {
+			delta[k] = v
+		}
+	}
+
+	*prevMap = curMap
+
+	if len(delta) == 0 {
+		return nil
+	}
+
+	result, err := json.Marshal(delta)
+	if err != nil {
+		return data
+	}
+	return result
 }
 
 // AddWatchEndpoint registers the WebSocket handler on the server's mux.

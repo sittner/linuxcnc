@@ -120,6 +120,7 @@ func newStatWatchAPI(gw *emcGateway) *apiserver.WatchAPI {
 				Name:        "get_stat",
 				DefaultRate: 50 * time.Millisecond,
 				Watch:       func() (json.RawMessage, error) { return gw.pollStat() },
+				Delta:       true,
 			},
 			{
 				Name:        "get_positions",

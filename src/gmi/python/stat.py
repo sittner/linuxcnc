@@ -191,7 +191,9 @@ class Stat:
                 if msg.get("type") == "update" and msg.get("func") == "get_stat":
                     data = msg.get("data", {})
                     with self._lock:
-                        self._data = data
+                        # Delta merge: server sends only changed keys after
+                        # the initial full snapshot.
+                        self._data.update(data)
                 elif msg.get("type") == "error":
                     import sys
                     print(f"gmi.Stat: watch error: {msg}", file=sys.stderr)
