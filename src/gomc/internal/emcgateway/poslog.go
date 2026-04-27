@@ -185,7 +185,7 @@ func (pl *posLogger) sample(gw *emcGateway) {
 func (gw *emcGateway) pollPositions() (json.RawMessage, error) {
 	pts := gw.poslog.drainPending()
 	if pts == nil {
-		return json.RawMessage("null"), nil
+		return nil, nil // no data — pushLoop will skip this tick
 	}
 	return json.Marshal(pts)
 }

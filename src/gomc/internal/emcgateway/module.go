@@ -48,6 +48,11 @@ type emcGateway struct {
 	nmlFile string
 	mu      sync.Mutex
 	poslog  posLogger
+
+	// Cached stat poll result — shared across all WebSocket connections.
+	// Updated at most once per poll interval.
+	statCache    json.RawMessage
+	statCacheAge time.Time
 }
 
 func (m *emcGateway) Start() error { return nil }
@@ -137,9 +142,16 @@ func newStatWatchAPI(gw *emcGateway) *apiserver.WatchAPI {
 }
 
 // pollStat calls the NML shim to get current stat and marshals to JSON.
+// Results are cached so multiple WebSocket connections sharing the same
+// tick interval don't redundantly poll NML and re-marshal.
 func (gw *emcGateway) pollStat() (json.RawMessage, error) {
 	gw.mu.Lock()
 	defer gw.mu.Unlock()
+
+	now := time.Now()
+	if gw.statCache != nil && now.Sub(gw.statCacheAge) < 10*time.Millisecond {
+		return gw.statCache, nil
+	}
 
 	var cstat C.nml_stat_t
 	if rc := C.nml_shim_poll_stat(&cstat); rc != 0 {
@@ -147,7 +159,14 @@ func (gw *emcGateway) pollStat() (json.RawMessage, error) {
 	}
 
 	stat := convertStat(&cstat)
-	return json.Marshal(stat)
+	data, err := json.Marshal(stat)
+	if err != nil {
+		return nil, err
+	}
+
+	gw.statCache = data
+	gw.statCacheAge = now
+	return data, nil
 }
 
 // ─── Error Watch ───
