@@ -65,5 +65,5 @@ docs/help/zh_CN/*
 configs/**/*.tbl.bak
 configs/**/halshow.preferences
 
-# Flutter build outputs
-lib/flutter/
+# Web app build outputs
+share/gomc/
