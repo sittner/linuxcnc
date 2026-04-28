@@ -15,30 +15,29 @@ static gchar* get_exe_dir() {
   ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
   if (len < 0) return g_strdup(".");
   buf[len] = '\0';
-  gchar* dir = g_path_get_dirname(buf);
-  return dir;
+  return g_path_get_dirname(buf);
 }
 
 struct _HalscopeApp {
   GtkApplication parent_instance;
   char** dart_entrypoint_arguments;
-  FlView* view;
 };
 
 G_DEFINE_TYPE(HalscopeApp, halscope_app, GTK_TYPE_APPLICATION)
 
+// Implements GApplication::activate.
 static void halscope_app_activate(GApplication* application) {
   HalscopeApp* self = HALSCOPE_APP(application);
+  GtkWindow* window =
+      GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
 
-  // Avoid re-creating the window if already activated (e.g. from command_line).
-  GtkWindow* window = gtk_application_get_active_window(GTK_APPLICATION(application));
-  if (window != NULL) {
-    gtk_window_present(window);
-    return;
-  }
-
-  window = GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
-
+  // Use a header bar when running in GNOME as this is the common style used
+  // by applications and is the setup most users will be using (e.g. Ubuntu
+  // desktop).
+  // If running on X and not using GNOME then just use a traditional title bar
+  // in case the window manager does more exotic layout, e.g. tiling.
+  // If running on Wayland assume the header bar will work (may need changing
+  // if future cases occur).
   gboolean use_header_bar = TRUE;
 #ifdef GDK_WINDOWING_X11
   GdkScreen* screen = gtk_window_get_screen(window);
@@ -63,66 +62,89 @@ static void halscope_app_activate(GApplication* application) {
   gtk_widget_show(GTK_WIDGET(window));
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
-  fl_dart_project_set_dart_entrypoint_arguments(
-      project, self->dart_entrypoint_arguments);
+  fl_dart_project_set_dart_entrypoint_arguments(project, self->dart_entrypoint_arguments);
 
   // Resolve paths relative to executable:
   //   bin/halscope              (this binary)
   //   lib/flutter/              (shared: engine, icudtl.dat)
   //   lib/flutter/halscope/     (per-app: libapp.so, flutter_assets/)
   g_autofree gchar* exe_dir = get_exe_dir();
-  g_autofree gchar* flutter_dir = g_build_filename(exe_dir, "..", "lib", "flutter", NULL);
-  g_autofree gchar* app_dir = g_build_filename(flutter_dir, "halscope", NULL);
-
-  g_autofree gchar* aot_path = g_build_filename(app_dir, "libapp.so", NULL);
-  g_autofree gchar* assets_path = g_build_filename(app_dir, "flutter_assets", NULL);
-  g_autofree gchar* icu_path = g_build_filename(flutter_dir, "icudtl.dat", NULL);
+  g_autofree gchar* flutter_dir = g_build_filename(exe_dir, "..", "lib", "flutter", nullptr);
+  g_autofree gchar* app_dir = g_build_filename(flutter_dir, "halscope", nullptr);
+  g_autofree gchar* aot_path = g_build_filename(app_dir, "libapp.so", nullptr);
+  g_autofree gchar* assets_path = g_build_filename(app_dir, "flutter_assets", nullptr);
+  g_autofree gchar* icu_path = g_build_filename(flutter_dir, "icudtl.dat", nullptr);
 
   fl_dart_project_set_aot_library_path(project, aot_path);
   fl_dart_project_set_assets_path(project, assets_path);
   fl_dart_project_set_icu_data_path(project, icu_path);
 
-  self->view = fl_view_new(project);
-  gtk_widget_show(GTK_WIDGET(self->view));
-  gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(self->view));
+  FlView* view = fl_view_new(project);
+  gtk_widget_show(GTK_WIDGET(view));
+  gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(view));
 
-  fl_register_plugins(FL_PLUGIN_REGISTRY(self->view));
+  fl_register_plugins(FL_PLUGIN_REGISTRY(view));
 
-  gtk_widget_grab_focus(GTK_WIDGET(self->view));
+  gtk_widget_grab_focus(GTK_WIDGET(view));
 }
 
-static gint halscope_app_command_line(GApplication* application,
-                                      GApplicationCommandLine* command_line) {
+// Implements GApplication::local_command_line.
+static gboolean halscope_app_local_command_line(GApplication* application, gchar*** arguments, int* exit_status) {
   HalscopeApp* self = HALSCOPE_APP(application);
-  gchar** arguments =
-      g_application_command_line_get_arguments(command_line, NULL);
-  self->dart_entrypoint_arguments = g_strdupv(arguments + 1);
+  // Strip out the first argument as it is the binary name.
+  self->dart_entrypoint_arguments = g_strdupv(*arguments + 1);
 
-  g_strfreev(arguments);
+  g_autoptr(GError) error = nullptr;
+  if (!g_application_register(application, nullptr, &error)) {
+     g_warning("Failed to register: %s", error->message);
+     *exit_status = 1;
+     return TRUE;
+  }
 
   g_application_activate(application);
+  *exit_status = 0;
 
-  return 0;
+  return TRUE;
 }
 
+// Implements GApplication::startup.
+static void halscope_app_startup(GApplication* application) {
+  //HalscopeApp* self = HALSCOPE_APP(object);
+
+  // Perform any actions required at application startup.
+
+  G_APPLICATION_CLASS(halscope_app_parent_class)->startup(application);
+}
+
+// Implements GApplication::shutdown.
+static void halscope_app_shutdown(GApplication* application) {
+  //HalscopeApp* self = HALSCOPE_APP(object);
+
+  // Perform any actions required at application shutdown.
+
+  G_APPLICATION_CLASS(halscope_app_parent_class)->shutdown(application);
+}
+
+// Implements GObject::dispose.
 static void halscope_app_dispose(GObject* object) {
   HalscopeApp* self = HALSCOPE_APP(object);
   g_clear_pointer(&self->dart_entrypoint_arguments, g_strfreev);
-  g_clear_object(&self->view);
   G_OBJECT_CLASS(halscope_app_parent_class)->dispose(object);
 }
 
 static void halscope_app_class_init(HalscopeAppClass* klass) {
-  G_OBJECT_CLASS(klass)->dispose = halscope_app_dispose;
   G_APPLICATION_CLASS(klass)->activate = halscope_app_activate;
-  G_APPLICATION_CLASS(klass)->command_line = halscope_app_command_line;
+  G_APPLICATION_CLASS(klass)->local_command_line = halscope_app_local_command_line;
+  G_APPLICATION_CLASS(klass)->startup = halscope_app_startup;
+  G_APPLICATION_CLASS(klass)->shutdown = halscope_app_shutdown;
+  G_OBJECT_CLASS(klass)->dispose = halscope_app_dispose;
 }
 
 static void halscope_app_init(HalscopeApp* self) {}
 
 HalscopeApp* halscope_app_new() {
-  return HALSCOPE_APP(g_object_new(
-      halscope_app_get_type(), "application-id", "org.linuxcnc.halscope",
-      "flags",
-      G_APPLICATION_HANDLES_COMMAND_LINE | G_APPLICATION_NON_UNIQUE, NULL));
+  return HALSCOPE_APP(g_object_new(halscope_app_get_type(),
+                                   "application-id", "org.linuxcnc.halscope",
+                                   "flags", G_APPLICATION_NON_UNIQUE,
+                                   nullptr));
 }

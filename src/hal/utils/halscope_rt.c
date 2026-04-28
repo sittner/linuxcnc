@@ -512,6 +512,8 @@ static int32_t halscope_arm(void *ctx)
         return -EINVAL;
     if (s->rec_len == 0)
         return -EINVAL;
+    if (s->thread_name[0] == '\0')
+        return -EINVAL;  /* must configure thread first */
 
     /* Transition to INIT — the RT function picks it up */
     s->state = ST_INIT;

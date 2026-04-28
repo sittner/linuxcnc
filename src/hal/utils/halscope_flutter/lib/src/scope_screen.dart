@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../generated/halscope_client.dart' show HalscopeClient, ApiError;
 import '../../generated/halscope_watch_client.dart';
 import 'add_channel_dialog.dart';
+import 'buffer_overview.dart';
 import 'configure_dialog.dart';
 import 'waveform_painter.dart';
 
@@ -70,6 +71,7 @@ class _ScopeScreenState extends State<ScopeScreen> {
   ScopeStatus? _status;
   Uint8List? _sampleData;
   bool _connected = false;
+  bool _disposed = false;
   late final String _serverUrl;
 
   // --- Display state (client-side) ---
@@ -114,8 +116,15 @@ class _ScopeScreenState extends State<ScopeScreen> {
 
   @override
   void dispose() {
+    _disposed = true;
     _saveConfig();
-    _client?.dispose();
+    // dispose() is sync but client.dispose() is async — grab the client
+    // reference, null it out to prevent further use, then fire-and-forget
+    // the cleanup (subscription cancel + sink close).  The _disposed flag
+    // ensures no callbacks call setState after this point.
+    final client = _client;
+    _client = null;
+    client?.dispose();
     super.dispose();
   }
 
@@ -147,6 +156,7 @@ class _ScopeScreenState extends State<ScopeScreen> {
     _client!.watchWatchState(
       rateMs: 100,
       onData: (status) {
+        if (_disposed || !mounted) return;
         setState(() {
           _status = status;
           // Auto-rearm in normal mode when capture completes
@@ -161,6 +171,7 @@ class _ScopeScreenState extends State<ScopeScreen> {
     _client!.watchWatchSamples(
       rateMs: 100,
       onData: (data) {
+        if (_disposed || !mounted) return;
         setState(() => _sampleData = data);
       },
     );
@@ -196,7 +207,7 @@ class _ScopeScreenState extends State<ScopeScreen> {
   // --- Actions with error handling ---
 
   void _showError(Object e) {
-    if (!mounted) return;
+    if (_disposed || !mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(e.toString()),
@@ -207,6 +218,7 @@ class _ScopeScreenState extends State<ScopeScreen> {
   }
 
   Future<void> _arm() async {
+    if (_disposed) return;
     try {
       // Ensure trigger config is pushed before arming.
       await _applyTrigger();
@@ -416,8 +428,6 @@ class _ScopeScreenState extends State<ScopeScreen> {
           if (_status != null) ...[
             _statusChip(_stateLabel(_status!.state), _stateColor(_status!.state)),
             const SizedBox(width: 8),
-            _statusChip('${_status!.samples}/${_status!.recLen}', Colors.white70),
-            const SizedBox(width: 8),
           ],
           IconButton(
             onPressed: _connected ? _showConfigureDialog : null,
@@ -446,6 +456,16 @@ class _ScopeScreenState extends State<ScopeScreen> {
                 _buildTriggerPanel(),
               ],
             ),
+          ),
+          // Buffer overview / position indicator
+          BufferOverview(
+            hZoom: _hZoom,
+            hPosition: _hPosition,
+            samples: _status?.samples ?? 0,
+            recLen: _status?.recLen ?? 0,
+            preTrig: _status?.preTrig ?? 0,
+            onPositionChanged: (v) => setState(() => _hPosition = v),
+            onZoomChanged: (v) => setState(() => _hZoom = v),
           ),
           // Bottom controls
           _buildBottomBar(),
@@ -869,18 +889,6 @@ class _ScopeScreenState extends State<ScopeScreen> {
             min: 1.0,
             max: 32.0,
             onChanged: (v) => setState(() => _hZoom = v),
-            activeColor: Colors.blueGrey.shade300,
-          ),
-        ),
-        // Horizontal position
-        const Text('Pos', style: TextStyle(fontSize: 9, color: Colors.white54)),
-        SizedBox(
-          width: 100,
-          child: Slider(
-            value: _hPosition,
-            min: 0.0,
-            max: 1.0,
-            onChanged: (v) => setState(() => _hPosition = v),
             activeColor: Colors.blueGrey.shade300,
           ),
         ),

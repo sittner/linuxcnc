@@ -247,6 +247,7 @@ class HalscopeWsClient {
   final _binaryCallbacks = <String, void Function(Uint8List)>{};
   final _pending = <int, Completer<dynamic>>{};
   int _nextId = 1;
+  bool _disposed = false;
 
   HalscopeWsClient({
     required this.url,
@@ -305,7 +306,12 @@ class HalscopeWsClient {
   }
 
   void _send(Map<String, dynamic> msg) {
-    _channel?.sink.add(jsonEncode(msg));
+    if (_disposed) return;
+    try {
+      _channel?.sink.add(jsonEncode(msg));
+    } catch (_) {
+      // WebSocket already closed — ignore.
+    }
   }
 
   void subscribe(String funcName, int rateMs, void Function(dynamic) callback) {
@@ -342,6 +348,7 @@ class HalscopeWsClient {
   }
 
   Future<dynamic> call(String funcName, [Map<String, dynamic>? args]) async {
+    if (_disposed) throw Exception('client disposed');
     final id = _nextId++;
     final completer = Completer<dynamic>();
     _pending[id] = completer;
@@ -434,9 +441,24 @@ class HalscopeWsClient {
 
   /// Close the WebSocket connection.
   Future<void> dispose() async {
+    _disposed = true;
     _callbacks.clear();
     _binaryCallbacks.clear();
+    // Complete pending RPC futures so callers don't hang.
+    for (final completer in _pending.values) {
+      if (!completer.isCompleted) {
+        completer.completeError(Exception('client disposed'));
+      }
+    }
+    _pending.clear();
+    // Cancel subscription first to stop incoming messages.
     await _subscription?.cancel();
-    await _channel?.sink.close();
+    _subscription = null;
+    try {
+      await _channel?.sink.close();
+    } catch (_) {
+      // Already closed — ignore.
+    }
+    _channel = null;
   }
 }
