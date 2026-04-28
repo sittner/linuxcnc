@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import '../../generated/halscope_watch_client.dart' show ChannelInfo;
 
 /// Channel colors — matches classic halscope
 const _channelColors = [
@@ -49,6 +50,19 @@ class WaveformPainter extends CustomPainter {
   final Map<int, double> vPositions;
   /// Per-channel vertical offset.
   final Map<int, double> vOffsets;
+  /// Per-channel AC coupling (subtract mean).
+  final Map<int, bool> acCoupling;
+
+  /// Cursor X position (widget-local), null if not hovering.
+  final double? cursorX;
+
+  /// Trigger level for visual marker.
+  final double trigLevel;
+  /// Trigger channel for visual marker.
+  final int trigChannel;
+
+  /// Active channel info (for cursor readout labels).
+  final List<ChannelInfo> channels;
 
   WaveformPainter({
     this.sampleData,
@@ -58,6 +72,11 @@ class WaveformPainter extends CustomPainter {
     this.vScales = const {},
     this.vPositions = const {},
     this.vOffsets = const {},
+    this.acCoupling = const {},
+    this.cursorX,
+    this.trigLevel = 0.0,
+    this.trigChannel = 0,
+    this.channels = const [],
   });
 
   @override
@@ -105,6 +124,11 @@ class WaveformPainter extends CustomPainter {
         canvas, size, byteData, headerSize,
         sampleCount, chCount, ch,
       );
+    }
+
+    // Draw cursor crosshair and readout
+    if (cursorX != null) {
+      _drawCursor(canvas, size, byteData, headerSize, sampleCount, chCount);
     }
   }
 
@@ -179,7 +203,15 @@ class WaveformPainter extends CustomPainter {
 
     // Apply vertical offset
     final vOff = vOffsets[ch] ?? 0.0;
-    final adjusted = visibleValues.map((v) => v - vOff).toList();
+    List<double> adjusted = visibleValues.map((v) => v - vOff).toList();
+
+    // AC coupling: subtract mean
+    if (acCoupling[ch] == true && adjusted.isNotEmpty) {
+      double sum = 0;
+      for (final v in adjusted) sum += v;
+      final mean = sum / adjusted.length;
+      adjusted = adjusted.map((v) => v - mean).toList();
+    }
 
     // Auto-scale: find min/max of visible data
     double vMin = adjusted[0];
@@ -237,6 +269,81 @@ class WaveformPainter extends CustomPainter {
     canvas.drawPath(path, paint);
   }
 
+  /// Draw cursor crosshair and per-channel value readout at cursor position.
+  void _drawCursor(
+    Canvas canvas,
+    Size size,
+    ByteData byteData,
+    int headerSize,
+    int sampleCount,
+    int chCount,
+  ) {
+    final cx = cursorX!.clamp(0.0, size.width);
+
+    // Vertical crosshair line
+    final crossPaint = Paint()
+      ..color = Colors.white38
+      ..strokeWidth = 0.5;
+    canvas.drawLine(Offset(cx, 0), Offset(cx, size.height), crossPaint);
+
+    // Horizontal line at cursor Y would be confusing with multiple channels,
+    // so only draw vertical.
+
+    // Compute per-channel value at cursor X
+    final readouts = <_CursorReadout>[];
+    for (int ch = 0; ch < chCount && ch < 16; ch++) {
+      // Extract all values for this channel
+      final values = <double>[];
+      for (int i = 0; i < sampleCount; i++) {
+        final offset = headerSize + (i * chCount + ch) * 8;
+        if (offset + 8 <= sampleData!.length) {
+          values.add(byteData.getFloat64(offset, Endian.little));
+        }
+      }
+      if (values.isEmpty) continue;
+
+      // Apply horizontal zoom to get visible range
+      final totalSamples = values.length;
+      final visibleSamples = (totalSamples / hZoom).clamp(1, totalSamples).toInt();
+      final maxStart = totalSamples - visibleSamples;
+      final startIdx = (maxStart * hPosition).round().clamp(0, maxStart);
+      final endIdx = (startIdx + visibleSamples).clamp(0, totalSamples);
+      final visibleValues = values.sublist(startIdx, endIdx);
+      if (visibleValues.isEmpty) continue;
+
+      // Map cursor X to sample index
+      final fraction = cx / size.width;
+      final sampleIdx = (fraction * (visibleValues.length - 1)).round().clamp(0, visibleValues.length - 1);
+      final rawValue = visibleValues[sampleIdx];
+
+      readouts.add(_CursorReadout(
+        channel: ch,
+        value: rawValue,
+        color: _channelColors[ch % _channelColors.length],
+      ));
+    }
+
+    // Draw readout labels at top-left
+    double labelY = 4;
+    for (final r in readouts) {
+      final tp = TextPainter(
+        text: TextSpan(
+          text: 'CH${r.channel}: ${r.value.toStringAsFixed(4)}',
+          style: TextStyle(
+            color: r.color,
+            fontSize: 10,
+            fontFamily: 'monospace',
+            backgroundColor: Colors.black87,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      );
+      tp.layout();
+      tp.paint(canvas, Offset(4, labelY));
+      labelY += tp.height + 2;
+    }
+  }
+
   @override
   bool shouldRepaint(WaveformPainter oldDelegate) {
     return sampleData != oldDelegate.sampleData ||
@@ -245,6 +352,17 @@ class WaveformPainter extends CustomPainter {
         hPosition != oldDelegate.hPosition ||
         vScales != oldDelegate.vScales ||
         vPositions != oldDelegate.vPositions ||
-        vOffsets != oldDelegate.vOffsets;
+        vOffsets != oldDelegate.vOffsets ||
+        acCoupling != oldDelegate.acCoupling ||
+        cursorX != oldDelegate.cursorX ||
+        trigLevel != oldDelegate.trigLevel ||
+        trigChannel != oldDelegate.trigChannel;
   }
+}
+
+class _CursorReadout {
+  final int channel;
+  final double value;
+  final Color color;
+  const _CursorReadout({required this.channel, required this.value, required this.color});
 }

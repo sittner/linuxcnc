@@ -1,6 +1,8 @@
-import 'dart:io' show Platform;
+import 'dart:convert';
+import 'dart:io' show File, Platform;
 import 'dart:typed_data';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import '../../generated/halscope_watch_client.dart';
 import 'add_channel_dialog.dart';
@@ -79,6 +81,8 @@ class _ScopeScreenState extends State<ScopeScreen> {
   final Map<int, double> _vPosition = {};
   // Per-channel vertical offset
   final Map<int, double> _vOffset = {};
+  // Per-channel AC coupling
+  final Map<int, bool> _acCoupling = {};
 
   // Horizontal zoom (1.0 = fit all, higher = zoom in)
   double _hZoom = 1.0;
@@ -92,15 +96,21 @@ class _ScopeScreenState extends State<ScopeScreen> {
   bool _trigForce = false;
   bool _trigAuto = true;
 
+  // Cursor readout
+  Offset? _cursorPosition; // in widget-local coords
+  final GlobalKey _waveformKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
     _serverUrl = _wsUrl();
+    _loadConfig();
     WidgetsBinding.instance.addPostFrameCallback((_) => _connect());
   }
 
   @override
   void dispose() {
+    _saveConfig();
     _client?.dispose();
     super.dispose();
   }
@@ -174,6 +184,7 @@ class _ScopeScreenState extends State<ScopeScreen> {
         _vScale.remove(channel);
         _vPosition.remove(channel);
         _vOffset.remove(channel);
+        _acCoupling.remove(channel);
         if (_selectedChannel == channel) _selectedChannel = -1;
       });
     } catch (e) {
@@ -235,6 +246,73 @@ class _ScopeScreenState extends State<ScopeScreen> {
         currentStatus: _status,
       ),
     );
+  }
+
+  // --- Autosave / Autoload ---
+
+  static String get _configPath {
+    final home = Platform.environment['HOME'] ?? '.';
+    return '$home/.halscope.json';
+  }
+
+  void _saveConfig() {
+    try {
+      final config = <String, dynamic>{
+        'hZoom': _hZoom,
+        'hPosition': _hPosition,
+        'runMode': _runMode.index,
+        'trigChannel': _trigChannel,
+        'trigLevel': _trigLevel,
+        'trigEdge': _trigEdge.value,
+        'trigAuto': _trigAuto,
+        'vScale': _vScale.map((k, v) => MapEntry(k.toString(), v)),
+        'vPosition': _vPosition.map((k, v) => MapEntry(k.toString(), v)),
+        'vOffset': _vOffset.map((k, v) => MapEntry(k.toString(), v)),
+        'acCoupling': _acCoupling.map((k, v) => MapEntry(k.toString(), v)),
+      };
+      File(_configPath).writeAsStringSync(jsonEncode(config));
+    } catch (_) {}
+  }
+
+  void _loadConfig() {
+    try {
+      final file = File(_configPath);
+      if (!file.existsSync()) return;
+      final config = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+      setState(() {
+        _hZoom = (config['hZoom'] as num?)?.toDouble() ?? 1.0;
+        _hPosition = (config['hPosition'] as num?)?.toDouble() ?? 0.5;
+        _runMode = RunMode.values[(config['runMode'] as int?) ?? 0];
+        _trigChannel = (config['trigChannel'] as int?) ?? 0;
+        _trigLevel = (config['trigLevel'] as num?)?.toDouble() ?? 0.0;
+        _trigEdge = TrigEdge.fromValue((config['trigEdge'] as int?) ?? 1);
+        _trigAuto = (config['trigAuto'] as bool?) ?? true;
+        _loadMap(config, 'vScale', _vScale);
+        _loadMap(config, 'vPosition', _vPosition);
+        _loadMap(config, 'vOffset', _vOffset);
+        _loadBoolMap(config, 'acCoupling', _acCoupling);
+      });
+    } catch (_) {}
+  }
+
+  void _loadMap(Map<String, dynamic> config, String key, Map<int, double> target) {
+    final m = config[key] as Map<String, dynamic>?;
+    if (m == null) return;
+    target.clear();
+    m.forEach((k, v) {
+      final ch = int.tryParse(k);
+      if (ch != null && v is num) target[ch] = v.toDouble();
+    });
+  }
+
+  void _loadBoolMap(Map<String, dynamic> config, String key, Map<int, bool> target) {
+    final m = config[key] as Map<String, dynamic>?;
+    if (m == null) return;
+    target.clear();
+    m.forEach((k, v) {
+      final ch = int.tryParse(k);
+      if (ch != null && v is bool) target[ch] = v;
+    });
   }
 
   // --- Helpers ---
@@ -444,6 +522,25 @@ class _ScopeScreenState extends State<ScopeScreen> {
               ),
             ),
           ),
+          // AC coupling toggle
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: Checkbox(
+                  value: hasCh ? (_acCoupling[_selectedChannel] ?? false) : false,
+                  onChanged: hasCh
+                      ? (v) => setState(() => _acCoupling[_selectedChannel] = v ?? false)
+                      : null,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+              const SizedBox(width: 2),
+              Text('AC', style: TextStyle(fontSize: 9, color: chColor)),
+            ],
+          ),
           const SizedBox(height: 4),
         ],
       ),
@@ -600,26 +697,36 @@ class _ScopeScreenState extends State<ScopeScreen> {
   // ──────────────────────────────────────────
 
   Widget _buildWaveformDisplay() {
-    return Container(
-      margin: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: Colors.black,
-        border: Border.all(color: Colors.blueGrey.shade700),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(4),
-        child: CustomPaint(
-          painter: WaveformPainter(
-            sampleData: _sampleData,
-            sampleLen: _status?.sampleLen ?? 0,
-            hZoom: _hZoom,
-            hPosition: _hPosition,
-            vScales: Map.from(_vScale),
-            vPositions: Map.from(_vPosition),
-            vOffsets: Map.from(_vOffset),
+    return MouseRegion(
+      onHover: (event) => setState(() => _cursorPosition = event.localPosition),
+      onExit: (_) => setState(() => _cursorPosition = null),
+      child: Container(
+        key: _waveformKey,
+        margin: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: Colors.black,
+          border: Border.all(color: Colors.blueGrey.shade700),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: CustomPaint(
+            painter: WaveformPainter(
+              sampleData: _sampleData,
+              sampleLen: _status?.sampleLen ?? 0,
+              hZoom: _hZoom,
+              hPosition: _hPosition,
+              vScales: Map.from(_vScale),
+              vPositions: Map.from(_vPosition),
+              vOffsets: Map.from(_vOffset),
+              acCoupling: Map.from(_acCoupling),
+              cursorX: _cursorPosition?.dx,
+              trigLevel: _trigLevel,
+              trigChannel: _trigChannel,
+              channels: _channels,
+            ),
+            size: Size.infinite,
           ),
-          size: Size.infinite,
         ),
       ),
     );
