@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import '../../generated/halscope_client.dart' show HalscopeClient, ApiError;
 import '../../generated/halscope_watch_client.dart';
 import 'add_channel_dialog.dart';
 import 'configure_dialog.dart';
@@ -117,7 +118,25 @@ class _ScopeScreenState extends State<ScopeScreen> {
 
   // --- Connection ---
 
-  void _connect() {
+  Future<void> _connect() async {
+    // Probe the REST API first to detect server/module availability.
+    final restUrl = Platform.environment['GMC_REST_URL'] ?? _defaultRestUrl;
+    final restClient = HalscopeClient(baseUrl: restUrl);
+    try {
+      await restClient.getStatus();
+    } on ApiError catch (e) {
+      if (e.statusCode == 404 && mounted) {
+        _showModuleNotLoaded();
+        return;
+      }
+      rethrow;
+    } catch (e) {
+      if (mounted) {
+        _showError('Cannot reach server at $restUrl: $e');
+      }
+      return;
+    }
+
     _client?.dispose();
     _client = HalscopeWsClient(url: _serverUrl);
     _client!.connect();
@@ -144,6 +163,32 @@ class _ScopeScreenState extends State<ScopeScreen> {
     );
 
     setState(() => _connected = true);
+  }
+
+  void _showModuleNotLoaded() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Halscope module not loaded'),
+        content: const Text(
+          'The server is running but the halscope API was not found.\n\n'
+          'Add the following to your HAL configuration:\n\n'
+          '  load halscope\n'
+          '  addf halscope.sample servo-thread\n\n'
+          'Then restart LinuxCNC.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              _connect(); // retry
+            },
+            child: const Text('Retry'),
+          ),
+        ],
+      ),
+    );
   }
 
   // --- Actions with error handling ---
