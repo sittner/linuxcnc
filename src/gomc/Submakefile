@@ -94,7 +94,7 @@ $(IMPORTS_GENERATED): gomc/packages.conf ../bin/modcompile
 # CGO_LDFLAGS adds -Wl,-rpath so the dynamic linker finds liblinuxcnchal.so
 # and its companions at runtime (RIP and installed builds alike).
 # LIB_DIR is $(EMC2_HOME)/lib, defined in Makefile.inc.
-../bin/gomc-server: $(GOMC_SRC) $(GMI_KINS_GEN_GO) $(GMI_AXISUI_GEN_GO) $(GMI_AXISUI_WS_GO) $(GMI_HALSCOPE_GEN_GO) $(GMI_HALSCOPE_WS_GO) $(IMPORTS_GENERATED) gomc/packages.conf gomc/go.sum ../lib/liblinuxcnchal.so ../lib/liblinuxcnc.a ../lib/libnml.so ../lib/libposemath.so
+../bin/gomc-server: $(GOMC_SRC) $(GMI_KINS_GEN_GO) $(GMI_AXISUI_GEN_GO) $(GMI_AXISUI_WS_GO) $(GMI_HALSCOPE_GEN_GO) $(GMI_HALSCOPE_WS_GO) $(IMPORTS_GENERATED) gomc/packages.conf gomc/go.sum ../lib/liblinuxcnchal.so ../lib/liblinuxcnc.a ../lib/libnml.so ../lib/libposemath.so ../lib/libtooldata.so.0
 	$(ECHO) Building gomc-server
 	$(Q)cd gomc && CGO_LDFLAGS="-Wl,-rpath,$(LIB_DIR)" $(GO) build -ldflags "$(GOMC_LDFLAGS)" -o $(TOP)/bin/gomc-server ./cmd/gomc-server
 
