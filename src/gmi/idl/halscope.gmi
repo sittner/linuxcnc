@@ -75,9 +75,20 @@ type ScopeStatus {
     channels: []ChannelInfo
 }
 
+type ThreadInfo {
+    name: string
+    period_ns: i64
+}
+
 # --- Control functions (non-RT, called via REST/WS) ---
 
+# List all HAL threads (for thread selection in UI).
+@method GET
+@path "/threads"
+func list_threads() -> []ThreadInfo
+
 # Reconfigure capture buffer. Only valid when state is IDLE or DONE.
+# If thread_name is set, the sample function is wired to that thread.
 @method POST
 @path "/configure"
 func configure(config: CaptureConfig) -> i32

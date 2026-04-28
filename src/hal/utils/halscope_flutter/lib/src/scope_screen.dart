@@ -90,6 +90,9 @@ class _ScopeScreenState extends State<ScopeScreen> {
   // Horizontal position (0.0 = left edge, 1.0 = right edge)
   double _hPosition = 0.5;
 
+  // Current thread assignment
+  String _threadName = '';
+
   // Trigger controls (local state, sent on change)
   int _trigChannel = 0;
   double _trigLevel = 0.0;
@@ -174,8 +177,7 @@ class _ScopeScreenState extends State<ScopeScreen> {
         content: const Text(
           'The server is running but the halscope API was not found.\n\n'
           'Add the following to your HAL configuration:\n\n'
-          '  load halscope\n'
-          '  addf halscope.sample servo-thread\n\n'
+          '  load halscope\n\n'
           'Then restart LinuxCNC.',
         ),
         actions: [
@@ -291,6 +293,7 @@ class _ScopeScreenState extends State<ScopeScreen> {
       builder: (_) => ConfigureDialog(
         client: _client!,
         currentStatus: _status,
+        currentThread: _threadName,
       ),
     );
   }

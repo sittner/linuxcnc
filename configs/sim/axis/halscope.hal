@@ -1,3 +1,2 @@
-# Load the halscope cmod and add its sample function to the servo thread.
+# Load the halscope cmod. Thread wiring is done from the UI.
 load halscope
-addf halscope.sample servo-thread

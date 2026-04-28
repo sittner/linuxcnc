@@ -214,6 +214,26 @@ class ScopeStatus {
       };
 }
 
+class ThreadInfo {
+  final String name;
+  final int periodNs;
+
+  const ThreadInfo({
+    required this.name,
+    required this.periodNs,
+  });
+
+  factory ThreadInfo.fromJson(Map<String, dynamic> j) => ThreadInfo(
+        name: (j['name'] as String?) ?? '',
+        periodNs: (j['period_ns'] as num?)?.toInt() ?? 0,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'period_ns': periodNs,
+      };
+}
+
 // --- WebSocket Client ---
 
 class HalscopeWsClient {
@@ -351,6 +371,11 @@ class HalscopeWsClient {
   }
 
   // --- Command Methods ---
+
+  Future<List<ThreadInfo>> listThreads() async {
+    final result = await call('list_threads');
+    return (result as List? ?? []).map((e) => ThreadInfo.fromJson(e as Map<String, dynamic>)).toList();
+  }
 
   Future<int> configure({required CaptureConfig config}) async {
     final args = <String, dynamic>{

@@ -300,6 +300,43 @@ static int count_active_channels(halscope_t *s)
     return count;
 }
 
+static halscope_list_threads_result_t halscope_list_threads(void *ctx)
+{
+    (void)ctx;
+    halscope_list_threads_result_t result = { .data = NULL, .len = 0 };
+
+    /* Count threads */
+    int count = 0;
+    {
+        int next = hal_data->thread_list_ptr;
+        while (next != 0) {
+            count++;
+            hal_thread_t *t = (hal_thread_t *)SHMPTR(next);
+            next = t->next_ptr;
+        }
+    }
+
+    if (count == 0)
+        return result;
+
+    result.data = malloc(count * sizeof(halscope_thread_info_t));
+    if (!result.data)
+        return result;
+    result.len = count;
+
+    int idx = 0;
+    int next = hal_data->thread_list_ptr;
+    while (next != 0 && idx < count) {
+        hal_thread_t *t = (hal_thread_t *)SHMPTR(next);
+        result.data[idx].name = strdup(t->name);
+        result.data[idx].period_ns = t->period;
+        idx++;
+        next = t->next_ptr;
+    }
+
+    return result;
+}
+
 static int32_t halscope_configure(void *ctx, const halscope_capture_config_t *config)
 {
     halscope_t *s = (halscope_t *)ctx;
@@ -308,8 +345,26 @@ static int32_t halscope_configure(void *ctx, const halscope_capture_config_t *co
     if (s->state != ST_IDLE && s->state != ST_DONE)
         return -EBUSY;
 
-    if (config->thread_name)
-        rtapi_strlcpy(s->thread_name, config->thread_name, sizeof(s->thread_name));
+    /* Handle thread (re-)assignment */
+    if (config->thread_name && config->thread_name[0] != '\0') {
+        /* If already wired to a different thread, remove first */
+        if (s->thread_name[0] != '\0' &&
+            strcmp(s->thread_name, config->thread_name) != 0) {
+            hal_del_funct_from_thread("halscope.sample", s->thread_name);
+            s->thread_name[0] = '\0';
+        }
+        /* Wire to new thread (if not already there) */
+        if (s->thread_name[0] == '\0' ||
+            strcmp(s->thread_name, config->thread_name) != 0) {
+            int rv = hal_add_funct_to_thread("halscope.sample",
+                                             config->thread_name, -1);
+            if (rv != 0)
+                return rv;
+            rtapi_strlcpy(s->thread_name, config->thread_name,
+                          sizeof(s->thread_name));
+        }
+    }
+
     if (config->rec_len > 0 && config->rec_len <= s->num_samples)
         s->rec_len = config->rec_len;
     if (config->sample_period_mult > 0)
@@ -686,6 +741,9 @@ static void halscope_Stop(struct cmod *self)
 static void halscope_Destroy(struct cmod *self)
 {
     halscope_t *s = (halscope_t *)self;
+    /* Unwire from thread if still attached */
+    if (s->thread_name[0] != '\0')
+        hal_del_funct_from_thread("halscope.sample", s->thread_name);
     if (s->buffer) {
         free(s->buffer);
         s->buffer = NULL;
@@ -699,6 +757,7 @@ static void halscope_Destroy(struct cmod *self)
 /* Callbacks struct */
 static halscope_callbacks_t halscope_cb = {
     .ctx            = NULL,
+    .list_threads   = halscope_list_threads,
     .configure      = halscope_configure,
     .set_channel    = halscope_set_channel,
     .clear_channel  = halscope_clear_channel,

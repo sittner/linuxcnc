@@ -212,6 +212,26 @@ class ScopeStatus {
       };
 }
 
+class ThreadInfo {
+  final String name;
+  final int periodNs;
+
+  const ThreadInfo({
+    required this.name,
+    required this.periodNs,
+  });
+
+  factory ThreadInfo.fromJson(Map<String, dynamic> j) => ThreadInfo(
+        name: (j['name'] as String?) ?? '',
+        periodNs: (j['period_ns'] as num?)?.toInt() ?? 0,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'period_ns': periodNs,
+      };
+}
+
 // --- Client ---
 
 class ApiError implements Exception {
@@ -277,6 +297,12 @@ class HalscopeClient {
   }
 
   // --- API Methods ---
+
+  Future<List<ThreadInfo>> listThreads() async {
+    const path = '/threads';
+    final result = await _doRequest('GET', path, body: null, hasResult: true);
+    return (result as List? ?? []).map((e) => ThreadInfo.fromJson(e as Map<String, dynamic>)).toList();
+  }
 
   Future<int> configure({required CaptureConfig config}) async {
     const path = '/configure';
