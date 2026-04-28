@@ -35,7 +35,8 @@ $(HALSCOPE_NPM_STAMP): $(HALSCOPE_WEBAPP_SRC)/package.json
 
 $(HALSCOPE_WEBAPP_STAMP): $(HALSCOPE_WEBAPP_SRCS) $(HALSCOPE_NPM_STAMP)
 	$(ECHO) "Building halscope webapp"
-	$(Q)cd $(HALSCOPE_WEBAPP_SRC) && npx vite build --outDir $(abspath $(HALSCOPE_WEBAPP_DEST))
+	$(Q)rm -rf $(HALSCOPE_WEBAPP_DEST)
+	$(Q)cd $(HALSCOPE_WEBAPP_SRC) && npx vite build --outDir $(abspath $(HALSCOPE_WEBAPP_DEST)) --emptyOutDir
 	$(Q)touch $@
 
 TARGETS += $(HALSCOPE_WEBAPP_STAMP)

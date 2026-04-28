@@ -118,7 +118,7 @@ func (g *clientTSWSGen) emitClient() {
 	g.printf("    return new Promise((resolve, reject) => {\n")
 	g.printf("      this.ws = new WebSocket(this.url);\n")
 	g.printf("      this.ws.onopen = () => resolve();\n")
-	g.printf("      this.ws.onerror = (e) => reject(new Error('WebSocket error'));\n")
+	g.printf("      this.ws.onerror = () => reject(new Error('WebSocket error'));\n")
 	g.printf("      this.ws.onmessage = (ev) => this.handleMessage(ev);\n")
 	g.printf("      this.ws.onclose = () => {\n")
 	g.printf("        for (const [, p] of this.pending) {\n")
