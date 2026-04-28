@@ -954,8 +954,8 @@ Options:
     --server-go      Generate Go server handlers
     --client-go      Generate Go REST client
     --client-python  Generate Python REST client
-    --client-dart    Generate Dart REST client
-    --client-dart-ws Generate Dart WebSocket watch client
+    --client-ts      Generate TypeScript REST client
+    --client-ts-ws   Generate TypeScript WebSocket watch client
     -o PATH          Output file or directory
 `
 
@@ -970,8 +970,8 @@ const (
 	gmiModeClientPython
 	gmiModeServerWS
 	gmiModeClientPythonWS
-	gmiModeClientDart
-	gmiModeClientDartWS
+	gmiModeClientTS
+	gmiModeClientTSWS
 )
 
 func cmdGMI(args []string) {
@@ -1006,10 +1006,10 @@ func cmdGMI(args []string) {
 			m = gmiModeServerWS
 		case "--client-python-ws":
 			m = gmiModeClientPythonWS
-		case "--client-dart":
-			m = gmiModeClientDart
-		case "--client-dart-ws":
-			m = gmiModeClientDartWS
+		case "--client-ts":
+			m = gmiModeClientTS
+		case "--client-ts-ws":
+			m = gmiModeClientTSWS
 		case "-o":
 			if i+1 < len(args) {
 				i++
@@ -1083,16 +1083,16 @@ func processGMIFile(file string, m gmiMode, outputPath string) error {
 			return fmt.Errorf("%s: --client-python-ws requires at least one @watch function", file)
 		}
 		return gmiGenerateClientPythonWS(api, outputPath)
-	case gmiModeClientDart:
+	case gmiModeClientTS:
 		if !api.RestExport {
-			return fmt.Errorf("%s: --client-dart requires @rest_export true", file)
+			return fmt.Errorf("%s: --client-ts requires @rest_export true", file)
 		}
-		return gmiGenerateClientDart(api, outputPath)
-	case gmiModeClientDartWS:
+		return gmiGenerateClientTS(api, outputPath)
+	case gmiModeClientTSWS:
 		if !gmicgen.HasWatchFuncs(api) {
-			return fmt.Errorf("%s: --client-dart-ws requires at least one @watch function", file)
+			return fmt.Errorf("%s: --client-ts-ws requires at least one @watch function", file)
 		}
-		return gmiGenerateClientDartWS(api, outputPath)
+		return gmiGenerateClientTSWS(api, outputPath)
 	}
 	return nil
 }
@@ -1283,9 +1283,9 @@ func gmiGenerateClientPythonWS(api *gmiast.API, outputPath string) error {
 	return nil
 }
 
-func gmiGenerateClientDart(api *gmiast.API, outputPath string) error {
+func gmiGenerateClientTS(api *gmiast.API, outputPath string) error {
 	if outputPath == "" {
-		outputPath = api.Name + "_client.dart"
+		outputPath = api.Name + "_client.ts"
 	}
 
 	f, err := os.Create(outputPath)
@@ -1294,7 +1294,7 @@ func gmiGenerateClientDart(api *gmiast.API, outputPath string) error {
 	}
 	defer f.Close()
 
-	if err := gmicgen.GenerateClientDart(f, api); err != nil {
+	if err := gmicgen.GenerateClientTS(f, api); err != nil {
 		return err
 	}
 
@@ -1302,9 +1302,9 @@ func gmiGenerateClientDart(api *gmiast.API, outputPath string) error {
 	return nil
 }
 
-func gmiGenerateClientDartWS(api *gmiast.API, outputPath string) error {
+func gmiGenerateClientTSWS(api *gmiast.API, outputPath string) error {
 	if outputPath == "" {
-		outputPath = api.Name + "_watch_client.dart"
+		outputPath = api.Name + "_watch_client.ts"
 	}
 
 	f, err := os.Create(outputPath)
@@ -1313,7 +1313,7 @@ func gmiGenerateClientDartWS(api *gmiast.API, outputPath string) error {
 	}
 	defer f.Close()
 
-	if err := gmicgen.GenerateClientDartWS(f, api); err != nil {
+	if err := gmicgen.GenerateClientTSWS(f, api); err != nil {
 		return err
 	}
 

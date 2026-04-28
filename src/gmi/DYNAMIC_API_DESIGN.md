@@ -19,8 +19,9 @@ intended to replace NML with a modern, type-safe approach.
 | 5.3: PyVCP REST/WebSocket | ✅ Complete | — |
 | 5.4: INI REST Migration | ✅ Complete | 6 |
 | 5.5: NML Gateway (stat/cmd/error) | ✅ Complete | — |
-| 5.6: Dart Client Generation | ❌ Not Started | — |
-| 5.7: Halscope (cmod + Flutter UI) | ❌ Not Started | — |
+| 5.6: TypeScript Client Generation | ❌ Not Started | — |
+| 5.7: Web App Infrastructure | ❌ Not Started | — |
+| 5.8: Halscope (cmod + Vue Web UI) | ❌ Not Started | — |
 | 6: Polish | ❌ Not Started | — |
 | 7: Remove Go Plugins | ✅ Complete | — |
 
@@ -1926,112 +1927,183 @@ server/client architecture:
   Python `stat.tool_table` property fetches from REST. `tooledit_widget.py`
   adapted to use `gmi` REST instead of direct mmap access.
 
-### Step 5.6: Dart Client Generation (`--client-dart`) (NOT STARTED)
+### Step 5.6: TypeScript Client Generation (`--client-ts`) (NOT STARTED)
 
-Add Dart client code generation to gmicompile, enabling Flutter UIs to
-consume any GMI API. This is a prerequisite for Step 5.7 (Halscope Flutter)
-and all future Flutter-based UI migrations (halmeter, halshow, touchy, etc.).
+Add TypeScript client code generation to gmicompile, enabling Vue web UIs
+to consume any GMI API. This replaces the Dart client generator (removed)
+and is a prerequisite for Step 5.8 (Halscope Web UI) and all future
+web-based UI tools (halmeter, halshow, EtherCAT configurator, etc.).
+
+**Rationale for TypeScript over Dart/Flutter:**
+
+Flutter's Linux desktop embedding has fundamental shutdown lifecycle issues
+(multi-threaded engine vs. single-threaded GTK GObject dispose cascade)
+that cannot be cleanly resolved. The web UI approach eliminates native
+dependencies entirely:
+- gomc-server already provides REST + WebSocket APIs
+- Static files served from `share/gomc/webapp/<app>/`
+- Works as local desktop tool (browser window) and remote monitoring
+- Single TypeScript client generator replaces both `--client-dart` and
+  `--client-dart-ws` (TypeScript handles both REST and WebSocket natively)
 
 **Generated Output (per `.gmi` file):**
 
-For an API `halscope` with `@rest_export true`, `--client-dart` generates
-a single Dart library file with:
+For an API `halscope` with `@rest_export true`, `--client-ts` generates
+a single TypeScript module with:
 
-1. **Enums** — Dart `enum` with integer mapping:
-   ```dart
-   enum ScopeState {
-     idle(0), init(1), preTrig(2), trigWait(3), postTrig(4), done(5), reset(6);
-     final int value;
-     const ScopeState(this.value);
-     static ScopeState fromValue(int v) => values.firstWhere((e) => e.value == v);
+1. **Constants** — exported `const`:
+   ```typescript
+   export const MAX_CHANNELS = 16;
+   export const MAX_SAMPLES = 65536;
+   ```
+
+2. **Enums** — TypeScript `enum` with integer values:
+   ```typescript
+   export enum ScopeState {
+     Idle = 0, Init = 1, PreTrig = 2, TrigWait = 3,
+     PostTrig = 4, Done = 5, Reset = 6,
    }
    ```
 
-2. **Typed structs** — Dart classes with JSON serialization:
-   ```dart
-   class ScopeStatus {
-     final ScopeState state;
-     final int samples;
-     final int recLen;
-     final int preTrig;
-     final int sampleLen;
-
-     ScopeStatus({required this.state, required this.samples, ...});
-     factory ScopeStatus.fromJson(Map<String, dynamic> j) => ...;
-     Map<String, dynamic> toJson() => ...;
+3. **Typed interfaces** — for all struct types:
+   ```typescript
+   export interface ScopeStatus {
+     state: ScopeState;
+     samples: number;
+     rec_len: number;
+     pre_trig: number;
+     sample_len: number;
    }
    ```
 
-3. **REST client** — typed methods per API function:
-   ```dart
-   class HalscopeClient {
-     final String baseUrl;
-     final http.Client _http;
+4. **REST client class** — typed methods per API function:
+   ```typescript
+   export class HalscopeClient {
+     constructor(private baseUrl: string) {}
 
-     HalscopeClient({required this.baseUrl, http.Client? client})
-       : _http = client ?? http.Client();
-
-     Future<int> configure(CaptureConfig config) async { ... }
-     Future<int> setChannel(ChannelConfig ch) async { ... }
-     Future<ScopeStatus> getStatus() async { ... }
+     async configure(config: CaptureConfig): Promise<number> { ... }
+     async setChannel(ch: ChannelConfig): Promise<number> { ... }
+     async getStatus(): Promise<ScopeStatus> { ... }
    }
    ```
 
-4. **WebSocket client** — subscribe/unsubscribe with typed callbacks,
+5. **WebSocket client class** — subscribe/unsubscribe with typed callbacks,
    binary frame support for `@binary true` watch functions:
-   ```dart
-   class HalscopeWsClient {
-     final String wsUrl;
+   ```typescript
+   export class HalscopeWsClient {
+     constructor(private wsUrl: string) {}
 
-     /// Text frames: JSON state updates, delta-encoded
-     void watchState(void Function(ScopeStatus) onData) { ... }
-
-     /// Binary frames: raw sample buffer as Uint8List
-     void watchSamples(void Function(Uint8List) onData) { ... }
-
-     /// WS command calls (configure, arm, reset, etc.)
-     Future<int> call(String func, Map<String, dynamic> params) async { ... }
-
-     void dispose() { ... }
+     watchState(onData: (status: ScopeStatus) => void): void { ... }
+     watchSamples(onData: (data: ArrayBuffer) => void): void { ... }
+     call(func: string, args?: Record<string, unknown>): Promise<unknown> { ... }
+     dispose(): void { ... }
    }
    ```
 
-**IDL → Dart naming conventions:**
+**IDL → TypeScript naming conventions:**
 - Type names: `PascalCase` (matches IDL)
-- Field names: `camelCase` (from IDL `snake_case`)
-- Enum values: `camelCase` (from IDL `UPPER_CASE`)
-- JSON keys: `snake_case` (matching server-side JSON output)
+- Field names: `snake_case` (matching server-side JSON keys)
+- Enum values: `PascalCase` (from IDL `UPPER_CASE`)
+- Constants: `UPPER_CASE` (from IDL)
 
 **Codec details:**
-- `string` → `String`, `i32` → `int`, `i64` → `int`, `f64` → `double`,
-  `bool` → `bool`, `[]T` → `List<T>`, `[N]T` → `List<T>` (fixed-length
-  validated at deserialization), `T?` → `T?`
-- Binary watch payloads: raw `Uint8List`, client is responsible for
-  interpreting the byte layout (documented per-API)
+- `string` → `string`, `i32`/`i64` → `number`, `f64` → `number`,
+  `bool` → `boolean`, `[]T` → `T[]`, `[N]T` → `T[]`,
+  `T?` → `T | null`
+- Binary watch payloads: raw `ArrayBuffer`, client interprets via
+  `DataView` (documented per-API)
 
 **Implementation Plan:**
 
-1. [ ] **Dart codegen in gmicompile** — `--client-dart` flag, templates
-       for enums, types, REST client, WS client
-2. [ ] **Binary WS frame support** — Extend `ws_handler.go` to send
-       `websocket.MessageBinary` for `@binary true` watch functions
-3. [ ] **Test with existing APIs** — Generate Dart clients for `halcmd`
+1. [ ] **TS codegen in gmicompile** — `--client-ts` flag, generates
+       enums, interfaces, REST client, WS client in a single `.ts` file
+2. [ ] **Test with existing APIs** — Generate TS clients for `halcmd`
        and `emcstat`, validate against running gomc-server
-4. [ ] **Dart package structure** — `lib/dart/gmi/` output directory,
-       `pubspec.yaml` generation for the `gmi` Dart package
+3. [ ] **Output convention** — `src/webapp/<app>/src/generated/<api>.ts`
 
 **Deliverables:**
-- [ ] `--client-dart` in gmicompile (enums, types, REST client, WS client)
-- [ ] Binary WS frame support in `ws_handler.go`
-- [ ] Generated Dart clients for existing APIs (halcmd, emcstat) as validation
-- [ ] `lib/dart/gmi/` output package with `pubspec.yaml`
+- [ ] `--client-ts` in gmicompile (enums, interfaces, REST client, WS client)
+- [ ] Generated TS clients for existing APIs as validation
 - [ ] Tests
 
-### Step 5.7: Halscope — RT Capture cmod + Flutter UI (NOT STARTED)
+### Step 5.7: Web App Infrastructure (NOT STARTED)
+
+Add static file serving to gomc-server so Vue web apps can be served
+alongside the REST/WebSocket API on the same port.
+
+**URL Scheme:**
+
+```
+http://localhost:5080/                    → app index (lists available apps)
+http://localhost:5080/app/halscope/       → share/gomc/webapp/halscope/index.html
+http://localhost:5080/app/halscope/assets/→ static files
+http://localhost:5080/api/v1/...          → REST API (unchanged)
+http://localhost:5080/api/v1/watch        → WebSocket (unchanged)
+```
+
+**Directory Layout:**
+
+Build outputs (static files) are installed under `share/gomc/webapp/`:
+```
+share/gomc/webapp/
+├── halscope/
+│   ├── index.html
+│   └── assets/
+│       ├── index-xxxxx.js
+│       └── index-xxxxx.css
+├── ethercat-config/
+│   └── ...
+└── hal-viewer/
+    └── ...
+```
+
+Source lives under `src/webapp/<app>/`:
+```
+src/webapp/halscope/
+├── src/
+│   ├── App.vue
+│   ├── main.ts
+│   ├── generated/          ← output of --client-ts
+│   │   └── halscope.ts
+│   └── components/
+│       └── Waveform.vue
+├── index.html
+├── package.json
+├── tsconfig.json
+├── vite.config.ts
+└── svelte.config.js        ← (not used, Vue project)
+```
+
+**Implementation in gomc-server:**
+
+1. Add `EMC2WebAppDir` to `config/paths.go` (compile-time ldflags)
+2. In `apiserver.NewServer()`, register `http.FileServer` for each app
+   directory found under the webapp root
+3. SPA fallback: serve `index.html` for any path under `/app/<name>/`
+   that doesn't match a real file
+4. Root `/` serves an index page listing available apps
+
+**RIP vs Installed paths:**
+- RIP: `share/gomc/webapp/` (relative to `EMC2_HOME`)
+- Installed: `$(datadir)/gomc/webapp/`
+
+**Implementation Plan:**
+
+1. [ ] Add `EMC2WebAppDir` config variable + ldflags
+2. [ ] Static file handler in `apiserver` with SPA fallback
+3. [ ] Root index handler listing discovered apps
+4. [ ] Wire into Makefile: `npm run build` → copy `dist/` to `share/gomc/webapp/<name>/`
+
+**Deliverables:**
+- [ ] Static file serving in gomc-server
+- [ ] Webapp directory convention documented
+- [ ] Build system integration (Vite build + install)
+
+### Step 5.8: Halscope — RT Capture cmod + Vue Web UI (NOT STARTED)
 
 Migrate `halscope` from its current shared-memory architecture to the GMI
-infrastructure: a cmod for RT sample capture and a Flutter desktop UI
-consuming the generated Dart WS client from Step 5.6.
+infrastructure: a cmod for RT sample capture and a Vue 3 + TypeScript web UI
+consuming the generated TS client from Step 5.6.
 
 **Current Architecture:**
 - `scope_rt.c` — RT component loaded on demand by the GUI, exports `scope.sample`
@@ -2048,7 +2120,7 @@ consuming the generated Dart WS client from Step 5.6.
 **Target Architecture:**
 
 ```
-  Flutter halscope (desktop + web)       other clients (CLI, recorder)
+  Vue halscope (browser)                 other clients (CLI, recorder)
        │                                        │
        └──────── WebSocket (text + binary) ─────┘
                           │
@@ -2062,14 +2134,22 @@ consuming the generated Dart WS client from Step 5.6.
 - **`scope_rt` cmod**: Loaded once via `load scope_rt num_samples=16000` in
   HAL config. Registers the `halscope` API. Exports RT-safe `scope.sample`
   function. Sits idle until a client configures and arms capture.
-- **Flutter UI**: Uses generated Dart WS client (`--client-dart` from Step 5.6).
-  Renders waveforms via Flutter `CustomPainter`. Runs as Linux desktop app
-  and optionally as web app.
+- **Vue Web UI**: Uses generated TypeScript client (`--client-ts` from Step 5.6).
+  Renders waveforms via HTML5 `<canvas>` with `requestAnimationFrame`.
+  Served as static files from `share/gomc/webapp/halscope/`.
 - **Multi-client broadcast**: All connected WS clients receive state change
   events and completed capture snapshots. Any client can configure/trigger
   (last-writer-wins for simplicity).
 - **Decoupled lifetimes**: cmod stays loaded for the entire machine session.
   UI can connect/disconnect/crash without affecting RT capture.
+- **Remote access**: Open `http://cnc-machine:5080/app/halscope/` from any
+  device on the network for remote monitoring.
+
+**UI Technology:**
+- **Vue 3 + TypeScript** — Composition API with `<script setup lang="ts">`
+- **Vite** — Build tool, produces optimized static files (~20KB JS)
+- **Canvas API** — Waveform rendering, trigger markers, grid overlay
+- **No component library** — Custom components, minimal dependencies
 
 **Key Design Changes:**
 
@@ -2193,21 +2273,24 @@ manipulate the same control struct that the RT function reads.
 2. [ ] **cmod** — `src/hal/utils/scope_rt_cmod.c` implementing the halscope
        API callbacks plus the RT `scope.sample` export. Built as cmod,
        output: `cmod/scope_rt.so`.
-3. [ ] **Flutter app** — `src/hal/utils/halscope_flutter/` with standard
-       Flutter desktop project structure. Uses generated `halscope` Dart
-       client from Step 5.6.
-4. [ ] **Waveform renderer** — `CustomPainter` interpreting binary sample
-       buffer, channel color/scale/offset, trigger marker, grid overlay.
+3. [ ] **Vue web app** — `src/webapp/halscope/` with Vue 3 + TypeScript.
+       Uses generated `halscope.ts` client from Step 5.6.
+4. [ ] **Waveform renderer** — HTML5 `<canvas>` with `requestAnimationFrame`,
+       interpreting binary sample buffer, channel color/scale/offset,
+       trigger marker, grid overlay.
 5. [ ] **Multi-client broadcast** — State events and sample snapshots
        pushed to all subscribed WS clients.
 6. [ ] **Tests** — Capture lifecycle, multi-client, binary frame delivery.
 7. [ ] **Retire old halscope** — Remove `scope.c`, `scope_*.c` (GTK3),
-       old `scope_rt.c` once Flutter UI is validated.
+       old `scope_rt.c` once web UI is validated.
+8. [ ] **Remove Flutter** — Delete `src/hal/utils/halscope_flutter/`,
+       Flutter SDK download rules, `--client-dart`/`--client-dart-ws`
+       from gmicompile, Dart codegen Go sources.
 
 **Deliverables:**
 - [ ] `gmi/idl/halscope.gmi`
 - [ ] `src/hal/utils/scope_rt_cmod.c` (cmod replacing old `scope_rt.c`)
-- [ ] `src/hal/utils/halscope_flutter/` (Flutter desktop app)
+- [ ] `src/webapp/halscope/` (Vue 3 + TypeScript web app)
 - [ ] HAL config example: `load scope_rt num_samples=16000`
 - [ ] Tests
 

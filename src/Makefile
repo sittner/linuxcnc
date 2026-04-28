@@ -169,6 +169,7 @@ SUBDIRS := \
     \
     gomc \
     gmi/codegen \
+    webapp \
     \
     hal/components hal/drivers hal/drivers/mesa-hostmot2 \
     hal/user_comps/devices hal/user_comps/mb2hal \

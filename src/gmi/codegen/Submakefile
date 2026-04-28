@@ -174,7 +174,7 @@ GMI_PY_NML_DSTS := $(addprefix ../lib/python/gmi/,$(GMI_PY_NML_SRCS))
 
 TARGETS += $(GMI_PY_NML_DSTS)
 
-# --- halscope API (server-c + server-ws + Dart clients) ---
+# --- halscope API (server-c + server-ws + TypeScript clients) ---
 
 GMI_HALSCOPE_IDL := gmi/idl/halscope.gmi
 GMI_HALSCOPE_GEN := gomc/generated/gmi/halscope
@@ -191,23 +191,23 @@ $(GMI_HALSCOPE_GEN)/halscope_ws.go: $(GMI_HALSCOPE_IDL) $(GMI_HALSCOPE_GEN)/hals
 	$(ECHO) "Generating GMI halscope WebSocket server from $(GMI_HALSCOPE_IDL)"
 	$(Q)$(GMICOMPILE) --server-ws $(GMI_HALSCOPE_IDL) -o $(GMI_HALSCOPE_GEN)/halscope_ws.go
 
-TARGETS += $(GMI_HALSCOPE_GEN)/halscope_api.h $(GMI_HALSCOPE_GEN)/halscope_ws.go
+# TypeScript REST client
+GMI_HALSCOPE_TS := webapp/halscope/src/generated/halscope_client.ts
 
-# --- halscope Dart clients (REST + WebSocket) ---
+$(GMI_HALSCOPE_TS): $(GMI_HALSCOPE_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI halscope TypeScript REST client from $(GMI_HALSCOPE_IDL)"
+	@mkdir -p $(dir $(GMI_HALSCOPE_TS))
+	$(Q)$(GMICOMPILE) --client-ts $(GMI_HALSCOPE_IDL) -o $(GMI_HALSCOPE_TS)
 
-HALSCOPE_FLUTTER_GEN := hal/utils/halscope_flutter/lib/generated
+# TypeScript WebSocket watch client
+GMI_HALSCOPE_TS_WS := webapp/halscope/src/generated/halscope_watch_client.ts
 
-$(HALSCOPE_FLUTTER_GEN)/halscope_client.dart: $(GMI_HALSCOPE_IDL) $(GMICOMPILE_BIN)
-	$(ECHO) "Generating halscope Dart REST client"
-	@mkdir -p $(HALSCOPE_FLUTTER_GEN)
-	$(Q)$(GMICOMPILE) --client-dart $(GMI_HALSCOPE_IDL) -o $@
+$(GMI_HALSCOPE_TS_WS): $(GMI_HALSCOPE_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI halscope TypeScript WebSocket client from $(GMI_HALSCOPE_IDL)"
+	@mkdir -p $(dir $(GMI_HALSCOPE_TS_WS))
+	$(Q)$(GMICOMPILE) --client-ts-ws $(GMI_HALSCOPE_IDL) -o $(GMI_HALSCOPE_TS_WS)
 
-$(HALSCOPE_FLUTTER_GEN)/halscope_watch_client.dart: $(GMI_HALSCOPE_IDL) $(GMICOMPILE_BIN)
-	$(ECHO) "Generating halscope Dart WebSocket client"
-	@mkdir -p $(HALSCOPE_FLUTTER_GEN)
-	$(Q)$(GMICOMPILE) --client-dart-ws $(GMI_HALSCOPE_IDL) -o $@
-
-TARGETS += $(HALSCOPE_FLUTTER_GEN)/halscope_client.dart $(HALSCOPE_FLUTTER_GEN)/halscope_watch_client.dart
+TARGETS += $(GMI_HALSCOPE_GEN)/halscope_api.h $(GMI_HALSCOPE_GEN)/halscope_ws.go $(GMI_HALSCOPE_TS) $(GMI_HALSCOPE_TS_WS)
 
 clean: gmi-codegen-clean
 .PHONY: gmi-codegen-clean

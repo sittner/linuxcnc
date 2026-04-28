@@ -1,0 +1,49 @@
+# ---------------------------------------------------------------------------
+# Web application builds (Vue 3 + TypeScript via Vite)
+# ---------------------------------------------------------------------------
+# Builds web applications from src/webapp/<app>/ into
+# share/gomc/webapp/<app>/ for serving by gomc-server.
+# ---------------------------------------------------------------------------
+
+ifeq ($(BUILD_GOLANG),yes)
+
+WEBAPP_DIR := webapp
+WEBAPP_DEST := ../share/gomc/webapp
+
+# --- halscope ---
+
+HALSCOPE_WEBAPP_SRC := $(WEBAPP_DIR)/halscope
+HALSCOPE_WEBAPP_DEST := $(WEBAPP_DEST)/halscope
+
+# Use a stamp file to track the build
+HALSCOPE_WEBAPP_STAMP := $(HALSCOPE_WEBAPP_DEST)/.build-stamp
+
+# Source files that trigger a rebuild
+HALSCOPE_WEBAPP_SRCS := $(shell find $(HALSCOPE_WEBAPP_SRC)/src -type f 2>/dev/null) \
+	$(HALSCOPE_WEBAPP_SRC)/index.html \
+	$(HALSCOPE_WEBAPP_SRC)/package.json \
+	$(HALSCOPE_WEBAPP_SRC)/vite.config.ts \
+	$(HALSCOPE_WEBAPP_SRC)/tsconfig.json
+
+# npm install stamp
+HALSCOPE_NPM_STAMP := $(HALSCOPE_WEBAPP_SRC)/node_modules/.install-stamp
+
+$(HALSCOPE_NPM_STAMP): $(HALSCOPE_WEBAPP_SRC)/package.json
+	$(ECHO) "Installing halscope webapp dependencies"
+	$(Q)cd $(HALSCOPE_WEBAPP_SRC) && npm install --no-audit --no-fund
+	$(Q)touch $@
+
+$(HALSCOPE_WEBAPP_STAMP): $(HALSCOPE_WEBAPP_SRCS) $(HALSCOPE_NPM_STAMP)
+	$(ECHO) "Building halscope webapp"
+	$(Q)cd $(HALSCOPE_WEBAPP_SRC) && npx vite build --outDir $(abspath $(HALSCOPE_WEBAPP_DEST))
+	$(Q)touch $@
+
+TARGETS += $(HALSCOPE_WEBAPP_STAMP)
+
+clean: webapp-clean
+.PHONY: webapp-clean
+webapp-clean:
+	rm -rf $(WEBAPP_DEST)
+	rm -rf $(HALSCOPE_WEBAPP_SRC)/node_modules
+
+endif # BUILD_GOLANG

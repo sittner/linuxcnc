@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
+	"github.com/sittner/linuxcnc/src/gomc/internal/config"
 )
 
 const (
@@ -39,6 +40,11 @@ func (l *Launcher) startAPIServer() {
 		apiserver.SetDefaultWatchRegistry(watchReg)
 	}
 	l.apiServer.AddWatchEndpoint(watchReg)
+
+	// Serve web applications from share/gomc/webapp/<app>/
+	if config.EMC2WebAppDir != "" {
+		l.apiServer.AddWebApps(config.EMC2WebAppDir)
+	}
 
 	go func() {
 		l.logger.Info("starting REST API server", "addr", addr)

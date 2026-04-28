@@ -74,63 +74,6 @@ modules: ../cmod/halscope.so
 
 endif # BUILD_GOLANG
 
-# ---------------------------------------------------------------------------
-# Flutter toolchain (downloaded on demand, cached in tools/)
-# ---------------------------------------------------------------------------
-FLUTTER_VERSION := 3.24.0
-FLUTTER_DIR := tools/flutter
-FLUTTER := $(FLUTTER_DIR)/bin/flutter
-
-$(FLUTTER):
-	@mkdir -p tools
-	$(ECHO) "Downloading Flutter SDK $(FLUTTER_VERSION)..."
-	$(Q)curl -sL https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_$(FLUTTER_VERSION)-stable.tar.xz \
-	    | tar xJ -C tools/
-	$(Q)$(FLUTTER) --disable-analytics >/dev/null 2>&1 || true
-	$(Q)$(FLUTTER) precache --linux >/dev/null 2>&1
-
-# ---------------------------------------------------------------------------
-# Shared Flutter runtime (engine + ICU data, used by all Flutter UIs)
-# ---------------------------------------------------------------------------
-FLUTTER_ENGINE_SRC := $(FLUTTER_DIR)/bin/cache/artifacts/engine/linux-x64-release
-FLUTTER_ENGINE_COMMON := $(FLUTTER_DIR)/bin/cache/artifacts/engine/linux-x64
-
-../lib/flutter/libflutter_linux_gtk.so: $(FLUTTER)
-	@mkdir -p $(dir $@)
-	$(Q)cp $(FLUTTER_ENGINE_SRC)/libflutter_linux_gtk.so $@
-
-../lib/flutter/icudtl.dat: $(FLUTTER)
-	@mkdir -p $(dir $@)
-	$(Q)cp $(FLUTTER_ENGINE_COMMON)/icudtl.dat $@
-
-TARGETS += ../lib/flutter/libflutter_linux_gtk.so ../lib/flutter/icudtl.dat
-
-# ---------------------------------------------------------------------------
-# halscope Flutter UI
-# ---------------------------------------------------------------------------
-HALSCOPE_FLUTTER_DIR := hal/utils/halscope_flutter
-HALSCOPE_FLUTTER_BUNDLE := $(HALSCOPE_FLUTTER_DIR)/build/linux/x64/release/bundle
-
-HALSCOPE_FLUTTER_GEN := hal/utils/halscope_flutter/lib/generated
-
-.PHONY: halscope-flutter
-halscope-flutter: $(FLUTTER) $(HALSCOPE_FLUTTER_GEN)/halscope_client.dart $(HALSCOPE_FLUTTER_GEN)/halscope_watch_client.dart
-	$(ECHO) "Building halscope Flutter app..."
-	$(Q)cd $(HALSCOPE_FLUTTER_DIR) && $(abspath $(FLUTTER)) pub get
-	$(Q)cd $(HALSCOPE_FLUTTER_DIR) && $(abspath $(FLUTTER)) build linux --release --no-pub
-
-# Deploy per-app files: libapp.so + flutter_assets
-../lib/flutter/halscope/.stamp: halscope-flutter
-	@mkdir -p ../lib/flutter/halscope
-	$(Q)cp $(HALSCOPE_FLUTTER_BUNDLE)/lib/libapp.so ../lib/flutter/halscope/
-	$(Q)cp -a $(HALSCOPE_FLUTTER_BUNDLE)/data/flutter_assets ../lib/flutter/halscope/
-	$(Q)touch $@
-
-# Real binary goes directly into bin/
-../bin/halscope: ../lib/flutter/halscope/.stamp ../lib/flutter/libflutter_linux_gtk.so ../lib/flutter/icudtl.dat
-	$(Q)cp $(HALSCOPE_FLUTTER_BUNDLE)/halscope $@
-TARGETS += ../bin/halscope
-
 
 ../bin/halcompile: ../bin/%: objects/hal/utils/%.py
 	@$(ECHO) Syntax checking python script $(notdir $@)

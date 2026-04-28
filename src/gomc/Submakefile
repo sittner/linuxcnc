@@ -13,9 +13,11 @@ GOMC_LDFLAGS_PKG := github.com/sittner/linuxcnc/src/gomc/internal/config
 ifeq ($(RUN_IN_PLACE),yes)
 EMC2_CMOD_INCLUDE_DIR := $(EMC2_HOME)/src/gomc/pkg/cmodule
 EMC2_GOMC_DIR := $(EMC2_HOME)/src/gomc
+EMC2_WEBAPP_DIR := $(EMC2_HOME)/share/gomc/webapp
 else
 EMC2_CMOD_INCLUDE_DIR := $(includedir)/linuxcnc/cmod
 EMC2_GOMC_DIR := $(datadir)/linuxcnc/gomc
+EMC2_WEBAPP_DIR := $(datadir)/gomc/webapp
 endif
 
 # Compile-time variables injected via -ldflags
@@ -35,6 +37,7 @@ GOMC_LDFLAGS := \
     -X '$(GOMC_LDFLAGS_PKG).EMC2ImageDir=$(EMC2_IMAGEDIR)' \
     -X '$(GOMC_LDFLAGS_PKG).EMC2TclLibDir=$(EMC2_TCL_LIB_DIR)' \
     -X '$(GOMC_LDFLAGS_PKG).HalibDir=$(HALLIB_DIR)' \
+    -X '$(GOMC_LDFLAGS_PKG).EMC2WebAppDir=$(EMC2_WEBAPP_DIR)' \
     -X '$(GOMC_LDFLAGS_PKG).EMC2Version=$(EMC2VERSION)' \
     -X '$(GOMC_LDFLAGS_PKG).RunInPlace=$(RUN_IN_PLACE)' \
     -X '$(GOMC_LDFLAGS_PKG).DefaultNmlFile=$(DEFAULT_NMLFILE)' \

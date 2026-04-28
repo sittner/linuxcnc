@@ -56,6 +56,11 @@ var (
 	// HalibDir is the directory containing HAL library files (@HALLIB_DIR@).
 	HalibDir string
 
+	// EMC2WebAppDir is the directory containing web application static files.
+	// Web apps are served from subdirectories: <EMC2WebAppDir>/<app-name>/
+	// For RIP this is share/gomc/webapp, for installed it's $(datadir)/gomc/webapp.
+	EMC2WebAppDir string
+
 	// EMC2Version is the LinuxCNC version string (@EMC2VERSION@).
 	EMC2Version string
 
