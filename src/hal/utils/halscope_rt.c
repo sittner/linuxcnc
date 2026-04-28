@@ -617,12 +617,13 @@ static halscope_watch_samples_result_t halscope_watch_samples(void *ctx)
      *   [4 bytes: sample_len   (uint32 LE)]
      *   [4 bytes: start_offset (uint32 LE)]
      *   [4 bytes: reserved     (uint32 LE)]
-     *   [sample_count × sample_len × 8 bytes: scope_data_t values]
+     *   [sample_count × sample_len × 8 bytes: double values]
      *
+     * All sample values are converted to double regardless of HAL type.
      * The caller (Go dispatch) takes ownership of this allocation.
      */
     int header_size = 16;
-    int data_size = s->samples * s->sample_len * sizeof(scope_data_t);
+    int data_size = s->samples * s->sample_len * sizeof(double);
     uint8_t *buf = malloc(header_size + data_size);
     if (!buf)
         return result;
@@ -631,27 +632,35 @@ static halscope_watch_samples_result_t halscope_watch_samples(void *ctx)
     uint32_t *hdr = (uint32_t *)buf;
     hdr[0] = (uint32_t)s->samples;
     hdr[1] = (uint32_t)s->sample_len;
-    hdr[2] = (uint32_t)s->start;
+    hdr[2] = 0; /* start_offset: data is already linearized below */
     hdr[3] = 0;
 
-    /* Copy sample data from ring buffer, handling wrap-around */
-    uint8_t *dst = buf + header_size;
-    int pos = s->start;
-    int remaining = s->samples * s->sample_len;
-    int copied = 0;
+    /* Build channel-index-to-type mapping for active channels */
+    hal_type_t ch_types[MAX_CHANNELS];
+    int ch_idx = 0;
+    for (int n = 0; n < MAX_CHANNELS; n++) {
+        if (s->channels[n].data_len == 0 || s->channels[n].data_addr == NULL)
+            continue;
+        ch_types[ch_idx++] = s->channels[n].data_type;
+    }
 
-    while (copied < remaining) {
-        int chunk = remaining - copied;
-        int avail = s->buf_len - pos;
-        if (chunk > avail)
-            chunk = avail;
-        memcpy(dst + copied * sizeof(scope_data_t),
-               &s->buffer[pos],
-               chunk * sizeof(scope_data_t));
-        copied += chunk;
-        pos += chunk;
-        if (pos >= s->buf_len)
-            pos = 0;
+    /* Copy sample data from ring buffer, converting to double */
+    double *dst = (double *)(buf + header_size);
+    int pos = s->start;
+    for (int i = 0; i < s->samples; i++) {
+        for (int c = 0; c < s->sample_len; c++) {
+            scope_data_t *src = &s->buffer[pos];
+            switch (ch_types[c]) {
+            case HAL_BIT:   *dst = (double)src->d_u8;    break;
+            case HAL_S32:   *dst = (double)src->d_s32;   break;
+            case HAL_U32:   *dst = (double)src->d_u32;   break;
+            default:        *dst = src->d_real;           break;
+            }
+            dst++;
+            pos++;
+            if (pos >= s->buf_len)
+                pos = 0;
+        }
     }
 
     result.data = buf;

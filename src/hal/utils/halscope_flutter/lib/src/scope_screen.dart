@@ -194,9 +194,11 @@ class _ScopeScreenState extends State<ScopeScreen> {
 
   Future<void> _applyTrigger() async {
     try {
+      // C backend uses 1-based trigger channel (0 = disabled).
+      // UI uses 0-based channel numbers matching set_channel().
       await _client?.setTrigger(
         trig: TriggerConfig(
-          channel: _trigChannel,
+          channel: _trigChannel + 1,
           level: _trigLevel,
           edge: _trigEdge,
           force: _trigForce,
@@ -212,7 +214,7 @@ class _ScopeScreenState extends State<ScopeScreen> {
     try {
       await _client?.setTrigger(
         trig: TriggerConfig(
-          channel: _trigChannel,
+          channel: _trigChannel + 1,
           level: _trigLevel,
           edge: _trigEdge,
           force: true,

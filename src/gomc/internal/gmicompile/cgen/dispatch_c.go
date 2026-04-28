@@ -28,7 +28,7 @@ type dispatchCGen struct {
 	pkg    string
 	header string // C header filename, e.g. "hal_api.h"
 	err    error
-	tmpSeq int    // counter for unique temp variable names
+	tmpSeq int // counter for unique temp variable names
 }
 
 func (g *dispatchCGen) printf(format string, args ...interface{}) {
@@ -725,7 +725,13 @@ func (g *dispatchCGen) emitReturnConvert(fn ast.Func) {
 			g.printf("\t\tC.free(unsafe.Pointer(out.data))\n")
 			g.printf("\t}\n")
 		}
-		g.printf("\treturn json.Marshal(result)\n")
+		// For []u8 (byte slices), return raw bytes without JSON encoding.
+		// This supports BinaryWatchFunc which sends data as binary WS frames.
+		if ret.Elem.Kind == ast.TypePrimitive && ret.Elem.Name == "u8" {
+			g.printf("\treturn result, nil\n")
+		} else {
+			g.printf("\treturn json.Marshal(result)\n")
+		}
 	}
 }
 
