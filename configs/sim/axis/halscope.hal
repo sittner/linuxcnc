@@ -1,0 +1,3 @@
+# Load the halscope cmod and add its sample function to the servo thread.
+load halscope
+addf halscope.sample servo-thread
