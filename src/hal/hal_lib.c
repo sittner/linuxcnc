@@ -3710,7 +3710,7 @@ static bool hal_port_compute_copy(unsigned read,
 }
 
 
-hal_port_t hal_port_alloc(unsigned size) {
+int hal_port_alloc(unsigned size) {
     hal_port_shm_t* new_port = shmalloc_up(sizeof(hal_port_shm_t) + size);
 
     memset(new_port, 0, sizeof(hal_port_shm_t));
