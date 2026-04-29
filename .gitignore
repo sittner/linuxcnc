@@ -1,5 +1,6 @@
 autosave.halscope
 build-stamp
+.vite/
 *.pyc
 *.o
 *.ko
