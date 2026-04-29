@@ -33,7 +33,11 @@ $(HALSCOPE_NPM_STAMP): $(HALSCOPE_WEBAPP_SRC)/package.json
 	$(Q)cd $(HALSCOPE_WEBAPP_SRC) && npm install --no-audit --no-fund
 	$(Q)touch $@
 
-$(HALSCOPE_WEBAPP_STAMP): $(HALSCOPE_WEBAPP_SRCS) $(HALSCOPE_NPM_STAMP)
+# Generated TS clients that must exist before the webapp can build
+HALSCOPE_GEN_TS := $(WEBAPP_DIR)/halscope/src/generated/halscope_client.ts \
+	$(WEBAPP_DIR)/halscope/src/generated/halscope_watch_client.ts
+
+$(HALSCOPE_WEBAPP_STAMP): $(HALSCOPE_WEBAPP_SRCS) $(HALSCOPE_NPM_STAMP) $(HALSCOPE_GEN_TS)
 	$(ECHO) "Building halscope webapp"
 	$(Q)rm -rf $(HALSCOPE_WEBAPP_DEST)
 	$(Q)cd $(HALSCOPE_WEBAPP_SRC) && npx vite build --outDir $(abspath $(HALSCOPE_WEBAPP_DEST)) --emptyOutDir
