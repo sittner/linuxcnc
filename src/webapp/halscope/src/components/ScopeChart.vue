@@ -52,16 +52,22 @@ function buildData(): uPlot.AlignedData {
     return [new Float64Array(0)];
   }
 
-  const time = Array.from(st.timeBase) as unknown as number[];
+  // Use the original display window calculation for sample slicing
+  const dw = scopeStore.calcDisplayWindow();
+  const total = st.timeBase.length;
+  const i0 = Math.max(0, dw.startSample);
+  const i1 = Math.min(total, dw.endSample + 1);
+
+  const time = Array.from(st.timeBase.subarray(i0, i1)) as unknown as number[];
   const data: (number[] | Float64Array)[] = [time];
 
   const channels = st.status.channels.filter(c => c.enabled);
   for (const ch of channels) {
     const s = st.samples.find(s => s.channel === ch.channel);
     if (s) {
-      data.push(s.data);
+      data.push(s.data.subarray(i0, i1));
     } else {
-      data.push(new Float64Array(st.timeBase.length));
+      data.push(new Float64Array(i1 - i0));
     }
   }
 
@@ -79,6 +85,13 @@ function createPlot() {
   const opts = buildOpts(w, h);
   const data = buildData();
   plot = new uPlot(opts, data, chartEl.value);
+
+  // Add scroll-to-zoom on the chart (like original scope_disp.c change_zoom)
+  plot.over.addEventListener('wheel', (e: WheelEvent) => {
+    e.preventDefault();
+    const dir = e.deltaY < 0 ? 1 : -1;
+    scopeStore.setHorizZoom(scopeStore.state.zoomSetting + dir);
+  });
 }
 
 function updateData() {
@@ -102,6 +115,12 @@ function updateData() {
 // Watch for sample data changes
 watch(
   () => scopeStore.state.samples,
+  () => updateData(),
+);
+
+// Watch for view window changes (pan/zoom from buffer indicator)
+watch(
+  () => [scopeStore.state.zoomSetting, scopeStore.state.posSetting],
   () => updateData(),
 );
 

@@ -2,6 +2,7 @@
 import ScopeToolbar from './components/ScopeToolbar.vue';
 import ScopeChart from './components/ScopeChart.vue';
 import ChannelPanel from './components/ChannelPanel.vue';
+import BufferIndicator from './components/BufferIndicator.vue';
 </script>
 
 <template>
@@ -9,6 +10,7 @@ import ChannelPanel from './components/ChannelPanel.vue';
     <ScopeToolbar />
     <div class="main-area">
       <div class="chart-area">
+        <BufferIndicator />
         <ScopeChart />
       </div>
       <div class="side-panel">
@@ -50,6 +52,9 @@ html, body, #app {
   flex: 1;
   padding: 8px;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .side-panel {

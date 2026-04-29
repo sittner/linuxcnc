@@ -39,10 +39,23 @@ const trigChannels = computed(() =>
   scopeStore.state.status.channels.filter(c => c.enabled)
 );
 
-const sampleProgress = computed(() => {
-  const st = scopeStore.state.status;
-  if (st.recLen === 0) return 0;
-  return Math.round((st.samples / st.recLen) * 100);
+// Horizontal display info
+const scaleLabel = computed(() => {
+  const ds = scopeStore.calcDispScale();
+  if (ds === 0) return '----';
+  return scopeStore.formatTimeValue(ds) + '/div';
+});
+
+const recInfo = computed(() => {
+  const sp = scopeStore.getSamplePeriod();
+  if (sp === 0) return '----';
+  const rl = scopeStore.state.status.recLen;
+  const freq = 1 / sp;
+  let fStr: string;
+  if (freq >= 1e6) fStr = (freq / 1e6).toFixed(1) + ' MHz';
+  else if (freq >= 1e3) fStr = (freq / 1e3).toFixed(1) + ' kHz';
+  else fStr = freq.toFixed(0) + ' Hz';
+  return `${rl} @ ${fStr}`;
 });
 
 function onRun() {
@@ -63,93 +76,119 @@ async function onApplyConfig() {
   await scopeStore.configure();
   await scopeStore.setTrigger();
 }
+
+function onZoomChange(e: Event) {
+  scopeStore.setHorizZoom(Number((e.target as HTMLInputElement).value));
+}
+
+function onPosChange(e: Event) {
+  scopeStore.setHorizPos(Number((e.target as HTMLInputElement).value) / 1000);
+}
+
+function onTrigPosChange(e: Event) {
+  scopeStore.setTrigPosition(Number((e.target as HTMLInputElement).value) / 100);
+}
 </script>
 
 <template>
   <div class="toolbar">
-    <!-- Connection status -->
-    <div class="toolbar-group">
-      <span v-if="scopeStore.state.connected" class="connected-badge">● Connected</span>
-      <span v-else class="disconnected-badge">○ Connecting…</span>
-    </div>
+    <!-- Row 1: Run controls + state + capture config -->
+    <div class="toolbar-row">
+      <div class="toolbar-group">
+        <span v-if="scopeStore.state.connected" class="connected-badge">●</span>
+        <span v-else class="disconnected-badge">○</span>
+        <span class="state-badge" :class="stateClass">{{ stateLabel }}</span>
+      </div>
 
-    <!-- State indicator -->
-    <div class="toolbar-group">
-      <span class="state-badge" :class="stateClass">{{ stateLabel }}</span>
-      <div v-if="isRunning" class="progress-bar">
-        <div class="progress-fill" :style="{ width: sampleProgress + '%' }"></div>
+      <div class="toolbar-group">
+        <button class="btn btn-run" @click="onRun" :disabled="!canArm">▶ Run</button>
+        <button class="btn" @click="onSingle" :disabled="!canArm">⎍ Single</button>
+        <button class="btn btn-stop" @click="onStop" :disabled="!isRunning">■ Stop</button>
+      </div>
+
+      <div class="toolbar-group config-group">
+        <label>
+          Thread
+          <select
+            :value="scopeStore.state.selectedThread"
+            @change="scopeStore.setSelectedThread(($event.target as HTMLSelectElement).value)"
+          >
+            <option v-for="t in scopeStore.state.threads" :key="t.name" :value="t.name">
+              {{ t.name }} ({{ (t.periodNs / 1000).toFixed(0) }}µs)
+            </option>
+          </select>
+        </label>
+        <label>
+          Rec
+          <input type="number" v-model.number="scopeStore.captureConfig.recLen" min="100" max="65536" step="100" />
+        </label>
+        <label>
+          Mult
+          <input type="number" v-model.number="scopeStore.captureConfig.samplePeriodMult" min="1" max="1000" />
+        </label>
+      </div>
+
+      <div class="toolbar-group config-group">
+        <label>
+          Trig
+          <select v-model.number="scopeStore.triggerConfig.channel">
+            <option v-for="ch in trigChannels" :key="ch.channel" :value="ch.channel">
+              {{ ch.pinName || `Ch ${ch.channel}` }}
+            </option>
+          </select>
+        </label>
+        <label>
+          Lvl
+          <input type="number" v-model.number="scopeStore.triggerConfig.level" step="0.1" />
+        </label>
+        <label>
+          <select v-model.number="scopeStore.triggerConfig.edge">
+            <option :value="TrigEdge.RISING">↑</option>
+            <option :value="TrigEdge.FALLING">↓</option>
+          </select>
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" v-model="scopeStore.triggerConfig.autoTrig" /> Auto
+        </label>
+        <button class="btn" @click="onApplyConfig">Apply</button>
+      </div>
+
+      <div v-if="scopeStore.state.error" class="error-bar" :title="scopeStore.state.error">
+        {{ scopeStore.state.error }}
       </div>
     </div>
 
-    <!-- Controls -->
-    <div class="toolbar-group">
-      <button class="btn btn-run" @click="onRun" :disabled="!canArm">▶ Run</button>
-      <button class="btn" @click="onSingle" :disabled="!canArm">⎍ Single</button>
-      <button class="btn btn-stop" @click="onStop" :disabled="!isRunning">■ Stop</button>
-    </div>
-
-    <!-- Capture config -->
-    <div class="toolbar-group config-group">
-      <label>
-        Thread
-        <select
-          :value="scopeStore.state.selectedThread"
-          @change="scopeStore.setSelectedThread(($event.target as HTMLSelectElement).value)"
-        >
-          <option v-for="t in scopeStore.state.threads" :key="t.name" :value="t.name">
-            {{ t.name }} ({{ (t.periodNs / 1000).toFixed(0) }}µs)
-          </option>
-        </select>
+    <!-- Row 2: Horizontal controls (zoom, pos, trig pos, scale display) -->
+    <div class="toolbar-row horiz-row">
+      <label class="slider-label">
+        Zoom
+        <input
+          type="range" min="1" max="9" step="1"
+          :value="scopeStore.state.zoomSetting"
+          @input="onZoomChange"
+          class="slider"
+        />
       </label>
-      <label>
-        Rec Len
-        <input type="number" v-model.number="scopeStore.captureConfig.recLen" min="100" max="65536" step="100" />
+      <label class="slider-label">
+        Pos
+        <input
+          type="range" min="0" max="1000" step="1"
+          :value="Math.round(scopeStore.state.posSetting * 1000)"
+          @input="onPosChange"
+          class="slider"
+        />
       </label>
-      <label>
-        Mult
-        <input type="number" v-model.number="scopeStore.captureConfig.samplePeriodMult" min="1" max="1000" />
+      <label class="slider-label">
+        T-Pos
+        <input
+          type="range" min="0" max="100" step="1"
+          :value="Math.round(scopeStore.state.trigPosition * 100)"
+          @input="onTrigPosChange"
+          class="slider"
+        />
       </label>
-      <label>
-        Pre-trig
-        <input type="number" v-model.number="scopeStore.captureConfig.preTrig" min="0" />
-      </label>
-    </div>
-
-    <!-- Trigger config -->
-    <div class="toolbar-group config-group">
-      <label>
-        Trig Ch
-        <select v-model.number="scopeStore.triggerConfig.channel">
-          <option v-for="ch in trigChannels" :key="ch.channel" :value="ch.channel">
-            {{ ch.pinName || `Ch ${ch.channel}` }}
-          </option>
-        </select>
-      </label>
-      <label>
-        Level
-        <input type="number" v-model.number="scopeStore.triggerConfig.level" step="0.1" />
-      </label>
-      <label>
-        Edge
-        <select v-model.number="scopeStore.triggerConfig.edge">
-          <option :value="TrigEdge.RISING">Rising</option>
-          <option :value="TrigEdge.FALLING">Falling</option>
-        </select>
-      </label>
-      <label class="checkbox-label">
-        <input type="checkbox" v-model="scopeStore.triggerConfig.autoTrig" />
-        Auto
-      </label>
-      <label class="checkbox-label">
-        <input type="checkbox" v-model="scopeStore.triggerConfig.force" />
-        Force
-      </label>
-      <button class="btn" @click="onApplyConfig">Apply</button>
-    </div>
-
-    <!-- Error -->
-    <div v-if="scopeStore.state.error" class="error-bar" :title="scopeStore.state.error">
-      {{ scopeStore.state.error }}
+      <span class="scale-display">{{ scaleLabel }}</span>
+      <span class="rec-info">{{ recInfo }}</span>
     </div>
   </div>
 </template>
@@ -157,13 +196,23 @@ async function onApplyConfig() {
 <style scoped>
 .toolbar {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  padding: 6px 8px;
+  flex-direction: column;
   background: #1a1a1a;
   border-bottom: 1px solid #333;
   font-size: 12px;
+}
+
+.toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 8px;
+}
+
+.horiz-row {
+  border-top: 1px solid #282828;
+  padding: 3px 8px;
 }
 
 .toolbar-group {
@@ -180,7 +229,7 @@ async function onApplyConfig() {
 }
 
 .config-group input[type="number"] {
-  width: 60px;
+  width: 55px;
   background: #222;
   border: 1px solid #444;
   border-radius: 3px;
@@ -199,9 +248,37 @@ async function onApplyConfig() {
   max-width: 140px;
 }
 
+.slider-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #999;
+  font-size: 11px;
+}
+
+.slider {
+  width: 120px;
+  height: 4px;
+  accent-color: #4af;
+  cursor: pointer;
+}
+
+.scale-display {
+  color: #4af;
+  font-weight: 600;
+  font-size: 12px;
+  min-width: 80px;
+}
+
+.rec-info {
+  color: #888;
+  font-size: 11px;
+}
+
 .checkbox-label {
   cursor: pointer;
   user-select: none;
+  color: #999;
 }
 
 .btn {
@@ -222,8 +299,6 @@ async function onApplyConfig() {
 .btn-run:hover { background: #243; }
 .btn-stop { color: #f44; border-color: #a44; }
 .btn-stop:hover { background: #422; }
-.btn-connect { color: #4af; border-color: #48a; }
-.btn-connect:hover { background: #234; }
 
 .connected-badge {
   color: #4f4;
@@ -236,7 +311,10 @@ async function onApplyConfig() {
 }
 
 .state-badge {
-  padding: 2px 8px;
+  display: inline-block;
+  width: 80px;
+  text-align: center;
+  padding: 2px 0;
   border-radius: 3px;
   background: #333;
   font-weight: 600;
@@ -245,20 +323,6 @@ async function onApplyConfig() {
 .state-done { color: #4f4; background: #1a2a1a; }
 .state-waiting { color: #ff4; background: #2a2a1a; }
 .state-capturing { color: #4af; background: #1a2a3a; }
-
-.progress-bar {
-  width: 60px;
-  height: 6px;
-  background: #333;
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  background: #4af;
-  transition: width 0.1s;
-}
 
 .error-bar {
   color: #f44;

@@ -64,6 +64,11 @@ interface ScopeStore {
   // UI state
   autoRearm: boolean;
   selectedThread: string;
+
+  // Horizontal display (ported from scope_horiz_t)
+  zoomSetting: number;   // 1..9, 1 = fit record
+  posSetting: number;    // 0.0..1.0, position within record
+  trigPosition: number;  // 0.0..1.0, where trigger sits in record (0.5 = center)
 }
 
 const state = reactive<ScopeStore>({
@@ -74,7 +79,7 @@ const state = reactive<ScopeStore>({
     state: ScopeState.IDLE,
     samples: 0,
     recLen: 4000,
-    preTrig: 0,
+    preTrig: 2000,
     sampleLen: 0,
     channels: [],
   },
@@ -87,7 +92,7 @@ const state = reactive<ScopeStore>({
     threadName: '',
     recLen: 4000,
     samplePeriodMult: 1,
-    preTrig: 0,
+    preTrig: 2000,
   },
 
   triggerConfig: {
@@ -110,6 +115,10 @@ const state = reactive<ScopeStore>({
 
   autoRearm: false,
   selectedThread: '',
+
+  zoomSetting: 1,
+  posSetting: 0.5,
+  trigPosition: 0.5,
 });
 
 let restClient: HalscopeClient | null = null;
@@ -259,6 +268,8 @@ async function configure() {
   if (!restClient) return;
   try {
     state.captureConfig.threadName = state.selectedThread;
+    // Sync preTrig from trigPosition before sending
+    state.captureConfig.preTrig = Math.round(state.captureConfig.recLen * state.trigPosition);
     await restClient.configure(state.captureConfig);
     state.error = '';
   } catch (e) {
@@ -339,6 +350,108 @@ function setAutoRearm(enabled: boolean) {
   state.autoRearm = enabled;
 }
 
+/**
+ * Calculate display scale (seconds per division) — exact port of
+ * calc_horiz_scaling() from scope_horiz.c.
+ *
+ * Uses 1-2-5 sequence: at zoom=1, disp_scale shows the full record
+ * across 10 divisions. Each zoom step divides by one 1-2-5 step.
+ */
+function calcDispScale(): number {
+  const samplePeriod = getSamplePeriod();
+  if (samplePeriod === 0) return 0;
+  const totalRecTime = state.status.recLen * samplePeriod;
+  if (totalRecTime < 0.000010) return 0.000001;
+
+  const desiredUsecPerDiv = (totalRecTime / 10.0) * 1000000.0;
+
+  // Find 1-2-5 value >= desired
+  let decade = 1;
+  let subDecade = 1;
+  let actual = decade * subDecade;
+  while (actual < desiredUsecPerDiv) {
+    if (subDecade === 1) subDecade = 2;
+    else if (subDecade === 2) subDecade = 5;
+    else { subDecade = 1; decade *= 10; }
+    actual = decade * subDecade;
+  }
+
+  // Zoom in: each step divides by one 1-2-5 step
+  for (let n = 1; n < state.zoomSetting; n++) {
+    if (subDecade === 1) { subDecade = 5; decade = Math.floor(decade / 10); }
+    else if (subDecade === 2) subDecade = 1;
+    else subDecade = 2;
+  }
+  if (decade === 0) { decade = 1; subDecade = 1; }
+
+  return (decade * subDecade) / 1000000.0;
+}
+
+function getSamplePeriod(): number {
+  const threadPeriodNs = getSelectedThreadPeriod();
+  return (threadPeriodNs * state.captureConfig.samplePeriodMult) / 1e9;
+}
+
+/**
+ * Compute display window parameters — port of scope_disp.c display calc.
+ * Returns start/end sample indices for chart slicing, plus time-domain
+ * values needed by the buffer indicator.
+ */
+function calcDisplayWindow() {
+  const samplePeriod = getSamplePeriod();
+  const dispScale = calcDispScale();
+  const recLen = state.status.recLen || 1;
+  // Use actual preTrig from RT status (reflects what was really captured)
+  const preTrig = state.status.preTrig > 0 ? state.status.preTrig : Math.round(recLen * state.trigPosition);
+  const totalRecTime = recLen * samplePeriod;
+
+  const screenCenterTime = totalRecTime * state.posSetting;
+  const screenStartTime = screenCenterTime - 5.0 * dispScale;
+  const screenEndTime = screenCenterTime + 5.0 * dispScale;
+
+  let startSample = Math.floor(screenStartTime / samplePeriod);
+  if (startSample < 0) startSample = 0;
+  let endSample = Math.ceil(screenEndTime / samplePeriod) + 1;
+  if (endSample > recLen - 1) endSample = recLen - 1;
+
+  return {
+    samplePeriod,
+    dispScale,
+    recLen,
+    preTrig,
+    totalRecTime,
+    screenCenterTime,
+    screenStartTime,
+    screenEndTime,
+    startSample,
+    endSample,
+  };
+}
+
+function setHorizZoom(setting: number) {
+  state.zoomSetting = Math.max(1, Math.min(9, Math.round(setting)));
+}
+
+function setHorizPos(setting: number) {
+  state.posSetting = Math.max(0, Math.min(1, setting));
+}
+
+function setTrigPosition(setting: number) {
+  state.trigPosition = Math.max(0, Math.min(1, setting));
+  // Update preTrig in capture config to match
+  state.captureConfig.preTrig = Math.round(state.captureConfig.recLen * setting);
+}
+
+function formatTimeValue(seconds: number): string {
+  let val = seconds * 1e9; // to nanoseconds
+  let units = 'ns';
+  if (val >= 1000) { val /= 1000; units = 'µs'; }
+  if (val >= 1000) { val /= 1000; units = 'ms'; }
+  if (val >= 1000) { val /= 1000; units = 's'; }
+  const decimals = val >= 100 ? 0 : val >= 10 ? 1 : 2;
+  return `${val.toFixed(decimals)} ${units}`;
+}
+
 // --- Exported store ---
 
 export const scopeStore = {
@@ -366,4 +479,11 @@ export const scopeStore = {
   setPinFilter(f: string) {
     state.pinFilter = f;
   },
+  setHorizZoom,
+  setHorizPos,
+  setTrigPosition,
+  calcDispScale,
+  calcDisplayWindow,
+  getSamplePeriod,
+  formatTimeValue,
 };
