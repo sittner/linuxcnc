@@ -80,12 +80,11 @@ func (g *clientTSWSGen) emitInterfaces() {
 		name := toPascalCase(t.Name)
 		g.printf("export interface %s {\n", name)
 		for _, f := range t.Fields {
-			fieldName := toCamelCaseTS(f.Name)
 			tsType := g.toTSType(f.Type)
 			if f.Type.Nullable {
-				g.printf("  %s?: %s;\n", fieldName, tsType)
+				g.printf("  %s?: %s;\n", f.Name, tsType)
 			} else {
-				g.printf("  %s: %s;\n", fieldName, tsType)
+				g.printf("  %s: %s;\n", f.Name, tsType)
 			}
 		}
 		g.printf("}\n\n")
@@ -104,7 +103,8 @@ func (g *clientTSWSGen) emitClient() {
 	g.printf("  private ws: WebSocket | null = null;\n")
 	g.printf("  private callbacks = new Map<string, (data: unknown) => void>();\n")
 	g.printf("  private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();\n")
-	g.printf("  private nextId = 1;\n\n")
+	g.printf("  private nextId = 1;\n")
+	g.printf("  onClose?: () => void;\n\n")
 
 	// Constructor
 	g.printf("  constructor(url: string, api = '%s', instance = '%s') {\n", g.api.Name, g.api.Name)
@@ -117,6 +117,7 @@ func (g *clientTSWSGen) emitClient() {
 	g.printf("  connect(): Promise<void> {\n")
 	g.printf("    return new Promise((resolve, reject) => {\n")
 	g.printf("      this.ws = new WebSocket(this.url);\n")
+	g.printf("      this.ws.binaryType = 'arraybuffer';\n")
 	g.printf("      this.ws.onopen = () => resolve();\n")
 	g.printf("      this.ws.onerror = () => reject(new Error('WebSocket error'));\n")
 	g.printf("      this.ws.onmessage = (ev) => this.handleMessage(ev);\n")
@@ -125,6 +126,7 @@ func (g *clientTSWSGen) emitClient() {
 	g.printf("          p.reject(new Error('WebSocket closed'));\n")
 	g.printf("        }\n")
 	g.printf("        this.pending.clear();\n")
+	g.printf("        this.onClose?.();\n")
 	g.printf("      };\n")
 	g.printf("    });\n")
 	g.printf("  }\n\n")
@@ -137,6 +139,10 @@ func (g *clientTSWSGen) emitClient() {
 
 	// handleMessage
 	g.printf("  private handleMessage(ev: MessageEvent): void {\n")
+	g.printf("    if (ev.data instanceof ArrayBuffer) {\n")
+	g.printf("      this.handleBinaryMessage(ev.data);\n")
+	g.printf("      return;\n")
+	g.printf("    }\n")
 	g.printf("    const msg = JSON.parse(ev.data as string);\n")
 	g.printf("    if (msg.type === 'update') {\n")
 	g.printf("      const cb = this.callbacks.get(msg.func);\n")
@@ -152,6 +158,17 @@ func (g *clientTSWSGen) emitClient() {
 	g.printf("        }\n")
 	g.printf("      }\n")
 	g.printf("    }\n")
+	g.printf("  }\n\n")
+
+	// handleBinaryMessage — binary frames use "funcName\0payload" format
+	g.printf("  private handleBinaryMessage(buf: ArrayBuffer): void {\n")
+	g.printf("    const bytes = new Uint8Array(buf);\n")
+	g.printf("    const nullIdx = bytes.indexOf(0);\n")
+	g.printf("    if (nullIdx < 0) return;\n")
+	g.printf("    const funcName = new TextDecoder().decode(bytes.subarray(0, nullIdx));\n")
+	g.printf("    const payload = bytes.subarray(nullIdx + 1);\n")
+	g.printf("    const cb = this.callbacks.get(funcName);\n")
+	g.printf("    if (cb) cb(Array.from(payload));\n")
 	g.printf("  }\n\n")
 
 	// subscribe (generic)
@@ -264,7 +281,7 @@ func (g *clientTSWSGen) emitCommandMethods() {
 			g.printf("    return await this.call('%s', {\n", fn.Name)
 			for _, p := range fn.Params {
 				pName := toCamelCaseTS(p.Name)
-				g.printf("      %s: %s,\n", toCamelCaseTS(p.Name), pName)
+				g.printf("      %s: %s,\n", p.Name, pName)
 			}
 			g.printf("    }) as %s;\n", retType)
 		} else {

@@ -109,7 +109,7 @@ func (g *serverGen) emitTypes() {
 		for _, f := range t.Fields {
 			g.printf("    %s;\n", g.fieldDecl(f))
 			if f.Type.Kind == ast.TypeSlice {
-				g.printf("    size_t %s_len;\n", toSnakeCase(f.Name))
+				g.printf("    size_t %s_len;\n", f.Name)
 			}
 		}
 		g.printf("} %s_t;\n\n", structTag)
@@ -120,12 +120,12 @@ func (g *serverGen) fieldDecl(f ast.Field) string {
 	if f.Type.Kind == ast.TypeArray {
 		// Arrays declared inline: type name[SIZE]
 		elemType := g.toCType(*f.Type.Elem)
-		name := toSnakeCase(f.Name)
+		name := f.Name
 		sizeStr := g.arraySizeStr(f.Type)
 		return fmt.Sprintf("%s %s[%s]", elemType, name, sizeStr)
 	}
 	cType := g.toCType(f.Type)
-	name := toSnakeCase(f.Name)
+	name := f.Name
 	return fmt.Sprintf("%s %s", cType, name)
 }
 
@@ -248,7 +248,7 @@ func (g *serverGen) emitCallbackTypedefs() {
 //	[N]T              → const arr: const double x[N]
 //	[N]T byref        → mut arr:   double x[N]
 func (g *serverGen) paramDecl(p ast.Param) string {
-	name := toSnakeCase(p.Name)
+	name := p.Name
 
 	// ptr qualifier: always a mutable typed pointer, for any type kind.
 	if p.IsPtr {

@@ -329,7 +329,7 @@ static halscope_list_threads_result_t halscope_list_threads(void *ctx)
     while (next != 0 && idx < count) {
         hal_thread_t *t = (hal_thread_t *)SHMPTR(next);
         result.data[idx].name = strdup(t->name);
-        result.data[idx].period_ns = t->period;
+        result.data[idx].periodNs = t->period;
         idx++;
         next = t->next_ptr;
     }
@@ -346,31 +346,31 @@ static int32_t halscope_configure(void *ctx, const halscope_capture_config_t *co
         return -EBUSY;
 
     /* Handle thread (re-)assignment */
-    if (config->thread_name && config->thread_name[0] != '\0') {
+    if (config->threadName && config->threadName[0] != '\0') {
         /* If already wired to a different thread, remove first */
         if (s->thread_name[0] != '\0' &&
-            strcmp(s->thread_name, config->thread_name) != 0) {
+            strcmp(s->thread_name, config->threadName) != 0) {
             hal_del_funct_from_thread("halscope.sample", s->thread_name);
             s->thread_name[0] = '\0';
         }
         /* Wire to new thread (if not already there) */
         if (s->thread_name[0] == '\0' ||
-            strcmp(s->thread_name, config->thread_name) != 0) {
+            strcmp(s->thread_name, config->threadName) != 0) {
             int rv = hal_add_funct_to_thread("halscope.sample",
-                                             config->thread_name, -1);
+                                             config->threadName, -1);
             if (rv != 0)
                 return rv;
-            rtapi_strlcpy(s->thread_name, config->thread_name,
+            rtapi_strlcpy(s->thread_name, config->threadName,
                           sizeof(s->thread_name));
         }
     }
 
-    if (config->rec_len > 0 && config->rec_len <= s->num_samples)
-        s->rec_len = config->rec_len;
-    if (config->sample_period_mult > 0)
-        s->mult = config->sample_period_mult;
-    if (config->pre_trig >= 0 && config->pre_trig < s->rec_len)
-        s->pre_trig = config->pre_trig;
+    if (config->recLen > 0 && config->recLen <= s->num_samples)
+        s->rec_len = config->recLen;
+    if (config->samplePeriodMult > 0)
+        s->mult = config->samplePeriodMult;
+    if (config->preTrig >= 0 && config->preTrig < s->rec_len)
+        s->pre_trig = config->preTrig;
 
     /* Recalculate buffer geometry */
     s->sample_len = count_active_channels(s);
@@ -444,12 +444,12 @@ static int32_t halscope_set_channel(void *ctx, const halscope_channel_config_t *
     hal_type_t type;
     int data_len;
     void *data_addr;
-    int ret = resolve_hal_name(ch->pin_name, &type, &data_len, &data_addr);
+    int ret = resolve_hal_name(ch->pinName, &type, &data_len, &data_addr);
     if (ret != 0)
         return ret;
 
     c->enabled = 1;
-    rtapi_strlcpy(c->pin_name, ch->pin_name, sizeof(c->pin_name));
+    rtapi_strlcpy(c->pin_name, ch->pinName, sizeof(c->pin_name));
     c->data_type = type;
     c->data_len = data_len;
     c->data_addr = data_addr;
@@ -497,7 +497,7 @@ static int32_t halscope_set_trigger(void *ctx, const halscope_trigger_config_t *
     }
     s->trig.edge = (trig->edge == 1) ? 1 : 0;
     s->trig.force = trig->force ? 1 : 0;
-    s->trig.auto_trig = trig->auto_trig ? 1 : 0;
+    s->trig.auto_trig = trig->autoTrig ? 1 : 0;
 
     return 0;
 }
@@ -537,9 +537,9 @@ static halscope_scope_status_t halscope_get_status(void *ctx)
     memset(&st, 0, sizeof(st));
     st.state = (halscope_scope_state_t)s->state;
     st.samples = s->samples;
-    st.rec_len = s->rec_len;
-    st.pre_trig = s->pre_trig;
-    st.sample_len = s->sample_len;
+    st.recLen = s->rec_len;
+    st.preTrig = s->pre_trig;
+    st.sampleLen = s->sample_len;
 
     /* Build channel info list from active channels */
     int n_active = 0;
@@ -556,8 +556,8 @@ static halscope_scope_status_t halscope_get_status(void *ctx)
                 if (!s->channels[n].enabled)
                     continue;
                 info[idx].channel = n;
-                info[idx].pin_name = s->channels[n].pin_name;
-                info[idx].data_type = (halscope_hal_type_t)s->channels[n].data_type;
+                info[idx].pinName = s->channels[n].pin_name;
+                info[idx].dataType = (halscope_hal_type_t)s->channels[n].data_type;
                 info[idx].enabled = true;
                 idx++;
             }
@@ -572,12 +572,20 @@ static halscope_scope_status_t halscope_get_status(void *ctx)
     return st;
 }
 
-static halscope_list_pins_result_t halscope_list_pins(void *ctx, const char *pattern)
+static halscope_list_pins_result_t halscope_list_pins(void *ctx, const char *pattern, const char *kind)
 {
     halscope_list_pins_result_t result = { .data = NULL, .len = 0 };
     (void)ctx;
 
     const char *match = (pattern && pattern[0]) ? pattern : "*";
+
+    /* Determine which HAL object types to include */
+    int want_pins = 1, want_sigs = 1, want_params = 1;
+    if (kind && kind[0]) {
+        want_pins = (strcmp(kind, "pin") == 0);
+        want_sigs = (strcmp(kind, "sig") == 0);
+        want_params = (strcmp(kind, "param") == 0);
+    }
 
     /* First pass: count matching names */
     int count = 0;
@@ -588,26 +596,32 @@ static halscope_list_pins_result_t halscope_list_pins(void *ctx, const char *pat
 
     rtapi_mutex_get(&hal_data->mutex);
 
-    next = hal_data->pin_list_ptr;
-    while (next != 0) {
-        pin = SHMPTR(next);
-        if (fnmatch(match, pin->name, 0) == 0)
-            count++;
-        next = pin->next_ptr;
+    if (want_pins) {
+        next = hal_data->pin_list_ptr;
+        while (next != 0) {
+            pin = SHMPTR(next);
+            if (fnmatch(match, pin->name, 0) == 0)
+                count++;
+            next = pin->next_ptr;
+        }
     }
-    next = hal_data->sig_list_ptr;
-    while (next != 0) {
-        sig = SHMPTR(next);
-        if (fnmatch(match, sig->name, 0) == 0)
-            count++;
-        next = sig->next_ptr;
+    if (want_sigs) {
+        next = hal_data->sig_list_ptr;
+        while (next != 0) {
+            sig = SHMPTR(next);
+            if (fnmatch(match, sig->name, 0) == 0)
+                count++;
+            next = sig->next_ptr;
+        }
     }
-    next = hal_data->param_list_ptr;
-    while (next != 0) {
-        param = SHMPTR(next);
-        if (fnmatch(match, param->name, 0) == 0)
-            count++;
-        next = param->next_ptr;
+    if (want_params) {
+        next = hal_data->param_list_ptr;
+        while (next != 0) {
+            param = SHMPTR(next);
+            if (fnmatch(match, param->name, 0) == 0)
+                count++;
+            next = param->next_ptr;
+        }
     }
 
     if (count == 0) {
@@ -626,26 +640,32 @@ static halscope_list_pins_result_t halscope_list_pins(void *ctx, const char *pat
        and as long as components aren't unloaded; dispatch copies to Go strings
        before we return) */
     int idx = 0;
-    next = hal_data->pin_list_ptr;
-    while (next != 0 && idx < count) {
-        pin = SHMPTR(next);
-        if (fnmatch(match, pin->name, 0) == 0)
-            names[idx++] = pin->name;
-        next = pin->next_ptr;
+    if (want_pins) {
+        next = hal_data->pin_list_ptr;
+        while (next != 0 && idx < count) {
+            pin = SHMPTR(next);
+            if (fnmatch(match, pin->name, 0) == 0)
+                names[idx++] = pin->name;
+            next = pin->next_ptr;
+        }
     }
-    next = hal_data->sig_list_ptr;
-    while (next != 0 && idx < count) {
-        sig = SHMPTR(next);
-        if (fnmatch(match, sig->name, 0) == 0)
-            names[idx++] = sig->name;
-        next = sig->next_ptr;
+    if (want_sigs) {
+        next = hal_data->sig_list_ptr;
+        while (next != 0 && idx < count) {
+            sig = SHMPTR(next);
+            if (fnmatch(match, sig->name, 0) == 0)
+                names[idx++] = sig->name;
+            next = sig->next_ptr;
+        }
     }
-    next = hal_data->param_list_ptr;
-    while (next != 0 && idx < count) {
-        param = SHMPTR(next);
-        if (fnmatch(match, param->name, 0) == 0)
-            names[idx++] = param->name;
-        next = param->next_ptr;
+    if (want_params) {
+        next = hal_data->param_list_ptr;
+        while (next != 0 && idx < count) {
+            param = SHMPTR(next);
+            if (fnmatch(match, param->name, 0) == 0)
+                names[idx++] = param->name;
+            next = param->next_ptr;
+        }
     }
 
     rtapi_mutex_give(&hal_data->mutex);

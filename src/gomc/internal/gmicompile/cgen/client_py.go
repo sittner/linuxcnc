@@ -96,7 +96,7 @@ func (g *clientPyGen) emitTypes() {
 		g.printf("@dataclass\n")
 		g.printf("class %s:\n", className)
 		for _, f := range t.Fields {
-			fieldName := toSnakeCase(f.Name)
+			fieldName := f.Name
 			pyType := g.toPyType(f.Type)
 			if f.Type.Nullable {
 				g.printf("    %s: %s = None\n", fieldName, pyType)
@@ -111,7 +111,7 @@ func (g *clientPyGen) emitTypes() {
 		g.printf("    def from_dict(cls, d: dict) -> %s:\n", className)
 		g.printf("        return cls(\n")
 		for i, f := range t.Fields {
-			fieldName := toSnakeCase(f.Name)
+			fieldName := f.Name
 			comma := ","
 			if i == len(t.Fields)-1 {
 				comma = ","
@@ -125,7 +125,7 @@ func (g *clientPyGen) emitTypes() {
 		g.printf("    def to_dict(self) -> dict:\n")
 		g.printf("        return {\n")
 		for _, f := range t.Fields {
-			fieldName := toSnakeCase(f.Name)
+			fieldName := f.Name
 			g.printf("            %q: self.%s,\n", fieldName, fieldName)
 		}
 		g.printf("        }\n")
@@ -289,12 +289,12 @@ func (g *clientPyGen) methodParams(fn ast.Func) string {
 	// Put required params first, optional (nullable) last
 	for _, p := range fn.Params {
 		if !p.Type.Nullable {
-			parts = append(parts, fmt.Sprintf("%s: %s", toSnakeCase(p.Name), g.toPyType(p.Type)))
+			parts = append(parts, fmt.Sprintf("%s: %s", p.Name, g.toPyType(p.Type)))
 		}
 	}
 	for _, p := range fn.Params {
 		if p.Type.Nullable {
-			parts = append(parts, fmt.Sprintf("%s: %s = None", toSnakeCase(p.Name), g.toPyType(p.Type)))
+			parts = append(parts, fmt.Sprintf("%s: %s = None", p.Name, g.toPyType(p.Type)))
 		}
 	}
 	return ", " + strings.Join(parts, ", ")

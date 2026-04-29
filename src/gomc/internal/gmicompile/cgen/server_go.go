@@ -106,7 +106,7 @@ func (g *serverGoGen) emitTypes() {
 		for _, f := range t.Fields {
 			fieldName := toPascalCase(f.Name)
 			fieldType := g.toGoType(f.Type)
-			jsonTag := toSnakeCase(f.Name)
+			jsonTag := f.Name
 			omit := ""
 			if f.Type.Nullable {
 				omit = ",omitempty"
@@ -180,7 +180,7 @@ func (g *serverGoGen) emitDispatchFuncs() {
 			for _, p := range fn.Params {
 				fieldName := toPascalCase(p.Name)
 				fieldType := g.toGoType(p.Type)
-				jsonTag := toSnakeCase(p.Name)
+				jsonTag := p.Name
 				g.printf("\t\t%s %s `json:\"%s\"`\n", fieldName, fieldType, jsonTag)
 			}
 			g.printf("\t}\n")

@@ -1,4 +1,4 @@
-import { reactive, readonly } from 'vue';
+import { reactive } from 'vue';
 import {
   HalscopeClient,
   type ScopeStatus,
@@ -114,6 +114,8 @@ const state = reactive<ScopeStore>({
 
 let restClient: HalscopeClient | null = null;
 let wsClient: HalscopeWatchClient | null = null;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let reconnectDelay = 1000;
 
 function getBaseUrl(): string {
   return window.location.origin;
@@ -127,13 +129,20 @@ function getWsUrl(): string {
 // --- Actions ---
 
 async function connect() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+
   try {
     restClient = new HalscopeClient(getBaseUrl());
     wsClient = new HalscopeWatchClient(getWsUrl());
 
     await wsClient.connect();
+    wsClient.onClose = onWsClose;
     state.connected = true;
     state.error = '';
+    reconnectDelay = 1000;
 
     // Subscribe to state updates
     wsClient.subscribeWatchState(onStatusUpdate, 100);
@@ -156,10 +165,24 @@ async function connect() {
   } catch (e) {
     state.error = `Connection failed: ${e}`;
     state.connected = false;
+    scheduleReconnect();
   }
 }
 
+function scheduleReconnect() {
+  if (reconnectTimer) return;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connect();
+  }, reconnectDelay);
+  reconnectDelay = Math.min(reconnectDelay * 2, 10000);
+}
+
 function disconnect() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
   wsClient?.close();
   wsClient = null;
   restClient = null;
@@ -167,12 +190,19 @@ function disconnect() {
 }
 
 function onStatusUpdate(status: ScopeStatus) {
+  if (!status.channels) status.channels = [];
   state.status = status;
 
   // Auto-rearm when capture completes
   if (status.state === ScopeState.DONE && state.autoRearm) {
     arm();
   }
+}
+
+function onWsClose() {
+  state.connected = false;
+  wsClient = null;
+  scheduleReconnect();
 }
 
 function onSamplesUpdate(raw: number[]) {
@@ -239,9 +269,16 @@ async function configure() {
 async function addChannel(pinName: string, channel: number) {
   if (!restClient) return;
   try {
-    const ch: ChannelConfig = { channel, pinName };
-    await restClient.setChannel(ch);
+    const ch: ChannelConfig = { channel, pinName: pinName };
+    const rc = await restClient.setChannel(ch);
+    if (rc !== 0) {
+      state.error = `Set channel failed: error code ${rc}`;
+      return;
+    }
     state.error = '';
+    // Refresh status to see the new channel
+    const status = await restClient.getStatus();
+    onStatusUpdate(status);
   } catch (e) {
     state.error = `Set channel failed: ${e}`;
   }
@@ -288,10 +325,10 @@ async function stop() {
   }
 }
 
-async function searchPins(pattern?: string) {
+async function searchPins(pattern?: string, kind?: string) {
   if (!restClient) return;
   try {
-    state.pins = await restClient.listPins(pattern || undefined);
+    state.pins = await restClient.listPins(pattern || undefined, kind || undefined);
     state.error = '';
   } catch (e) {
     state.error = `List pins failed: ${e}`;
@@ -305,7 +342,7 @@ function setAutoRearm(enabled: boolean) {
 // --- Exported store ---
 
 export const scopeStore = {
-  state: readonly(state) as ScopeStore,
+  state,
   connect,
   disconnect,
   configure,

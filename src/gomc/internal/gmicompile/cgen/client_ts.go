@@ -88,12 +88,11 @@ func (g *clientTSGen) emitInterfaces() {
 		name := toPascalCase(t.Name)
 		g.printf("export interface %s {\n", name)
 		for _, f := range t.Fields {
-			fieldName := toCamelCaseTS(f.Name)
 			tsType := g.toTSType(f.Type)
 			if f.Type.Nullable {
-				g.printf("  %s?: %s;\n", fieldName, tsType)
+				g.printf("  %s?: %s;\n", f.Name, tsType)
 			} else {
-				g.printf("  %s: %s;\n", fieldName, tsType)
+				g.printf("  %s: %s;\n", f.Name, tsType)
 			}
 		}
 		g.printf("}\n\n")
@@ -198,9 +197,9 @@ func (g *clientTSGen) emitClientMethod(fn ast.Func) {
 			paramName := toCamelCaseTS(qp.Name)
 			if qp.Type.Nullable {
 				g.printf("    if (%s !== undefined) query.set('%s', String(%s));\n",
-					paramName, toCamelCaseTS(qp.Name), paramName)
+					paramName, qp.Name, paramName)
 			} else {
-				g.printf("    query.set('%s', String(%s));\n", toCamelCaseTS(qp.Name), paramName)
+				g.printf("    query.set('%s', String(%s));\n", qp.Name, paramName)
 			}
 		}
 		g.printf("    const qs = query.toString();\n")
@@ -214,7 +213,7 @@ func (g *clientTSGen) emitClientMethod(fn ast.Func) {
 		g.printf("    const body = {\n")
 		for _, bp := range queryParams {
 			paramName := toCamelCaseTS(bp.Name)
-			g.printf("      %s: %s,\n", toCamelCaseTS(bp.Name), paramName)
+			g.printf("      %s: %s,\n", bp.Name, paramName)
 		}
 		g.printf("    };\n")
 		bodyExpr = "body"

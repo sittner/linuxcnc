@@ -67,16 +67,10 @@ async function onApplyConfig() {
 
 <template>
   <div class="toolbar">
-    <!-- Connection -->
+    <!-- Connection status -->
     <div class="toolbar-group">
-      <button
-        v-if="!scopeStore.state.connected"
-        class="btn btn-connect"
-        @click="scopeStore.connect()"
-      >
-        Connect
-      </button>
-      <span v-else class="connected-badge">● Connected</span>
+      <span v-if="scopeStore.state.connected" class="connected-badge">● Connected</span>
+      <span v-else class="disconnected-badge">○ Connecting…</span>
     </div>
 
     <!-- State indicator -->
@@ -154,7 +148,7 @@ async function onApplyConfig() {
     </div>
 
     <!-- Error -->
-    <div v-if="scopeStore.state.error" class="error-bar">
+    <div v-if="scopeStore.state.error" class="error-bar" :title="scopeStore.state.error">
       {{ scopeStore.state.error }}
     </div>
   </div>
@@ -236,6 +230,11 @@ async function onApplyConfig() {
   font-size: 12px;
 }
 
+.disconnected-badge {
+  color: #f84;
+  font-size: 12px;
+}
+
 .state-badge {
   padding: 2px 8px;
   border-radius: 3px;
@@ -262,9 +261,12 @@ async function onApplyConfig() {
 }
 
 .error-bar {
-  width: 100%;
   color: #f44;
   font-size: 11px;
   padding: 2px 4px;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

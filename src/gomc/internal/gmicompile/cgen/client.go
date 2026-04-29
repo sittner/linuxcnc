@@ -99,12 +99,12 @@ func (g *clientHeaderGen) emitClientFunctionDecl(fn ast.Func) {
 	for _, p := range fn.Params {
 		cType := g.toCType(p.Type)
 		if p.Type.Kind == ast.TypeNamed {
-			g.printf(",\n    const %s *%s", cType, toSnakeCase(p.Name))
+			g.printf(",\n    const %s *%s", cType, p.Name)
 		} else if p.Type.Nullable && p.Type.Kind == ast.TypePrimitive && p.Type.Name != "string" {
 			// Nullable non-string primitives use pointer-to-value (NULL = absent)
-			g.printf(",\n    const %s *%s", cType, toSnakeCase(p.Name))
+			g.printf(",\n    const %s *%s", cType, p.Name)
 		} else {
-			g.printf(",\n    %s %s", cType, toSnakeCase(p.Name))
+			g.printf(",\n    %s %s", cType, p.Name)
 		}
 	}
 
@@ -226,11 +226,11 @@ func (g *clientSourceGen) emitClientFunction(fn ast.Func) {
 	for _, p := range fn.Params {
 		cType := g.toCType(p.Type)
 		if p.Type.Kind == ast.TypeNamed {
-			g.printf(",\n    const %s *%s", cType, toSnakeCase(p.Name))
+			g.printf(",\n    const %s *%s", cType, p.Name)
 		} else if p.Type.Nullable && p.Type.Kind == ast.TypePrimitive && p.Type.Name != "string" {
-			g.printf(",\n    const %s *%s", cType, toSnakeCase(p.Name))
+			g.printf(",\n    const %s *%s", cType, p.Name)
 		} else {
-			g.printf(",\n    %s %s", cType, toSnakeCase(p.Name))
+			g.printf(",\n    %s %s", cType, p.Name)
 		}
 	}
 
@@ -300,7 +300,7 @@ func (g *clientSourceGen) emitPathParams(fn ast.Func) {
 	for _, p := range fn.Params {
 		paramPlaceholder := "{" + p.Name + "}"
 		if strings.Contains(fn.Path, paramPlaceholder) {
-			pname := toSnakeCase(p.Name)
+			pname := p.Name
 			if p.Type.Kind == ast.TypePrimitive && p.Type.Name == "string" {
 				g.printf("    gmi_request_path_param(req, \"%s\", %s);\n", p.Name, pname)
 			}
@@ -323,7 +323,7 @@ func (g *clientSourceGen) emitQueryParams(fn ast.Func) {
 	}
 
 	for _, p := range queryParams {
-		pname := toSnakeCase(p.Name)
+		pname := p.Name
 		isNullable := p.Type.Nullable
 		isNullablePrim := isNullable && p.Type.Kind == ast.TypePrimitive && p.Type.Name != "string"
 
@@ -388,7 +388,7 @@ func (g *clientSourceGen) emitRequestBody(fn ast.Func) {
 	// Build JSON request body
 	g.printf("    cJSON *body = gmi_json_object();\n")
 	for _, p := range bodyParams {
-		pname := toSnakeCase(p.Name)
+		pname := p.Name
 		isNullable := p.Type.Nullable
 		isNullablePrim := isNullable && p.Type.Kind == ast.TypePrimitive && p.Type.Name != "string"
 		switch {
@@ -447,7 +447,7 @@ func (g *clientSourceGen) emitStructToJson(p ast.Param, pname string) {
 	g.printf("        cJSON *%s_obj = gmi_json_object();\n", pname)
 	for _, f := range typeDef.Fields {
 		fname := f.Name
-		cname := toSnakeCase(f.Name)
+		cname := f.Name
 		accessor := fmt.Sprintf("%s->%s", pname, cname)
 		switch {
 		case f.Type.Kind == ast.TypePrimitive && f.Type.Name == "string":
@@ -536,7 +536,7 @@ func (g *clientSourceGen) emitStructParsing(fn ast.Func, ret ast.TypeRef) {
 func (g *clientSourceGen) emitStructFieldParsing(typeDef *ast.Type, jsonVar, prefix string) {
 	for _, f := range typeDef.Fields {
 		fname := f.Name
-		cname := toSnakeCase(f.Name)
+		cname := f.Name
 		target := prefix + cname
 		switch {
 		case f.Type.Kind == ast.TypePrimitive && f.Type.Name == "string":
@@ -639,7 +639,7 @@ func (g *clientSourceGen) emitSliceParsing(fn ast.Func, ret ast.TypeRef) {
 		if typeDef != nil {
 			for _, f := range typeDef.Fields {
 				fname := f.Name
-				cname := toSnakeCase(f.Name)
+				cname := f.Name
 				target := fmt.Sprintf("(*out)[i].%s", cname)
 				switch {
 				case f.Type.Kind == ast.TypePrimitive && f.Type.Name == "string":

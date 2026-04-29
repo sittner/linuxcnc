@@ -41,13 +41,13 @@ enum HalType {
 
 type ChannelConfig {
     channel: i32
-    pin_name: string
+    pinName: string
 }
 
 type ChannelInfo {
     channel: i32
-    pin_name: string
-    data_type: HalType
+    pinName: string
+    dataType: HalType
     enabled: bool
 }
 
@@ -56,28 +56,28 @@ type TriggerConfig {
     level: f64
     edge: TrigEdge
     force: bool
-    auto_trig: bool
+    autoTrig: bool
 }
 
 type CaptureConfig {
-    thread_name: string
-    rec_len: i32
-    sample_period_mult: i32
-    pre_trig: i32
+    threadName: string
+    recLen: i32
+    samplePeriodMult: i32
+    preTrig: i32
 }
 
 type ScopeStatus {
     state: ScopeState
     samples: i32
-    rec_len: i32
-    pre_trig: i32
-    sample_len: i32
+    recLen: i32
+    preTrig: i32
+    sampleLen: i32
     channels: []ChannelInfo
 }
 
 type ThreadInfo {
     name: string
-    period_ns: i64
+    periodNs: i64
 }
 
 # --- Control functions (non-RT, called via REST/WS) ---
@@ -124,10 +124,11 @@ func reset() -> i32
 @path "/status"
 func get_status() -> ScopeStatus
 
-# List available HAL pins/signals that can be captured.
+# List available HAL pins/signals/params that can be captured.
+# kind: "pin", "sig", "param", or "" for all (default).
 @method GET
 @path "/pins"
-func list_pins(pattern: string?) -> []string
+func list_pins(pattern: string?, kind: string?) -> []string
 
 # --- Watch functions (pushed to WS clients) ---
 

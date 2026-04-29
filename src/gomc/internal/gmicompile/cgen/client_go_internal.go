@@ -93,7 +93,7 @@ func (g *clientGoInternalGen) emitCallWrapper(fn ast.Func) {
 	args := []string{}
 
 	for _, p := range fn.Params {
-		name := toSnakeCase(p.Name)
+		name := p.Name
 		cDecl := g.cParamDecl(apiName, p)
 		params = append(params, cDecl)
 		args = append(args, name)
@@ -113,7 +113,7 @@ func (g *clientGoInternalGen) emitCallWrapper(fn ast.Func) {
 }
 
 func (g *clientGoInternalGen) cParamDecl(apiName string, p ast.Param) string {
-	name := toSnakeCase(p.Name)
+	name := p.Name
 
 	switch p.Type.Kind {
 	case ast.TypePrimitive:
@@ -263,7 +263,7 @@ func (g *clientGoInternalGen) emitCToGoConverters() {
 		g.printf("\treturn %s{\n", goName)
 		for _, f := range t.Fields {
 			fieldName := toPascalCase(f.Name)
-			cFieldName := cgoFieldAccess(toSnakeCase(f.Name))
+			cFieldName := cgoFieldAccess(f.Name)
 			g.printf("\t\t%s: %s,\n", fieldName, g.cToGoFieldConv(f.Type, "src."+cFieldName))
 		}
 		g.printf("\t}\n")
@@ -315,7 +315,7 @@ func (g *clientGoInternalGen) emitGoToCConverters() {
 		g.printf("func %s(src *%s, dst *%s) {\n", funcName, goName, cType)
 		for _, f := range t.Fields {
 			fieldName := toPascalCase(f.Name)
-			cFieldName := cgoFieldAccess(toSnakeCase(f.Name))
+			cFieldName := cgoFieldAccess(f.Name)
 			g.printf("\tdst.%s = %s\n", cFieldName, g.goToCFieldConv(f.Type, "src."+fieldName))
 		}
 		g.printf("}\n\n")

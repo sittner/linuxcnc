@@ -5,16 +5,11 @@ import { HalType } from '../generated/halscope_client';
 
 const pinSearch = ref('');
 const showPinList = ref(false);
+const kindFilter = ref(''); // '', 'pin', 'sig', 'param'
 
 const enabledChannels = computed(() =>
   scopeStore.state.status.channels.filter(c => c.enabled)
 );
-
-const filteredPins = computed(() => {
-  const f = pinSearch.value.toLowerCase();
-  if (!f) return scopeStore.state.pins.slice(0, 100);
-  return scopeStore.state.pins.filter(p => p.toLowerCase().includes(f)).slice(0, 100);
-});
 
 const nextFreeChannel = computed(() => {
   const used = new Set(enabledChannels.value.map(c => c.channel));
@@ -38,11 +33,16 @@ function halTypeName(t: HalType): string {
 
 async function openPinBrowser() {
   showPinList.value = true;
-  await scopeStore.searchPins();
+  pinSearch.value = '';
+  kindFilter.value = '';
+  await doSearch();
 }
 
-async function onSearchInput() {
-  await scopeStore.searchPins(pinSearch.value || undefined);
+async function doSearch() {
+  const text = pinSearch.value.trim();
+  const pattern = text ? `*${text}*` : '*';
+  const kind = kindFilter.value || undefined;
+  await scopeStore.searchPins(pattern, kind);
 }
 
 async function selectPin(pin: string) {
@@ -57,12 +57,15 @@ async function onRemoveChannel(channel: number) {
   await scopeStore.removeChannel(channel);
 }
 
-// Debounce pin search
+// Debounce search
 let searchTimeout: ReturnType<typeof setTimeout>;
 watch(pinSearch, () => {
   clearTimeout(searchTimeout);
-  searchTimeout = setTimeout(onSearchInput, 250);
+  searchTimeout = setTimeout(doSearch, 250);
 });
+
+// Re-search when kind filter changes
+watch(kindFilter, () => doSearch());
 </script>
 
 <template>
@@ -108,23 +111,37 @@ watch(pinSearch, () => {
       <div class="pin-browser-header">
         <input
           v-model="pinSearch"
-          placeholder="Search pins..."
+          placeholder="Search pins, signals, params..."
           class="pin-search"
           autofocus
         />
         <button class="btn-icon" @click="showPinList = false">✕</button>
       </div>
+      <div class="kind-filter">
+        <label class="kind-btn" :class="{ active: kindFilter === '' }">
+          <input type="radio" v-model="kindFilter" value="" /> All
+        </label>
+        <label class="kind-btn" :class="{ active: kindFilter === 'pin' }">
+          <input type="radio" v-model="kindFilter" value="pin" /> Pins
+        </label>
+        <label class="kind-btn" :class="{ active: kindFilter === 'sig' }">
+          <input type="radio" v-model="kindFilter" value="sig" /> Signals
+        </label>
+        <label class="kind-btn" :class="{ active: kindFilter === 'param' }">
+          <input type="radio" v-model="kindFilter" value="param" /> Params
+        </label>
+      </div>
       <div class="pin-list">
         <div
-          v-for="pin in filteredPins"
+          v-for="pin in scopeStore.state.pins"
           :key="pin"
           class="pin-item"
           @click="selectPin(pin)"
         >
           {{ pin }}
         </div>
-        <div v-if="filteredPins.length === 0" class="empty-hint">
-          No matching pins
+        <div v-if="scopeStore.state.pins.length === 0" class="empty-hint">
+          No matching HAL objects
         </div>
       </div>
     </div>
@@ -244,6 +261,37 @@ watch(pinSearch, () => {
   gap: 4px;
   padding: 4px;
   border-bottom: 1px solid #333;
+}
+
+.kind-filter {
+  display: flex;
+  gap: 2px;
+  padding: 3px 4px;
+  border-bottom: 1px solid #333;
+}
+
+.kind-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  color: #999;
+  cursor: pointer;
+}
+
+.kind-btn input[type="radio"] {
+  display: none;
+}
+
+.kind-btn.active {
+  background: #333;
+  color: #eee;
+}
+
+.kind-btn:hover {
+  background: #2a2a2a;
 }
 
 .pin-search {

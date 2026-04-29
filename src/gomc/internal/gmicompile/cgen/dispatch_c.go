@@ -95,7 +95,7 @@ func (g *dispatchCGen) emitCallWrapper(fn ast.Func) {
 	args := []string{"ctx"}
 
 	for _, p := range fn.Params {
-		name := toSnakeCase(p.Name)
+		name := p.Name
 		params = append(params, g.cgoParamDecl(apiName, p))
 		args = append(args, name)
 		// Slice params also pass a length arg
@@ -115,7 +115,7 @@ func (g *dispatchCGen) emitCallWrapper(fn ast.Func) {
 
 // cgoParamDecl returns the C parameter declaration for use in cgo preamble wrappers.
 func (g *dispatchCGen) cgoParamDecl(apiName string, p ast.Param) string {
-	name := toSnakeCase(p.Name)
+	name := p.Name
 
 	// ptr qualifier: pass-through typed pointer, no marshaling.
 	if p.IsPtr {
@@ -230,7 +230,7 @@ func (g *dispatchCGen) emitGoTypes() {
 			for _, f := range t.Fields {
 				fieldName := toPascalCase(f.Name)
 				fieldType := goTypeForDispatch(f.Type)
-				jsonTag := toSnakeCase(f.Name)
+				jsonTag := f.Name
 				omit := ""
 				if f.Type.Nullable {
 					omit = ",omitempty"
@@ -259,7 +259,7 @@ func (g *dispatchCGen) emitConverters() {
 		g.printf("\treturn %s{\n", goName)
 		for _, f := range t.Fields {
 			goField := toPascalCase(f.Name)
-			cField := cgoFieldAccess(toSnakeCase(f.Name))
+			cField := cgoFieldAccess(f.Name)
 			g.emitFieldCToGo(goField, "src."+cField, f.Type)
 		}
 		g.printf("\t}\n")
@@ -441,7 +441,7 @@ func (g *dispatchCGen) emitGoToCConverters() {
 		g.printf("\tvar dst %s\n", cType)
 		for _, f := range t.Fields {
 			goField := toPascalCase(f.Name)
-			cField := "dst." + cgoFieldAccess(toSnakeCase(f.Name))
+			cField := "dst." + cgoFieldAccess(f.Name)
 			g.emitFieldGoToC(cField, "src."+goField, f.Type)
 		}
 		g.printf("\treturn dst\n")
@@ -527,7 +527,7 @@ func (g *dispatchCGen) emitOneDispatch(fn ast.Func) {
 			} else {
 				fieldType = goTypeForDispatch(p.Type)
 			}
-			jsonTag := toSnakeCase(p.Name)
+			jsonTag := p.Name
 			g.printf("\t\t%s %s `json:\"%s\"`\n", fieldName, fieldType, jsonTag)
 		}
 		g.printf("\t}\n")

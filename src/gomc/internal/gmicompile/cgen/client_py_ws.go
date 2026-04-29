@@ -89,7 +89,7 @@ func (g *clientPyWSGen) emitTypes() {
 		g.printf("@dataclass\n")
 		g.printf("class %s:\n", className)
 		for _, f := range t.Fields {
-			fieldName := toSnakeCase(f.Name)
+			fieldName := f.Name
 			pyType := g.toPyType(f.Type)
 			g.printf("    %s: %s = %s\n", fieldName, pyType, g.pyDefault(f.Type))
 		}
@@ -100,7 +100,7 @@ func (g *clientPyWSGen) emitTypes() {
 		g.printf("    def from_dict(cls, d: dict) -> %s:\n", className)
 		g.printf("        return cls(\n")
 		for _, f := range t.Fields {
-			fieldName := toSnakeCase(f.Name)
+			fieldName := f.Name
 			g.printf("            %s=%s,\n", fieldName, g.pyFromDict(f))
 		}
 		g.printf("        )\n\n")
@@ -253,7 +253,7 @@ func (g *clientPyWSGen) emitCommands() {
 		if len(fn.Params) > 0 {
 			g.printf("        args = {\n")
 			for _, p := range fn.Params {
-				pName := toSnakeCase(p.Name)
+				pName := p.Name
 				g.printf("            %q: %s,\n", pName, pName)
 			}
 			g.printf("        }\n")
@@ -360,7 +360,7 @@ func (g *clientPyWSGen) emitThreadedWrapper() {
 		if len(fn.Params) > 0 {
 			g.printf("        args = {\n")
 			for _, p := range fn.Params {
-				pName := toSnakeCase(p.Name)
+				pName := p.Name
 				g.printf("            %q: %s,\n", pName, pName)
 			}
 			g.printf("        }\n")
@@ -399,7 +399,7 @@ func parseRateToMS(s string) string {
 func (g *clientPyWSGen) methodParams(fn ast.Func) string {
 	parts := []string{"self"}
 	for _, p := range fn.Params {
-		pName := toSnakeCase(p.Name)
+		pName := p.Name
 		pyType := g.toPyType(p.Type)
 		parts = append(parts, fmt.Sprintf("%s: %s", pName, pyType))
 	}
@@ -409,7 +409,7 @@ func (g *clientPyWSGen) methodParams(fn ast.Func) string {
 func (g *clientPyWSGen) threadMethodParams(fn ast.Func) string {
 	parts := []string{"self"}
 	for _, p := range fn.Params {
-		pName := toSnakeCase(p.Name)
+		pName := p.Name
 		pyType := g.toPyType(p.Type)
 		parts = append(parts, fmt.Sprintf("%s: %s", pName, pyType))
 	}
@@ -467,7 +467,7 @@ func (g *clientPyWSGen) pyDefault(t ast.TypeRef) string {
 }
 
 func (g *clientPyWSGen) pyFromDict(f ast.Field) string {
-	fieldName := toSnakeCase(f.Name)
+	fieldName := f.Name
 	switch f.Type.Kind {
 	case ast.TypeNamed:
 		typeName := toPascalCase(f.Type.Name)

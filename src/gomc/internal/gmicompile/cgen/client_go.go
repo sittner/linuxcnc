@@ -113,7 +113,7 @@ func (g *clientGoGen) emitTypes() {
 		for _, f := range t.Fields {
 			fieldName := toPascalCase(f.Name)
 			fieldType := g.toGoType(f.Type)
-			jsonTag := toSnakeCase(f.Name)
+			jsonTag := f.Name
 			omit := ""
 			if f.Type.Nullable {
 				omit = ",omitempty"
@@ -273,16 +273,16 @@ func (g *clientGoGen) emitClientMethod(clientName string, fn ast.Func) {
 			if qp.Type.Nullable {
 				g.printf("\tif %s != nil {\n", paramName)
 				if qp.Type.Name == "string" {
-					g.printf("\t\tquery.Set(%q, *%s)\n", toSnakeCase(qp.Name), paramName)
+					g.printf("\t\tquery.Set(%q, *%s)\n", qp.Name, paramName)
 				} else {
-					g.printf("\t\tquery.Set(%q, fmt.Sprintf(\"%%v\", *%s))\n", toSnakeCase(qp.Name), paramName)
+					g.printf("\t\tquery.Set(%q, fmt.Sprintf(\"%%v\", *%s))\n", qp.Name, paramName)
 				}
 				g.printf("\t}\n")
 			} else {
 				if qp.Type.Name == "string" {
-					g.printf("\tquery.Set(%q, %s)\n", toSnakeCase(qp.Name), paramName)
+					g.printf("\tquery.Set(%q, %s)\n", qp.Name, paramName)
 				} else {
-					g.printf("\tquery.Set(%q, fmt.Sprintf(\"%%v\", %s))\n", toSnakeCase(qp.Name), paramName)
+					g.printf("\tquery.Set(%q, fmt.Sprintf(\"%%v\", %s))\n", qp.Name, paramName)
 				}
 			}
 		}
@@ -299,7 +299,7 @@ func (g *clientGoGen) emitClientMethod(clientName string, fn ast.Func) {
 		for _, bp := range bodyParams {
 			fieldName := toPascalCase(bp.Name)
 			fieldType := g.toGoType(bp.Type)
-			jsonTag := toSnakeCase(bp.Name)
+			jsonTag := bp.Name
 			omit := ""
 			if bp.Type.Nullable {
 				omit = ",omitempty"
