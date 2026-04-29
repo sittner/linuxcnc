@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <endian.h>
 #include <fnmatch.h>
 
 #include "gomc_env.h"
@@ -705,10 +706,10 @@ static halscope_watch_samples_result_t halscope_watch_samples(void *ctx)
     if (!buf)
         return result;
 
-    /* Header */
+    /* Header — always little-endian for cross-platform compatibility */
     uint32_t *hdr = (uint32_t *)buf;
-    hdr[0] = (uint32_t)s->samples;
-    hdr[1] = (uint32_t)s->sample_len;
+    hdr[0] = htole32((uint32_t)s->samples);
+    hdr[1] = htole32((uint32_t)s->sample_len);
     hdr[2] = 0; /* start_offset: data is already linearized below */
     hdr[3] = 0;
 
@@ -727,12 +728,18 @@ static halscope_watch_samples_result_t halscope_watch_samples(void *ctx)
     for (int i = 0; i < s->samples; i++) {
         for (int c = 0; c < s->sample_len; c++) {
             scope_data_t *src = &s->buffer[pos];
+            double val;
             switch (ch_types[c]) {
-            case HAL_BIT:   *dst = (double)src->d_u8;    break;
-            case HAL_S32:   *dst = (double)src->d_s32;   break;
-            case HAL_U32:   *dst = (double)src->d_u32;   break;
-            default:        *dst = src->d_real;           break;
+            case HAL_BIT:   val = (double)src->d_u8;    break;
+            case HAL_S32:   val = (double)src->d_s32;   break;
+            case HAL_U32:   val = (double)src->d_u32;   break;
+            default:        val = src->d_real;           break;
             }
+            /* Store as little-endian IEEE 754 double */
+            uint64_t le;
+            memcpy(&le, &val, sizeof(le));
+            le = htole64(le);
+            memcpy(dst, &le, sizeof(le));
             dst++;
             pos++;
             if (pos >= s->buf_len)

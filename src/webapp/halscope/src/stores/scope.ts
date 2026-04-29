@@ -214,34 +214,29 @@ function onWsClose() {
   scheduleReconnect();
 }
 
-function onSamplesUpdate(raw: number[]) {
-  if (raw.length === 0) return;
-
-  // Raw data: header (4 u32) + sample_count × sample_len × 8 bytes (f64)
-  // But the WS transport delivers JSON arrays of u8 bytes.
-  // Convert to ArrayBuffer for binary parsing.
-  const buf = new Uint8Array(raw).buffer;
-  const view = new DataView(buf);
-
+function onSamplesUpdate(buf: ArrayBuffer) {
   if (buf.byteLength < 16) return;
 
+  // Binary layout: 16-byte header (4× uint32 LE) + sample data (float64 LE)
+  const view = new DataView(buf);
   const sampleCount = view.getUint32(0, true);
   const sampleLen = view.getUint32(4, true);
   const startOffset = view.getUint32(8, true);
 
   if (sampleLen === 0 || sampleCount === 0) return;
 
-  const dataOffset = 16; // header size
+  const dataOffset = 16; // header size in bytes
   const channels = state.status.channels.filter(c => c.enabled);
+
+  // Create a Float64Array view over the data portion (header is 16 bytes = aligned to 8)
+  const allSamples = new Float64Array(buf, dataOffset);
 
   const decoded: ChannelSamples[] = [];
   for (let ci = 0; ci < Math.min(channels.length, sampleLen); ci++) {
+    // Deinterleave: sample layout is [s0c0, s0c1, ..., s1c0, s1c1, ...]
     const data = new Float64Array(sampleCount);
     for (let si = 0; si < sampleCount; si++) {
-      const byteIdx = dataOffset + (si * sampleLen + ci) * 8;
-      if (byteIdx + 8 <= buf.byteLength) {
-        data[si] = view.getFloat64(byteIdx, true);
-      }
+      data[si] = allSamples[si * sampleLen + ci];
     }
     decoded.push({ channel: channels[ci].channel, data });
   }

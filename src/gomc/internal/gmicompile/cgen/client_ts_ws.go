@@ -102,6 +102,7 @@ func (g *clientTSWSGen) emitClient() {
 	g.printf("  private readonly instance: string;\n")
 	g.printf("  private ws: WebSocket | null = null;\n")
 	g.printf("  private callbacks = new Map<string, (data: unknown) => void>();\n")
+	g.printf("  private binaryCallbacks = new Map<string, (data: ArrayBuffer) => void>();\n")
 	g.printf("  private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();\n")
 	g.printf("  private nextId = 1;\n")
 	g.printf("  onClose?: () => void;\n\n")
@@ -166,6 +167,11 @@ func (g *clientTSWSGen) emitClient() {
 	g.printf("    const nullIdx = bytes.indexOf(0);\n")
 	g.printf("    if (nullIdx < 0) return;\n")
 	g.printf("    const funcName = new TextDecoder().decode(bytes.subarray(0, nullIdx));\n")
+	g.printf("    const binCb = this.binaryCallbacks.get(funcName);\n")
+	g.printf("    if (binCb) {\n")
+	g.printf("      binCb(buf.slice(nullIdx + 1));\n")
+	g.printf("      return;\n")
+	g.printf("    }\n")
 	g.printf("    const payload = bytes.subarray(nullIdx + 1);\n")
 	g.printf("    const cb = this.callbacks.get(funcName);\n")
 	g.printf("    if (cb) cb(Array.from(payload));\n")
@@ -186,6 +192,7 @@ func (g *clientTSWSGen) emitClient() {
 	// unsubscribe
 	g.printf("  unsubscribe(funcName: string): void {\n")
 	g.printf("    this.callbacks.delete(funcName);\n")
+	g.printf("    this.binaryCallbacks.delete(funcName);\n")
 	g.printf("    this.ws?.send(JSON.stringify({\n")
 	g.printf("      action: 'unsubscribe',\n")
 	g.printf("      api: this.api,\n")
@@ -232,10 +239,25 @@ func (g *clientTSWSGen) emitSubscribeMethods() {
 		defaultRate := g.defaultRateMS(fn)
 
 		if fn.Return != nil {
-			retType := g.toTSType(*fn.Return)
-			g.printf("  subscribe%s(callback: (data: %s) => void, rateMs = %s): void {\n",
-				toPascalCase(fn.Name), retType, defaultRate)
-			g.printf("    this.subscribe('%s', rateMs, (raw) => callback(raw as %s));\n", fn.Name, retType)
+			// For []u8 watch functions (binary transfers), use ArrayBuffer callback
+			if fn.Return.Kind == ast.TypeSlice && fn.Return.Elem != nil &&
+				fn.Return.Elem.Kind == ast.TypePrimitive && fn.Return.Elem.Name == "u8" {
+				g.printf("  subscribe%s(callback: (data: ArrayBuffer) => void, rateMs = %s): void {\n",
+					toPascalCase(fn.Name), defaultRate)
+				g.printf("    this.binaryCallbacks.set('%s', callback);\n", fn.Name)
+				g.printf("    this.ws?.send(JSON.stringify({\n")
+				g.printf("      action: 'subscribe',\n")
+				g.printf("      api: this.api,\n")
+				g.printf("      instance: this.instance,\n")
+				g.printf("      func: '%s',\n", fn.Name)
+				g.printf("      rate_ms: rateMs,\n")
+				g.printf("    }));\n")
+			} else {
+				retType := g.toTSType(*fn.Return)
+				g.printf("  subscribe%s(callback: (data: %s) => void, rateMs = %s): void {\n",
+					toPascalCase(fn.Name), retType, defaultRate)
+				g.printf("    this.subscribe('%s', rateMs, (raw) => callback(raw as %s));\n", fn.Name, retType)
+			}
 		} else {
 			g.printf("  subscribe%s(callback: (data: unknown) => void, rateMs = %s): void {\n",
 				toPascalCase(fn.Name), defaultRate)
