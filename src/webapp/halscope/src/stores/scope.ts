@@ -201,9 +201,34 @@ function disconnect() {
   state.connected = false;
 }
 
+function channelsChanged(a: typeof state.status.channels, b: typeof state.status.channels): boolean {
+  if (a.length !== b.length) return true;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].channel !== b[i].channel || a[i].pinName !== b[i].pinName || a[i].enabled !== b[i].enabled)
+      return true;
+  }
+  return false;
+}
+
 function onStatusUpdate(status: ScopeStatus) {
   if (!status.channels) status.channels = [];
-  state.status = status;
+
+  // Update scalar fields in-place to avoid re-rendering open dropdowns.
+  // Replacing the whole object triggers Vue reactivity on every field.
+  state.status.state = status.state;
+  state.status.samples = status.samples;
+  state.status.recLen = status.recLen;
+  state.status.preTrig = status.preTrig;
+  state.status.sampleLen = status.sampleLen;
+  state.status.samplePeriodMult = status.samplePeriodMult;
+  state.status.threadPeriodNs = status.threadPeriodNs;
+  state.status.threadName = status.threadName;
+  state.status.trigChannel = status.trigChannel;
+
+  // Only replace channels array if content actually changed
+  if (channelsChanged(state.status.channels, status.channels)) {
+    state.status.channels = status.channels;
+  }
 
   // Sync captureConfig from server status so UI reflects actual RT state
   if (status.recLen > 0) {

@@ -1,6 +1,7 @@
 package apiserver
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -358,6 +359,7 @@ func (c *wsConn) pushLoop(ctx context.Context, apiName, instance, funcName strin
 	// Resolve funcName for update messages — strip "get_" prefix for cleaner names
 	updateFunc := funcName
 
+	var prevData json.RawMessage           // suppress unchanged sends
 	var prevMap map[string]json.RawMessage // per-connection delta state
 
 	for {
@@ -372,6 +374,11 @@ func (c *wsConn) pushLoop(ctx context.Context, apiName, instance, funcName strin
 			}
 			if data == nil {
 				// No data — skip this tick.
+				continue
+			}
+
+			// Skip if nothing changed since last send
+			if bytes.Equal(data, prevData) {
 				continue
 			}
 
@@ -392,6 +399,7 @@ func (c *wsConn) pushLoop(ctx context.Context, apiName, instance, funcName strin
 			}); err != nil {
 				return // write failed — connection dead
 			}
+			prevData = append(prevData[:0], data...)
 		}
 	}
 }
