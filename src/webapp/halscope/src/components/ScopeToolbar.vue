@@ -24,22 +24,18 @@ const stateClass = computed(() => {
   return '';
 });
 
-const isRunning = computed(() => {
-  const s = scopeStore.state.status.state;
-  return s === ScopeState.INIT || s === ScopeState.PRE_TRIG ||
-    s === ScopeState.TRIG_WAIT || s === ScopeState.POST_TRIG;
-});
+const isRunning = computed(() => scopeStore.isCapturing());
 
 const canArm = computed(() => {
   const s = scopeStore.state.status.state;
-  return (s === ScopeState.IDLE || s === ScopeState.DONE) && scopeStore.state.connected;
+  const hasChannels = scopeStore.state.status.channels.some(c => c.enabled);
+  return (s === ScopeState.IDLE || s === ScopeState.DONE) && scopeStore.state.connected && hasChannels;
 });
 
 const trigChannels = computed(() =>
   scopeStore.state.status.channels.filter(c => c.enabled)
 );
 
-// Horizontal display info
 const scaleLabel = computed(() => {
   const ds = scopeStore.calcDispScale();
   if (ds === 0) return '----';
@@ -72,9 +68,17 @@ function onSingle() {
   scopeStore.arm();
 }
 
-async function onApplyConfig() {
-  await scopeStore.configure();
-  await scopeStore.setTrigger();
+function onThreadChange(e: Event) {
+  scopeStore.setSelectedThread((e.target as HTMLSelectElement).value);
+  scopeStore.applyConfig();
+}
+
+function onCaptureConfigChange() {
+  scopeStore.applyConfig();
+}
+
+function onTrigConfigChange() {
+  scopeStore.applyConfig();
 }
 
 function onZoomChange(e: Event) {
@@ -87,6 +91,7 @@ function onPosChange(e: Event) {
 
 function onTrigPosChange(e: Event) {
   scopeStore.setTrigPosition(Number((e.target as HTMLInputElement).value) / 100);
+  scopeStore.applyConfig();
 }
 </script>
 
@@ -111,7 +116,8 @@ function onTrigPosChange(e: Event) {
           Thread
           <select
             :value="scopeStore.state.selectedThread"
-            @change="scopeStore.setSelectedThread(($event.target as HTMLSelectElement).value)"
+            :disabled="isRunning"
+            @change="onThreadChange"
           >
             <option v-for="t in scopeStore.state.threads" :key="t.name" :value="t.name">
               {{ t.name }} ({{ (t.periodNs / 1000).toFixed(0) }}µs)
@@ -120,18 +126,23 @@ function onTrigPosChange(e: Event) {
         </label>
         <label>
           Rec
-          <input type="number" v-model.number="scopeStore.captureConfig.recLen" min="100" max="65536" step="100" />
+          <input type="number" v-model.number="scopeStore.captureConfig.recLen"
+            :disabled="isRunning" @change="onCaptureConfigChange"
+            min="100" max="65536" step="100" />
         </label>
         <label>
           Mult
-          <input type="number" v-model.number="scopeStore.captureConfig.samplePeriodMult" min="1" max="1000" />
+          <input type="number" v-model.number="scopeStore.captureConfig.samplePeriodMult"
+            :disabled="isRunning" @change="onCaptureConfigChange"
+            min="1" max="1000" />
         </label>
       </div>
 
       <div class="toolbar-group config-group">
         <label>
           Trig
-          <select v-model.number="scopeStore.triggerConfig.channel">
+          <select v-model.number="scopeStore.triggerConfig.channel"
+            :disabled="isRunning" @change="onTrigConfigChange">
             <option v-for="ch in trigChannels" :key="ch.channel" :value="ch.channel">
               {{ ch.pinName || `Ch ${ch.channel}` }}
             </option>
@@ -139,18 +150,21 @@ function onTrigPosChange(e: Event) {
         </label>
         <label>
           Lvl
-          <input type="number" v-model.number="scopeStore.triggerConfig.level" step="0.1" />
+          <input type="number" v-model.number="scopeStore.triggerConfig.level"
+            :disabled="isRunning" @change="onTrigConfigChange"
+            step="0.1" />
         </label>
         <label>
-          <select v-model.number="scopeStore.triggerConfig.edge">
+          <select v-model.number="scopeStore.triggerConfig.edge"
+            :disabled="isRunning" @change="onTrigConfigChange">
             <option :value="TrigEdge.RISING">↑</option>
             <option :value="TrigEdge.FALLING">↓</option>
           </select>
         </label>
         <label class="checkbox-label">
-          <input type="checkbox" v-model="scopeStore.triggerConfig.autoTrig" /> Auto
+          <input type="checkbox" v-model="scopeStore.triggerConfig.autoTrig"
+            :disabled="isRunning" @change="onTrigConfigChange" /> Auto
         </label>
-        <button class="btn" @click="onApplyConfig">Apply</button>
       </div>
 
       <div v-if="scopeStore.state.error" class="error-bar" :title="scopeStore.state.error">

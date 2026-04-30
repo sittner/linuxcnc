@@ -333,6 +333,9 @@ async function setTrigger() {
 async function arm() {
   if (!restClient) return;
   try {
+    // Always send current config + trigger before arming
+    await configure();
+    await setTrigger();
     await restClient.arm();
     state.error = '';
   } catch (e) {
@@ -349,6 +352,21 @@ async function stop() {
   } catch (e) {
     state.error = `Reset failed: ${e}`;
   }
+}
+
+// Send config immediately if not capturing (for live parameter changes)
+async function applyConfig() {
+  const s = state.status.state;
+  if (s === ScopeState.IDLE || s === ScopeState.DONE) {
+    await configure();
+    await setTrigger();
+  }
+}
+
+function isCapturing(): boolean {
+  const s = state.status.state;
+  return s === ScopeState.INIT || s === ScopeState.PRE_TRIG ||
+    s === ScopeState.TRIG_WAIT || s === ScopeState.POST_TRIG;
 }
 
 async function searchPins(pattern?: string, kind?: string) {
@@ -483,6 +501,8 @@ export const scopeStore = {
   stop,
   searchPins,
   setAutoRearm,
+  applyConfig,
+  isCapturing,
 
   // Mutable config refs for v-model binding
   captureConfig: state.captureConfig,
