@@ -541,6 +541,22 @@ static halscope_scope_status_t halscope_get_status(void *ctx)
     st.recLen = s->rec_len;
     st.preTrig = s->pre_trig;
     st.sampleLen = s->sample_len;
+    st.samplePeriodMult = s->mult;
+    st.threadName = s->thread_name[0] ? strdup(s->thread_name) : strdup("");
+
+    /* Look up thread period from HAL */
+    st.threadPeriodNs = 0;
+    if (s->thread_name[0]) {
+        int next = hal_data->thread_list_ptr;
+        while (next != 0) {
+            hal_thread_t *t = (hal_thread_t *)SHMPTR(next);
+            if (strcmp(t->name, s->thread_name) == 0) {
+                st.threadPeriodNs = t->period;
+                break;
+            }
+            next = t->next_ptr;
+        }
+    }
 
     /* Build channel info list from active channels */
     int n_active = 0;

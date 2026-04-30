@@ -72,6 +72,9 @@ type ScopeStatus {
     recLen: i32
     preTrig: i32
     sampleLen: i32
+    samplePeriodMult: i32
+    threadPeriodNs: i64
+    threadName: string
     channels: []ChannelInfo
 }
 

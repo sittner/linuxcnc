@@ -81,6 +81,9 @@ const state = reactive<ScopeStore>({
     recLen: 4000,
     preTrig: 2000,
     sampleLen: 0,
+    samplePeriodMult: 1,
+    threadPeriodNs: 0,
+    threadName: '',
     channels: [],
   },
 
@@ -201,6 +204,23 @@ function disconnect() {
 function onStatusUpdate(status: ScopeStatus) {
   if (!status.channels) status.channels = [];
   state.status = status;
+
+  // Sync captureConfig from server status so UI reflects actual RT state
+  if (status.recLen > 0) {
+    state.captureConfig.recLen = status.recLen;
+    state.captureConfig.preTrig = status.preTrig;
+  }
+  if (status.samplePeriodMult > 0) {
+    state.captureConfig.samplePeriodMult = status.samplePeriodMult;
+  }
+  if (status.threadName) {
+    state.captureConfig.threadName = status.threadName;
+    state.selectedThread = status.threadName;
+  }
+  // Derive trigPosition from actual preTrig/recLen
+  if (status.recLen > 0) {
+    state.trigPosition = status.preTrig / status.recLen;
+  }
 
   // Auto-rearm when capture completes
   if (status.state === ScopeState.DONE && state.autoRearm) {
@@ -383,8 +403,10 @@ function calcDispScale(): number {
 }
 
 function getSamplePeriod(): number {
-  const threadPeriodNs = getSelectedThreadPeriod();
-  return (threadPeriodNs * state.captureConfig.samplePeriodMult) / 1e9;
+  // Use the actual thread period and mult from RT status
+  const periodNs = state.status.threadPeriodNs || getSelectedThreadPeriod();
+  const mult = state.status.samplePeriodMult || state.captureConfig.samplePeriodMult;
+  return (periodNs * mult) / 1e9;
 }
 
 /**
