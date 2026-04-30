@@ -99,7 +99,7 @@ const state = reactive<ScopeStore>({
   },
 
   triggerConfig: {
-    channel: 0,
+    channel: -1,
     level: 0,
     edge: TrigEdge.RISING,
     force: false,
@@ -220,6 +220,11 @@ function onStatusUpdate(status: ScopeStatus) {
   // Derive trigPosition from actual preTrig/recLen
   if (status.recLen > 0) {
     state.trigPosition = status.preTrig / status.recLen;
+  }
+
+  // Sync trigger channel from server (e.g. auto-selected on first addChannel)
+  if (status.trigChannel !== undefined) {
+    state.triggerConfig.channel = status.trigChannel;
   }
 
   // Auto-rearm when capture completes

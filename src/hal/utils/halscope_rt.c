@@ -61,7 +61,7 @@ typedef struct {
 
 /* Trigger config */
 typedef struct {
-    int            channel;     /* 1-based, 0 = none */
+    int            channel;     /* 0-based, -1 = none */
     scope_data_t   level;
     int            edge;        /* 0 = falling, 1 = rising */
     int            force;
@@ -163,10 +163,10 @@ static int check_trigger(halscope_t *s)
     } else {
         s->auto_timer = 0;
     }
-    if (s->trig.channel == 0)
+    if (s->trig.channel < 0)
         return 0;
 
-    int ch = s->trig.channel - 1;
+    int ch = s->trig.channel;
     if (ch < 0 || ch >= MAX_CHANNELS || s->channels[ch].data_addr == NULL)
         return 0;
 
@@ -455,6 +455,10 @@ static int32_t halscope_set_channel(void *ctx, const halscope_channel_config_t *
     c->data_len = data_len;
     c->data_addr = data_addr;
 
+    /* Auto-select as trigger source if none set */
+    if (s->trig.channel < 0)
+        s->trig.channel = ch->channel;
+
     /* Recalculate sample_len */
     s->sample_len = count_active_channels(s);
     if (s->sample_len > 0)
@@ -485,7 +489,7 @@ static int32_t halscope_set_trigger(void *ctx, const halscope_trigger_config_t *
 {
     halscope_t *s = (halscope_t *)ctx;
 
-    if (trig->channel < 0 || trig->channel > MAX_CHANNELS)
+    if (trig->channel < -1 || trig->channel >= MAX_CHANNELS)
         return -EINVAL;
 
     s->trig.channel = trig->channel;
@@ -542,6 +546,7 @@ static halscope_scope_status_t halscope_get_status(void *ctx)
     st.preTrig = s->pre_trig;
     st.sampleLen = s->sample_len;
     st.samplePeriodMult = s->mult;
+    st.trigChannel = s->trig.channel;
     st.threadName = s->thread_name[0] ? strdup(s->thread_name) : strdup("");
 
     /* Look up thread period from HAL */
@@ -853,6 +858,7 @@ int New(const cmod_env_t *env, const char *name,
     s->mult = 1;
     s->rec_len = num_samples;
     s->pre_trig = num_samples / 2;
+    s->trig.channel = -1;  /* no trigger channel by default */
     s->state = ST_IDLE;
 
     /* Allocate sample buffer */
