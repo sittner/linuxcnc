@@ -80,10 +80,12 @@ func init() {
 
 // halscope implements gomc.Module.
 type halscope struct {
-	logger *slog.Logger
-	s      *C.halscope_t // shared state — RT reads, Go writes
-	compID C.int
-	mu     sync.Mutex // protects non-atomic config writes
+	logger    *slog.Logger
+	s         *C.halscope_t // shared state — RT reads, Go writes
+	compID    C.int
+	mu        sync.Mutex // protects non-atomic config writes
+	name      string     // HAL component name (from load command)
+	functName string     // HAL function name: name + ".sample"
 }
 
 func newHalscope(ini *inifile.IniFile, logger *slog.Logger, name string, args []string) (gomc.Module, error) {
@@ -108,7 +110,8 @@ func newHalscope(ini *inifile.IniFile, logger *slog.Logger, name string, args []
 	}
 
 	// Export the RT sample function to HAL.
-	cFunctName := C.CString("halscope.sample")
+	functName := name + ".sample"
+	cFunctName := C.CString(functName)
 	defer C.free(unsafe.Pointer(cFunctName))
 	rv := C.go_hal_export_funct(cFunctName, s, compID)
 	if rv != 0 {
@@ -120,9 +123,11 @@ func newHalscope(ini *inifile.IniFile, logger *slog.Logger, name string, args []
 	C.hal_ready(compID)
 
 	m := &halscope{
-		logger: logger,
-		s:      s,
-		compID: compID,
+		logger:    logger,
+		s:         s,
+		compID:    compID,
+		name:      name,
+		functName: functName,
 	}
 
 	// Register REST API.
@@ -155,7 +160,7 @@ func (m *halscope) Destroy() {
 	if s.thread_name[0] != 0 {
 		cThread := C.GoString(&s.thread_name[0])
 		ct := C.CString(cThread)
-		cf := C.CString("halscope.sample")
+		cf := C.CString(m.functName)
 		C.hal_del_funct_from_thread(cf, ct)
 		C.free(unsafe.Pointer(ct))
 		C.free(unsafe.Pointer(cf))
@@ -345,14 +350,14 @@ func (m *halscope) dispatchConfigure(req []byte) ([]byte, error) {
 		currentThread := C.GoString(&s.thread_name[0])
 		if currentThread != "" && currentThread != cfg.ThreadName {
 			ct := C.CString(currentThread)
-			cf := C.CString("halscope.sample")
+			cf := C.CString(m.functName)
 			C.hal_del_funct_from_thread(cf, ct)
 			C.free(unsafe.Pointer(ct))
 			C.free(unsafe.Pointer(cf))
 			s.thread_name[0] = 0
 		}
 		if C.GoString(&s.thread_name[0]) != cfg.ThreadName {
-			cf := C.CString("halscope.sample")
+			cf := C.CString(m.functName)
 			ct := C.CString(cfg.ThreadName)
 			rv := C.hal_add_funct_to_thread(cf, ct, -1)
 			C.free(unsafe.Pointer(cf))

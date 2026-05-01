@@ -210,51 +210,52 @@ function channelsChanged(a: typeof state.status.channels, b: typeof state.status
   return false;
 }
 
-function onStatusUpdate(status: ScopeStatus) {
-  if (!status.channels) status.channels = [];
+function onStatusUpdate(status: Partial<ScopeStatus>) {
+  // WS delta updates only include changed fields — only update fields
+  // that are actually present to avoid clobbering with undefined.
+  if ('state' in status) state.status.state = status.state!;
+  if ('samples' in status) state.status.samples = status.samples!;
+  if ('recLen' in status) state.status.recLen = status.recLen!;
+  if ('preTrig' in status) state.status.preTrig = status.preTrig!;
+  if ('sampleLen' in status) state.status.sampleLen = status.sampleLen!;
+  if ('samplePeriodMult' in status) state.status.samplePeriodMult = status.samplePeriodMult!;
+  if ('threadPeriodNs' in status) state.status.threadPeriodNs = status.threadPeriodNs!;
+  if ('threadName' in status) state.status.threadName = status.threadName!;
+  if ('trigChannel' in status) state.status.trigChannel = status.trigChannel!;
+  if ('generation' in status) state.status.generation = status.generation!;
 
-  // Update scalar fields in-place to avoid re-rendering open dropdowns.
-  // Replacing the whole object triggers Vue reactivity on every field.
-  state.status.state = status.state;
-  state.status.samples = status.samples;
-  state.status.recLen = status.recLen;
-  state.status.preTrig = status.preTrig;
-  state.status.sampleLen = status.sampleLen;
-  state.status.samplePeriodMult = status.samplePeriodMult;
-  state.status.threadPeriodNs = status.threadPeriodNs;
-  state.status.threadName = status.threadName;
-  state.status.trigChannel = status.trigChannel;
-  state.status.generation = status.generation;
-
-  // Only replace channels array if content actually changed
-  if (channelsChanged(state.status.channels, status.channels)) {
-    state.status.channels = status.channels;
+  // Only replace channels array if present and content actually changed
+  if ('channels' in status) {
+    const channels = status.channels ?? [];
+    if (channelsChanged(state.status.channels, channels)) {
+      state.status.channels = channels;
+    }
   }
 
   // Sync captureConfig from server status so UI reflects actual RT state
-  if (status.recLen > 0) {
-    state.captureConfig.recLen = status.recLen;
-    state.captureConfig.preTrig = status.preTrig;
+  if ('recLen' in status && status.recLen! > 0) {
+    state.captureConfig.recLen = status.recLen!;
+    if ('preTrig' in status) state.captureConfig.preTrig = status.preTrig!;
   }
-  if (status.samplePeriodMult > 0) {
-    state.captureConfig.samplePeriodMult = status.samplePeriodMult;
+  if ('samplePeriodMult' in status && status.samplePeriodMult! > 0) {
+    state.captureConfig.samplePeriodMult = status.samplePeriodMult!;
   }
-  if (status.threadName) {
+  if ('threadName' in status && status.threadName) {
     state.captureConfig.threadName = status.threadName;
     state.selectedThread = status.threadName;
   }
   // Derive trigPosition from actual preTrig/recLen
-  if (status.recLen > 0) {
-    state.trigPosition = status.preTrig / status.recLen;
+  if ('recLen' in status && status.recLen! > 0 && 'preTrig' in status) {
+    state.trigPosition = status.preTrig! / status.recLen!;
   }
 
   // Sync trigger channel from server (e.g. auto-selected on first addChannel)
-  if (status.trigChannel !== undefined) {
-    state.triggerConfig.channel = status.trigChannel;
+  if ('trigChannel' in status) {
+    state.triggerConfig.channel = status.trigChannel!;
   }
 
   // Auto-rearm when capture completes
-  if (status.state === ScopeState.DONE && state.autoRearm) {
+  if (state.status.state === ScopeState.DONE && state.autoRearm) {
     arm();
   }
 }
