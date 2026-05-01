@@ -20,8 +20,8 @@ type WatchFunc func() (json.RawMessage, error)
 
 // BinaryWatchFunc is called periodically by the watch server to produce a
 // binary snapshot. Used for bulk data (e.g. scope sample buffers) where JSON
-// would be too large.
-type BinaryWatchFunc func() ([]byte, error)
+// would be too large. The uint64 is a generation counter for change detection.
+type BinaryWatchFunc func() ([]byte, uint64, error)
 
 // CommandFunc handles a command sent by the client over the WebSocket.
 // req is the JSON-encoded arguments; returns the JSON-encoded response.
@@ -412,14 +412,20 @@ func (c *wsConn) pushLoopBinary(ctx context.Context, funcName string, rate time.
 	defer ticker.Stop()
 
 	prefix := append([]byte(funcName), 0) // "func_name\0"
+	var sentGen uint64
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			payload, err := watch()
+			payload, gen, err := watch()
 			if err != nil || payload == nil {
+				continue
+			}
+
+			// Skip if generation unchanged since last send
+			if gen > 0 && gen == sentGen {
 				continue
 			}
 
@@ -430,6 +436,7 @@ func (c *wsConn) pushLoopBinary(ctx context.Context, funcName string, rate time.
 			if err := c.writeBinary(frame); err != nil {
 				return // write failed — connection dead
 			}
+			sentGen = gen
 		}
 	}
 }

@@ -1549,6 +1549,41 @@ fi
 AC_SUBST([GO])
 AC_SUBST([HAVE_GOLANG])
 
+# Optional Go modules (only meaningful when HAVE_GOLANG=yes)
+HAVE_ADSSERVER=no
+HAVE_EMCGATEWAY=no
+HAVE_HALSCOPE=no
+
+if test "x$HAVE_GOLANG" = "xyes"; then
+    AC_ARG_ENABLE([adsserver],
+        AS_HELP_STRING([--enable-adsserver], [Build ADS server Go module (default: yes)]),
+        [enable_adsserver=$enableval],
+        [enable_adsserver=yes])
+    if test "x$enable_adsserver" = "xyes"; then
+        HAVE_ADSSERVER=yes
+    fi
+
+    AC_ARG_ENABLE([emcgateway],
+        AS_HELP_STRING([--enable-emcgateway], [Build EMC gateway Go module (default: yes)]),
+        [enable_emcgateway=$enableval],
+        [enable_emcgateway=yes])
+    if test "x$enable_emcgateway" = "xyes"; then
+        HAVE_EMCGATEWAY=yes
+    fi
+
+    AC_ARG_ENABLE([halscope],
+        AS_HELP_STRING([--enable-halscope], [Build HAL oscilloscope Go module (default: yes)]),
+        [enable_halscope=$enableval],
+        [enable_halscope=yes])
+    if test "x$enable_halscope" = "xyes"; then
+        HAVE_HALSCOPE=yes
+    fi
+fi
+
+AC_SUBST([HAVE_ADSSERVER])
+AC_SUBST([HAVE_EMCGATEWAY])
+AC_SUBST([HAVE_HALSCOPE])
+
 # Flutter desktop build dependencies (required when Golang/Flutter halscope is built)
 if test "x$HAVE_GOLANG" = "xyes"; then
     AC_MSG_CHECKING([for ninja-build (Flutter dependency)])
@@ -1702,6 +1737,11 @@ echo "#              Configuration Summary                                 #"
 echo "######################################################################"
 echo ""
 echo "  Build Golang HAL components: $HAVE_GOLANG"
+if test "x$HAVE_GOLANG" = "xyes"; then
+echo "    ADS server module:          $HAVE_ADSSERVER"
+echo "    EMC gateway module:         $HAVE_EMCGATEWAY"
+echo "    HAL oscilloscope module:    $HAVE_HALSCOPE"
+fi
 echo "  Build EtherCAT HAL driver:    $HAVE_ETHERCAT"
 echo ""
 echo "######################################################################"

@@ -71,14 +71,25 @@ GOMC_SRC := $(GOMC_SRC_BASE) \
 GMI_KINS_GEN_GO := gomc/generated/gmi/kins/kins_cgo.go
 GMI_AXISUI_GEN_GO := gomc/generated/gmi/axisui/axisui_cgo.go
 GMI_AXISUI_WS_GO := gomc/generated/gmi/axisui/axisui_ws.go
-GMI_HALSCOPE_GEN_GO := gomc/generated/gmi/halscope/halscope_cgo.go
-GMI_HALSCOPE_WS_GO := gomc/generated/gmi/halscope/halscope_ws.go
 
 # Runtime files generated from .in bases on fresh checkouts.
-# packages.conf and go.mod are copied from .in if missing;
+# packages.conf is generated from .in by filtering out disabled modules;
 # imports_generated.go is produced by modcompile from packages.conf.
-gomc/packages.conf: gomc/packages.conf.in
-	$(Q)test -f $@ || cp $< $@
+#
+# Filtering: lines with @GOMOD:<TAG>@ markers are removed when the
+# corresponding BUILD_<TAG> != yes.  The marker itself is stripped from
+# kept lines.
+
+define filter_packages_conf
+	sed \
+	$(if $(filter yes,$(BUILD_ADSSERVER)),-e 's/ @GOMOD:ADSSERVER@//',-e '/@GOMOD:ADSSERVER@/d') \
+	$(if $(filter yes,$(BUILD_EMCGATEWAY)),-e 's/ @GOMOD:EMCGATEWAY@//',-e '/@GOMOD:EMCGATEWAY@/d') \
+	$(if $(filter yes,$(BUILD_HALSCOPE)),-e 's/ @GOMOD:HALSCOPE@//',-e '/@GOMOD:HALSCOPE@/d') \
+	$< > $@.tmp && mv $@.tmp $@
+endef
+
+gomc/packages.conf: gomc/packages.conf.in Makefile.inc
+	$(call filter_packages_conf)
 
 gomc/go.mod: gomc/go.mod.in
 	$(Q)test -f $@ || cp $< $@
@@ -87,14 +98,14 @@ gomc/go.sum: gomc/go.mod
 	$(Q)test -f $@ || cd gomc && $(GO) get nhooyr.io/websocket@v1.8.17
 
 $(IMPORTS_GENERATED): gomc/packages.conf ../bin/modcompile
-	$(Q)test -f $@ || cd gomc && $(TOP)/bin/modcompile regenerate-imports
+	$(Q)cd gomc && $(TOP)/bin/modcompile regenerate-imports
 
 # Build the gomc-server binary.
 #
 # CGO_LDFLAGS adds -Wl,-rpath so the dynamic linker finds liblinuxcnchal.so
 # and its companions at runtime (RIP and installed builds alike).
 # LIB_DIR is $(EMC2_HOME)/lib, defined in Makefile.inc.
-../bin/gomc-server: $(GOMC_SRC) $(GMI_KINS_GEN_GO) $(GMI_AXISUI_GEN_GO) $(GMI_AXISUI_WS_GO) $(GMI_HALSCOPE_GEN_GO) $(GMI_HALSCOPE_WS_GO) $(IMPORTS_GENERATED) gomc/packages.conf gomc/go.sum ../lib/liblinuxcnchal.so ../lib/liblinuxcnc.a ../lib/libnml.so ../lib/libposemath.so ../lib/libtooldata.so.0
+../bin/gomc-server: $(GOMC_SRC) $(GMI_KINS_GEN_GO) $(GMI_AXISUI_GEN_GO) $(GMI_AXISUI_WS_GO) $(IMPORTS_GENERATED) gomc/packages.conf gomc/go.sum ../lib/liblinuxcnchal.so ../lib/liblinuxcnc.a ../lib/libnml.so ../lib/libposemath.so ../lib/libtooldata.so.0
 	$(ECHO) Building gomc-server
 	$(Q)cd gomc && CGO_LDFLAGS="-Wl,-rpath,$(LIB_DIR)" $(GO) build -ldflags "$(GOMC_LDFLAGS)" -o $(TOP)/bin/gomc-server ./cmd/gomc-server
 

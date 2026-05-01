@@ -1,4 +1,6 @@
-# packages.conf — managed by modcompile. DO NOT EDIT MANUALLY.
+# packages.conf.in — template for packages.conf.
+# Filtered by the build system based on configure --enable-* options.
+# Lines with @GOMOD:<TAG>@ markers are conditionally included.
 #
 # Format: TYPE IMPORT_PATH
 #
@@ -12,7 +14,8 @@
 # during code generation (see gmi/codegen/Submakefile).
 
 # Go modules (in-tree and installed external)
-gomod internal/adsmodule
+gomod internal/adsmodule @GOMOD:ADSSERVER@
 gomod internal/pyvcpmodule
-gomod internal/emcgateway
+gomod internal/emcgateway @GOMOD:EMCGATEWAY@
+gomod internal/halscope @GOMOD:HALSCOPE@
 

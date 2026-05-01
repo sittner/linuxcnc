@@ -48,32 +48,6 @@ $(call TOOBJSDEPS, $(HALGTKSRCS)) : EXTRAFLAGS = $(GTK_CFLAGS)
 $(call TOOBJS, $(HALGTKSRCS)): Makefile.inc
 endif
 
-# ---------------------------------------------------------------------------
-# halscope_rt cmod (replaces legacy scope_rt.c for GMI architecture)
-# ---------------------------------------------------------------------------
-ifeq ($(BUILD_GOLANG),yes)
-
-HALSCOPE_RT_CMOD_CFLAGS := \
-    -fPIC -Os -Wall -Wextra \
-    -DUSPACE -D_GNU_SOURCE -Drealtime \
-    -fno-strict-aliasing -fwrapv \
-    -I. -I../include -Ihal -Igomc/pkg/cmodule -Igomc/generated/gmi/halscope
-
-../cmod/halscope.so: hal/utils/halscope_rt.c \
-                     gomc/generated/gmi/halscope/halscope_api.h \
-                     $(wildcard gomc/pkg/cmodule/gomc_*.h) \
-                     | headers ../lib/liblinuxcnchal.so
-	$(ECHO) "Compiling cmod halscope.so"
-	@mkdir -p $(dir $@)
-	$(Q)$(CC) -shared $(HALSCOPE_RT_CMOD_CFLAGS) \
-	    -o $@ hal/utils/halscope_rt.c \
-	    -L../lib -llinuxcnchal -lm
-
-TARGETS += ../cmod/halscope.so
-modules: ../cmod/halscope.so
-
-endif # BUILD_GOLANG
-
 
 ../bin/halcompile: ../bin/%: objects/hal/utils/%.py
 	@$(ECHO) Syntax checking python script $(notdir $@)

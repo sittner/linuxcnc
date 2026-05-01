@@ -174,22 +174,9 @@ GMI_PY_NML_DSTS := $(addprefix ../lib/python/gmi/,$(GMI_PY_NML_SRCS))
 
 TARGETS += $(GMI_PY_NML_DSTS)
 
-# --- halscope API (server-c + server-ws + TypeScript clients) ---
+# --- halscope API (TypeScript clients only; server dispatch is in gomod) ---
 
 GMI_HALSCOPE_IDL := gmi/idl/halscope.gmi
-GMI_HALSCOPE_GEN := gomc/generated/gmi/halscope
-
-$(GMI_HALSCOPE_GEN)/halscope_api.h: $(GMI_HALSCOPE_IDL) $(GMICOMPILE_BIN)
-	$(ECHO) "Generating GMI halscope API from $(GMI_HALSCOPE_IDL)"
-	@mkdir -p $(GMI_HALSCOPE_GEN)
-	$(Q)$(GMICOMPILE) --server-c $(GMI_HALSCOPE_IDL) -o $(GMI_HALSCOPE_GEN)/halscope_api.h
-	$(Q)$(GMICOMPILE_BIN) add-gmi generated/gmi/halscope
-
-$(GMI_HALSCOPE_GEN)/halscope_cgo.go: $(GMI_HALSCOPE_GEN)/halscope_api.h
-
-$(GMI_HALSCOPE_GEN)/halscope_ws.go: $(GMI_HALSCOPE_IDL) $(GMI_HALSCOPE_GEN)/halscope_cgo.go $(GMICOMPILE_BIN)
-	$(ECHO) "Generating GMI halscope WebSocket server from $(GMI_HALSCOPE_IDL)"
-	$(Q)$(GMICOMPILE) --server-ws $(GMI_HALSCOPE_IDL) -o $(GMI_HALSCOPE_GEN)/halscope_ws.go
 
 # TypeScript REST client
 GMI_HALSCOPE_TS := webapp/halscope/src/generated/halscope_client.ts
@@ -207,7 +194,7 @@ $(GMI_HALSCOPE_TS_WS): $(GMI_HALSCOPE_IDL) $(GMICOMPILE_BIN)
 	@mkdir -p $(dir $(GMI_HALSCOPE_TS_WS))
 	$(Q)$(GMICOMPILE) --client-ts-ws $(GMI_HALSCOPE_IDL) -o $(GMI_HALSCOPE_TS_WS)
 
-TARGETS += $(GMI_HALSCOPE_GEN)/halscope_api.h $(GMI_HALSCOPE_GEN)/halscope_ws.go $(GMI_HALSCOPE_TS) $(GMI_HALSCOPE_TS_WS)
+TARGETS += $(GMI_HALSCOPE_TS) $(GMI_HALSCOPE_TS_WS)
 
 clean: gmi-codegen-clean
 .PHONY: gmi-codegen-clean

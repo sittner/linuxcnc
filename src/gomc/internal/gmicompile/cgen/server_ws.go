@@ -116,12 +116,12 @@ func (g *serverWSGen) emitWatchFuncs() {
 			// Binary watch: return raw bytes, sent as binary WS frames.
 			g.printf("// makeWatch%s creates a BinaryWatchFunc that calls %s on the callbacks.\n", goName, fn.Name)
 			g.printf("func makeWatch%s(callbacks unsafe.Pointer) apiserver.BinaryWatchFunc {\n", goName)
-			g.printf("\treturn func() ([]byte, error) {\n")
+			g.printf("\treturn func() ([]byte, uint64, error) {\n")
 			g.printf("\t\tresult, err := %sDispatch%s(callbacks, nil)\n", g.api.Name, goName)
 			g.printf("\t\tif err != nil {\n")
-			g.printf("\t\t\treturn nil, err\n")
+			g.printf("\t\t\treturn nil, 0, err\n")
 			g.printf("\t\t}\n")
-			g.printf("\t\treturn result, nil\n")
+			g.printf("\t\treturn result, 0, nil\n")
 			g.printf("\t}\n")
 			g.printf("}\n\n")
 		} else {

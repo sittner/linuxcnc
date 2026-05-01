@@ -76,6 +76,7 @@ type ScopeStatus {
     threadPeriodNs: i64
     threadName: string
     trigChannel: i32
+    generation: u32
     channels: []ChannelInfo
 }
 

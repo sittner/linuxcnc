@@ -224,6 +224,7 @@ function onStatusUpdate(status: ScopeStatus) {
   state.status.threadPeriodNs = status.threadPeriodNs;
   state.status.threadName = status.threadName;
   state.status.trigChannel = status.trigChannel;
+  state.status.generation = status.generation;
 
   // Only replace channels array if content actually changed
   if (channelsChanged(state.status.channels, status.channels)) {
@@ -267,7 +268,8 @@ function onWsClose() {
 function onSamplesUpdate(buf: ArrayBuffer) {
   if (buf.byteLength < 16) return;
 
-  // Binary layout: 16-byte header (4× uint32 LE) + sample data (float64 LE)
+  // Binary layout: sample_header_t (16 bytes, 4× uint32 LE) + sample data (float64 LE)
+  // Header: { sample_count, sample_len, start_offset, reserved }
   const view = new DataView(buf);
   const sampleCount = view.getUint32(0, true);
   const sampleLen = view.getUint32(4, true);
