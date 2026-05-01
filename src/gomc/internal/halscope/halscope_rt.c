@@ -168,7 +168,7 @@ static void write_header(halscope_t *s)
         (halscope_sample_header_t *)s->bufs[s->write_buf].data;
     hdr->sample_count = htole32((uint32_t)s->samples);
     hdr->sample_len   = htole32((uint32_t)s->sample_len);
-    hdr->start_offset = 0;
+    hdr->start_offset = htole32((uint32_t)s->pre_trig);
     hdr->reserved     = 0;
 }
 

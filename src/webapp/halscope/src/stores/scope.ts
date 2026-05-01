@@ -147,22 +147,11 @@ async function connect() {
   }
 
   try {
-    restClient = new HalscopeClient(getBaseUrl());
-    wsClient = new HalscopeWatchClient(getWsUrl());
+    if (!restClient) {
+      restClient = new HalscopeClient(getBaseUrl());
+    }
 
-    await wsClient.connect();
-    wsClient.onClose = onWsClose;
-    state.connected = true;
-    state.error = '';
-    reconnectDelay = 1000;
-
-    // Subscribe to state updates
-    wsClient.subscribeWatchState(onStatusUpdate, 100);
-
-    // Subscribe to sample data
-    wsClient.subscribeWatchSamples(onSamplesUpdate, 100);
-
-    // Load initial data
+    // Load initial data via REST immediately (don't wait for WS)
     const [threads, status] = await Promise.all([
       restClient.listThreads(),
       restClient.getStatus(),
@@ -175,7 +164,28 @@ async function connect() {
       state.captureConfig.threadName = threads[0].name;
     }
   } catch (e) {
-    state.error = `Connection failed: ${e}`;
+    state.error = `REST connection failed: ${e}`;
+    restClient = null;
+    scheduleReconnect();
+    return;
+  }
+
+  // Connect WS for live updates — failures here don't block the UI
+  try {
+    wsClient = new HalscopeWatchClient(getWsUrl());
+    await wsClient.connect();
+    wsClient.onClose = onWsClose;
+    state.connected = true;
+    state.error = '';
+    reconnectDelay = 1000;
+
+    // Subscribe to state updates
+    wsClient.subscribeWatchState(onStatusUpdate, 100);
+
+    // Subscribe to sample data
+    wsClient.subscribeWatchSamples(onSamplesUpdate, 100);
+  } catch (e) {
+    state.error = `WebSocket failed, retrying…`;
     state.connected = false;
     scheduleReconnect();
   }

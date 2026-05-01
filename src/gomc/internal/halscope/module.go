@@ -235,7 +235,6 @@ func (m *halscope) registerWatch(wreg *apiserver.WatchRegistry, instance string)
 				Name:        "watch_state",
 				DefaultRate: 100 * time.Millisecond,
 				Watch:       m.watchState,
-				Delta:       true,
 			},
 			{
 				Name:        "watch_samples",

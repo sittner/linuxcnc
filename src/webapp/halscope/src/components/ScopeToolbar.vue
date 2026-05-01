@@ -29,7 +29,7 @@ const isRunning = computed(() => scopeStore.isCapturing());
 const canArm = computed(() => {
   const s = scopeStore.state.status.state;
   const hasChannels = scopeStore.state.status.channels.some(c => c.enabled);
-  return (s === ScopeState.IDLE || s === ScopeState.DONE) && scopeStore.state.connected && hasChannels;
+  return (s === ScopeState.IDLE || s === ScopeState.DONE) && hasChannels;
 });
 
 const trigChannels = computed(() =>
