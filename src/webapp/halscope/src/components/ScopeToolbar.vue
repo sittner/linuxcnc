@@ -32,6 +32,11 @@ const canArm = computed(() => {
   return (s === ScopeState.IDLE || s === ScopeState.DONE) && hasChannels;
 });
 
+const canForce = computed(() => {
+  const s = scopeStore.state.status.state;
+  return s === ScopeState.PRE_TRIG || s === ScopeState.TRIG_WAIT;
+});
+
 const trigChannels = computed(() =>
   scopeStore.state.status.channels.filter(c => c.enabled)
 );
@@ -109,6 +114,7 @@ function onTrigPosChange(e: Event) {
         <button class="btn btn-run" @click="onRun" :disabled="!canArm">▶ Run</button>
         <button class="btn" @click="onSingle" :disabled="!canArm">⎍ Single</button>
         <button class="btn btn-stop" @click="onStop" :disabled="!isRunning">■ Stop</button>
+        <button class="btn" @click="scopeStore.forceTrigger()" :disabled="!canForce">⚡ Force</button>
       </div>
 
       <div class="toolbar-group config-group">

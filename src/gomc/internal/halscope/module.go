@@ -210,6 +210,10 @@ func registerHalscopeMeta() {
 				Dispatch: func(cb unsafe.Pointer, req []byte) ([]byte, error) {
 					return (*halscope)(cb).dispatchArm(req)
 				}},
+			{Name: "force_trigger", Method: "POST", Path: "/force_trigger",
+				Dispatch: func(cb unsafe.Pointer, req []byte) ([]byte, error) {
+					return (*halscope)(cb).dispatchForceTrigger(req)
+				}},
 			{Name: "reset", Method: "POST", Path: "/reset",
 				Dispatch: func(cb unsafe.Pointer, req []byte) ([]byte, error) {
 					return (*halscope)(cb).dispatchReset(req)
@@ -462,7 +466,6 @@ func (m *halscope) dispatchSetTrigger(req []byte) ([]byte, error) {
 			Channel  int     `json:"channel"`
 			Level    float64 `json:"level"`
 			Edge     int     `json:"edge"`
-			Force    bool    `json:"force"`
 			AutoTrig bool    `json:"autoTrig"`
 		} `json:"trig"`
 	}
@@ -490,11 +493,6 @@ func (m *halscope) dispatchSetTrigger(req []byte) ([]byte, error) {
 	} else {
 		s.trig.edge = 0
 	}
-	if t.Force {
-		s.trig.force = 1
-	} else {
-		s.trig.force = 0
-	}
 	if t.AutoTrig {
 		s.trig.auto_trig = 1
 	} else {
@@ -521,6 +519,18 @@ func (m *halscope) dispatchArm(_ []byte) ([]byte, error) {
 	}
 
 	s.state = C.HALSCOPE_ST_INIT
+	return json.Marshal(0)
+}
+
+func (m *halscope) dispatchForceTrigger(_ []byte) ([]byte, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	state := halscope_state_t(m.s.state)
+	if state != C.HALSCOPE_ST_PRE_TRIG && state != C.HALSCOPE_ST_TRIG_WAIT {
+		return json.Marshal(-int(C.EINVAL))
+	}
+	m.s.trig.force = 1
 	return json.Marshal(0)
 }
 

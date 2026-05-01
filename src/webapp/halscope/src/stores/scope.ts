@@ -102,7 +102,6 @@ const state = reactive<ScopeStore>({
     channel: -1,
     level: 0,
     edge: TrigEdge.RISING,
-    force: false,
     autoTrig: true,
   },
 
@@ -397,6 +396,16 @@ async function stop() {
   }
 }
 
+async function forceTrigger() {
+  if (!restClient) return;
+  try {
+    await restClient.forceTrigger();
+    state.error = '';
+  } catch (e) {
+    state.error = `Force trigger failed: ${e}`;
+  }
+}
+
 // Send config immediately if not capturing (for live parameter changes)
 async function applyConfig() {
   const s = state.status.state;
@@ -542,6 +551,7 @@ export const scopeStore = {
   setTrigger,
   arm,
   stop,
+  forceTrigger,
   searchPins,
   setAutoRearm,
   applyConfig,

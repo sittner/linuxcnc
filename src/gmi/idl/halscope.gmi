@@ -55,7 +55,6 @@ type TriggerConfig {
     channel: i32
     level: f64
     edge: TrigEdge
-    force: bool
     autoTrig: bool
 }
 
@@ -118,6 +117,12 @@ func set_trigger(trig: TriggerConfig) -> i32
 @method POST
 @path "/arm"
 func arm() -> i32
+
+# Force-trigger: immediately triggers capture when in TRIG_WAIT.
+# Like the original halscope "Force" button — one-shot command.
+@method POST
+@path "/force_trigger"
+func force_trigger() -> i32
 
 # Reset / abort an in-progress capture.
 @method POST
