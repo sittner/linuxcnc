@@ -60,8 +60,7 @@ const recInfo = computed(() => {
 });
 
 function onRun() {
-  scopeStore.setAutoRearm(true);
-  scopeStore.arm();
+  scopeStore.run();
 }
 
 function onStop() {
@@ -69,7 +68,6 @@ function onStop() {
 }
 
 function onSingle() {
-  scopeStore.setAutoRearm(false);
   scopeStore.arm();
 }
 

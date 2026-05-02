@@ -214,6 +214,10 @@ func registerHalscopeMeta() {
 				Dispatch: func(cb unsafe.Pointer, req []byte) ([]byte, error) {
 					return (*halscope)(cb).dispatchForceTrigger(req)
 				}},
+			{Name: "set_continuous", Method: "POST", Path: "/set_continuous",
+				Dispatch: func(cb unsafe.Pointer, req []byte) ([]byte, error) {
+					return (*halscope)(cb).dispatchSetContinuous(req)
+				}},
 			{Name: "reset", Method: "POST", Path: "/reset",
 				Dispatch: func(cb unsafe.Pointer, req []byte) ([]byte, error) {
 					return (*halscope)(cb).dispatchReset(req)
@@ -534,7 +538,27 @@ func (m *halscope) dispatchForceTrigger(_ []byte) ([]byte, error) {
 	return json.Marshal(0)
 }
 
+func (m *halscope) dispatchSetContinuous(req []byte) ([]byte, error) {
+	var params struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.Unmarshal(req, &params); err != nil {
+		return nil, fmt.Errorf("invalid params: %w", err)
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if params.Enabled {
+		m.s.continuous = 1
+	} else {
+		m.s.continuous = 0
+	}
+	return json.Marshal(0)
+}
+
 func (m *halscope) dispatchReset(_ []byte) ([]byte, error) {
+	m.s.continuous = 0
 	m.s.state = C.HALSCOPE_ST_RESET
 	return json.Marshal(0)
 }
@@ -621,6 +645,7 @@ type scopeStatus struct {
 	ThreadName       string        `json:"threadName"`
 	TrigChannel      int           `json:"trigChannel"`
 	Generation       uint32        `json:"generation"`
+	Continuous       bool          `json:"continuous"`
 	Channels         []channelInfo `json:"channels"`
 }
 
@@ -642,6 +667,7 @@ func (m *halscope) getStatus() scopeStatus {
 		SamplePeriodMult: int(s.mult),
 		TrigChannel:      int(s.trig.channel),
 		Generation:       uint32(atomic.LoadUint32((*uint32)(unsafe.Pointer(&s.done_gen)))),
+		Continuous:       s.continuous != 0,
 	}
 
 	threadName := C.GoString(&s.thread_name[0])

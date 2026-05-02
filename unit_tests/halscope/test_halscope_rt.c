@@ -251,8 +251,84 @@ TEST done_stays_done(void)
 {
     halscope_t *s = make_scope(100);
     s->state = HALSCOPE_ST_DONE;
+    s->continuous = 0;
     tick_n(s, 10);
     ASSERT_EQ(HALSCOPE_ST_DONE, s->state);
+    halscope_free(s);
+    PASS();
+}
+
+TEST continuous_rearms_after_done(void)
+{
+    /* Full cycle with continuous=1: DONE should transition back to INIT */
+    halscope_t *s = make_scope(100);
+    s->rec_len = 5;
+    s->pre_trig = 2;
+    s->trig.auto_trig = 0;
+    s->trig.channel = -1;
+    s->continuous = 1;
+
+    double val = 0.0;
+    add_float_channel(s, 0, &val);
+    update_sample_len(s);
+
+    /* First capture */
+    s->state = HALSCOPE_ST_INIT;
+    tick(s);         /* → PRE_TRIG */
+    tick_n(s, 2);    /* 2 pre-trig → TRIG_WAIT */
+    s->trig.force = 1;
+    tick(s);         /* → POST_TRIG (samples=3) */
+    tick_n(s, 2);    /* 2 more → samples=5 → DONE */
+    ASSERT_EQ(HALSCOPE_ST_DONE, s->state);
+    ASSERT_EQ(1, (int)atomic_load(&s->done_gen));
+
+    /* Next tick: DONE + continuous → INIT */
+    tick(s);
+    ASSERT_EQ(HALSCOPE_ST_INIT, s->state);
+
+    /* Next tick: INIT → PRE_TRIG (second capture starts) */
+    tick(s);
+    ASSERT_EQ(HALSCOPE_ST_PRE_TRIG, s->state);
+
+    /* Complete second capture */
+    tick_n(s, 2);
+    s->trig.force = 1;
+    tick(s);
+    tick_n(s, 2);
+    ASSERT_EQ(HALSCOPE_ST_DONE, s->state);
+    ASSERT_EQ(2, (int)atomic_load(&s->done_gen));
+
+    halscope_free(s);
+    PASS();
+}
+
+TEST continuous_off_stays_done(void)
+{
+    /* Verify continuous=0 doesn't re-arm */
+    halscope_t *s = make_scope(100);
+    s->rec_len = 5;
+    s->pre_trig = 2;
+    s->trig.auto_trig = 0;
+    s->trig.channel = -1;
+    s->continuous = 0;
+
+    double val = 0.0;
+    add_float_channel(s, 0, &val);
+    update_sample_len(s);
+
+    s->state = HALSCOPE_ST_INIT;
+    tick(s);
+    tick_n(s, 2);
+    s->trig.force = 1;
+    tick(s);
+    tick_n(s, 2);
+    ASSERT_EQ(HALSCOPE_ST_DONE, s->state);
+
+    /* Should stay in DONE */
+    tick_n(s, 10);
+    ASSERT_EQ(HALSCOPE_ST_DONE, s->state);
+    ASSERT_EQ(1, (int)atomic_load(&s->done_gen));
+
     halscope_free(s);
     PASS();
 }
@@ -309,6 +385,8 @@ SUITE(state_transitions)
     RUN_TEST(full_cycle_auto_trigger);
     RUN_TEST(idle_stays_idle);
     RUN_TEST(done_stays_done);
+    RUN_TEST(continuous_rearms_after_done);
+    RUN_TEST(continuous_off_stays_done);
     RUN_TEST(init_clears_force);
     RUN_TEST(mult_skips_cycles);
 }

@@ -62,7 +62,6 @@ interface ScopeStore {
   timeBase: Float64Array; // time axis in seconds
 
   // UI state
-  autoRearm: boolean;
   selectedThread: string;
 
   // Horizontal display (ported from scope_horiz_t)
@@ -115,7 +114,6 @@ const state = reactive<ScopeStore>({
   samples: [],
   timeBase: new Float64Array(0),
 
-  autoRearm: false,
   selectedThread: '',
 
   zoomSetting: 1,
@@ -262,11 +260,6 @@ function onStatusUpdate(status: Partial<ScopeStatus>) {
   if ('trigChannel' in status) {
     state.triggerConfig.channel = status.trigChannel!;
   }
-
-  // Auto-rearm when capture completes
-  if (state.status.state === ScopeState.DONE && state.autoRearm) {
-    arm();
-  }
 }
 
 function onWsClose() {
@@ -388,11 +381,24 @@ async function arm() {
 async function stop() {
   if (!restClient) return;
   try {
-    state.autoRearm = false;
+    await restClient.setContinuous(false);
     await restClient.reset();
     state.error = '';
   } catch (e) {
     state.error = `Reset failed: ${e}`;
+  }
+}
+
+async function run() {
+  if (!restClient) return;
+  try {
+    await configure();
+    await setTrigger();
+    await restClient.setContinuous(true);
+    await restClient.arm();
+    state.error = '';
+  } catch (e) {
+    state.error = `Run failed: ${e}`;
   }
 }
 
@@ -429,10 +435,6 @@ async function searchPins(pattern?: string, kind?: string) {
   } catch (e) {
     state.error = `List pins failed: ${e}`;
   }
-}
-
-function setAutoRearm(enabled: boolean) {
-  state.autoRearm = enabled;
 }
 
 /**
@@ -550,10 +552,10 @@ export const scopeStore = {
   removeChannel,
   setTrigger,
   arm,
+  run,
   stop,
   forceTrigger,
   searchPins,
-  setAutoRearm,
   applyConfig,
   isCapturing,
 

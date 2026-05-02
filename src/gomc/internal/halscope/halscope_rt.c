@@ -254,6 +254,8 @@ void halscope_sample(void *arg, long period)
         break;
 
     case HALSCOPE_ST_DONE:
+        if (s->continuous)
+            s->state = HALSCOPE_ST_INIT;
         break;
 
     default:

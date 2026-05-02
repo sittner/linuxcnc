@@ -76,6 +76,7 @@ type ScopeStatus {
     threadName: string
     trigChannel: i32
     generation: u32
+    continuous: bool
     channels: []ChannelInfo
 }
 
@@ -123,6 +124,12 @@ func arm() -> i32
 @method POST
 @path "/force_trigger"
 func force_trigger() -> i32
+
+# Enable or disable continuous (auto-rearm) mode. When enabled, the RT
+# state machine automatically transitions DONE → INIT for repeated captures.
+@method POST
+@path "/set_continuous"
+func set_continuous(enabled: bool) -> i32
 
 # Reset / abort an in-progress capture.
 @method POST

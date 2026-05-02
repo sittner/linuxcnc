@@ -106,6 +106,10 @@ typedef struct {
     /* Trigger [Go-write, RT-read] */
     halscope_trigger_t trig;
 
+    /* Continuous mode [Go-write, RT-read] — when set, RT automatically
+     * re-arms (DONE → INIT) after each completed capture. */
+    int              continuous;
+
     /* State machine [shared — RT writes state transitions,
      * Go writes ST_INIT (arm) and ST_RESET] */
     volatile halscope_state_t state;
