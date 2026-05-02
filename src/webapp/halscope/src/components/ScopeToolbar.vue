@@ -96,11 +96,6 @@ function onZoomChange(e: Event) {
 function onPosChange(e: Event) {
   scopeStore.setHorizPos(Number((e.target as HTMLInputElement).value) / 1000);
 }
-
-function onTrigPosChange(e: Event) {
-  scopeStore.setTrigPosition(Number((e.target as HTMLInputElement).value) / 100);
-  scopeStore.applyConfig();
-}
 </script>
 
 <template>
@@ -191,8 +186,9 @@ function onTrigPosChange(e: Event) {
       </div>
     </div>
 
-    <!-- Row 2: Horizontal controls (zoom, pos, trig pos, scale display) -->
+    <!-- Row 2: Horizontal controls (scale display, zoom, pos) -->
     <div class="toolbar-row horiz-row">
+      <span class="scale-display">{{ scaleLabel }}</span>
       <label class="slider-label">
         Zoom
         <input
@@ -211,16 +207,6 @@ function onTrigPosChange(e: Event) {
           class="slider"
         />
       </label>
-      <label class="slider-label">
-        T-Pos
-        <input
-          type="range" min="0" max="100" step="1"
-          :value="Math.round(scopeStore.state.trigPosition * 100)"
-          @input="onTrigPosChange"
-          class="slider"
-        />
-      </label>
-      <span class="scale-display">{{ scaleLabel }}</span>
       <span class="rec-info">{{ recInfo }}</span>
     </div>
   </div>

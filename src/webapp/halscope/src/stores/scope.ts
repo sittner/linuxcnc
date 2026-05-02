@@ -67,7 +67,6 @@ interface ScopeStore {
   // Horizontal display (ported from scope_horiz_t)
   zoomSetting: number;   // 1..9, 1 = fit record
   posSetting: number;    // 0.0..1.0, position within record
-  trigPosition: number;  // 0.0..1.0, where trigger sits in record (0.5 = center)
 }
 
 const state = reactive<ScopeStore>({
@@ -99,7 +98,7 @@ const state = reactive<ScopeStore>({
     threadName: '',
     maxChannels: 1,
     samplePeriodMult: 1,
-    preTrig: 8000,
+    preTrig: 0,
   },
 
   triggerConfig: {
@@ -123,7 +122,6 @@ const state = reactive<ScopeStore>({
 
   zoomSetting: 1,
   posSetting: 0.5,
-  trigPosition: 0.5,
 });
 
 let restClient: HalscopeClient | null = null;
@@ -247,29 +245,21 @@ function onStatusUpdate(status: Partial<ScopeStatus>) {
     }
   }
 
-  // Sync captureConfig from server status only when NOT capturing —
-  // during capture, user edits would be clobbered by WS status updates.
-  const notCapturing = state.status.state === ScopeState.IDLE || state.status.state === ScopeState.DONE;
-  if (notCapturing) {
-    if ('maxChannels' in status && status.maxChannels! > 0) {
-      state.captureConfig.maxChannels = status.maxChannels!;
-      if ('preTrig' in status) state.captureConfig.preTrig = status.preTrig!;
-    }
-    if ('samplePeriodMult' in status && status.samplePeriodMult! > 0) {
-      state.captureConfig.samplePeriodMult = status.samplePeriodMult!;
-    }
-    if ('threadName' in status && status.threadName) {
-      state.captureConfig.threadName = status.threadName;
-      state.selectedThread = status.threadName;
-    }
-    // Derive trigPosition from actual preTrig/recLen
-    if ('recLen' in status && status.recLen! > 0 && 'preTrig' in status) {
-      state.trigPosition = status.preTrig! / status.recLen!;
-    }
-    // Sync trigger channel from server (e.g. auto-selected on first addChannel)
-    if ('trigChannel' in status) {
-      state.triggerConfig.channel = status.trigChannel!;
-    }
+  // Always sync captureConfig from server — controls are disabled during
+  // capture so there's nothing to clobber, and on page reload we need
+  // the dropdown to reflect the actual server state.
+  if ('maxChannels' in status && status.maxChannels! > 0) {
+    state.captureConfig.maxChannels = status.maxChannels!;
+  }
+  if ('samplePeriodMult' in status && status.samplePeriodMult! > 0) {
+    state.captureConfig.samplePeriodMult = status.samplePeriodMult!;
+  }
+  if ('threadName' in status && status.threadName) {
+    state.captureConfig.threadName = status.threadName;
+    state.selectedThread = status.threadName;
+  }
+  if ('trigChannel' in status) {
+    state.triggerConfig.channel = status.trigChannel!;
   }
 }
 
@@ -329,10 +319,12 @@ async function configure() {
   if (!restClient) return;
   try {
     state.captureConfig.threadName = state.selectedThread;
-    // Derive preTrig from trigPosition and the recLen for current maxChannels
-    const recLen = state.status.recLen || 16000;
-    state.captureConfig.preTrig = Math.round(recLen * state.trigPosition);
+    // preTrig is always recLen/2 (hardcoded server-side, like original halscope)
+    state.captureConfig.preTrig = 0;
     await restClient.configure(state.captureConfig);
+    // Re-fetch status so recLen/preTrig reflect the new maxChannels
+    const status = await restClient.getStatus();
+    onStatusUpdate(status);
     state.error = '';
   } catch (e) {
     state.error = `Configure failed: ${e}`;
@@ -502,8 +494,8 @@ function calcDisplayWindow() {
   const samplePeriod = getSamplePeriod();
   const dispScale = calcDispScale();
   const recLen = state.status.recLen || 1;
-  // Use actual preTrig from RT status (reflects what was really captured)
-  const preTrig = state.status.preTrig > 0 ? state.status.preTrig : Math.round(recLen * state.trigPosition);
+  // Use actual preTrig from RT status (always recLen/2, set server-side)
+  const preTrig = state.status.preTrig > 0 ? state.status.preTrig : Math.round(recLen / 2);
   const totalRecTime = recLen * samplePeriod;
 
   const screenCenterTime = totalRecTime * state.posSetting;
@@ -537,11 +529,7 @@ function setHorizPos(setting: number) {
   state.posSetting = Math.max(0, Math.min(1, setting));
 }
 
-function setTrigPosition(setting: number) {
-  state.trigPosition = Math.max(0, Math.min(1, setting));
-  // Update preTrig in capture config to match (use server's recLen)
-  state.captureConfig.preTrig = Math.round(state.status.recLen * setting);
-}
+
 
 function formatTimeValue(seconds: number): string {
   let val = seconds * 1e9; // to nanoseconds
@@ -585,7 +573,6 @@ export const scopeStore = {
   },
   setHorizZoom,
   setHorizPos,
-  setTrigPosition,
   calcDispScale,
   calcDisplayWindow,
   getSamplePeriod,

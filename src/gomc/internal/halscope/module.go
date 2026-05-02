@@ -416,9 +416,8 @@ func (m *halscope) dispatchConfigure(req []byte) ([]byte, error) {
 	if cfg.SamplePeriodMult > 0 {
 		s.mult = C.int(cfg.SamplePeriodMult)
 	}
-	if cfg.PreTrig >= 0 && cfg.PreTrig < int(s.rec_len) {
-		s.pre_trig = C.int(cfg.PreTrig)
-	}
+	// Always center trigger at midpoint of buffer (matches original halscope)
+	s.pre_trig = s.rec_len / 2
 
 	return json.Marshal(0)
 }

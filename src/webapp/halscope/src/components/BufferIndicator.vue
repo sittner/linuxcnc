@@ -156,9 +156,9 @@ watch(
     scopeStore.state.status.state,
     scopeStore.state.status.samples,
     scopeStore.state.status.recLen,
+    scopeStore.state.status.preTrig,
     scopeStore.state.zoomSetting,
     scopeStore.state.posSetting,
-    scopeStore.state.trigPosition,
   ],
   () => draw(),
 );
