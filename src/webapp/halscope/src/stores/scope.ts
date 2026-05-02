@@ -83,6 +83,9 @@ const state = reactive<ScopeStore>({
     samplePeriodMult: 1,
     threadPeriodNs: 0,
     threadName: '',
+    trigChannel: -1,
+    generation: 0,
+    continuous: false,
     channels: [],
   },
 
@@ -239,26 +242,29 @@ function onStatusUpdate(status: Partial<ScopeStatus>) {
     }
   }
 
-  // Sync captureConfig from server status so UI reflects actual RT state
-  if ('recLen' in status && status.recLen! > 0) {
-    state.captureConfig.recLen = status.recLen!;
-    if ('preTrig' in status) state.captureConfig.preTrig = status.preTrig!;
-  }
-  if ('samplePeriodMult' in status && status.samplePeriodMult! > 0) {
-    state.captureConfig.samplePeriodMult = status.samplePeriodMult!;
-  }
-  if ('threadName' in status && status.threadName) {
-    state.captureConfig.threadName = status.threadName;
-    state.selectedThread = status.threadName;
-  }
-  // Derive trigPosition from actual preTrig/recLen
-  if ('recLen' in status && status.recLen! > 0 && 'preTrig' in status) {
-    state.trigPosition = status.preTrig! / status.recLen!;
-  }
-
-  // Sync trigger channel from server (e.g. auto-selected on first addChannel)
-  if ('trigChannel' in status) {
-    state.triggerConfig.channel = status.trigChannel!;
+  // Sync captureConfig from server status only when NOT capturing —
+  // during capture, user edits would be clobbered by WS status updates.
+  const notCapturing = state.status.state === ScopeState.IDLE || state.status.state === ScopeState.DONE;
+  if (notCapturing) {
+    if ('recLen' in status && status.recLen! > 0) {
+      state.captureConfig.recLen = status.recLen!;
+      if ('preTrig' in status) state.captureConfig.preTrig = status.preTrig!;
+    }
+    if ('samplePeriodMult' in status && status.samplePeriodMult! > 0) {
+      state.captureConfig.samplePeriodMult = status.samplePeriodMult!;
+    }
+    if ('threadName' in status && status.threadName) {
+      state.captureConfig.threadName = status.threadName;
+      state.selectedThread = status.threadName;
+    }
+    // Derive trigPosition from actual preTrig/recLen
+    if ('recLen' in status && status.recLen! > 0 && 'preTrig' in status) {
+      state.trigPosition = status.preTrig! / status.recLen!;
+    }
+    // Sync trigger channel from server (e.g. auto-selected on first addChannel)
+    if ('trigChannel' in status) {
+      state.triggerConfig.channel = status.trigChannel!;
+    }
   }
 }
 

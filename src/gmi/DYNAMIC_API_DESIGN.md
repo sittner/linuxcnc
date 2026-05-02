@@ -19,9 +19,9 @@ intended to replace NML with a modern, type-safe approach.
 | 5.3: PyVCP REST/WebSocket | ✅ Complete | — |
 | 5.4: INI REST Migration | ✅ Complete | 6 |
 | 5.5: NML Gateway (stat/cmd/error) | ✅ Complete | — |
-| 5.6: TypeScript Client Generation | ❌ Not Started | — |
-| 5.7: Web App Infrastructure | ❌ Not Started | — |
-| 5.8: Halscope (cmod + Vue Web UI) | ❌ Not Started | — |
+| 5.6: TypeScript Client Generation | ✅ Complete | — |
+| 5.7: Web App Infrastructure | ✅ Complete | — |
+| 5.8: Halscope (gomod + Vue Web UI) | ✅ Complete | — |
 | 6: Polish | ❌ Not Started | — |
 | 7: Remove Go Plugins | ✅ Complete | — |
 
@@ -1927,7 +1927,7 @@ server/client architecture:
   Python `stat.tool_table` property fetches from REST. `tooledit_widget.py`
   adapted to use `gmi` REST instead of direct mmap access.
 
-### Step 5.6: TypeScript Client Generation (`--client-ts`) (NOT STARTED)
+### Step 5.6: TypeScript Client Generation (`--client-ts`)
 
 Add TypeScript client code generation to gmicompile, enabling Vue web UIs
 to consume any GMI API. This replaces the Dart client generator (removed)
@@ -2026,7 +2026,7 @@ a single TypeScript module with:
 - [ ] Generated TS clients for existing APIs as validation
 - [ ] Tests
 
-### Step 5.7: Web App Infrastructure (NOT STARTED)
+### Step 5.7: Web App Infrastructure
 
 Add static file serving to gomc-server so Vue web apps can be served
 alongside the REST/WebSocket API on the same port.
@@ -2099,7 +2099,7 @@ src/webapp/halscope/
 - [ ] Webapp directory convention documented
 - [ ] Build system integration (Vite build + install)
 
-### Step 5.8: Halscope — RT Capture cmod + Vue Web UI (NOT STARTED)
+### Step 5.8: Halscope — RT Capture gomod + Vue Web UI
 
 Migrate `halscope` from its current shared-memory architecture to the GMI
 infrastructure: a cmod for RT sample capture and a Vue 3 + TypeScript web UI

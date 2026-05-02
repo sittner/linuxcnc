@@ -108,11 +108,11 @@ typedef struct {
 
     /* Continuous mode [Go-write, RT-read] — when set, RT automatically
      * re-arms (DONE → INIT) after each completed capture. */
-    int              continuous;
+    atomic_int       continuous;
 
     /* State machine [shared — RT writes state transitions,
      * Go writes ST_INIT (arm) and ST_RESET] */
-    volatile halscope_state_t state;
+    _Atomic halscope_state_t state;
     int              samples;        /* valid sample count [RT] */
     int              ring_pos;       /* current write position in doubles [RT] */
     int              ring_start;     /* first valid sample in doubles [RT] */
@@ -162,6 +162,15 @@ static inline int halscope_atomic_fetch_add_int(int *p, int val, int order) {
 }
 static inline int halscope_atomic_fetch_sub_int(int *p, int val, int order) {
     return atomic_fetch_sub_explicit((_Atomic int *)p, val, (memory_order)order);
+}
+static inline void halscope_atomic_store_int(int *p, int val, int order) {
+    atomic_store_explicit((_Atomic int *)p, val, (memory_order)order);
+}
+static inline void halscope_atomic_store_state(halscope_state_t *p, halscope_state_t val, int order) {
+    atomic_store_explicit((_Atomic halscope_state_t *)p, val, (memory_order)order);
+}
+static inline halscope_state_t halscope_atomic_load_state(halscope_state_t *p, int order) {
+    return atomic_load_explicit((_Atomic halscope_state_t *)p, (memory_order)order);
 }
 
 /* Expose sizeof for Go */

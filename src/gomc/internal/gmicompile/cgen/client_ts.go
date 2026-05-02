@@ -161,6 +161,9 @@ func (g *clientTSGen) emitClientMethods() {
 	g.printf("  // --- API Methods ---\n\n")
 
 	for _, fn := range g.api.Funcs {
+		if fn.Watch {
+			continue // watch functions use WebSocket, not REST
+		}
 		g.emitClientMethod(fn)
 	}
 }

@@ -40,13 +40,9 @@ static void capture_sample(halscope_t *s)
         case HAL_U32:
             *out++ = (double)*((rtapi_u32 *)s->channels[n].data_addr);
             break;
-        case HAL_FLOAT: {
-            volatile real_t *p = (volatile real_t *)s->channels[n].data_addr;
-            real_t a, b;
-            do { a = *p; b = *p; } while (a != b);
-            *out++ = (double)a;
+        case HAL_FLOAT:
+            *out++ = (double)*((real_t *)s->channels[n].data_addr);
             break;
-        }
         default:
             break;
         }
@@ -181,12 +177,16 @@ void halscope_sample(void *arg, long period)
     halscope_t *s = (halscope_t *)arg;
     (void)period;
 
-    if (s->state == HALSCOPE_ST_RESET) {
+    halscope_state_t cur_state = atomic_load_explicit(&s->state,
+                                                       memory_order_acquire);
+    if (cur_state == HALSCOPE_ST_RESET) {
         s->ring_pos = 0;
         s->ring_start = 0;
         s->samples = 0;
         s->trig.force = 0;
-        s->state = HALSCOPE_ST_IDLE;
+        atomic_store_explicit(&s->state, HALSCOPE_ST_IDLE,
+                              memory_order_release);
+        return;
     }
 
     s->mult_cntr++;
@@ -194,7 +194,7 @@ void halscope_sample(void *arg, long period)
         return;
     s->mult_cntr = 0;
 
-    switch (s->state) {
+    switch (cur_state) {
     case HALSCOPE_ST_IDLE:
         break;
 
@@ -210,7 +210,8 @@ void halscope_sample(void *arg, long period)
         s->trig.force = 0;
         s->auto_timer = 0;
         s->compare_result = 0;
-        s->state = HALSCOPE_ST_PRE_TRIG;
+        atomic_store_explicit(&s->state, HALSCOPE_ST_PRE_TRIG,
+                              memory_order_release);
         break;
     }
 
@@ -218,7 +219,8 @@ void halscope_sample(void *arg, long period)
         capture_sample(s);
         s->samples++;
         if (s->samples >= s->pre_trig) {
-            s->state = HALSCOPE_ST_TRIG_WAIT;
+            atomic_store_explicit(&s->state, HALSCOPE_ST_TRIG_WAIT,
+                                  memory_order_release);
             check_trigger(s);
         }
         break;
@@ -227,7 +229,8 @@ void halscope_sample(void *arg, long period)
         capture_sample(s);
         s->samples++;
         if (check_trigger(s)) {
-            s->state = HALSCOPE_ST_POST_TRIG;
+            atomic_store_explicit(&s->state, HALSCOPE_ST_POST_TRIG,
+                                  memory_order_release);
         } else {
             s->samples--;
             s->ring_start += s->sample_len;
@@ -249,17 +252,20 @@ void halscope_sample(void *arg, long period)
                                   memory_order_release);
             atomic_fetch_add_explicit(&s->done_gen, 1,
                                       memory_order_release);
-            s->state = HALSCOPE_ST_DONE;
+            atomic_store_explicit(&s->state, HALSCOPE_ST_DONE,
+                                  memory_order_release);
         }
         break;
 
     case HALSCOPE_ST_DONE:
-        if (s->continuous)
-            s->state = HALSCOPE_ST_INIT;
+        if (atomic_load_explicit(&s->continuous, memory_order_relaxed))
+            atomic_store_explicit(&s->state, HALSCOPE_ST_INIT,
+                                  memory_order_release);
         break;
 
     default:
-        s->state = HALSCOPE_ST_IDLE;
+        atomic_store_explicit(&s->state, HALSCOPE_ST_IDLE,
+                              memory_order_release);
         break;
     }
 }
@@ -279,7 +285,8 @@ halscope_t *halscope_alloc(int num_samples)
     s->rec_len = num_samples;
     s->pre_trig = num_samples / 2;
     s->trig.channel = -1;
-    s->state = HALSCOPE_ST_IDLE;
+    atomic_init(&s->state, HALSCOPE_ST_IDLE);
+    atomic_init(&s->continuous, 0);
     atomic_init(&s->done_buf, -1);
     atomic_init(&s->done_gen, 0);
 

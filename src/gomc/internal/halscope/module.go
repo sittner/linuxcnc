@@ -56,6 +56,14 @@ static void set_trigger_level(halscope_data_t *d, double v) {
     d->d_ireal = *(ireal_t *)&v;
 }
 
+static void set_trigger_level_s32(halscope_data_t *d, int32_t v) {
+    d->d_s32 = v;
+}
+
+static void set_trigger_level_u32(halscope_data_t *d, uint32_t v) {
+    d->d_u32 = v;
+}
+
 */
 import "C"
 
@@ -276,6 +284,14 @@ func (m *halscope) watchSamples() ([]byte, uint64, error) {
 	// Borrow the done buffer — increment refcount so RT won't reuse it.
 	C.halscope_atomic_fetch_add_int((*C.int)(unsafe.Pointer(&s.bufs[db].readers)), 1, C.memory_order_acquire)
 
+	// Verify done_buf hasn't changed — guards against TOCTOU race where
+	// RT completes a new capture between our load and refcount increment.
+	db2 := int(C.halscope_atomic_load_int((*C.int)(unsafe.Pointer(&s.done_buf)), C.memory_order_acquire))
+	if db2 != db {
+		C.halscope_atomic_fetch_sub_int((*C.int)(unsafe.Pointer(&s.bufs[db].readers)), 1, C.memory_order_release)
+		return nil, 0, nil
+	}
+
 	totalLen := int(s.done_len)
 	hdrSize := int(C.halscope_get_header_size())
 	dataBytes := totalLen - hdrSize
@@ -345,7 +361,7 @@ func (m *halscope) dispatchConfigure(req []byte) ([]byte, error) {
 	defer m.mu.Unlock()
 
 	s := m.s
-	state := halscope_state_t(s.state)
+	state := C.halscope_atomic_load_state((*C.halscope_state_t)(unsafe.Pointer(&s.state)), C.memory_order_acquire)
 	if state != C.HALSCOPE_ST_IDLE && state != C.HALSCOPE_ST_DONE {
 		return json.Marshal(-int(C.EBUSY))
 	}
@@ -488,9 +504,21 @@ func (m *halscope) dispatchSetTrigger(req []byte) ([]byte, error) {
 	s := m.s
 	s.trig.channel = C.int(t.Channel)
 
-	// Store level as ireal_t for IEEE-754 comparison in RT.
-	d := t.Level
-	C.set_trigger_level(&s.trig.level, C.double(d))
+	// Store level in the correct union member for the trigger channel's type.
+	// For HAL_FLOAT, store as ireal_t for IEEE-754 bit comparison in RT.
+	// For S32/U32, store as integer so the RT comparison reads the right value.
+	if t.Channel >= 0 && t.Channel < C.HALSCOPE_MAX_CHANNELS {
+		switch s.channels[t.Channel].data_type {
+		case C.HAL_S32:
+			C.set_trigger_level_s32(&s.trig.level, C.int32_t(t.Level))
+		case C.HAL_U32:
+			C.set_trigger_level_u32(&s.trig.level, C.uint32_t(t.Level))
+		default:
+			C.set_trigger_level(&s.trig.level, C.double(t.Level))
+		}
+	} else {
+		C.set_trigger_level(&s.trig.level, C.double(t.Level))
+	}
 
 	if t.Edge == 1 {
 		s.trig.edge = 1
@@ -511,7 +539,7 @@ func (m *halscope) dispatchArm(_ []byte) ([]byte, error) {
 	defer m.mu.Unlock()
 
 	s := m.s
-	state := halscope_state_t(s.state)
+	state := C.halscope_atomic_load_state((*C.halscope_state_t)(unsafe.Pointer(&s.state)), C.memory_order_acquire)
 	if state != C.HALSCOPE_ST_IDLE && state != C.HALSCOPE_ST_DONE {
 		return json.Marshal(-int(C.EBUSY))
 	}
@@ -522,7 +550,7 @@ func (m *halscope) dispatchArm(_ []byte) ([]byte, error) {
 		return json.Marshal(-int(C.EINVAL))
 	}
 
-	s.state = C.HALSCOPE_ST_INIT
+	C.halscope_atomic_store_state((*C.halscope_state_t)(unsafe.Pointer(&s.state)), C.HALSCOPE_ST_INIT, C.memory_order_release)
 	return json.Marshal(0)
 }
 
@@ -530,7 +558,7 @@ func (m *halscope) dispatchForceTrigger(_ []byte) ([]byte, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	state := halscope_state_t(m.s.state)
+	state := C.halscope_atomic_load_state((*C.halscope_state_t)(unsafe.Pointer(&m.s.state)), C.memory_order_acquire)
 	if state != C.HALSCOPE_ST_PRE_TRIG && state != C.HALSCOPE_ST_TRIG_WAIT {
 		return json.Marshal(-int(C.EINVAL))
 	}
@@ -550,16 +578,19 @@ func (m *halscope) dispatchSetContinuous(req []byte) ([]byte, error) {
 	defer m.mu.Unlock()
 
 	if params.Enabled {
-		m.s.continuous = 1
+		C.halscope_atomic_store_int((*C.int)(unsafe.Pointer(&m.s.continuous)), 1, C.memory_order_release)
 	} else {
-		m.s.continuous = 0
+		C.halscope_atomic_store_int((*C.int)(unsafe.Pointer(&m.s.continuous)), 0, C.memory_order_release)
 	}
 	return json.Marshal(0)
 }
 
 func (m *halscope) dispatchReset(_ []byte) ([]byte, error) {
-	m.s.continuous = 0
-	m.s.state = C.HALSCOPE_ST_RESET
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	C.halscope_atomic_store_int((*C.int)(unsafe.Pointer(&m.s.continuous)), 0, C.memory_order_release)
+	C.halscope_atomic_store_state((*C.halscope_state_t)(unsafe.Pointer(&m.s.state)), C.HALSCOPE_ST_RESET, C.memory_order_release)
 	return json.Marshal(0)
 }
 
@@ -659,7 +690,7 @@ type channelInfo struct {
 func (m *halscope) getStatus() scopeStatus {
 	s := m.s
 	st := scopeStatus{
-		State:            int(s.state),
+		State:            int(C.halscope_atomic_load_state((*C.halscope_state_t)(unsafe.Pointer(&s.state)), C.memory_order_acquire)),
 		Samples:          int(s.samples),
 		RecLen:           int(s.rec_len),
 		PreTrig:          int(s.pre_trig),
@@ -667,7 +698,7 @@ func (m *halscope) getStatus() scopeStatus {
 		SamplePeriodMult: int(s.mult),
 		TrigChannel:      int(s.trig.channel),
 		Generation:       uint32(atomic.LoadUint32((*uint32)(unsafe.Pointer(&s.done_gen)))),
-		Continuous:       s.continuous != 0,
+		Continuous:       C.halscope_atomic_load_int((*C.int)(unsafe.Pointer(&s.continuous)), C.memory_order_acquire) != 0,
 	}
 
 	threadName := C.GoString(&s.thread_name[0])
@@ -715,6 +746,9 @@ func (m *halscope) countActiveChannels() int {
 }
 
 func (m *halscope) resolveHALName(cName *C.char, halType *C.hal_type_t, dataLen *C.int, dataAddr *unsafe.Pointer) int {
+	C.rtapi_mutex_get(&C.get_hal_data().mutex)
+	defer C.rtapi_mutex_give(&C.get_hal_data().mutex)
+
 	// Try pin.
 	pin := C.halpr_find_pin_by_name(cName)
 	if pin != nil {
