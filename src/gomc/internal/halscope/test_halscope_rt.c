@@ -3,7 +3,7 @@
  * Tests state transitions, trigger detection, sample capture, buffer
  * management, and ring-buffer linearization — all without HAL or RTAPI.
  *
- * Build:  gcc -std=c11 -D_DEFAULT_SOURCE ...
+ * Build:  cd src/gomc/internal/halscope && gcc -std=c11 -D_DEFAULT_SOURCE -Wall -Wextra -O2 -I testmock -I ../../../../unit_tests -o test_halscope_rt test_halscope_rt.c -lm
  * Run:    ./test_halscope_rt
  */
 

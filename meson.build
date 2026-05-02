@@ -64,7 +64,6 @@ subdir('src/rtapi')
 
 subdir('unit_tests/tp')
 subdir('unit_tests/interp')
-subdir('unit_tests/halscope')
 
 # Global library dependencies
 dl_dep = meson.get_compiler('cpp').find_library('dl', required : true)
@@ -212,10 +211,10 @@ halscope_test_files = [
 foreach n : halscope_test_files
 
 test(n, executable(n,
-  join_paths('unit_tests/halscope', n+'.c'),
+  join_paths('src/gomc/internal/halscope', n+'.c'),
   dependencies : [m_dep],
   include_directories : [ halscope_rt_inc, unit_test_inc,
-    include_directories('unit_tests/halscope') ],
+    include_directories('src/gomc/internal/halscope/testmock') ],
   ))
 
 endforeach
