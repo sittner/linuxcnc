@@ -211,10 +211,11 @@ halscope_test_files = [
 foreach n : halscope_test_files
 
 test(n, executable(n,
-  join_paths('src/gomc/internal/halscope', n+'.c'),
+  join_paths('src/gomc/internal/halscope/testrt', n+'.c'),
   dependencies : [m_dep],
   include_directories : [ halscope_rt_inc, unit_test_inc,
-    include_directories('src/gomc/internal/halscope/testmock') ],
+    include_directories('src/gomc/internal/halscope/testrt/testmock'),
+    include_directories('src/gomc/internal/halscope') ],
   ))
 
 endforeach
