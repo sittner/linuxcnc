@@ -77,9 +77,10 @@ const state = reactive<ScopeStore>({
   status: {
     state: ScopeState.IDLE,
     samples: 0,
-    recLen: 4000,
-    preTrig: 2000,
+    recLen: 16000,
+    preTrig: 8000,
     sampleLen: 0,
+    maxChannels: 1,
     samplePeriodMult: 1,
     threadPeriodNs: 0,
     threadName: '',
@@ -87,6 +88,7 @@ const state = reactive<ScopeStore>({
     generation: 0,
     continuous: false,
     channels: [],
+    channelOptions: [],
   },
 
   threads: [],
@@ -95,9 +97,9 @@ const state = reactive<ScopeStore>({
 
   captureConfig: {
     threadName: '',
-    recLen: 4000,
+    maxChannels: 1,
     samplePeriodMult: 1,
-    preTrig: 2000,
+    preTrig: 8000,
   },
 
   triggerConfig: {
@@ -228,11 +230,14 @@ function onStatusUpdate(status: Partial<ScopeStatus>) {
   if ('recLen' in status) state.status.recLen = status.recLen!;
   if ('preTrig' in status) state.status.preTrig = status.preTrig!;
   if ('sampleLen' in status) state.status.sampleLen = status.sampleLen!;
+  if ('maxChannels' in status) state.status.maxChannels = status.maxChannels!;
   if ('samplePeriodMult' in status) state.status.samplePeriodMult = status.samplePeriodMult!;
   if ('threadPeriodNs' in status) state.status.threadPeriodNs = status.threadPeriodNs!;
   if ('threadName' in status) state.status.threadName = status.threadName!;
   if ('trigChannel' in status) state.status.trigChannel = status.trigChannel!;
   if ('generation' in status) state.status.generation = status.generation!;
+  if ('continuous' in status) state.status.continuous = status.continuous!;
+  if ('channelOptions' in status) state.status.channelOptions = status.channelOptions!;
 
   // Only replace channels array if present and content actually changed
   if ('channels' in status) {
@@ -246,8 +251,8 @@ function onStatusUpdate(status: Partial<ScopeStatus>) {
   // during capture, user edits would be clobbered by WS status updates.
   const notCapturing = state.status.state === ScopeState.IDLE || state.status.state === ScopeState.DONE;
   if (notCapturing) {
-    if ('recLen' in status && status.recLen! > 0) {
-      state.captureConfig.recLen = status.recLen!;
+    if ('maxChannels' in status && status.maxChannels! > 0) {
+      state.captureConfig.maxChannels = status.maxChannels!;
       if ('preTrig' in status) state.captureConfig.preTrig = status.preTrig!;
     }
     if ('samplePeriodMult' in status && status.samplePeriodMult! > 0) {
@@ -324,8 +329,9 @@ async function configure() {
   if (!restClient) return;
   try {
     state.captureConfig.threadName = state.selectedThread;
-    // Sync preTrig from trigPosition before sending
-    state.captureConfig.preTrig = Math.round(state.captureConfig.recLen * state.trigPosition);
+    // Derive preTrig from trigPosition and the recLen for current maxChannels
+    const recLen = state.status.recLen || 16000;
+    state.captureConfig.preTrig = Math.round(recLen * state.trigPosition);
     await restClient.configure(state.captureConfig);
     state.error = '';
   } catch (e) {
@@ -533,8 +539,8 @@ function setHorizPos(setting: number) {
 
 function setTrigPosition(setting: number) {
   state.trigPosition = Math.max(0, Math.min(1, setting));
-  // Update preTrig in capture config to match
-  state.captureConfig.preTrig = Math.round(state.captureConfig.recLen * setting);
+  // Update preTrig in capture config to match (use server's recLen)
+  state.captureConfig.preTrig = Math.round(state.status.recLen * setting);
 }
 
 function formatTimeValue(seconds: number): string {

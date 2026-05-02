@@ -94,14 +94,15 @@ typedef struct {
 typedef struct {
     /* Capture config [Go-write, RT-read] */
     char             thread_name[HAL_NAME_LEN + 1];
-    int              num_samples;    /* buffer capacity */
-    int              rec_len;        /* samples per record */
+    int              num_samples;    /* buffer capacity (total doubles) */
+    int              rec_len;        /* samples per record (derived: num_samples / max_channels) */
     int              pre_trig;       /* pre-trigger samples */
     int              mult;           /* sample period multiplier */
+    int              max_channels;   /* columns per sample row (1/2/4/8/16) */
 
     /* Channel config [Go-write when idle, RT-read] */
     halscope_channel_t channels[HALSCOPE_MAX_CHANNELS];
-    int              sample_len;     /* active channels count */
+    int              sample_len;     /* == max_channels (set in INIT from max_channels) */
 
     /* Trigger [Go-write, RT-read] */
     halscope_trigger_t trig;

@@ -27,9 +27,11 @@ static void capture_sample(halscope_t *s)
                               sizeof(halscope_sample_header_t));
     double *out = &ring[s->ring_pos];
 
-    for (int n = 0; n < HALSCOPE_MAX_CHANNELS; n++) {
-        if (s->channels[n].data_len == 0 || s->channels[n].data_addr == NULL)
+    for (int n = 0; n < s->sample_len; n++) {
+        if (s->channels[n].data_len == 0 || s->channels[n].data_addr == NULL) {
+            *out++ = 0.0;
             continue;
+        }
         switch (s->channels[n].data_type) {
         case HAL_BIT:
             *out++ = (double)*((unsigned char *)s->channels[n].data_addr);
@@ -44,6 +46,7 @@ static void capture_sample(halscope_t *s)
             *out++ = (double)*((real_t *)s->channels[n].data_addr);
             break;
         default:
+            *out++ = 0.0;
             break;
         }
     }
@@ -188,6 +191,7 @@ void halscope_sample(void *arg, long period)
         s->write_buf = wb;
         s->ring_pos = 0;
         s->ring_start = 0;
+        s->sample_len = s->max_channels;
         s->ring_cap = s->rec_len * s->sample_len;
         s->samples = 0;
         s->trig.force = 0;
@@ -265,7 +269,9 @@ halscope_t *halscope_alloc(int num_samples)
 
     s->num_samples = num_samples;
     s->mult = 1;
-    s->rec_len = num_samples;
+    s->max_channels = 1;
+    s->rec_len = num_samples;  /* derived: num_samples / max_channels */
+    s->sample_len = 1;
     s->pre_trig = num_samples / 2;
     s->trig.channel = -1;
     atomic_init(&s->state, HALSCOPE_ST_IDLE);

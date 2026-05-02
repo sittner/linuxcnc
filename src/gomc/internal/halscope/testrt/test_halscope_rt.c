@@ -58,14 +58,15 @@ static void add_s32_channel(halscope_t *s, int ch, int32_t *src)
     s->channels[ch].data_addr = src;
 }
 
-/* Recount active channels and set sample_len (matches Go-side logic). */
-static void update_sample_len(halscope_t *s)
+/* Set max_channels and derive sample_len (matches Go-side logic).
+ * max_ch must be 1, 2, 4, 8, or 16.
+ * rec_len defaults to num_samples/max_ch but can be overridden after. */
+static void set_max_channels(halscope_t *s, int max_ch)
 {
-    int count = 0;
-    for (int i = 0; i < HALSCOPE_MAX_CHANNELS; i++)
-        if (s->channels[i].enabled && s->channels[i].data_len > 0)
-            count++;
-    s->sample_len = count;
+    s->max_channels = max_ch;
+    s->sample_len = max_ch;
+    s->rec_len = s->num_samples / max_ch;
+    s->pre_trig = s->rec_len / 2;
 }
 
 /* Run one RT cycle */
@@ -155,7 +156,7 @@ TEST arm_to_pretrig_single_channel(void)
     halscope_t *s = make_scope(100);
     double val = 0.0;
     add_float_channel(s, 0, &val);
-    update_sample_len(s);
+    set_max_channels(s, 1);
 
     s->state = HALSCOPE_ST_INIT;
     tick(s);  /* INIT → PRE_TRIG */
@@ -172,14 +173,14 @@ TEST arm_to_pretrig_multi_channel(void)
     halscope_t *s = make_scope(100);
     double v1 = 0.0, v2 = 0.0;
     add_float_channel(s, 0, &v1);
-    add_float_channel(s, 3, &v2);
-    update_sample_len(s);
+    add_float_channel(s, 1, &v2);
+    set_max_channels(s, 2);
     ASSERT_EQ(2, s->sample_len);
 
     s->state = HALSCOPE_ST_INIT;
     tick(s);
     ASSERT_EQ(HALSCOPE_ST_PRE_TRIG, s->state);
-    ASSERT_EQ(200, s->ring_cap);  /* 100 * 2 */
+    ASSERT_EQ(100, s->ring_cap);  /* rec_len(50) * sample_len(2) */
 
     halscope_free(s);
     PASS();
@@ -189,14 +190,14 @@ TEST full_cycle_auto_trigger(void)
 {
     /* Small buffer: rec_len=10, pre_trig=5, auto_trig, no signal trigger */
     halscope_t *s = make_scope(100);
-    s->rec_len = 10;
-    s->pre_trig = 5;
     s->trig.auto_trig = 1;
     s->trig.channel = -1;
 
     double val = 42.0;
     add_float_channel(s, 0, &val);
-    update_sample_len(s);
+    set_max_channels(s, 1);
+    s->rec_len = 10;
+    s->pre_trig = 5;
 
     /* Arm: INIT tick transitions to PRE_TRIG but does not capture */
     s->state = HALSCOPE_ST_INIT;
@@ -262,15 +263,15 @@ TEST continuous_rearms_after_done(void)
 {
     /* Full cycle with continuous=1: DONE should transition back to INIT */
     halscope_t *s = make_scope(100);
-    s->rec_len = 5;
-    s->pre_trig = 2;
     s->trig.auto_trig = 0;
     s->trig.channel = -1;
     s->continuous = 1;
 
     double val = 0.0;
     add_float_channel(s, 0, &val);
-    update_sample_len(s);
+    set_max_channels(s, 1);
+    s->rec_len = 5;
+    s->pre_trig = 2;
 
     /* First capture */
     s->state = HALSCOPE_ST_INIT;
@@ -306,15 +307,15 @@ TEST continuous_off_stays_done(void)
 {
     /* Verify continuous=0 doesn't re-arm */
     halscope_t *s = make_scope(100);
-    s->rec_len = 5;
-    s->pre_trig = 2;
     s->trig.auto_trig = 0;
     s->trig.channel = -1;
     s->continuous = 0;
 
     double val = 0.0;
     add_float_channel(s, 0, &val);
-    update_sample_len(s);
+    set_max_channels(s, 1);
+    s->rec_len = 5;
+    s->pre_trig = 2;
 
     s->state = HALSCOPE_ST_INIT;
     tick(s);
@@ -338,7 +339,7 @@ TEST init_clears_force(void)
     halscope_t *s = make_scope(100);
     double val = 0.0;
     add_float_channel(s, 0, &val);
-    update_sample_len(s);
+    set_max_channels(s, 1);
 
     s->trig.force = 1;
     s->state = HALSCOPE_ST_INIT;
@@ -356,7 +357,7 @@ TEST mult_skips_cycles(void)
     s->mult = 3;
     double val = 0.0;
     add_float_channel(s, 0, &val);
-    update_sample_len(s);
+    set_max_channels(s, 1);
 
     s->rec_len = 10;
     s->pre_trig = 5;
@@ -399,14 +400,14 @@ SUITE(state_transitions)
 TEST force_trigger_in_trig_wait(void)
 {
     halscope_t *s = make_scope(100);
-    s->rec_len = 10;
-    s->pre_trig = 3;
     s->trig.channel = -1;  /* no signal trigger */
     s->trig.auto_trig = 0; /* no auto either */
 
     double val = 0.0;
     add_float_channel(s, 0, &val);
-    update_sample_len(s);
+    set_max_channels(s, 1);
+    s->rec_len = 10;
+    s->pre_trig = 3;
 
     s->state = HALSCOPE_ST_INIT;
     tick(s);  /* → PRE_TRIG */
@@ -431,14 +432,14 @@ TEST force_trigger_set_before_arm_is_cleared(void)
 {
     /* Bug we caught: force set before arm is cleared by INIT */
     halscope_t *s = make_scope(100);
-    s->rec_len = 10;
-    s->pre_trig = 3;
     s->trig.channel = -1;
     s->trig.auto_trig = 0;
 
     double val = 0.0;
     add_float_channel(s, 0, &val);
-    update_sample_len(s);
+    set_max_channels(s, 1);
+    s->rec_len = 10;
+    s->pre_trig = 3;
 
     s->trig.force = 1;  /* Set BEFORE arm */
     s->state = HALSCOPE_ST_INIT;
@@ -459,12 +460,12 @@ TEST force_trigger_set_before_arm_is_cleared(void)
 TEST rising_edge_float_trigger(void)
 {
     halscope_t *s = make_scope(100);
-    s->rec_len = 10;
-    s->pre_trig = 3;
 
     double val = 0.0;
     add_float_channel(s, 0, &val);
-    update_sample_len(s);
+    set_max_channels(s, 1);
+    s->rec_len = 10;
+    s->pre_trig = 3;
 
     /* Trigger on channel 0, rising edge, level 5.0 */
     s->trig.channel = 0;
@@ -497,12 +498,12 @@ TEST rising_edge_float_trigger(void)
 TEST falling_edge_float_trigger(void)
 {
     halscope_t *s = make_scope(100);
-    s->rec_len = 10;
-    s->pre_trig = 3;
 
     double val = 10.0;
     add_float_channel(s, 0, &val);
-    update_sample_len(s);
+    set_max_channels(s, 1);
+    s->rec_len = 10;
+    s->pre_trig = 3;
 
     s->trig.channel = 0;
     s->trig.edge = 0;  /* falling */
@@ -533,12 +534,12 @@ TEST falling_edge_float_trigger(void)
 TEST bit_trigger_rising(void)
 {
     halscope_t *s = make_scope(100);
-    s->rec_len = 10;
-    s->pre_trig = 3;
 
     bool val = false;
     add_bit_channel(s, 0, &val);
-    update_sample_len(s);
+    set_max_channels(s, 1);
+    s->rec_len = 10;
+    s->pre_trig = 3;
 
     s->trig.channel = 0;
     s->trig.edge = 1;  /* rising */
@@ -565,12 +566,12 @@ TEST bit_trigger_rising(void)
 TEST s32_trigger_rising(void)
 {
     halscope_t *s = make_scope(100);
-    s->rec_len = 10;
-    s->pre_trig = 3;
 
     int32_t val = 0;
     add_s32_channel(s, 0, &val);
-    update_sample_len(s);
+    set_max_channels(s, 1);
+    s->rec_len = 10;
+    s->pre_trig = 3;
 
     s->trig.channel = 0;
     s->trig.edge = 1;  /* rising */
@@ -596,14 +597,14 @@ TEST s32_trigger_rising(void)
 TEST auto_trigger_timeout(void)
 {
     halscope_t *s = make_scope(100);
-    s->rec_len = 20;
-    s->pre_trig = 5;
     s->trig.channel = -1;
     s->trig.auto_trig = 1;
 
     double val = 0.0;
     add_float_channel(s, 0, &val);
-    update_sample_len(s);
+    set_max_channels(s, 1);
+    s->rec_len = 20;
+    s->pre_trig = 5;
 
     s->state = HALSCOPE_ST_INIT;
     tick(s);  /* → PRE_TRIG */
@@ -625,14 +626,14 @@ TEST trigger_on_different_channel_than_data(void)
 {
     /* Trigger on channel 1 (S32), data on channel 0 (FLOAT) */
     halscope_t *s = make_scope(100);
-    s->rec_len = 10;
-    s->pre_trig = 3;
 
     double data_val = 1.0;
     int32_t trig_val = 0;
     add_float_channel(s, 0, &data_val);
     add_s32_channel(s, 1, &trig_val);
-    update_sample_len(s);
+    set_max_channels(s, 2);
+    s->rec_len = 10;
+    s->pre_trig = 3;
 
     s->trig.channel = 1;
     s->trig.edge = 1;
@@ -672,14 +673,14 @@ SUITE(trigger_detection)
 TEST captured_data_matches_source(void)
 {
     halscope_t *s = make_scope(100);
-    s->rec_len = 8;
-    s->pre_trig = 3;
     s->trig.auto_trig = 0;
     s->trig.channel = -1;
 
     double val = 0.0;
     add_float_channel(s, 0, &val);
-    update_sample_len(s);
+    set_max_channels(s, 1);
+    s->rec_len = 8;
+    s->pre_trig = 3;
 
     s->state = HALSCOPE_ST_INIT;
     tick(s);  /* INIT → PRE_TRIG */
@@ -724,15 +725,15 @@ TEST captured_data_matches_source(void)
 TEST multi_channel_interleaved(void)
 {
     halscope_t *s = make_scope(100);
-    s->rec_len = 5;
-    s->pre_trig = 2;
     s->trig.auto_trig = 0;
     s->trig.channel = -1;
 
     double v1 = 0.0, v2 = 0.0;
     add_float_channel(s, 0, &v1);
-    add_float_channel(s, 2, &v2);
-    update_sample_len(s);
+    add_float_channel(s, 1, &v2);
+    set_max_channels(s, 2);
+    s->rec_len = 5;
+    s->pre_trig = 2;
     ASSERT_EQ(2, s->sample_len);
 
     s->state = HALSCOPE_ST_INIT;
@@ -756,7 +757,7 @@ TEST multi_channel_interleaved(void)
     double *data = linearize_done(s, &count);
     ASSERT_EQ(10, count);  /* 5 samples × 2 channels */
 
-    /* Interleaved: [v1_0, v2_0, v1_1, v2_1, ...] */
+    /* Interleaved: [ch0_0, ch1_0, ch0_1, ch1_1, ...] */
     for (int i = 0; i < 5; i++) {
         ASSERT_EQ_FMT((double)((i + 1) * 10),  data[i * 2 + 0], "%f");
         ASSERT_EQ_FMT((double)((i + 1) * 100), data[i * 2 + 1], "%f");
@@ -772,14 +773,14 @@ TEST ring_buffer_wraps_correctly(void)
     /* With pre-trigger, the ring wraps before trigger fires.
      * Verify that linearized data is correct. */
     halscope_t *s = make_scope(100);
-    s->rec_len = 10;
-    s->pre_trig = 5;
     s->trig.auto_trig = 0;
     s->trig.channel = -1;
 
     double val = 0.0;
     add_float_channel(s, 0, &val);
-    update_sample_len(s);
+    set_max_channels(s, 1);
+    s->rec_len = 10;
+    s->pre_trig = 5;
 
     s->state = HALSCOPE_ST_INIT;
     tick(s);  /* → PRE_TRIG */
@@ -839,14 +840,14 @@ TEST ring_buffer_wraps_correctly(void)
 TEST header_start_offset_equals_pretrig(void)
 {
     halscope_t *s = make_scope(100);
-    s->rec_len = 20;
-    s->pre_trig = 7;
     s->trig.auto_trig = 0;
     s->trig.channel = -1;
 
     double val = 0.0;
     add_float_channel(s, 0, &val);
-    update_sample_len(s);
+    set_max_channels(s, 1);
+    s->rec_len = 20;
+    s->pre_trig = 7;
 
     s->state = HALSCOPE_ST_INIT;
     tick(s);  /* → PRE_TRIG */
@@ -869,14 +870,14 @@ TEST header_start_offset_equals_pretrig(void)
 TEST generation_increments(void)
 {
     halscope_t *s = make_scope(100);
-    s->rec_len = 5;
-    s->pre_trig = 2;
     s->trig.auto_trig = 0;
     s->trig.channel = -1;
 
     double val = 0.0;
     add_float_channel(s, 0, &val);
-    update_sample_len(s);
+    set_max_channels(s, 1);
+    s->rec_len = 5;
+    s->pre_trig = 2;
 
     ASSERT_EQ(0, (int)atomic_load(&s->done_gen));
 
@@ -907,14 +908,14 @@ TEST generation_increments(void)
 TEST bit_channel_capture(void)
 {
     halscope_t *s = make_scope(100);
-    s->rec_len = 4;
-    s->pre_trig = 1;
     s->trig.auto_trig = 0;
     s->trig.channel = -1;
 
     bool val = false;
     add_bit_channel(s, 0, &val);
-    update_sample_len(s);
+    set_max_channels(s, 1);
+    s->rec_len = 4;
+    s->pre_trig = 1;
 
     s->state = HALSCOPE_ST_INIT;
     tick(s);  /* → PRE_TRIG */
@@ -944,14 +945,14 @@ TEST bit_channel_capture(void)
 TEST s32_channel_capture(void)
 {
     halscope_t *s = make_scope(100);
-    s->rec_len = 3;
-    s->pre_trig = 1;
     s->trig.auto_trig = 0;
     s->trig.channel = -1;
 
     int32_t val = 0;
     add_s32_channel(s, 0, &val);
-    update_sample_len(s);
+    set_max_channels(s, 1);
+    s->rec_len = 3;
+    s->pre_trig = 1;
 
     s->state = HALSCOPE_ST_INIT;
     tick(s);  /* → PRE_TRIG */

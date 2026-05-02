@@ -60,9 +60,14 @@ type TriggerConfig {
 
 type CaptureConfig {
     threadName: string
-    recLen: i32
+    maxChannels: i32
     samplePeriodMult: i32
     preTrig: i32
+}
+
+type ChannelOption {
+    maxChannels: i32
+    recLen: i32
 }
 
 type ScopeStatus {
@@ -71,6 +76,7 @@ type ScopeStatus {
     recLen: i32
     preTrig: i32
     sampleLen: i32
+    maxChannels: i32
     samplePeriodMult: i32
     threadPeriodNs: i64
     threadName: string
@@ -78,6 +84,7 @@ type ScopeStatus {
     generation: u32
     continuous: bool
     channels: []ChannelInfo
+    channelOptions: []ChannelOption
 }
 
 type ThreadInfo {

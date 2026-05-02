@@ -348,7 +348,7 @@ func (m *halscope) dispatchConfigure(req []byte) ([]byte, error) {
 	var params struct {
 		Config struct {
 			ThreadName       string `json:"threadName"`
-			RecLen           int    `json:"recLen"`
+			MaxChannels      int    `json:"maxChannels"`
 			SamplePeriodMult int    `json:"samplePeriodMult"`
 			PreTrig          int    `json:"preTrig"`
 		} `json:"config"`
@@ -394,17 +394,31 @@ func (m *halscope) dispatchConfigure(req []byte) ([]byte, error) {
 		}
 	}
 
-	if cfg.RecLen > 0 && cfg.RecLen <= int(s.num_samples) {
-		s.rec_len = C.int(cfg.RecLen)
+	// Set max_channels and derive rec_len from buffer size.
+	if cfg.MaxChannels > 0 {
+		mc := cfg.MaxChannels
+		// Snap to valid values: 1, 2, 4, 8, 16
+		if mc > 16 {
+			mc = 16
+		} else if mc > 8 {
+			mc = 16
+		} else if mc > 4 {
+			mc = 8
+		} else if mc > 2 {
+			mc = 4
+		} else if mc > 1 {
+			mc = 2
+		}
+		s.max_channels = C.int(mc)
+		s.rec_len = s.num_samples / s.max_channels
 	}
+
 	if cfg.SamplePeriodMult > 0 {
 		s.mult = C.int(cfg.SamplePeriodMult)
 	}
 	if cfg.PreTrig >= 0 && cfg.PreTrig < int(s.rec_len) {
 		s.pre_trig = C.int(cfg.PreTrig)
 	}
-
-	s.sample_len = C.int(m.countActiveChannels())
 
 	return json.Marshal(0)
 }
@@ -428,6 +442,13 @@ func (m *halscope) dispatchSetChannel(req []byte) ([]byte, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	s := m.s
+
+	// Enforce max_channels limit — channel index must be < max_channels.
+	if ch.Channel >= int(s.max_channels) {
+		return json.Marshal(-int(C.EINVAL))
+	}
+
 	// Resolve HAL name.
 	var halType C.hal_type_t
 	var dataLen C.int
@@ -440,7 +461,6 @@ func (m *halscope) dispatchSetChannel(req []byte) ([]byte, error) {
 		return json.Marshal(int(rv))
 	}
 
-	s := m.s
 	c := &s.channels[ch.Channel]
 	c.enabled = 1
 	cPN := C.CString(ch.PinName)
@@ -453,7 +473,6 @@ func (m *halscope) dispatchSetChannel(req []byte) ([]byte, error) {
 	if s.trig.channel < 0 {
 		s.trig.channel = C.int(ch.Channel)
 	}
-	s.sample_len = C.int(m.countActiveChannels())
 
 	return json.Marshal(0)
 }
@@ -475,7 +494,6 @@ func (m *halscope) dispatchClearChannel(req []byte) ([]byte, error) {
 
 	C.memset(unsafe.Pointer(&m.s.channels[params.Channel]), 0,
 		C.size_t(unsafe.Sizeof(m.s.channels[0])))
-	m.s.sample_len = C.int(m.countActiveChannels())
 
 	return json.Marshal(0)
 }
@@ -543,7 +561,7 @@ func (m *halscope) dispatchArm(_ []byte) ([]byte, error) {
 	if state != C.HALSCOPE_ST_IDLE && state != C.HALSCOPE_ST_DONE {
 		return json.Marshal(-int(C.EBUSY))
 	}
-	if s.sample_len == 0 || s.rec_len == 0 {
+	if s.max_channels == 0 || s.rec_len == 0 {
 		return json.Marshal(-int(C.EINVAL))
 	}
 	if s.thread_name[0] == 0 {
@@ -666,18 +684,25 @@ func (m *halscope) dispatchListPins(req []byte) ([]byte, error) {
 type halscope_state_t = C.halscope_state_t
 
 type scopeStatus struct {
-	State            int           `json:"state"`
-	Samples          int           `json:"samples"`
-	RecLen           int           `json:"recLen"`
-	PreTrig          int           `json:"preTrig"`
-	SampleLen        int           `json:"sampleLen"`
-	SamplePeriodMult int           `json:"samplePeriodMult"`
-	ThreadPeriodNs   int64         `json:"threadPeriodNs"`
-	ThreadName       string        `json:"threadName"`
-	TrigChannel      int           `json:"trigChannel"`
-	Generation       uint32        `json:"generation"`
-	Continuous       bool          `json:"continuous"`
-	Channels         []channelInfo `json:"channels"`
+	State            int             `json:"state"`
+	Samples          int             `json:"samples"`
+	RecLen           int             `json:"recLen"`
+	PreTrig          int             `json:"preTrig"`
+	SampleLen        int             `json:"sampleLen"`
+	MaxChannels      int             `json:"maxChannels"`
+	SamplePeriodMult int             `json:"samplePeriodMult"`
+	ThreadPeriodNs   int64           `json:"threadPeriodNs"`
+	ThreadName       string          `json:"threadName"`
+	TrigChannel      int             `json:"trigChannel"`
+	Generation       uint32          `json:"generation"`
+	Continuous       bool            `json:"continuous"`
+	Channels         []channelInfo   `json:"channels"`
+	ChannelOptions   []channelOption `json:"channelOptions"`
+}
+
+type channelOption struct {
+	MaxChannels int `json:"maxChannels"`
+	RecLen      int `json:"recLen"`
 }
 
 type channelInfo struct {
@@ -689,16 +714,25 @@ type channelInfo struct {
 
 func (m *halscope) getStatus() scopeStatus {
 	s := m.s
+	numSamples := int(s.num_samples)
 	st := scopeStatus{
 		State:            int(C.halscope_atomic_load_state((*C.halscope_state_t)(unsafe.Pointer(&s.state)), C.memory_order_acquire)),
 		Samples:          int(s.samples),
 		RecLen:           int(s.rec_len),
 		PreTrig:          int(s.pre_trig),
 		SampleLen:        int(s.sample_len),
+		MaxChannels:      int(s.max_channels),
 		SamplePeriodMult: int(s.mult),
 		TrigChannel:      int(s.trig.channel),
 		Generation:       uint32(atomic.LoadUint32((*uint32)(unsafe.Pointer(&s.done_gen)))),
 		Continuous:       C.halscope_atomic_load_int((*C.int)(unsafe.Pointer(&s.continuous)), C.memory_order_acquire) != 0,
+		ChannelOptions: []channelOption{
+			{MaxChannels: 1, RecLen: numSamples / 1},
+			{MaxChannels: 2, RecLen: numSamples / 2},
+			{MaxChannels: 4, RecLen: numSamples / 4},
+			{MaxChannels: 8, RecLen: numSamples / 8},
+			{MaxChannels: 16, RecLen: numSamples / 16},
+		},
 	}
 
 	threadName := C.GoString(&s.thread_name[0])
@@ -733,16 +767,6 @@ func (m *halscope) getStatus() scopeStatus {
 	}
 
 	return st
-}
-
-func (m *halscope) countActiveChannels() int {
-	count := 0
-	for n := 0; n < C.HALSCOPE_MAX_CHANNELS; n++ {
-		if m.s.channels[n].enabled != 0 && m.s.channels[n].data_len > 0 {
-			count++
-		}
-	}
-	return count
 }
 
 func (m *halscope) resolveHALName(cName *C.char, halType *C.hal_type_t, dataLen *C.int, dataAddr *unsafe.Pointer) int {

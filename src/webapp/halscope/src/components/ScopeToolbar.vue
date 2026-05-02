@@ -80,6 +80,11 @@ function onCaptureConfigChange() {
   scopeStore.applyConfig();
 }
 
+function onMaxChannelsChange(e: Event) {
+  scopeStore.captureConfig.maxChannels = Number((e.target as HTMLSelectElement).value);
+  scopeStore.applyConfig();
+}
+
 function onTrigConfigChange() {
   scopeStore.applyConfig();
 }
@@ -129,10 +134,20 @@ function onTrigPosChange(e: Event) {
           </select>
         </label>
         <label>
-          Rec
-          <input type="number" v-model.number="scopeStore.captureConfig.recLen"
-            :disabled="isRunning" @change="onCaptureConfigChange"
-            min="100" max="65536" step="100" />
+          Ch/Samples
+          <select
+            :value="scopeStore.captureConfig.maxChannels"
+            :disabled="isRunning"
+            @change="onMaxChannelsChange"
+          >
+            <option
+              v-for="opt in scopeStore.state.status.channelOptions"
+              :key="opt.maxChannels"
+              :value="opt.maxChannels"
+            >
+              {{ opt.maxChannels }} ch — {{ opt.recLen }} samples
+            </option>
+          </select>
         </label>
         <label>
           Mult
