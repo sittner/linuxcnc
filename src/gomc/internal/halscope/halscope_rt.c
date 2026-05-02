@@ -85,26 +85,9 @@ static int check_trigger(halscope_t *s)
     case HAL_BIT:
         s->compare_result = value->d_u8;
         break;
-    case HAL_FLOAT: {
-        ireal_t tmp1 = value->d_ireal;
-        ireal_t tmp2 = level->d_ireal;
-        if (tmp1 & 0x8000000000000000ull) {
-            if (tmp2 & 0x8000000000000000ull) {
-                tmp1 ^= 0x8000000000000000ull;
-                tmp2 ^= 0x8000000000000000ull;
-                s->compare_result = (tmp1 < tmp2);
-            } else {
-                s->compare_result = 0;
-            }
-        } else {
-            if (tmp2 & 0x8000000000000000ull) {
-                s->compare_result = 1;
-            } else {
-                s->compare_result = (tmp1 > tmp2);
-            }
-        }
+    case HAL_FLOAT:
+        s->compare_result = (value->d_real > level->d_real);
         break;
-    }
     case HAL_S32:
         s->compare_result = (value->d_s32 > level->d_s32);
         break;

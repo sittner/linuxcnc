@@ -53,7 +53,7 @@ static hal_data_t *get_hal_data(void) { return hal_data; }
 
 // --- Union setter (cgo cannot access C union fields) ---
 static void set_trigger_level(halscope_data_t *d, double v) {
-    d->d_ireal = *(ireal_t *)&v;
+    d->d_real = (real_t)v;
 }
 
 static void set_trigger_level_s32(halscope_data_t *d, int32_t v) {
