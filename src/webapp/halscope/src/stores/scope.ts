@@ -442,7 +442,7 @@ function isCapturing(): boolean {
 async function searchPins(pattern?: string, kind?: string) {
   if (!restClient) return;
   try {
-    state.pins = await restClient.listPins(pattern || undefined, kind || undefined);
+    state.pins = await restClient.listPins(pattern || undefined, kind || undefined) ?? [];
     state.error = '';
   } catch (e) {
     state.error = `List pins failed: ${e}`;

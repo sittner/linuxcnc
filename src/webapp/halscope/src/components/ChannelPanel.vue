@@ -140,7 +140,7 @@ watch(kindFilter, () => doSearch());
         >
           {{ pin }}
         </div>
-        <div v-if="scopeStore.state.pins.length === 0" class="empty-hint">
+        <div v-if="!scopeStore.state.pins?.length" class="empty-hint">
           No matching HAL objects
         </div>
       </div>

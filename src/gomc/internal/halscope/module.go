@@ -636,7 +636,7 @@ func (m *halscope) dispatchListPins(req []byte) ([]byte, error) {
 	wantSigs := params.Kind == "" || params.Kind == "sig"
 	wantParams := params.Kind == "" || params.Kind == "param"
 
-	var names []string
+	names := make([]string, 0)
 
 	C.rtapi_mutex_get(&C.get_hal_data().mutex)
 
