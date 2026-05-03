@@ -81,12 +81,27 @@ function onCaptureConfigChange() {
 }
 
 function onMaxChannelsChange(e: Event) {
-  scopeStore.captureConfig.maxChannels = Number((e.target as HTMLSelectElement).value);
+  const newMax = Number((e.target as HTMLSelectElement).value);
+  // Check if any active channel has index >= newMax
+  const activeChannels = scopeStore.state.status.channels.filter(c => c.enabled);
+  const blocked = activeChannels.some(c => c.channel >= newMax);
+  if (blocked) {
+    scopeStore.state.error = `Cannot reduce to ${newMax} channels — remove channels ${newMax}+ first`;
+    // Reset the select to the current value
+    (e.target as HTMLSelectElement).value = String(scopeStore.captureConfig.maxChannels);
+    return;
+  }
+  scopeStore.captureConfig.maxChannels = newMax;
   scopeStore.applyConfig();
 }
 
 function onTrigConfigChange() {
   scopeStore.applyConfig();
+}
+
+function onAutoTrigChange() {
+  // Auto trigger can be changed even during capture
+  scopeStore.setTrigger();
 }
 
 function onZoomChange(e: Event) {
@@ -177,7 +192,7 @@ function onPosChange(e: Event) {
         </label>
         <label class="checkbox-label">
           <input type="checkbox" v-model="scopeStore.triggerConfig.autoTrig"
-            :disabled="isRunning" @change="onTrigConfigChange" /> Auto
+            @change="onAutoTrigChange" /> Auto
         </label>
       </div>
 

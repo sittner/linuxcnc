@@ -3,6 +3,7 @@ import ScopeToolbar from './components/ScopeToolbar.vue';
 import ScopeChart from './components/ScopeChart.vue';
 import ChannelPanel from './components/ChannelPanel.vue';
 import BufferIndicator from './components/BufferIndicator.vue';
+import VerticalControls from './components/VerticalControls.vue';
 </script>
 
 <template>
@@ -15,6 +16,7 @@ import BufferIndicator from './components/BufferIndicator.vue';
       </div>
       <div class="side-panel">
         <ChannelPanel />
+        <VerticalControls />
       </div>
     </div>
   </div>

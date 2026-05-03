@@ -18,6 +18,7 @@ export interface ChannelUI {
   vScale: number;   // units per division
   vOffset: number;  // vertical offset in divisions
   visible: boolean;
+  scaleSet: boolean; // true once auto/user scale has been applied
 }
 
 // Decoded sample data per channel
@@ -63,6 +64,7 @@ interface ScopeStore {
 
   // UI state
   selectedThread: string;
+  selectedChannel: number; // -1 = none selected
 
   // Horizontal display (ported from scope_horiz_t)
   zoomSetting: number;   // 1..9, 1 = fit record
@@ -113,12 +115,14 @@ const state = reactive<ScopeStore>({
     vScale: 1,
     vOffset: 0,
     visible: true,
+    scaleSet: false,
   })),
 
   samples: [],
   timeBase: new Float64Array(0),
 
   selectedThread: '',
+  selectedChannel: -1,
 
   zoomSetting: 1,
   posSetting: 0.5,
@@ -288,13 +292,15 @@ function onSamplesUpdate(buf: ArrayBuffer) {
   const allSamples = new Float64Array(buf, dataOffset);
 
   const decoded: ChannelSamples[] = [];
-  for (let ci = 0; ci < Math.min(channels.length, sampleLen); ci++) {
-    // Deinterleave: sample layout is [s0c0, s0c1, ..., s1c0, s1c1, ...]
+  for (const ch of channels) {
+    // Fixed-column layout: channel N is at column index N
+    // Sample layout is [s0c0, s0c1, ..., s0cN, s1c0, s1c1, ...]
+    if (ch.channel >= sampleLen) continue;
     const data = new Float64Array(sampleCount);
     for (let si = 0; si < sampleCount; si++) {
-      data[si] = allSamples[si * sampleLen + ci];
+      data[si] = allSamples[si * sampleLen + ch.channel];
     }
-    decoded.push({ channel: channels[ci].channel, data });
+    decoded.push({ channel: ch.channel, data });
   }
 
   state.samples = decoded;
@@ -496,9 +502,13 @@ function calcDisplayWindow() {
   const recLen = state.status.recLen || 1;
   // Use actual preTrig from RT status (always recLen/2, set server-side)
   const preTrig = state.status.preTrig > 0 ? state.status.preTrig : Math.round(recLen / 2);
-  const totalRecTime = recLen * samplePeriod;
 
-  const screenCenterTime = totalRecTime * state.posSetting;
+  // Record boundaries relative to trigger (t=0)
+  const recStart = -preTrig * samplePeriod;
+  const recEnd = (recLen - preTrig) * samplePeriod;
+
+  // posSetting 0..1 maps across the record, trigger-relative
+  const screenCenterTime = recStart + (recEnd - recStart) * state.posSetting;
   const screenStartTime = screenCenterTime - 5.0 * dispScale;
   const screenEndTime = screenCenterTime + 5.0 * dispScale;
 
@@ -512,7 +522,6 @@ function calcDisplayWindow() {
     dispScale,
     recLen,
     preTrig,
-    totalRecTime,
     screenCenterTime,
     screenStartTime,
     screenEndTime,
@@ -573,6 +582,9 @@ export const scopeStore = {
   },
   setHorizZoom,
   setHorizPos,
+  setSelectedChannel(ch: number) {
+    state.selectedChannel = ch;
+  },
   calcDispScale,
   calcDisplayWindow,
   getSamplePeriod,

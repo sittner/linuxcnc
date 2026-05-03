@@ -34,10 +34,9 @@ function timeCoords() {
   const recEnd = (dw.recLen - dw.preTrig) * sp;
   const recCurr = recStart + scopeStore.state.status.samples * sp;
 
-  // Display window: centered on pos_setting within the record
-  const dispCenter = recStart + scopeStore.state.posSetting * (recEnd - recStart);
-  const dispStart = dispCenter - 5.0 * dw.dispScale;
-  const dispEnd = dispCenter + 5.0 * dw.dispScale;
+  // Display window from calcDisplayWindow (already trigger-relative)
+  const dispStart = dw.screenStartTime;
+  const dispEnd = dw.screenEndTime;
 
   // Auto-scale: range covers whichever is larger
   const min = Math.min(recStart, dispStart);

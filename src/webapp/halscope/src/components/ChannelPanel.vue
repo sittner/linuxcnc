@@ -11,9 +11,15 @@ const enabledChannels = computed(() =>
   scopeStore.state.status.channels.filter(c => c.enabled)
 );
 
+const canAddChannel = computed(() => {
+  const maxCh = scopeStore.state.status.maxChannels;
+  return enabledChannels.value.length < maxCh && nextFreeChannel.value >= 0;
+});
+
 const nextFreeChannel = computed(() => {
   const used = new Set(enabledChannels.value.map(c => c.channel));
-  for (let i = 0; i < 16; i++) {
+  const maxCh = scopeStore.state.status.maxChannels;
+  for (let i = 0; i < maxCh; i++) {
     if (!used.has(i)) return i;
   }
   return -1;
@@ -72,7 +78,7 @@ watch(kindFilter, () => doSearch());
   <div class="channel-panel">
     <div class="panel-header">
       <span>Channels</span>
-      <button class="btn btn-sm" @click="openPinBrowser" :disabled="nextFreeChannel < 0">
+      <button class="btn btn-sm" @click="openPinBrowser" :disabled="!canAddChannel">
         + Add
       </button>
     </div>
@@ -83,6 +89,8 @@ watch(kindFilter, () => doSearch());
         v-for="ch in enabledChannels"
         :key="ch.channel"
         class="channel-item"
+        :class="{ selected: scopeStore.state.selectedChannel === ch.channel }"
+        @click="scopeStore.setSelectedChannel(ch.channel)"
       >
         <span
           class="channel-color"
@@ -182,6 +190,11 @@ watch(kindFilter, () => doSearch());
 
 .channel-item:hover {
   background: #222;
+}
+
+.channel-item.selected {
+  background: #1a2a3a;
+  outline: 1px solid #4af;
 }
 
 .channel-color {

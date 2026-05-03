@@ -9,17 +9,79 @@ const chartEl = ref<HTMLDivElement>();
 let plot: uPlot | null = null;
 let resizeObs: ResizeObserver | null = null;
 
+const NUM_DIVS = 10; // 10 vertical divisions like original scope
+
+/**
+ * Auto-detect a nice 1-2-5 scale for a channel's data range.
+ * Returns units-per-division.
+ */
+function autoScale(data: Float64Array): number {
+  if (data.length === 0) return 1;
+  let min = Infinity, max = -Infinity;
+  for (let i = 0; i < data.length; i++) {
+    if (data[i] < min) min = data[i];
+    if (data[i] > max) max = data[i];
+  }
+  let range = max - min;
+  if (range === 0) range = Math.abs(max) || 1;
+  // Target: data fills ~80% of the display (8 of 10 divs)
+  const target = range / 8;
+  // Find nearest 1-2-5 value
+  const exp = Math.floor(Math.log10(target));
+  const base = Math.pow(10, exp);
+  const norm = target / base;
+  let scale: number;
+  if (norm <= 1) scale = base;
+  else if (norm <= 2) scale = 2 * base;
+  else if (norm <= 5) scale = 5 * base;
+  else scale = 10 * base;
+  return scale || 1;
+}
+
+/**
+ * Auto-detect center offset for a channel (in divisions).
+ * Centers the data midpoint at division 0.
+ */
+function autoOffset(data: Float64Array, vScale: number): number {
+  if (data.length === 0) return 0;
+  let min = Infinity, max = -Infinity;
+  for (let i = 0; i < data.length; i++) {
+    if (data[i] < min) min = data[i];
+    if (data[i] > max) max = data[i];
+  }
+  const mid = (min + max) / 2;
+  // Return offset in divisions that would center the data
+  return -(mid / vScale);
+}
+
+/** Ensure channel has a reasonable initial scale from sample data */
+function ensureChannelScale(chIdx: number) {
+  const ui = scopeStore.channelUI[chIdx];
+  if (!ui || ui.scaleSet) return; // already set
+  const s = scopeStore.state.samples.find(s => s.channel === chIdx);
+  if (!s || s.data.length === 0) return;
+  ui.vScale = autoScale(s.data);
+  ui.vOffset = autoOffset(s.data, ui.vScale);
+  ui.scaleSet = true;
+}
+
 function buildOpts(width: number, height: number): uPlot.Options {
   const channels = scopeStore.state.status.channels.filter(c => c.enabled);
+  const selCh = scopeStore.state.selectedChannel;
+  const selUI = selCh >= 0 ? scopeStore.channelUI[selCh] : null;
+
   const series: uPlot.Series[] = [
     { label: 'Time (s)' },
     ...channels.map((ch) => ({
       label: ch.pinName || `Ch ${ch.channel}`,
       stroke: scopeStore.channelUI[ch.channel]?.color ?? '#ffff00',
-      width: 1.5,
+      width: ch.channel === selCh ? 2 : 1,
       show: scopeStore.channelUI[ch.channel]?.visible ?? true,
     })),
   ];
+
+  // Y axis: -5 to +5 divisions (fixed, like original scope)
+  const halfDivs = NUM_DIVS / 2;
 
   return {
     width,
@@ -27,6 +89,10 @@ function buildOpts(width: number, height: number): uPlot.Options {
     cursor: { drag: { x: true, y: true } },
     scales: {
       x: { time: false },
+      y: {
+        auto: false,
+        range: [-halfDivs, halfDivs],
+      },
     },
     axes: [
       {
@@ -36,10 +102,21 @@ function buildOpts(width: number, height: number): uPlot.Options {
         ticks: { stroke: '#444', width: 1 },
       },
       {
-        label: 'Value',
         stroke: '#888',
         grid: { stroke: '#333', width: 1 },
         ticks: { stroke: '#444', width: 1 },
+        // Label Y axis ticks in the selected channel's real units
+        values: (_self: uPlot, divs: number[]) => {
+          if (!selUI) return divs.map(d => d.toFixed(1));
+          return divs.map(d => {
+            const real = (d - selUI.vOffset) * selUI.vScale;
+            // Format nicely
+            if (Math.abs(real) >= 1000) return (real / 1000).toFixed(1) + 'k';
+            if (Math.abs(real) >= 1) return real.toFixed(2);
+            if (Math.abs(real) >= 0.001) return (real * 1000).toFixed(1) + 'm';
+            return real.toExponential(1);
+          });
+        },
       },
     ],
     series,
@@ -52,26 +129,35 @@ function buildData(): uPlot.AlignedData {
     return [new Float64Array(0)];
   }
 
-  // Use the original display window calculation for sample slicing
-  const dw = scopeStore.calcDisplayWindow();
-  const total = st.timeBase.length;
-  const i0 = Math.max(0, dw.startSample);
-  const i1 = Math.min(total, dw.endSample + 1);
-
-  const time = Array.from(st.timeBase.subarray(i0, i1)) as unknown as number[];
+  const time = Array.from(st.timeBase) as unknown as number[];
   const data: (number[] | Float64Array)[] = [time];
 
   const channels = st.status.channels.filter(c => c.enabled);
   for (const ch of channels) {
     const s = st.samples.find(s => s.channel === ch.channel);
-    if (s) {
-      data.push(s.data.subarray(i0, i1));
+    const ui = scopeStore.channelUI[ch.channel];
+    if (s && ui) {
+      // Transform to division space: div = (rawValue / vScale) + vOffset
+      const transformed = new Float64Array(s.data.length);
+      const scale = ui.vScale || 1;
+      const offset = ui.vOffset;
+      for (let i = 0; i < s.data.length; i++) {
+        transformed[i] = (s.data[i] / scale) + offset;
+      }
+      data.push(transformed);
     } else {
-      data.push(new Float64Array(i1 - i0));
+      data.push(new Float64Array(st.timeBase.length));
     }
   }
 
   return data as uPlot.AlignedData;
+}
+
+/** Apply the display window X range to the chart via uPlot scales */
+function applyViewWindow() {
+  if (!plot) return;
+  const dw = scopeStore.calcDisplayWindow();
+  plot.setScale('x', { min: dw.screenStartTime, max: dw.screenEndTime });
 }
 
 function createPlot() {
@@ -85,6 +171,7 @@ function createPlot() {
   const opts = buildOpts(w, h);
   const data = buildData();
   plot = new uPlot(opts, data, chartEl.value);
+  applyViewWindow();
 
   // Add scroll-to-zoom on the chart (like original scope_disp.c change_zoom)
   plot.over.addEventListener('wheel', (e: WheelEvent) => {
@@ -100,16 +187,22 @@ function updateData() {
     return;
   }
 
-  const data = buildData();
+  // Auto-detect scale for channels that haven't been user-adjusted
   const channels = scopeStore.state.status.channels.filter(c => c.enabled);
+  for (const ch of channels) {
+    ensureChannelScale(ch.channel);
+  }
 
-  // If channel count changed, rebuild the plot
+  const data = buildData();
+
+  // If channel count changed, rebuild the plot (series config differs)
   if (channels.length + 1 !== plot.series.length) {
     createPlot();
     return;
   }
 
   plot.setData(data);
+  applyViewWindow();
 }
 
 // Watch for sample data changes
@@ -118,10 +211,33 @@ watch(
   () => updateData(),
 );
 
-// Watch for view window changes (pan/zoom from buffer indicator)
+// Watch for view window changes (pan/zoom) — just update X scale, not rebuild
 watch(
   () => [scopeStore.state.zoomSetting, scopeStore.state.posSetting],
-  () => updateData(),
+  () => applyViewWindow(),
+);
+
+// Watch for selected channel or channelUI changes — rebuild plot for Y axis labels
+watch(
+  () => scopeStore.state.selectedChannel,
+  () => createPlot(),
+);
+
+// Watch for per-channel scale/offset changes — update data transform
+watch(
+  () => {
+    const sel = scopeStore.state.selectedChannel;
+    if (sel < 0) return null;
+    const ui = scopeStore.channelUI[sel];
+    return ui ? `${ui.vScale}:${ui.vOffset}` : null;
+  },
+  () => {
+    if (plot) {
+      plot.setData(buildData());
+      // Rebuild to update Y axis label values
+      createPlot();
+    }
+  },
 );
 
 // Watch for status changes (channel list may change)
