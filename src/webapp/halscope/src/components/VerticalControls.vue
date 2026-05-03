@@ -53,6 +53,21 @@ function onOffsetChange(e: Event) {
   }
 }
 
+function onScaleWheel(e: WheelEvent) {
+  e.preventDefault();
+  if (!hasSelection.value) return;
+  const dir = e.deltaY < 0 ? 1 : -1; // scroll up = increase index = coarser scale
+  const newIdx = Math.max(0, Math.min(SCALE_STEPS.length - 1, scaleIndex.value + dir));
+  scaleIndex.value = newIdx;
+}
+
+function onOffsetWheel(e: WheelEvent) {
+  e.preventDefault();
+  if (!ui.value) return;
+  const step = e.deltaY < 0 ? 0.1 : -0.1; // scroll up = move trace up
+  ui.value.vOffset = Math.max(-5, Math.min(5, ui.value.vOffset + step));
+}
+
 function onAutoScale() {
   if (!ui.value || selCh.value < 0) return;
   const s = scopeStore.state.samples.find(s => s.channel === selCh.value);
@@ -92,6 +107,7 @@ function onAutoScale() {
         type="range" :min="0" :max="SCALE_STEPS.length - 1" step="1"
         :value="scaleIndex"
         @input="scaleIndex = Number(($event.target as HTMLInputElement).value)"
+        @wheel.prevent="onScaleWheel"
         :disabled="!hasSelection"
         class="vslider"
         orient="vertical"
@@ -104,6 +120,7 @@ function onAutoScale() {
         type="range" min="-500" max="500" step="1"
         :value="Math.round((ui?.vOffset ?? 0) * 100)"
         @input="onOffsetChange"
+        @wheel.prevent="onOffsetWheel"
         :disabled="!hasSelection"
         class="vslider"
         orient="vertical"

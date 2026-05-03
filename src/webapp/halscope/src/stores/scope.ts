@@ -68,6 +68,15 @@ interface ScopeStore {
   // Horizontal display (ported from scope_horiz_t)
   zoomSetting: number;   // 1..9, 1 = fit record
   posSetting: number;    // 0.0..1.0, position within record
+
+  // Cursor state (set by chart mouse events)
+  cursorTime: number | null;     // hover time in seconds
+  cursorValue: number | null;    // hover value in real units (selected channel)
+  dragStartTime: number | null;  // drag anchor time
+  dragStartValue: number | null; // drag anchor value
+  dragDeltaTime: number | null;  // delta from drag start
+  dragDeltaValue: number | null; // delta from drag start
+  isDragging: boolean;
 }
 
 const state = reactive<ScopeStore>({
@@ -124,6 +133,14 @@ const state = reactive<ScopeStore>({
 
   zoomSetting: 1,
   posSetting: 0.5,
+
+  cursorTime: null,
+  cursorValue: null,
+  dragStartTime: null,
+  dragStartValue: null,
+  dragDeltaTime: null,
+  dragDeltaValue: null,
+  isDragging: false,
 });
 
 let restClient: HalscopeClient | null = null;
@@ -539,13 +556,14 @@ function setHorizPos(setting: number) {
 
 
 function formatTimeValue(seconds: number): string {
-  let val = seconds * 1e9; // to nanoseconds
+  const sign = seconds < 0 ? '-' : '';
+  let val = Math.abs(seconds) * 1e9; // to nanoseconds
   let units = 'ns';
   if (val >= 1000) { val /= 1000; units = 'µs'; }
   if (val >= 1000) { val /= 1000; units = 'ms'; }
   if (val >= 1000) { val /= 1000; units = 's'; }
   const decimals = val >= 100 ? 0 : val >= 10 ? 1 : 2;
-  return `${val.toFixed(decimals)} ${units}`;
+  return `${sign}${val.toFixed(decimals)} ${units}`;
 }
 
 // --- Exported store ---
