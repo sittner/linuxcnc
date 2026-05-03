@@ -108,8 +108,20 @@ function onZoomChange(e: Event) {
   scopeStore.setHorizZoom(Number((e.target as HTMLInputElement).value));
 }
 
+function onZoomWheel(e: WheelEvent) {
+  e.preventDefault();
+  const dir = e.deltaY < 0 ? 1 : -1;
+  scopeStore.setHorizZoom(scopeStore.state.zoomSetting + dir);
+}
+
 function onPosChange(e: Event) {
   scopeStore.setHorizPos(Number((e.target as HTMLInputElement).value) / 1000);
+}
+
+function onPosWheel(e: WheelEvent) {
+  e.preventDefault();
+  const step = e.deltaY < 0 ? 0.02 : -0.02;
+  scopeStore.setHorizPos(scopeStore.state.posSetting + step);
 }
 </script>
 
@@ -210,6 +222,7 @@ function onPosChange(e: Event) {
           type="range" min="1" max="9" step="1"
           :value="scopeStore.state.zoomSetting"
           @input="onZoomChange"
+          @wheel.prevent="onZoomWheel"
           class="slider"
         />
       </label>
@@ -219,6 +232,7 @@ function onPosChange(e: Event) {
           type="range" min="0" max="1000" step="1"
           :value="Math.round(scopeStore.state.posSetting * 1000)"
           @input="onPosChange"
+          @wheel.prevent="onPosWheel"
           class="slider"
         />
       </label>
