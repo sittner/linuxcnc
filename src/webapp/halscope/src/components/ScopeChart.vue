@@ -11,60 +11,6 @@ let resizeObs: ResizeObserver | null = null;
 
 const NUM_DIVS = 10; // 10 vertical divisions like original scope
 
-/**
- * Auto-detect a nice 1-2-5 scale for a channel's data range.
- * Returns units-per-division.
- */
-function autoScale(data: Float64Array): number {
-  if (data.length === 0) return 1;
-  let min = Infinity, max = -Infinity;
-  for (let i = 0; i < data.length; i++) {
-    if (data[i] < min) min = data[i];
-    if (data[i] > max) max = data[i];
-  }
-  let range = max - min;
-  if (range === 0) range = Math.abs(max) || 1;
-  // Target: data fills ~80% of the display (8 of 10 divs)
-  const target = range / 8;
-  // Find nearest 1-2-5 value
-  const exp = Math.floor(Math.log10(target));
-  const base = Math.pow(10, exp);
-  const norm = target / base;
-  let scale: number;
-  if (norm <= 1) scale = base;
-  else if (norm <= 2) scale = 2 * base;
-  else if (norm <= 5) scale = 5 * base;
-  else scale = 10 * base;
-  return scale || 1;
-}
-
-/**
- * Auto-detect center offset for a channel (in divisions).
- * Centers the data midpoint at division 0.
- */
-function autoOffset(data: Float64Array, vScale: number): number {
-  if (data.length === 0) return 0;
-  let min = Infinity, max = -Infinity;
-  for (let i = 0; i < data.length; i++) {
-    if (data[i] < min) min = data[i];
-    if (data[i] > max) max = data[i];
-  }
-  const mid = (min + max) / 2;
-  // Return offset in divisions that would center the data
-  return -(mid / vScale);
-}
-
-/** Ensure channel has a reasonable initial scale from sample data */
-function ensureChannelScale(chIdx: number) {
-  const ui = scopeStore.channelUI[chIdx];
-  if (!ui || ui.scaleSet) return; // already set
-  const s = scopeStore.state.samples.find(s => s.channel === chIdx);
-  if (!s || s.data.length === 0) return;
-  ui.vScale = autoScale(s.data);
-  ui.vOffset = autoOffset(s.data, ui.vScale);
-  ui.scaleSet = true;
-}
-
 function buildOpts(width: number, height: number): uPlot.Options {
   const channels = scopeStore.state.status.channels.filter(c => c.enabled);
   const selCh = scopeStore.state.selectedChannel;
@@ -187,12 +133,7 @@ function updateData() {
     return;
   }
 
-  // Auto-detect scale for channels that haven't been user-adjusted
   const channels = scopeStore.state.status.channels.filter(c => c.enabled);
-  for (const ch of channels) {
-    ensureChannelScale(ch.channel);
-  }
-
   const data = buildData();
 
   // If channel count changed, rebuild the plot (series config differs)

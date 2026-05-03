@@ -14,9 +14,9 @@ import VerticalControls from './components/VerticalControls.vue';
         <BufferIndicator />
         <ScopeChart />
       </div>
+      <VerticalControls />
       <div class="side-panel">
         <ChannelPanel />
-        <VerticalControls />
       </div>
     </div>
   </div>

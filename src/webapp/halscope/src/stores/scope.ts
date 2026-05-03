@@ -18,7 +18,6 @@ export interface ChannelUI {
   vScale: number;   // units per division
   vOffset: number;  // vertical offset in divisions
   visible: boolean;
-  scaleSet: boolean; // true once auto/user scale has been applied
 }
 
 // Decoded sample data per channel
@@ -115,7 +114,6 @@ const state = reactive<ScopeStore>({
     vScale: 1,
     vOffset: 0,
     visible: true,
-    scaleSet: false,
   })),
 
   samples: [],

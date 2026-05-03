@@ -77,73 +77,71 @@ function onAutoScale() {
   ui.value.vScale = scale || 1;
   const mid = (min + max) / 2;
   ui.value.vOffset = -(mid / ui.value.vScale);
-  ui.value.scaleSet = true;
 }
 </script>
 
 <template>
-  <div class="vert-controls" :class="{ disabled: !hasSelection }">
-    <div class="vert-header">
-      <span class="vert-color" :style="{ background: color }"></span>
-      <span class="vert-label">{{ hasSelection ? `Ch ${selCh}` : 'No channel' }}</span>
-      <button v-if="hasSelection" class="btn-auto" @click="onAutoScale" title="Auto-fit scale">Auto</button>
+  <div class="vert-strip" :class="{ disabled: !hasSelection }">
+    <div class="strip-header">
+      <span class="strip-color" :style="{ background: color }"></span>
+      <button v-if="hasSelection" class="btn-auto" @click="onAutoScale" title="Auto-fit scale">A</button>
     </div>
-    <div class="vert-sliders">
-      <label class="vert-slider-label">
-        <span class="slider-name">Scale</span>
-        <input
-          type="range" :min="0" :max="SCALE_STEPS.length - 1" step="1"
-          :value="scaleIndex"
-          @input="scaleIndex = Number(($event.target as HTMLInputElement).value)"
-          :disabled="!hasSelection"
-          class="slider"
-        />
-        <span class="slider-value">{{ scaleLabel }}</span>
-      </label>
-      <label class="vert-slider-label">
-        <span class="slider-name">Pos</span>
-        <input
-          type="range" min="-500" max="500" step="1"
-          :value="Math.round((ui?.vOffset ?? 0) * 100)"
-          @input="onOffsetChange"
-          :disabled="!hasSelection"
-          class="slider"
-        />
-        <span class="slider-value">{{ ui ? ui.vOffset.toFixed(1) : '---' }}</span>
-      </label>
+    <div class="strip-slider">
+      <span class="strip-label">Scale</span>
+      <input
+        type="range" :min="0" :max="SCALE_STEPS.length - 1" step="1"
+        :value="scaleIndex"
+        @input="scaleIndex = Number(($event.target as HTMLInputElement).value)"
+        :disabled="!hasSelection"
+        class="vslider"
+        orient="vertical"
+      />
+      <span class="strip-value">{{ scaleLabel }}</span>
+    </div>
+    <div class="strip-slider">
+      <span class="strip-label">Pos</span>
+      <input
+        type="range" min="-500" max="500" step="1"
+        :value="Math.round((ui?.vOffset ?? 0) * 100)"
+        @input="onOffsetChange"
+        :disabled="!hasSelection"
+        class="vslider"
+        orient="vertical"
+      />
+      <span class="strip-value">{{ ui ? ui.vOffset.toFixed(1) : '---' }}</span>
     </div>
   </div>
 </template>
 
 <style scoped>
-.vert-controls {
-  padding: 6px 0;
-  border-top: 1px solid #333;
-  border-bottom: 1px solid #333;
-}
-
-.vert-controls.disabled {
-  opacity: 0.4;
-}
-
-.vert-header {
+.vert-strip {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 4px;
-  font-size: 12px;
-}
-
-.vert-color {
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
+  gap: 4px;
+  padding: 4px 2px;
+  width: 48px;
   flex-shrink: 0;
+  border-left: 1px solid #333;
+  border-right: 1px solid #333;
+  background: #151515;
 }
 
-.vert-label {
-  font-weight: 600;
-  flex: 1;
+.vert-strip.disabled {
+  opacity: 0.35;
+}
+
+.strip-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.strip-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
 }
 
 .btn-auto {
@@ -152,45 +150,51 @@ function onAutoScale() {
   border: 1px solid #555;
   border-radius: 3px;
   cursor: pointer;
-  padding: 1px 6px;
-  font-size: 10px;
+  padding: 1px 5px;
+  font-size: 9px;
+  font-weight: 700;
 }
 
 .btn-auto:hover {
   background: #444;
 }
 
-.vert-sliders {
+.strip-slider {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-}
-
-.vert-slider-label {
-  display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  color: #999;
-}
-
-.slider-name {
-  width: 32px;
-  flex-shrink: 0;
-}
-
-.slider {
   flex: 1;
-  height: 16px;
-  accent-color: #4af;
+  min-height: 0;
 }
 
-.slider-value {
-  width: 55px;
-  text-align: right;
+.strip-label {
+  font-size: 9px;
+  color: #888;
+  white-space: nowrap;
+}
+
+.vslider {
+  writing-mode: vertical-lr;
+  direction: rtl; /* top = max, bottom = min */
+  flex: 1;
+  width: 20px;
+  min-height: 60px;
+  accent-color: #4af;
+  cursor: pointer;
+}
+
+.vslider:disabled {
+  cursor: not-allowed;
+}
+
+.strip-value {
+  font-size: 9px;
   font-family: monospace;
-  font-size: 10px;
   color: #aaa;
-  flex-shrink: 0;
+  white-space: nowrap;
+  text-align: center;
+  max-width: 46px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>
