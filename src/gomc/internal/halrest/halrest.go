@@ -94,7 +94,6 @@ type threadInfo struct {
 	Name      string   `json:"name"`
 	Period    int64    `json:"period"`
 	Fp        bool     `json:"fp"`
-	CpuId     int32    `json:"cpu_id"`
 	Functions []string `json:"functions"`
 }
 
@@ -347,7 +346,6 @@ func dispatchListThreads(_ unsafe.Pointer, body []byte) ([]byte, error) {
 			Name:      t.Name,
 			Period:    t.Period,
 			Fp:        t.FP,
-			CpuId:     -1,
 			Functions: t.Functs,
 		})
 	}

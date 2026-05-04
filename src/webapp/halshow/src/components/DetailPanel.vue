@@ -160,7 +160,6 @@ function addToWatch() {
         <tr><td class="label">Name</td><td class="value mono">{{ halshowStore.state.selectedItem.name }}</td></tr>
         <tr><td class="label">Period</td><td class="value">{{ (halshowStore.state.selectedItem as any).period }} ns</td></tr>
         <tr><td class="label">FP</td><td class="value">{{ (halshowStore.state.selectedItem as any).fp ? 'Yes' : 'No' }}</td></tr>
-        <tr><td class="label">CPU</td><td class="value">{{ (halshowStore.state.selectedItem as any).cpu_id === -1 ? 'Any' : (halshowStore.state.selectedItem as any).cpu_id }}</td></tr>
         <tr v-if="(halshowStore.state.selectedItem as any).functions?.length">
           <td class="label">Functions</td>
           <td class="value mono">{{ (halshowStore.state.selectedItem as any).functions.join(', ') }}</td>
