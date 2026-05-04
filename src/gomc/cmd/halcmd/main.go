@@ -70,6 +70,9 @@ func main() {
 		case "-Q":
 			echoMode = true
 			args = args[1:]
+		case "-C":
+			runCompletion()
+			os.Exit(0)
 		case "-s":
 			scriptMode = true
 			args = args[1:]
