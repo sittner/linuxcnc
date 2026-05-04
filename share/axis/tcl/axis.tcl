@@ -165,7 +165,7 @@ setup_menu_accel .menu.machine end [_ "Paste to MDI histor_y"]
 .menu.machine add separator
 
 .menu.machine add command \
-        -command {exec $env(LINUXCNC_TCL_DIR)/bin/emccalib.tcl -- -ini $emcini &}
+        -command {exec emccalib &}
 setup_menu_accel .menu.machine end [_ "_Calibration"]
 
 .menu.machine add command \
