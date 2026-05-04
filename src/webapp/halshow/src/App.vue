@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import HalTree from './components/HalTree.vue';
 import DetailPanel from './components/DetailPanel.vue';
+import NodeOverview from './components/NodeOverview.vue';
 import WatchPanel from './components/WatchPanel.vue';
+import HalcmdPanel from './components/HalcmdPanel.vue';
 import StatusBar from './components/StatusBar.vue';
 import { halshowStore } from './stores/halshow';
 import type { TreeCategory } from './stores/halshow';
@@ -54,10 +56,18 @@ function onFilterInput(e: Event) {
             :class="{ active: halshowStore.state.activeTab === 'watch' }"
             @click="halshowStore.setActiveTab('watch')"
           >Watch</button>
+          <button
+            :class="{ active: halshowStore.state.activeTab === 'cmd' }"
+            @click="halshowStore.setActiveTab('cmd')"
+          >Cmd</button>
         </div>
         <div class="tab-content">
-          <DetailPanel v-if="halshowStore.state.activeTab === 'show'" />
+          <template v-if="halshowStore.state.activeTab === 'show'">
+            <NodeOverview v-if="halshowStore.state.selectedNode && !halshowStore.state.selectedNode.isLeaf" />
+            <DetailPanel v-else />
+          </template>
           <WatchPanel v-if="halshowStore.state.activeTab === 'watch'" />
+          <HalcmdPanel v-if="halshowStore.state.activeTab === 'cmd'" />
         </div>
       </div>
     </div>

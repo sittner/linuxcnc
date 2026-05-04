@@ -6,6 +6,11 @@ const props = defineProps<{
   depth: number;
 }>();
 
+function onToggle(e: Event) {
+  e.stopPropagation();
+  halshowStore.toggleNode(props.node);
+}
+
 function onClick() {
   halshowStore.selectNode(props.node);
 }
@@ -29,7 +34,7 @@ function onDblClick() {
       @click="onClick"
       @dblclick="onDblClick"
     >
-      <span v-if="!node.isLeaf" class="expand-icon">{{ node.expanded ? '▾' : '▸' }}</span>
+      <span v-if="!node.isLeaf" class="expand-icon" @click="onToggle">{{ node.expanded ? '▾' : '▸' }}</span>
       <span v-else class="leaf-icon">•</span>
       <span class="node-name">{{ node.name }}</span>
     </div>
@@ -68,10 +73,17 @@ export default { name: 'TreeNodeItem' };
 }
 
 .expand-icon {
-  width: 12px;
+  width: 16px;
   font-size: 10px;
   color: #888;
   flex-shrink: 0;
+  cursor: pointer;
+  text-align: center;
+  padding: 2px;
+}
+
+.expand-icon:hover {
+  color: #fff;
 }
 
 .leaf-icon {

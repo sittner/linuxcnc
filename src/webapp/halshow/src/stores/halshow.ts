@@ -22,7 +22,13 @@ export interface TreeNode {
   expanded?: boolean;
 }
 
-export type TabId = 'show' | 'watch';
+export type TabId = 'show' | 'watch' | 'cmd';
+
+export interface CmdHistoryEntry {
+  cmd: string;
+  output?: string;
+  error?: string;
+}
 
 export type TreeCategory = 'pins' | 'params' | 'signals' | 'components' | 'functions' | 'threads';
 
@@ -55,6 +61,12 @@ interface HalshowState {
   watchValues: PinInfo[];  // live values from WebSocket
   watchRate: number;       // ms
 
+  // Halcmd tab
+  cmdHistory: CmdHistoryEntry[];
+
+  // Node overview
+  nodeOverviewPins: PinInfo[];
+
   // Active tab
   activeTab: TabId;
 }
@@ -82,6 +94,9 @@ const state = reactive<HalshowState>({
   watchList: [],
   watchValues: [],
   watchRate: 100,
+
+  cmdHistory: [],
+  nodeOverviewPins: [],
 
   activeTab: 'show',
 });
@@ -247,10 +262,30 @@ export const halshowStore = {
   async selectNode(node: TreeNode) {
     state.selectedNode = node;
     if (!node.isLeaf) {
-      node.expanded = !node.expanded;
+      // Non-leaf: show overview of all child pins
+      state.nodeOverviewPins = [];
+      state.selectedItem = null;
+      state.selectedItemKind = null;
+      try {
+        const allLeaves = this.collectLeaves(node);
+        if (state.treeCategory === 'pins') {
+          const pins = await Promise.all(allLeaves.map(n => client.getPin(n.fullPath)));
+          state.nodeOverviewPins = pins;
+        } else if (state.treeCategory === 'params') {
+          // Show params as PinInfo-compatible for the overview table
+          const params = await Promise.all(allLeaves.map(n => client.getParam(n.fullPath)));
+          state.nodeOverviewPins = params.map(p => ({
+            name: p.name, type: p.type, dir: p.dir, value: p.value,
+            owner: p.owner, linked: false,
+          }));
+        }
+      } catch (e) {
+        state.error = e instanceof Error ? e.message : String(e);
+      }
       return;
     }
 
+    state.nodeOverviewPins = [];
     state.selectedItemKind = state.treeCategory;
     try {
       switch (state.treeCategory) {
@@ -271,6 +306,23 @@ export const halshowStore = {
     } catch (e) {
       state.error = e instanceof Error ? e.message : String(e);
     }
+  },
+
+  toggleNode(node: TreeNode) {
+    node.expanded = !node.expanded;
+  },
+
+  collectLeaves(node: TreeNode): TreeNode[] {
+    const leaves: TreeNode[] = [];
+    const visit = (n: TreeNode) => {
+      if (n.isLeaf) {
+        leaves.push(n);
+      } else {
+        for (const child of n.children) visit(child);
+      }
+    };
+    visit(node);
+    return leaves;
   },
 
   // --- Watch Tab ---
@@ -351,6 +403,191 @@ export const halshowStore = {
 
   async unlinkPin(name: string): Promise<CmdResult> {
     return await client.unlink(name);
+  },
+
+  // --- Node overview: add all to watch ---
+
+  addAllNodePinsToWatch() {
+    for (const pin of state.nodeOverviewPins) {
+      if (!state.watchList.includes(pin.name)) {
+        state.watchList.push(pin.name);
+      }
+    }
+    saveWatchList(state.watchList);
+    this.updateWatch();
+  },
+
+  // --- Watch: set value ---
+
+  async setWatchValue(name: string, value: string): Promise<CmdResult> {
+    // Determine if it's a pin, param, or signal
+    if (state.pins.find(p => p.name === name)) {
+      return await client.setPin(name, value);
+    } else if (state.params.find(p => p.name === name)) {
+      return await client.setParam(name, value);
+    } else if (state.signals.find(s => s.name === name)) {
+      return await client.setSignal(name, value);
+    }
+    return { success: false, error: 'Unknown item type' };
+  },
+
+  // --- Halcmd console ---
+
+  async executeHalcmd(cmdLine: string) {
+    const entry: CmdHistoryEntry = { cmd: cmdLine };
+    state.cmdHistory.push(entry);
+
+    try {
+      const result = await this.parseAndExecute(cmdLine);
+      if (result.output) entry.output = result.output;
+      if (!result.success) entry.error = result.error ?? 'Failed';
+    } catch (e) {
+      entry.error = e instanceof Error ? e.message : String(e);
+    }
+  },
+
+  async parseAndExecute(cmdLine: string): Promise<CmdResult> {
+    const tokens = cmdLine.trim().split(/\s+/);
+    if (tokens.length === 0) return { success: true };
+    const cmd = tokens[0];
+    const args = tokens.slice(1);
+
+    switch (cmd) {
+      case 'show': {
+        const what = args[0] ?? 'pin';
+        const pattern = args[1];
+        let output = '';
+        if (what === 'pin' || what === 'pins') {
+          const pins = await client.listPins(pattern);
+          output = pins.map(p =>
+            `${p.name.padEnd(40)} ${p.type.padEnd(6)} ${p.dir.padEnd(4)} ${p.value.padEnd(15)} ${p.linked ? '=> ' + p.signal : ''}`
+          ).join('\n');
+        } else if (what === 'param' || what === 'params') {
+          const params = await client.listParams(pattern);
+          output = params.map(p =>
+            `${p.name.padEnd(40)} ${p.type.padEnd(6)} ${p.dir.padEnd(4)} ${p.value}`
+          ).join('\n');
+        } else if (what === 'sig' || what === 'signal' || what === 'signals') {
+          const sigs = await client.listSignals(pattern);
+          output = sigs.map(s =>
+            `${s.name.padEnd(40)} ${s.type.padEnd(6)} ${s.value}`
+          ).join('\n');
+        } else if (what === 'comp' || what === 'components') {
+          const comps = await client.listComponents(pattern);
+          output = comps.map(c =>
+            `${c.name.padEnd(30)} ${String(c.id).padEnd(6)} ${c.type.padEnd(12)} ${c.state}`
+          ).join('\n');
+        } else if (what === 'funct' || what === 'functions') {
+          const funcs = await client.listFunctions(pattern);
+          output = funcs.map(f =>
+            `${f.name.padEnd(40)} ${f.owner.padEnd(20)} ${f.fp ? 'FP' : 'NO'}`
+          ).join('\n');
+        } else if (what === 'thread' || what === 'threads') {
+          const threads = await client.listThreads(pattern);
+          output = threads.map(t =>
+            `${t.name.padEnd(30)} ${String(t.period).padEnd(12)} ${t.fp ? 'FP' : 'NO'}${t.functions.length > 0 ? '\n  ' + t.functions.join('\n  ') : ''}`
+          ).join('\n');
+        } else {
+          return { success: false, error: `Unknown show type: ${what}` };
+        }
+        return { success: true, output: output || '(no results)' };
+      }
+
+      case 'getp':
+      case 'gets': {
+        const name = args[0];
+        if (!name) return { success: false, error: `Usage: ${cmd} <name>` };
+        if (cmd === 'getp') {
+          const pin = await client.getPin(name);
+          return { success: true, output: pin.value };
+        } else {
+          const sig = await client.getSignal(name);
+          return { success: true, output: sig.value };
+        }
+      }
+
+      case 'setp': {
+        if (args.length < 2) return { success: false, error: 'Usage: setp <name> <value>' };
+        // Try pin first, then param
+        let result = await client.setPin(args[0], args[1]);
+        if (!result.success) {
+          result = await client.setParam(args[0], args[1]);
+        }
+        return result;
+      }
+
+      case 'sets': {
+        if (args.length < 2) return { success: false, error: 'Usage: sets <signal> <value>' };
+        return await client.setSignal(args[0], args[1]);
+      }
+
+      case 'net': {
+        if (args.length < 2) return { success: false, error: 'Usage: net <signal> <pin> [pin...]' };
+        return await client.net(args[0], args.slice(1));
+      }
+
+      case 'linkps': {
+        if (args.length < 2) return { success: false, error: 'Usage: linkps <pin> <signal>' };
+        return await client.link(args[0], args[1]);
+      }
+
+      case 'unlinkp': {
+        if (args.length < 1) return { success: false, error: 'Usage: unlinkp <pin>' };
+        return await client.unlink(args[0]);
+      }
+
+      case 'newsig': {
+        if (args.length < 2) return { success: false, error: 'Usage: newsig <name> <type>' };
+        return await client.newSignal(args[0], args[1]);
+      }
+
+      case 'delsig': {
+        if (args.length < 1) return { success: false, error: 'Usage: delsig <name>' };
+        return await client.deleteSignal(args[0]);
+      }
+
+      case 'loadrt': {
+        if (args.length < 1) return { success: false, error: 'Usage: loadrt <module> [args...]' };
+        return await client.loadrt(args[0], args.slice(1) as any);
+      }
+
+      case 'unloadrt': {
+        if (args.length < 1) return { success: false, error: 'Usage: unloadrt <module>' };
+        return await client.unloadrt(args[0]);
+      }
+
+      case 'start':
+        return await client.start();
+
+      case 'stop':
+        return await client.stop();
+
+      case 'status': {
+        const st = await client.getStatus();
+        return {
+          success: true,
+          output: `Components: ${st.components}  Pins: ${st.pins}  Signals: ${st.signals}  Params: ${st.params}  Threads: ${st.threads}  Functions: ${st.functions}\nRT lock: ${st.rt_lock}  Mem lock: ${st.mem_lock}  Running: ${st.threads_running}`,
+        };
+      }
+
+      case 'help':
+        return {
+          success: true,
+          output: [
+            'show pin|param|sig|comp|funct|thread [pattern]',
+            'getp <pin>           gets <signal>',
+            'setp <name> <value>  sets <signal> <value>',
+            'net <signal> <pin> [pin...]',
+            'linkps <pin> <signal>  unlinkp <pin>',
+            'newsig <name> <type>   delsig <name>',
+            'loadrt <module> [args...]  unloadrt <module>',
+            'start  stop  status',
+          ].join('\n'),
+        };
+
+      default:
+        return { success: false, error: `Unknown command: ${cmd}. Type "help" for available commands.` };
+    }
   },
 
   setActiveTab(tab: TabId) {

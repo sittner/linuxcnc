@@ -1,5 +1,10 @@
 <script setup lang="ts">
+import { ref } from 'vue';
 import { halshowStore } from '../stores/halshow';
+
+const editingName = ref('');
+const editValue = ref('');
+const editError = ref('');
 
 function getWatchValue(name: string): string {
   const item = halshowStore.state.watchValues.find(v => v.name === name);
@@ -9,6 +14,28 @@ function getWatchValue(name: string): string {
 function getWatchType(name: string): string {
   const item = halshowStore.state.watchValues.find(v => v.name === name);
   return item?.type ?? '';
+}
+
+function startEdit(name: string) {
+  editingName.value = name;
+  editValue.value = getWatchValue(name);
+  editError.value = '';
+}
+
+async function submitEdit() {
+  if (!editingName.value) return;
+  const result = await halshowStore.setWatchValue(editingName.value, editValue.value);
+  if (result.success) {
+    editingName.value = '';
+    editError.value = '';
+  } else {
+    editError.value = result.error ?? 'Failed';
+  }
+}
+
+function cancelEdit() {
+  editingName.value = '';
+  editError.value = '';
 }
 </script>
 
@@ -37,7 +64,20 @@ function getWatchType(name: string): string {
       <tbody>
         <tr v-for="name in halshowStore.state.watchList" :key="name">
           <td class="name">{{ name }}</td>
-          <td class="value">{{ getWatchValue(name) }}</td>
+          <td class="value" @dblclick="startEdit(name)">
+            <template v-if="editingName === name">
+              <input
+                v-model="editValue"
+                class="edit-input"
+                @keydown.enter="submitEdit"
+                @keydown.escape="cancelEdit"
+                @blur="cancelEdit"
+                autofocus
+              />
+              <span v-if="editError" class="edit-error">{{ editError }}</span>
+            </template>
+            <template v-else>{{ getWatchValue(name) }}</template>
+          </td>
           <td class="type">{{ getWatchType(name) }}</td>
           <td class="remove">
             <button @click="halshowStore.removeFromWatch(name)">×</button>
@@ -118,6 +158,24 @@ function getWatchType(name: string): string {
   font-family: monospace;
   color: #4f4;
   font-weight: 600;
+  cursor: text;
+}
+
+.watch-table .value .edit-input {
+  background: #222;
+  border: 1px solid #4a8abf;
+  border-radius: 2px;
+  padding: 1px 4px;
+  color: #fff;
+  font-family: monospace;
+  font-size: 12px;
+  width: 100px;
+}
+
+.watch-table .value .edit-error {
+  color: #f66;
+  font-size: 10px;
+  margin-left: 4px;
 }
 
 .watch-table .type {
