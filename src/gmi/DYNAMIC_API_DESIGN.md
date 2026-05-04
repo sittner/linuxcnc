@@ -22,7 +22,7 @@ intended to replace NML with a modern, type-safe approach.
 | 5.6: TypeScript Client Generation | ✅ Complete | — |
 | 5.7: Web App Infrastructure | ✅ Complete | — |
 | 5.8: Halscope (gomod + Vue Web UI) | ✅ Complete | — |
-| 5.9: Halshow (Vue Web UI, uses halcmd API) | ❌ Not Started | — |
+| 5.9: Halshow (Vue Web UI, uses halcmd API) | ✅ Complete | — |
 | 6: Polish | ❌ Not Started | — |
 | 7: Remove Go Plugins | ✅ Complete | — |
 
@@ -2310,6 +2310,119 @@ Both are optional — gomc-server and the web UI work in a browser without them.
 - Trigger supports rising/falling edge detection on any channel type (bit/s32/u32/float)
 - Sample period multiplier allows decimation (sample every Nth thread invocation)
 - The gomod is loaded via `load halscope` in HAL config files
+
+### Step 5.9: Halshow — Vue Web UI (COMPLETE)
+
+Replaced the old Tcl halshow (`tcl/bin/halshow.tcl`) with a Vue 3 web UI that
+uses the existing halcmd REST API. No new backend IDL — reuses the halcmd API
+endpoints already served by `internal/halrest/`.
+
+**Previous Architecture (removed):**
+- `tcl/bin/halshow.tcl` (1357 lines) — Tcl/Tk GUI with BWidget tree
+- Direct `halcmd` subprocess calls for all queries
+- `bin/halmeter` — standalone GTK meter (C, `meter.c` + `miscgtk.c`)
+
+**New Architecture:**
+
+```
+  Vue halshow (browser/gmcui)
+       │
+       └──── REST (halcmd API at /api/v1/halcmd/...)
+                    │
+              gomc-server
+                    │
+              internal/halrest/ (existing halcmd REST handler)
+```
+
+**Features:**
+
+1. **Tree browser** — hierarchical pin/signal/param/component tree with
+   expand/collapse. Click node name = show overview (non-leaf) or detail (leaf).
+   Double-click leaf = add to watch.
+
+2. **Watch panel** — live-updating value table with explicit "Set" button per row.
+   Set dialog with TRUE/FALSE toggle for bit types. Set button hidden for: OUT
+   pins, linked pins, RO params, signals with writer pins.
+
+3. **Node overview** — clicking a non-leaf tree node shows all child pins in a
+   table (Name, Value, Type, Dir, Signal). "+W" button per pin, "+ Watch All"
+   button. Shows "✓" indicators for already-watched items.
+
+4. **halcmd console** — terminal-like command panel with history display. Supports
+   show/getp/gets/setp/sets/net/linkps/unlinkp/newsig/delsig/loadrt/unloadrt/
+   start/stop/status/help. Color-coded output (green) and errors (red).
+
+5. **Detail panel** — full pin/param/signal info with "Watch" button (shows
+   "✓ Watched" when already in watch list).
+
+**Client-Side Implementation:**
+
+```
+src/webapp/halshow/
+├── index.html
+├── package.json           # Vue 3, vite
+├── vite.config.ts
+├── tsconfig*.json
+└── src/
+    ├── main.ts
+    ├── App.vue
+    ├── stores/
+    │   └── halshow.ts     # Pinia store: tree, watch, cmd history, node overview
+    ├── components/
+    │   ├── TreePanel.vue          # Tree browser container
+    │   ├── TreeNodeItem.vue       # Recursive tree node (arrow toggle, name click)
+    │   ├── DetailPanel.vue        # Leaf node detail view
+    │   ├── NodeOverview.vue       # Non-leaf node pin table
+    │   ├── WatchPanel.vue         # Live watch with Set dialog
+    │   └── HalcmdPanel.vue        # Command console with history
+    └── generated/
+        └── halcmd_client.ts       # Generated TypeScript REST client
+```
+
+**Backend Changes:**
+
+- `internal/halrest/halrest_impl.go` — `GetPin()`, `GetParam()`, `GetSignal()`
+  enhanced to return full metadata (direction, signal, owner, linked status)
+  using `halcmd.Show()` parsing instead of bare `GetP()`/`PType()`
+- `internal/halrest/halrest.go` — `watchItems()` expanded to return pins +
+  signals + params (previously only pins). Signals with writer pins marked
+  `linked: true` to suppress Set button in frontend.
+
+**gmcui Integration:**
+
+Profile entry in `gmcui.c`:
+```c
+{ "halshow", "/app/halshow/", "HAL Configuration", 1024, 768 }
+```
+
+`bin/halshow` symlink → `gmcui` → opens halshow webapp.
+
+**AXIS Menu Integration:**
+
+```tcl
+.menu.machine add command -command {exec halshow &}
+```
+
+**Removed Files:**
+- `tcl/bin/halshow.tcl` — old Tcl GUI
+- `tcl/halshow_icon.png` — old icon
+- `src/hal/utils/meter.c` — halmeter source
+- `src/hal/utils/miscgtk.c` + `miscgtk.h` — GTK helpers (only used by halmeter)
+- `bin/halmeter` — built binary
+- `docs/man/man1/halmeter.1` — man page
+- `docs/src/hal/images/halmeter-*.png` — documentation images
+
+**Completed:**
+- [x] Vue 3 web app with tree browser, watch, detail, overview, halcmd console
+- [x] Generated TypeScript halcmd client (reuses existing halcmd.gmi)
+- [x] Backend enhanced: full pin/param/signal metadata in REST responses
+- [x] Watch panel: Set dialog, bit toggle, canSet() logic (hides for OUT/linked/RO)
+- [x] Node overview: child pin table, +W per pin, +Watch All
+- [x] halcmd console: parse+execute, history, color-coded output
+- [x] gmcui native container with halshow symlink
+- [x] AXIS menu integration (`exec halshow &`)
+- [x] Old halshow.tcl, halmeter, and associated files removed
+- [x] Build system cleaned (Submakefiles, debian packaging)
 
 ### Step 6: Polish (NOT STARTED)
 - [ ] Error handling standardization
