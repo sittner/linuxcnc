@@ -2442,7 +2442,7 @@ tuning via HAL setp, and saves changes back to the correct INI file(s).
 ```
   Vue emccalib (browser/gmcui)
        │
-       └──── REST + WebSocket (/api/v1/emccalib/...)
+       └──── REST (/api/v1/emccalib/...)
                     │
               gomc-server
                     │
@@ -2451,23 +2451,42 @@ tuning via HAL setp, and saves changes back to the correct INI file(s).
               ┌─────┴─────┐
          pkg/inifile    internal HAL API
        (with provenance)  (pin read/write)
+                    │
+              setp interceptor
+        (records INI→pin mappings during HAL load)
 ```
 
 **Design Decisions:**
 
-1. **Self-contained gomod** — emccalib owns discovery AND write-back. The inirest
-   module stays read-only. Write requests are validated against the discovered
-   tunable list — only discovered `{section, key}` pairs are writable.
+1. **Self-contained gomod** — emccalib owns write-back. The inirest module stays
+   read-only. Write requests are validated against the discovered tunable list —
+   only discovered `{section, key}` pairs are writable.
 
 2. **Lifecycle-gated security** — if the emccalib gomod isn't loaded, no INI write
    endpoints exist. Loaded via HAL `load` command like other gomods.
 
-3. **INI provenance tracking** — `pkg/inifile` enhanced with `SourceFile` and
+3. **Interceptor-based discovery** — instead of scanning raw HAL files (which would
+   miss Tcl conditionals, loops, sourced files, and template expansions), the setp
+   handler in halcmd/halrest records INI→pin mappings at execution time. When a
+   `setp` command resolves a `[SECTION]KEY` INI reference during HAL file loading,
+   the mapping is recorded:
+   ```
+   {pin: "pid.0.Pgain", section: "JOINT_0", key: "P", ini_value: 150.0}
+   ```
+   The emccalib gomod queries this registry on load — no file scanning needed.
+   This is correct regardless of how the HAL files were generated or processed.
+
+4. **INI provenance tracking** — `pkg/inifile` enhanced with `SourceFile` and
    `SourceLine` per `Entry`, so write-back targets the correct file when
    `#INCLUDE` directives are used.
 
-4. **Build-time enable** — `./configure --enable-emccalib` (default: yes when Go
+5. **Build-time enable** — `./configure --enable-emccalib` (default: yes when Go
    available), filtered via `@GOMOD:EMCCALIB@` in `packages.conf.in`.
+
+6. **No WebSocket/watch needed** — tunable values are PID gains, velocities,
+   accelerations — they only change when the user explicitly clicks Test. The UI
+   fetches tunables via plain REST GET on load, and re-fetches after each set_pin
+   call. No real-time push required.
 
 **IDL Definition (`gmi/idl/emccalib.gmi`):**
 
@@ -2491,8 +2510,6 @@ type TunableSection {
     items: []TunableItem
 }
 
-@watch true
-@watch_default_rate 100ms
 func get_tunables() -> []TunableSection
 
 func set_pin(section: string, key: string, value: f64) -> bool
@@ -2505,17 +2522,32 @@ func revert(section: string, key: string) -> bool
 **Backend (`internal/emccalib/module.go`):**
 
 - `init()` registers `"emccalib"` with `gomc.RegisterModule()`
-- On load: reads INI via internal launcher API, scans HAL files from
-  `[HAL]HALFILE` / `POSTGUI_HALFILE` for `setp` commands referencing
-  `[SECTION]KEY` patterns, resolves INI substitutions, builds tunable list
-  with provenance (source file per entry)
-- `get_tunables()` — returns discovered sections with live HAL pin values
-  (watchable via WebSocket for real-time UI updates)
+- On load: queries the setp interceptor registry for all recorded INI→pin
+  mappings, groups by section/suffix, enriches with INI provenance (source file
+  + line from `pkg/inifile`)
+- `get_tunables()` — returns discovered sections with current HAL pin values
+  (plain REST GET, re-fetched on demand by the UI)
 - `set_pin()` — validates `{section, key}` against discovered list, calls
   internal HAL setp API to apply value immediately
 - `save_ini()` — writes all changed values back to their respective source
   files (respecting `#INCLUDE` provenance), creates `.bak` backup first
 - `revert()` — restores original INI value to the HAL pin
+
+**Setp Interceptor (in halcmd/halrest INI substitution path):**
+
+When `setp` resolves a `[SECTION]KEY` INI reference during HAL file execution,
+record the mapping in an in-memory registry:
+```go
+type IniPinMapping struct {
+    Pin      string  // "pid.0.Pgain"
+    Section  string  // "JOINT_0"
+    Key      string  // "P"
+    IniValue float64 // value at load time
+}
+```
+This registry accumulates during the entire HAL loading phase. The emccalib
+gomod reads it when initialized — guaranteed to capture all tunables regardless
+of Tcl/template processing.
 
 **Convenience HAL file (`configs/common/emccalib.hal`):**
 
@@ -2523,7 +2555,8 @@ func revert(section: string, key: string) -> bool
 load emccalib
 ```
 
-Users add `HALFILE = emccalib.hal` to their `[HAL]` section to enable.
+Users add `HALFILE = emccalib.hal` (or `POSTGUI_HALFILE = emccalib.hal`) to
+their `[HAL]` section to enable.
 
 **INI Parser Enhancement (`pkg/inifile`):**
 
@@ -2534,12 +2567,14 @@ Users add `HALFILE = emccalib.hal` to their `[HAL]` section to enable.
 **Vue Web App (`src/webapp/emccalib/`):**
 
 - Tabbed UI: sections as tabs (JOINT_0..N, AXIS_X..W, SPINDLE_0..N, etc.)
-- Per-item: INI name, current HAL value (live via WebSocket), entry field
+- Per-item: INI name, current HAL value, entry field for new value
 - Buttons: Test (apply to HAL), Revert (restore original), Save (write INI)
+- Fetches tunables via REST GET; re-fetches after Test/Revert to show updated values
 - Generated TypeScript client from `emccalib.gmi`
 
 **Deliverables:**
 - [ ] `pkg/inifile` — provenance tracking (`SourceFile`, `SourceLine` per entry)
+- [ ] Setp interceptor — record INI→pin mappings during HAL load
 - [ ] `gmi/idl/emccalib.gmi` — IDL definition
 - [ ] Generated dispatch: `gomc/generated/gmi/emccalib/` (server-go output)
 - [ ] Generated TypeScript client: `src/webapp/emccalib/src/generated/`
