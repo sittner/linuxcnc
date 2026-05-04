@@ -72,12 +72,12 @@ import gmi
 from gmi.constants import *
 from glnav import *
 
-if "AXIS_NO_HAL" in os.environ:
-    hal_present = 0;
+if "AXIS_NO_SERVER" in os.environ:
+    server_present = 0;
 else:
-    hal_present = 1;
+    server_present = 1;
 
-if hal_present == 1:
+if server_present == 1:
     import gmi
     from gmi.axisui_ws_client import (
         AxisuiWatchThread, JogInputs, SliderInputs, NotificationInputs
@@ -953,7 +953,7 @@ class LivePlotter:
         vupdate(vars.exec_state, self.stat.exec_state)
         vupdate(vars.interp_state, self.stat.interp_state)
         vupdate(vars.queued_mdi_commands, self.stat.queued_mdi_commands)
-        if hal_present == 1:
+        if server_present == 1:
             comp["is-running"] = 1
             notifications_clear = comp["notifications-clear"]
             if self.notifications_clear != notifications_clear:
@@ -3171,7 +3171,7 @@ class TclCommands(nf.TclCommands):
 
     def axis_activated(*args):
         # this only makes sense if HAL is present on this machine
-        if not hal_present: return
+        if not server_present: return
         axis = vars.ja_rbutton.get()
         _ws_thread.set_jog_axis(axis)
 
@@ -4131,7 +4131,7 @@ t.bind("<Button-4>", scroll_up)
 t.bind("<Button-5>", scroll_down)
 t.configure(state="disabled")
 
-if hal_present == 1 :
+if server_present == 1 :
     # Connect to the axisui cmod via WebSocket watch channel.
     # The cmod owns the HAL pins; we communicate via WS.
     _ws_thread = AxisuiWatchThread(gmi.ws_url(), instance="axisui")
@@ -4358,7 +4358,7 @@ commands.set_spindlerate(100)
 
 def forget(widget, *pins):
     if "AXIS_NO_AUTOCONFIGURE" in os.environ: return
-    if hal_present == 1:
+    if server_present == 1:
         for p in pins:
             if gmi.pin_has_writer(p): return
     m = widget.winfo_manager()
@@ -4422,11 +4422,11 @@ if os.path.exists(rcfile):
 # call an empty function that can be overridden
 # by an .axisrc user_hal_pins() function
 # The axisui cmod is always ready — this is preserved for user_hal_pins() compat.
-if hal_present == 1 :
+if server_present == 1 :
     user_hal_pins()
 
 _dynamic_tabs(inifile)
-if hal_present == 1:
+if server_present == 1:
     check_dynamic_tabs()
 else:
     root_window.deiconify()
@@ -4524,7 +4524,7 @@ except Exception:
 
 o.mainloop()
 live_plotter.stop()
-if hal_present == 1:
+if server_present == 1:
     _ws_thread.stop()
 
 # vim:sw=4:sts=4:et:
