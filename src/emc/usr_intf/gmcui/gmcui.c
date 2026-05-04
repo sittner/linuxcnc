@@ -35,6 +35,7 @@ typedef struct {
 static const app_profile_t profiles[] = {
     { "halscope",  "/app/halscope/",  "HAL Oscilloscope", 1280, 800 },
     { "halshow",   "/app/halshow/",   "HAL Show",         1024, 700 },
+    { "emccalib",  "/app/emccalib/",  "EMC Calibration",   900, 700 },
     { NULL, NULL, NULL, 0, 0 }
 };
 

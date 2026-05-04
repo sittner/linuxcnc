@@ -1553,6 +1553,7 @@ AC_SUBST([HAVE_GOLANG])
 HAVE_ADSSERVER=no
 HAVE_EMCGATEWAY=no
 HAVE_HALSCOPE=no
+HAVE_EMCCALIB=no
 
 if test "x$HAVE_GOLANG" = "xyes"; then
     AC_ARG_ENABLE([adsserver],
@@ -1578,11 +1579,20 @@ if test "x$HAVE_GOLANG" = "xyes"; then
     if test "x$enable_halscope" = "xyes"; then
         HAVE_HALSCOPE=yes
     fi
+
+    AC_ARG_ENABLE([emccalib],
+        AS_HELP_STRING([--enable-emccalib], [Build calibration tuning Go module (default: yes)]),
+        [enable_emccalib=$enableval],
+        [enable_emccalib=yes])
+    if test "x$enable_emccalib" = "xyes"; then
+        HAVE_EMCCALIB=yes
+    fi
 fi
 
 AC_SUBST([HAVE_ADSSERVER])
 AC_SUBST([HAVE_EMCGATEWAY])
 AC_SUBST([HAVE_HALSCOPE])
+AC_SUBST([HAVE_EMCCALIB])
 
 # Web application build dependencies (Node.js for Vite/Vue webapp builds)
 HAVE_NODEJS=no

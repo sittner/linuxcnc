@@ -127,7 +127,7 @@ func (ini *IniFile) parseFile(filename string, visited map[string]bool) error {
 			ini.Sections = append(ini.Sections, Section{Name: ""})
 			currentSection = &ini.Sections[len(ini.Sections)-1]
 		}
-		currentSection.Entries = append(currentSection.Entries, Entry{Key: key, Value: value})
+		currentSection.Entries = append(currentSection.Entries, Entry{Key: key, Value: value, SourceFile: filename, SourceLine: lineNum})
 	}
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("inifile: reading %q: %w", filename, err)

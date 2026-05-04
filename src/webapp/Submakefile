@@ -76,11 +76,42 @@ $(HALSHOW_WEBAPP_STAMP): $(HALSHOW_WEBAPP_SRCS) $(HALSHOW_NPM_STAMP) $(HALSHOW_G
 
 TARGETS += $(HALSHOW_WEBAPP_STAMP)
 
+# --- emccalib ---
+
+EMCCALIB_WEBAPP_SRC := $(WEBAPP_DIR)/emccalib
+EMCCALIB_WEBAPP_DEST := $(WEBAPP_DEST)/emccalib
+
+EMCCALIB_WEBAPP_STAMP := $(EMCCALIB_WEBAPP_DEST)/.build-stamp
+
+EMCCALIB_WEBAPP_SRCS := $(shell find $(EMCCALIB_WEBAPP_SRC)/src -type f 2>/dev/null) \
+	$(EMCCALIB_WEBAPP_SRC)/index.html \
+	$(EMCCALIB_WEBAPP_SRC)/package.json \
+	$(EMCCALIB_WEBAPP_SRC)/vite.config.ts \
+	$(EMCCALIB_WEBAPP_SRC)/tsconfig.json
+
+EMCCALIB_NPM_STAMP := $(EMCCALIB_WEBAPP_SRC)/node_modules/.install-stamp
+
+$(EMCCALIB_NPM_STAMP): $(EMCCALIB_WEBAPP_SRC)/package.json
+	$(ECHO) "Installing emccalib webapp dependencies"
+	$(Q)cd $(EMCCALIB_WEBAPP_SRC) && npm install --no-audit --no-fund
+	$(Q)touch $@
+
+EMCCALIB_GEN_TS := $(WEBAPP_DIR)/emccalib/src/generated/emccalib_client.ts
+
+$(EMCCALIB_WEBAPP_STAMP): $(EMCCALIB_WEBAPP_SRCS) $(EMCCALIB_NPM_STAMP) $(EMCCALIB_GEN_TS)
+	$(ECHO) "Building emccalib webapp"
+	$(Q)rm -rf $(EMCCALIB_WEBAPP_DEST)
+	$(Q)cd $(EMCCALIB_WEBAPP_SRC) && npx vite build --outDir $(abspath $(EMCCALIB_WEBAPP_DEST)) --emptyOutDir
+	$(Q)touch $@
+
+TARGETS += $(EMCCALIB_WEBAPP_STAMP)
+
 clean: webapp-clean
 .PHONY: webapp-clean
 webapp-clean:
 	rm -rf $(WEBAPP_DEST)
 	rm -rf $(HALSCOPE_WEBAPP_SRC)/node_modules
 	rm -rf $(HALSHOW_WEBAPP_SRC)/node_modules
+	rm -rf $(EMCCALIB_WEBAPP_SRC)/node_modules
 
 endif # BUILD_GOLANG

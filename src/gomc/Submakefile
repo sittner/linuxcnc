@@ -85,6 +85,7 @@ define filter_packages_conf
 	$(if $(filter yes,$(BUILD_ADSSERVER)),-e 's/ @GOMOD:ADSSERVER@//',-e '/@GOMOD:ADSSERVER@/d') \
 	$(if $(filter yes,$(BUILD_EMCGATEWAY)),-e 's/ @GOMOD:EMCGATEWAY@//',-e '/@GOMOD:EMCGATEWAY@/d') \
 	$(if $(filter yes,$(BUILD_HALSCOPE)),-e 's/ @GOMOD:HALSCOPE@//',-e '/@GOMOD:HALSCOPE@/d') \
+	$(if $(filter yes,$(BUILD_EMCCALIB)),-e 's/ @GOMOD:EMCCALIB@//',-e '/@GOMOD:EMCCALIB@/d') \
 	$< > $@.tmp && mv $@.tmp $@
 endef
 

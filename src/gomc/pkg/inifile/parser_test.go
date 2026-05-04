@@ -556,3 +556,79 @@ FOO = bar
 		t.Errorf("OTHER/FOO after Set = %q, want %q", got, "bar")
 	}
 }
+
+// --------------------------------------------------------------------------
+// Provenance tracking: SourceFile and SourceLine
+// --------------------------------------------------------------------------
+
+func TestProvenanceBasic(t *testing.T) {
+	dir := t.TempDir()
+	f := writeFile(t, dir, "prov.ini", `
+[JOINT_0]
+P = 100
+I = 0.5
+D = 0.01
+`)
+	ini, err := inifile.Parse(f)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	abs, _ := filepath.Abs(f)
+	for i := range ini.Sections {
+		if ini.Sections[i].Name != "JOINT_0" {
+			continue
+		}
+		for j, e := range ini.Sections[i].Entries {
+			if e.SourceFile != abs {
+				t.Errorf("entry %d: SourceFile = %q, want %q", j, e.SourceFile, abs)
+			}
+			if e.SourceLine == 0 {
+				t.Errorf("entry %d (%s): SourceLine = 0, want > 0", j, e.Key)
+			}
+		}
+		// P is on line 3 (blank line 1, [JOINT_0] line 2, P = line 3)
+		if ini.Sections[i].Entries[0].SourceLine != 3 {
+			t.Errorf("P: SourceLine = %d, want 3", ini.Sections[i].Entries[0].SourceLine)
+		}
+	}
+}
+
+func TestProvenanceInclude(t *testing.T) {
+	dir := t.TempDir()
+	incFile := writeFile(t, dir, "included.ini", `[SPINDLE_0]
+MAX_SPEED = 3000
+`)
+	writeFile(t, dir, "main.ini", `[JOINT_0]
+P = 100
+#INCLUDE included.ini
+`)
+	mainPath := filepath.Join(dir, "main.ini")
+	ini, err := inifile.Parse(mainPath)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	absMain, _ := filepath.Abs(mainPath)
+	absInc, _ := filepath.Abs(incFile)
+
+	// Entry from main file.
+	for i := range ini.Sections {
+		if ini.Sections[i].Name == "JOINT_0" {
+			e := ini.Sections[i].Entries[0]
+			if e.SourceFile != absMain {
+				t.Errorf("JOINT_0/P: SourceFile = %q, want %q", e.SourceFile, absMain)
+			}
+		}
+		// Entry from included file.
+		if ini.Sections[i].Name == "SPINDLE_0" {
+			e := ini.Sections[i].Entries[0]
+			if e.SourceFile != absInc {
+				t.Errorf("SPINDLE_0/MAX_SPEED: SourceFile = %q, want %q", e.SourceFile, absInc)
+			}
+			if e.SourceLine != 2 {
+				t.Errorf("SPINDLE_0/MAX_SPEED: SourceLine = %d, want 2", e.SourceLine)
+			}
+		}
+	}
+}

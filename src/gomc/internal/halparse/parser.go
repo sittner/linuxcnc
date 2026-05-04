@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/sittner/linuxcnc/src/gomc/internal/calibreg"
 	hal "github.com/sittner/linuxcnc/src/gomc/pkg/hal"
 )
 
@@ -173,6 +174,59 @@ func substituteVars(line string, ini INILookup) string {
 	})
 
 	return line
+}
+
+// --- calibreg interceptor helpers ---
+
+// iniRef represents a [SECTION]KEY reference found in a raw HAL line.
+type iniRef struct {
+	Section string
+	Key     string
+}
+
+// extractINIRefs returns all [SECTION]KEY patterns found in a string.
+func extractINIRefs(s string) []iniRef {
+	matches := iniVarPattern.FindAllStringSubmatch(s, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	refs := make([]iniRef, 0, len(matches))
+	for _, m := range matches {
+		if len(m) >= 3 {
+			refs = append(refs, iniRef{Section: m[1], Key: m[2]})
+		}
+	}
+	return refs
+}
+
+// recordSetpMapping records an INI→pin mapping in calibreg if the raw setp
+// line's value argument contained an INI reference. pinName is the resolved
+// pin name, resolvedValue is the substituted value string.
+func recordSetpMapping(rawLine, pinName, resolvedValue string) {
+	// Tokenize the raw (pre-substitution) line to find INI refs in the value.
+	rawTokens, err := tokenizeLine(rawLine)
+	if err != nil || len(rawTokens) < 3 {
+		return
+	}
+	// rawTokens[2] is the raw value token (may contain [SECTION]KEY).
+	refs := extractINIRefs(rawTokens[2])
+	if len(refs) == 0 {
+		return
+	}
+	val, err2 := strconv.ParseFloat(resolvedValue, 64)
+	if err2 != nil {
+		// Non-numeric values are not tunable — skip.
+		return
+	}
+	// Typically there's exactly one INI ref per setp value, but handle multiple.
+	for _, ref := range refs {
+		calibreg.Record(calibreg.IniPinMapping{
+			Pin:      pinName,
+			Section:  ref.Section,
+			Key:      ref.Key,
+			IniValue: val,
+		})
+	}
 }
 
 // --- helper converters ---
@@ -869,6 +923,9 @@ func (sp *SingleFileParser) Parse(path string) (*ParseResult, error) {
 	for lineNum, line := range lines {
 		loc := SourceLoc{File: path, Line: lineNum + 1}
 
+		// Capture raw line for calibreg interceptor before substitution.
+		rawLine := line
+
 		// Substitute INI and environment variables
 		if sp.ini != nil {
 			line = substituteVars(line, sp.ini)
@@ -882,6 +939,11 @@ func (sp *SingleFileParser) Parse(path string) (*ParseResult, error) {
 
 		if len(tokens) == 0 {
 			continue
+		}
+
+		// Record setp INI→pin mappings for emccalib discovery.
+		if sp.ini != nil && len(tokens) >= 3 && strings.ToLower(tokens[0]) == "setp" {
+			recordSetpMapping(rawLine, tokens[1], tokens[2])
 		}
 
 		// Handle "source" before parseLine (it is not a regular token)

@@ -14,6 +14,11 @@ type Entry struct {
 	Key string
 	// Value is the entry value (right side of =, trimmed, inline comments stripped).
 	Value string
+	// SourceFile is the absolute path of the file this entry was parsed from.
+	// Set during parsing (including through #INCLUDE chains).
+	SourceFile string
+	// SourceLine is the 1-based line number in SourceFile where this entry appears.
+	SourceLine int
 }
 
 // Section represents a named section in an INI file.

@@ -277,6 +277,30 @@ $(GMI_EMCERROR_SERVER_GO): $(GMI_EMCERROR_IDL) $(GMICOMPILE_BIN)
 
 TARGETS += $(GMI_EMCSTAT_SERVER_GO) $(GMI_EMCCMD_SERVER_GO) $(GMI_EMCERROR_SERVER_GO)
 
+# --- emccalib API (server-go + TypeScript client) ---
+
+GMI_EMCCALIB_IDL := gmi/idl/emccalib.gmi
+
+# Go server dispatch + types
+GMI_EMCCALIB_SERVER_GO := gomc/generated/gmi/emccalibapi/emccalib_server.go
+
+$(GMI_EMCCALIB_SERVER_GO): $(GMI_EMCCALIB_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI emccalib Go server from $(GMI_EMCCALIB_IDL)"
+	@mkdir -p $(dir $(GMI_EMCCALIB_SERVER_GO))
+	$(Q)$(GMICOMPILE) --server-go $(GMI_EMCCALIB_IDL) -o $(GMI_EMCCALIB_SERVER_GO)
+
+TARGETS += $(GMI_EMCCALIB_SERVER_GO)
+
+# TypeScript REST client
+GMI_EMCCALIB_TS := webapp/emccalib/src/generated/emccalib_client.ts
+
+$(GMI_EMCCALIB_TS): $(GMI_EMCCALIB_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI emccalib TypeScript REST client from $(GMI_EMCCALIB_IDL)"
+	@mkdir -p $(dir $(GMI_EMCCALIB_TS))
+	$(Q)$(GMICOMPILE) --client-ts $(GMI_EMCCALIB_IDL) -o $(GMI_EMCCALIB_TS)
+
+TARGETS += $(GMI_EMCCALIB_TS)
+
 clean: gmi-codegen-clean
 .PHONY: gmi-codegen-clean
 gmi-codegen-clean:
