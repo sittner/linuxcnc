@@ -1,10 +1,10 @@
 # gmcui — Generic WebKit container for LinuxCNC web UIs.
-# Build only if webkit2gtk-4.1 development files are available.
+# Build only if webkit2gtk-4.1 was detected by configure.
+
+ifeq ($(BUILD_WEBKIT2GTK),yes)
 
 WEBKIT_CFLAGS := $(shell pkg-config --cflags webkit2gtk-4.1 2>/dev/null)
 WEBKIT_LIBS := $(shell pkg-config --libs webkit2gtk-4.1 2>/dev/null)
-
-ifneq ($(WEBKIT_LIBS),)
 
 GMCUI_SRCS := emc/usr_intf/gmcui/gmcui.c
 USERSRCS += $(GMCUI_SRCS)
