@@ -45,6 +45,7 @@ async function execute() {
         @keydown.enter="execute"
         autofocus
       />
+      <button class="clear-btn" @click="halshowStore.clearCmdHistory()" title="Clear output">Clear</button>
     </div>
   </div>
 </template>
@@ -96,6 +97,23 @@ async function execute() {
 .prompt {
   color: #4af;
   flex-shrink: 0;
+}
+
+.clear-btn {
+  background: #222;
+  color: #999;
+  border: 1px solid #444;
+  border-radius: 3px;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.clear-btn:hover {
+  background: #3a1a1a;
+  color: #f88;
+  border-color: #844;
 }
 
 .cmd-input {

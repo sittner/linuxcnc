@@ -444,6 +444,12 @@ export const halshowStore = {
     } catch (e) {
       entry.error = e instanceof Error ? e.message : String(e);
     }
+    // Force reactivity by replacing the array
+    state.cmdHistory = [...state.cmdHistory];
+  },
+
+  clearCmdHistory() {
+    state.cmdHistory = [];
   },
 
   async parseAndExecute(cmdLine: string): Promise<CmdResult> {

@@ -16,6 +16,11 @@ function getWatchType(name: string): string {
   return item?.type ?? '';
 }
 
+function getWatchDir(name: string): string {
+  const item = halshowStore.state.watchValues.find(v => v.name === name);
+  return item?.dir ?? '';
+}
+
 function startEdit(name: string) {
   editingName.value = name;
   editValue.value = getWatchValue(name);
@@ -58,6 +63,7 @@ function cancelEdit() {
           <th>Name</th>
           <th>Value</th>
           <th>Type</th>
+          <th>Dir</th>
           <th></th>
         </tr>
       </thead>
@@ -79,6 +85,7 @@ function cancelEdit() {
             <template v-else>{{ getWatchValue(name) }}</template>
           </td>
           <td class="type">{{ getWatchType(name) }}</td>
+          <td class="dir">{{ getWatchDir(name) }}</td>
           <td class="remove">
             <button @click="halshowStore.removeFromWatch(name)">×</button>
           </td>
@@ -176,6 +183,10 @@ function cancelEdit() {
   color: #f66;
   font-size: 10px;
   margin-left: 4px;
+}
+
+.watch-table .dir {
+  color: #888;
 }
 
 .watch-table .type {

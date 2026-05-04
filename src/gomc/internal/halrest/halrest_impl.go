@@ -132,50 +132,59 @@ func (h *halcmdImpl) ListThreads(pattern string) ([]halcmdapi.ThreadInfo, error)
 }
 
 func (h *halcmdImpl) GetPin(name string) (*halcmdapi.PinInfo, error) {
-	value, err := halcmd.GetP(name)
+	result, err := halcmd.Show("pin", name)
 	if err != nil {
 		return nil, err
 	}
-	ptype, err := halcmd.PType(name)
-	if err != nil {
-		return nil, err
+	if len(result.Pins) == 0 {
+		return nil, fmt.Errorf("pin %q not found", name)
 	}
-	return &halcmdapi.PinInfo{
-		Name:  name,
-		Type:  ptype.String(),
-		Value: value,
-	}, nil
+	p := result.Pins[0]
+	pi := &halcmdapi.PinInfo{
+		Name:   p.Name,
+		Type:   p.Type,
+		Dir:    p.Direction,
+		Value:  p.Value,
+		Owner:  p.Owner,
+		Linked: p.Signal != "",
+	}
+	if p.Signal != "" {
+		pi.Signal = p.Signal
+	}
+	return pi, nil
 }
 
 func (h *halcmdImpl) GetParam(name string) (*halcmdapi.ParamInfo, error) {
-	value, err := halcmd.GetP(name)
+	result, err := halcmd.Show("param", name)
 	if err != nil {
 		return nil, err
 	}
-	ptype, err := halcmd.PType(name)
-	if err != nil {
-		return nil, err
+	if len(result.Params) == 0 {
+		return nil, fmt.Errorf("param %q not found", name)
 	}
+	p := result.Params[0]
 	return &halcmdapi.ParamInfo{
-		Name:  name,
-		Type:  ptype.String(),
-		Value: value,
+		Name:  p.Name,
+		Type:  p.Type,
+		Dir:   p.Direction,
+		Value: p.Value,
+		Owner: p.Owner,
 	}, nil
 }
 
 func (h *halcmdImpl) GetSignal(name string) (*halcmdapi.SignalInfo, error) {
-	value, err := halcmd.GetS(name)
+	result, err := halcmd.Show("sig", name)
 	if err != nil {
 		return nil, err
 	}
-	stype, err := halcmd.SType(name)
-	if err != nil {
-		return nil, err
+	if len(result.Signals) == 0 {
+		return nil, fmt.Errorf("signal %q not found", name)
 	}
+	s := result.Signals[0]
 	return &halcmdapi.SignalInfo{
-		Name:    name,
-		Type:    stype.String(),
-		Value:   value,
+		Name:    s.Name,
+		Type:    s.Type,
+		Value:   s.Value,
 		Writers: []string{},
 		Readers: []string{},
 		Bidirs:  []string{},

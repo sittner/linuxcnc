@@ -42,8 +42,8 @@ function addAllToWatch() {
           <td class="name">{{ pin.name }}</td>
           <td class="value">{{ pin.value }}</td>
           <td class="type">{{ pin.type }}</td>
-          <td class="dir">{{ pin.dir }}</td>
-          <td class="signal">{{ pin.signal ?? '' }}</td>
+          <td class="dir">{{ pin.dir ?? '' }}</td>
+          <td class="signal">{{ pin.linked ? pin.signal : '' }}</td>
           <td class="action">
             <button @click="addToWatch(pin.name)" title="Add to watch">+W</button>
           </td>
