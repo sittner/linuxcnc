@@ -191,6 +191,8 @@ function onAutoScale() {
 }
 
 .vslider {
+  -webkit-appearance: slider-vertical;
+  appearance: slider-vertical;
   writing-mode: vertical-lr;
   direction: rtl; /* top = max, bottom = min */
   flex: 1;
