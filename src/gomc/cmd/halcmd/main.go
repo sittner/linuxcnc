@@ -594,11 +594,7 @@ func showThreads(pattern *string) error {
 		if t.Fp {
 			fp = " (FP)"
 		}
-		cpu := ""
-		if t.CpuId >= 0 {
-			cpu = fmt.Sprintf(" CPU=%d", t.CpuId)
-		}
-		fmt.Printf("%-30s  period=%d ns%s%s\n", t.Name, t.Period, fp, cpu)
+		fmt.Printf("%-30s  period=%d ns%s\n", t.Name, t.Period, fp)
 		for i, fn := range t.Functions {
 			fmt.Printf("  %3d %s\n", i+1, fn)
 		}

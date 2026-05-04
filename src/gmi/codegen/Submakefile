@@ -218,6 +218,16 @@ $(GMI_HALSHOW_TS_WS): $(GMI_HALCMD_IDL) $(GMICOMPILE_BIN)
 
 TARGETS += $(GMI_HALSHOW_TS) $(GMI_HALSHOW_TS_WS)
 
+# Go server-side dispatch (types + callbacks interface + dispatch functions)
+GMI_HALCMD_SERVER_GO := gomc/generated/gmi/halcmdapi/halcmd_server.go
+
+$(GMI_HALCMD_SERVER_GO): $(GMI_HALCMD_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI halcmd Go server dispatch from $(GMI_HALCMD_IDL)"
+	@mkdir -p $(dir $(GMI_HALCMD_SERVER_GO))
+	$(Q)$(GMICOMPILE) --server-go $(GMI_HALCMD_IDL) -o $(GMI_HALCMD_SERVER_GO)
+
+TARGETS += $(GMI_HALCMD_SERVER_GO)
+
 clean: gmi-codegen-clean
 .PHONY: gmi-codegen-clean
 gmi-codegen-clean:
