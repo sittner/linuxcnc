@@ -73,7 +73,7 @@ type Launcher struct {
 	logRing      *gomcLogRing       // shared log ring buffer for C module FIFO logging
 	retain       *retainInstance    // integrated retain subsystem (nil if unused)
 	apiServer    *apiserver.Server  // REST API server for halcmd and external tools
-	displayCmd   *exec.Cmd         // display process (set during startDisplay)
+	displayCmd   *exec.Cmd          // display process (set during startDisplay)
 	shutdownCh   chan struct{}      // closed by signal handler to unblock HAL-only wait
 }
 
