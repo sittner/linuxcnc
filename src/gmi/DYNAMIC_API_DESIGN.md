@@ -23,6 +23,7 @@ intended to replace NML with a modern, type-safe approach.
 | 5.7: Web App Infrastructure | ✅ Complete | — |
 | 5.8: Halscope (gomod + Vue Web UI) | ✅ Complete | — |
 | 5.9: Halshow (Vue Web UI, uses halcmd API) | ✅ Complete | — |
+| 5.10: Emccalib (gomod + Vue Web UI) | ❌ Not Started | — |
 | 6: Polish | ❌ Not Started | — |
 | 7: Remove Go Plugins | ✅ Complete | — |
 
@@ -2418,6 +2419,131 @@ Profile entry in `gmcui.c`:
 - [x] Backend enhanced: full pin/param/signal metadata in REST responses
 - [x] Watch panel: Set dialog, bit toggle, canSet() logic (hides for OUT/linked/RO)
 - [x] Node overview: child pin table, +W per pin, +Watch All
+
+### Step 5.10: Emccalib — Live Calibration Tuning (NOT STARTED)
+
+Replace the old Tcl emccalib (`tcl/bin/emccalib.tcl`) with a gomod + Vue 3 web UI
+that discovers tunable HAL parameters from INI/HAL file references, allows live
+tuning via HAL setp, and saves changes back to the correct INI file(s).
+
+**Previous Architecture (to be removed):**
+- `tcl/bin/emccalib.tcl` — Tcl/Tk GUI with BWidget NoteBook tabs
+- Direct `hal getp`/`hal setp` subprocess calls
+- Text-widget-based INI file manipulation for save-back
+- `emc_ini` calls for INI variable substitution in HAL pin names
+
+**New Architecture:**
+
+```
+  Vue emccalib (browser/gmcui)
+       │
+       └──── REST + WebSocket (/api/v1/emccalib/...)
+                    │
+              gomc-server
+                    │
+              internal/emccalib/ (gomod)
+                    │
+              ┌─────┴─────┐
+         pkg/inifile    internal HAL API
+       (with provenance)  (pin read/write)
+```
+
+**Design Decisions:**
+
+1. **Self-contained gomod** — emccalib owns discovery AND write-back. The inirest
+   module stays read-only. Write requests are validated against the discovered
+   tunable list — only discovered `{section, key}` pairs are writable.
+
+2. **Lifecycle-gated security** — if the emccalib gomod isn't loaded, no INI write
+   endpoints exist. Loaded via HAL `load` command like other gomods.
+
+3. **INI provenance tracking** — `pkg/inifile` enhanced with `SourceFile` and
+   `SourceLine` per `Entry`, so write-back targets the correct file when
+   `#INCLUDE` directives are used.
+
+4. **Build-time enable** — `./configure --enable-emccalib` (default: yes when Go
+   available), filtered via `@GOMOD:EMCCALIB@` in `packages.conf.in`.
+
+**IDL Definition (`gmi/idl/emccalib.gmi`):**
+
+```gmi
+@api emccalib
+@version 1
+@prefix "emccalib"
+@rest_export true
+
+type TunableItem {
+    section: string
+    key: string
+    hal_pin: string
+    value: f64
+    ini_value: f64
+}
+
+type TunableSection {
+    name: string
+    suffix: string
+    items: []TunableItem
+}
+
+@watch true
+@watch_default_rate 100ms
+func get_tunables() -> []TunableSection
+
+func set_pin(section: string, key: string, value: f64) -> bool
+
+func save_ini() -> bool
+
+func revert(section: string, key: string) -> bool
+```
+
+**Backend (`internal/emccalib/module.go`):**
+
+- `init()` registers `"emccalib"` with `gomc.RegisterModule()`
+- On load: reads INI via internal launcher API, scans HAL files from
+  `[HAL]HALFILE` / `POSTGUI_HALFILE` for `setp` commands referencing
+  `[SECTION]KEY` patterns, resolves INI substitutions, builds tunable list
+  with provenance (source file per entry)
+- `get_tunables()` — returns discovered sections with live HAL pin values
+  (watchable via WebSocket for real-time UI updates)
+- `set_pin()` — validates `{section, key}` against discovered list, calls
+  internal HAL setp API to apply value immediately
+- `save_ini()` — writes all changed values back to their respective source
+  files (respecting `#INCLUDE` provenance), creates `.bak` backup first
+- `revert()` — restores original INI value to the HAL pin
+
+**Convenience HAL file (`configs/common/emccalib.hal`):**
+
+```hal
+load emccalib
+```
+
+Users add `HALFILE = emccalib.hal` to their `[HAL]` section to enable.
+
+**INI Parser Enhancement (`pkg/inifile`):**
+
+- Add `SourceFile string` and `SourceLine int` fields to `Entry` struct
+- Populated during parse, including through `#INCLUDE` chains
+- Enables write-back to target the correct file
+
+**Vue Web App (`src/webapp/emccalib/`):**
+
+- Tabbed UI: sections as tabs (JOINT_0..N, AXIS_X..W, SPINDLE_0..N, etc.)
+- Per-item: INI name, current HAL value (live via WebSocket), entry field
+- Buttons: Test (apply to HAL), Revert (restore original), Save (write INI)
+- Generated TypeScript client from `emccalib.gmi`
+
+**Deliverables:**
+- [ ] `pkg/inifile` — provenance tracking (`SourceFile`, `SourceLine` per entry)
+- [ ] `gmi/idl/emccalib.gmi` — IDL definition
+- [ ] Generated dispatch: `gomc/generated/gmi/emccalib/` (server-go output)
+- [ ] Generated TypeScript client: `src/webapp/emccalib/src/generated/`
+- [ ] `internal/emccalib/module.go` — gomod implementation
+- [ ] `configs/common/emccalib.hal` — convenience HAL file
+- [ ] `src/webapp/emccalib/` — Vue 3 web app
+- [ ] Build integration: `configure.ac` (`--enable-emccalib`), `packages.conf.in`,
+      `Submakefile` rules
+- [ ] gmcui profile entry + `bin/emccalib` symlink
 - [x] halcmd console: parse+execute, history, color-coded output
 - [x] gmcui native container with halshow symlink
 - [x] AXIS menu integration (`exec halshow &`)
