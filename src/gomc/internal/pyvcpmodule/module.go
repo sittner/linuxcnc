@@ -17,15 +17,13 @@
 package pyvcpmodule
 
 import (
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
-	"unsafe"
 
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/pyvcpapi"
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
 	"github.com/sittner/linuxcnc/src/gomc/pkg/gomc"
 	"github.com/sittner/linuxcnc/src/gomc/pkg/hal"
@@ -36,29 +34,7 @@ func init() {
 	gomc.RegisterModule("pyvcp", newPyVCPModule)
 
 	// Register REST meta so the HTTP server knows about pyvcp routes.
-	apiserver.RegisterMeta(&apiserver.APIMeta{
-		Name:       "pyvcp",
-		Version:    1,
-		RESTExport: true,
-		Prefix:     "pyvcp",
-		Funcs: []apiserver.FuncMeta{
-			{
-				Name:     "list_panels",
-				Method:   "GET",
-				Path:     "/panels",
-				Dispatch: dispatchListPanels,
-			},
-			{
-				Name:     "get_panel",
-				Method:   "GET",
-				Path:     "/panel/{name}",
-				Dispatch: dispatchGetPanel,
-			},
-		},
-	})
-
-	// Register watch factory so WebSocket subscriptions work.
-	apiserver.RegisterWatchFactory("pyvcp", newPyVCPWatchAPI)
+	apiserver.RegisterMeta(pyvcpapi.PyvcpMeta)
 }
 
 // pyvcpModule implements gomc.Module for a PyVCP panel.
@@ -128,18 +104,18 @@ func newPyVCPModule(ini *inifile.IniFile, logger *slog.Logger, name string, args
 
 	// Register the API instance with the apiserver registry.
 	cb := &pyvcpCallbacks{panel: p, comp: comp}
-	if err := apiserver.DefaultRegistry().Register("pyvcp", 1, name, unsafe.Pointer(cb)); err != nil {
+	if err := pyvcpapi.RegisterPyvcpAPI(apiserver.DefaultRegistry(), name, cb); err != nil {
 		return nil, fmt.Errorf("pyvcp %q: api register: %w", name, err)
 	}
 
 	// Register WebSocket watch API.
-	// Ensure the default watch registry exists (may not be created yet
-	// if the REST server hasn't started).
 	if apiserver.DefaultWatchRegistry() == nil {
 		apiserver.SetDefaultWatchRegistry(apiserver.NewWatchRegistry())
 	}
-	watchAPI := newPyVCPWatchAPI(name, unsafe.Pointer(cb))
-	apiserver.DefaultWatchRegistry().Register(watchAPI)
+	pyvcpapi.RegisterPyvcpWatch(
+		apiserver.DefaultWatchRegistry(), name, cb,
+		pyvcpapi.PyvcpCommands(cb),
+	)
 
 	logger.Info("PyVCP panel initialized", "name", name, "pins", len(p.pins))
 
@@ -186,112 +162,56 @@ func (r *panelRegistry_) list() []string {
 }
 
 // pyvcpCallbacks holds the state for one panel's API callbacks.
+// Implements pyvcpapi.PyvcpCallbacks and pyvcpapi.PyvcpWatchCallbacks.
 type pyvcpCallbacks struct {
 	panel *panel
 	comp  *hal.Component
 }
 
-// --- REST dispatch functions ---
+// --- PyvcpCallbacks implementation (REST + WS commands) ---
 
-func dispatchListPanels(_ unsafe.Pointer, _ []byte) ([]byte, error) {
-	return json.Marshal(panelRegistry.list())
+func (cb *pyvcpCallbacks) ListPanels() ([]string, error) {
+	return panelRegistry.list(), nil
 }
 
-func dispatchGetPanel(_ unsafe.Pointer, req []byte) ([]byte, error) {
-	var params struct {
-		Name string `json:"name"`
-	}
-	if err := json.Unmarshal(req, &params); err != nil {
-		return nil, err
-	}
-	p := panelRegistry.get(params.Name)
+func (cb *pyvcpCallbacks) GetPanel(name string) (*pyvcpapi.PanelInfo, error) {
+	p := panelRegistry.get(name)
 	if p == nil {
-		return nil, fmt.Errorf("panel %q not found", params.Name)
+		return nil, fmt.Errorf("panel %q not found", name)
 	}
-	defs := make([]PinDef, len(p.pins))
+	defs := make([]pyvcpapi.PinDef, len(p.pins))
 	for i, pin := range p.pins {
-		defs[i] = PinDef{
+		defs[i] = pyvcpapi.PinDef{
 			Name:    pin.name,
-			HalType: pin.halType,
-			Dir:     pin.dir,
+			HalType: pyvcpapi.HalType(pin.halType),
+			Dir:     pyvcpapi.PinDir(pin.dir),
 		}
 	}
-	return json.Marshal(&PanelInfo{
+	return &pyvcpapi.PanelInfo{
 		Name: p.name,
-		XML:  p.xml,
+		Xml:  p.xml,
 		Pins: defs,
-	})
+	}, nil
 }
 
-// --- WebSocket watch API ---
-
-func newPyVCPWatchAPI(instance string, callbacks unsafe.Pointer) *apiserver.WatchAPI {
-	cb := (*pyvcpCallbacks)(callbacks)
-	return &apiserver.WatchAPI{
-		APIName:  "pyvcp",
-		Instance: instance,
-		Watches: []apiserver.WatchFuncMeta{
-			{
-				Name:        "watch_pins",
-				DefaultRate: 100 * time.Millisecond,
-				Watch: func() (json.RawMessage, error) {
-					values := make([]PinValue, len(cb.panel.pins))
-					for i, pin := range cb.panel.pins {
-						values[i] = PinValue{
-							Name:  pin.name,
-							Value: pin.readValue(),
-						}
-					}
-					return json.Marshal(values)
-				},
-			},
-		},
-		Commands: []apiserver.CommandMeta{
-			{
-				Name: "set_pin",
-				Handler: func(req json.RawMessage) (json.RawMessage, error) {
-					var args struct {
-						Panel string `json:"panel"`
-						Name  string `json:"name"`
-						Value string `json:"value"`
-					}
-					if err := json.Unmarshal(req, &args); err != nil {
-						return nil, err
-					}
-					for _, pin := range cb.panel.pins {
-						if pin.name == args.Name {
-							ok, err := pin.writeValue(args.Value)
-							if err != nil {
-								return nil, err
-							}
-							return json.Marshal(ok)
-						}
-					}
-					return nil, fmt.Errorf("pin %q not found", args.Name)
-				},
-			},
-		},
+func (cb *pyvcpCallbacks) SetPin(panel string, name string, value string) (bool, error) {
+	for _, pin := range cb.panel.pins {
+		if pin.name == name {
+			return pin.writeValue(value)
+		}
 	}
+	return false, fmt.Errorf("pin %q not found", name)
 }
 
-// --- Types matching the GMI IDL ---
+// --- PyvcpWatchCallbacks implementation (WS watch) ---
 
-// PinDef describes a HAL pin definition.
-type PinDef struct {
-	Name    string `json:"name"`
-	HalType int    `json:"hal_type"`
-	Dir     int    `json:"dir"`
-}
-
-// PinValue carries a pin name and its string-encoded value.
-type PinValue struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
-}
-
-// PanelInfo holds panel metadata for the REST response.
-type PanelInfo struct {
-	Name string   `json:"name"`
-	XML  string   `json:"xml"`
-	Pins []PinDef `json:"pins"`
+func (cb *pyvcpCallbacks) WatchPins() ([]pyvcpapi.PinValue, error) {
+	values := make([]pyvcpapi.PinValue, len(cb.panel.pins))
+	for i, pin := range cb.panel.pins {
+		values[i] = pyvcpapi.PinValue{
+			Name:  pin.name,
+			Value: pin.readValue(),
+		}
+	}
+	return values, nil
 }

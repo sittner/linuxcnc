@@ -150,7 +150,19 @@ $(GMI_INIT_DST): $(GMI_INIT_SRC)
 
 TARGETS += $(GMI_INIT_DST)
 
-# --- pyvcp REST/WS compat layer (hand-written, not generated) ---
+# --- pyvcp server-go + REST/WS compat layer ---
+
+GMI_PYVCP_IDL := gmi/idl/pyvcp.gmi
+
+# Go server dispatch + types
+GMI_PYVCP_SERVER_GO := gomc/generated/gmi/pyvcpapi/pyvcp_server.go
+
+$(GMI_PYVCP_SERVER_GO): $(GMI_PYVCP_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI pyvcp Go server from $(GMI_PYVCP_IDL)"
+	@mkdir -p $(dir $(GMI_PYVCP_SERVER_GO))
+	$(Q)$(GMICOMPILE) --server-go $(GMI_PYVCP_IDL) -o $(GMI_PYVCP_SERVER_GO)
+
+TARGETS += $(GMI_PYVCP_SERVER_GO)
 
 GMI_PYVCP_COMPAT_SRC := gmi/python/pyvcp_compat.py
 GMI_PYVCP_COMPAT_DST := ../lib/python/gmi/pyvcp_compat.py

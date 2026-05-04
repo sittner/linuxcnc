@@ -79,7 +79,6 @@ import (
 	"path/filepath"
 	"sync"
 	"sync/atomic"
-	"time"
 	"unsafe"
 
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/halscopeapi"
@@ -228,35 +227,21 @@ func (m *halscope) registerREST(reg *apiserver.Registry, instance string) {
 }
 
 func (m *halscope) registerWatch(wreg *apiserver.WatchRegistry, instance string) {
-	wreg.Register(&apiserver.WatchAPI{
-		APIName:  "halscope",
-		Instance: instance,
-		Watches: []apiserver.WatchFuncMeta{
-			{
-				Name:        "watch_state",
-				DefaultRate: 100 * time.Millisecond,
-				Watch:       m.watchState,
-			},
-			{
-				Name:        "watch_samples",
-				DefaultRate: 100 * time.Millisecond,
-				BinaryWatch: m.watchSamples,
-			},
-		},
-		Commands: nil,
-	})
+	halscopeapi.RegisterHalscopeWatch(wreg, instance, m, nil)
 }
 
 // ------------------------------------------------------------------ //
-//                     WATCH FUNCTIONS                                  //
+//                     HalscopeWatchCallbacks IMPLEMENTATION            //
 // ------------------------------------------------------------------ //
 
-func (m *halscope) watchState() (json.RawMessage, error) {
+// WatchState implements halscopeapi.HalscopeWatchCallbacks.
+func (m *halscope) WatchState() (*halscopeapi.ScopeStatus, error) {
 	st := m.getStatus()
-	return json.Marshal(st)
+	return &st, nil
 }
 
-func (m *halscope) watchSamples() ([]byte, uint64, error) {
+// WatchSamples implements halscopeapi.HalscopeWatchCallbacks.
+func (m *halscope) WatchSamples() ([]byte, uint64, error) {
 	s := m.s
 
 	db := int(C.halscope_atomic_load_int((*C.int)(unsafe.Pointer(&s.done_buf)), C.memory_order_acquire))

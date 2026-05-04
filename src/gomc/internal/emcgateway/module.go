@@ -102,11 +102,16 @@ func newEmcGateway(ini *inifile.IniFile, logger *slog.Logger, name string, args 
 	if apiserver.DefaultWatchRegistry() == nil {
 		apiserver.SetDefaultWatchRegistry(apiserver.NewWatchRegistry())
 	}
-	apiserver.DefaultWatchRegistry().Register(newStatWatchAPI(gw))
-	apiserver.DefaultWatchRegistry().Register(newErrorWatchAPI(gw))
+	wreg := apiserver.DefaultWatchRegistry()
+	wreg.Register(newStatWatchAPI(gw))
+	emcerrorapi.RegisterEmcerrorWatch(wreg, "emcerror", gw, nil)
 
 	// Register command handlers on the watch WebSocket too.
-	apiserver.DefaultWatchRegistry().Register(newCmdWatchAPI(gw))
+	wreg.Register(&apiserver.WatchAPI{
+		APIName:  "emccmd",
+		Instance: "emccmd",
+		Commands: emccmdapi.EmccmdCommands(gw),
+	})
 
 	logger.Info("NML gateway initialized")
 	return gw, nil
@@ -165,29 +170,7 @@ func (gw *emcGateway) GetStat() (*emcstatapi.StatFull, error) {
 	return convertStat(&cstat), nil
 }
 
-// ─── Error Watch ───
-
-func newErrorWatchAPI(gw *emcGateway) *apiserver.WatchAPI {
-	return &apiserver.WatchAPI{
-		APIName:  "emcerror",
-		Instance: "emcerror",
-		Watches: []apiserver.WatchFuncMeta{
-			{
-				Name:        "get_errors",
-				DefaultRate: 200 * time.Millisecond,
-				Watch:       func() (json.RawMessage, error) { return gw.pollErrors() },
-			},
-		},
-	}
-}
-
-func (gw *emcGateway) pollErrors() (json.RawMessage, error) {
-	msgs, err := gw.GetErrors()
-	if err != nil {
-		return nil, err
-	}
-	return json.Marshal(msgs)
-}
+// ─── Error Watch (generated via emcerrorapi.RegisterEmcerrorWatch) ───
 
 // GetErrors implements emcerrorapi.EmcerrorCallbacks.
 func (gw *emcGateway) GetErrors() ([]emcerrorapi.ErrorMessage, error) {
@@ -213,26 +196,4 @@ func (gw *emcGateway) GetErrors() ([]emcerrorapi.ErrorMessage, error) {
 
 // ─── Command WebSocket ───
 
-// newCmdWatchAPI builds a WatchAPI for emccmd WebSocket commands by reusing
-// the generated Meta's dispatch functions. Each dispatch function handles
-// JSON unmarshal → typed call → JSON marshal.
-func newCmdWatchAPI(gw *emcGateway) *apiserver.WatchAPI {
-	var impl emccmdapi.EmccmdCallbacks = gw
-	cbPtr := unsafe.Pointer(&impl)
-
-	cmds := make([]apiserver.CommandMeta, len(emccmdapi.EmccmdMeta.Funcs))
-	for i, f := range emccmdapi.EmccmdMeta.Funcs {
-		dispatch := f.Dispatch
-		cmds[i] = apiserver.CommandMeta{
-			Name: f.Name,
-			Handler: func(req json.RawMessage) (json.RawMessage, error) {
-				return dispatch(cbPtr, []byte(req))
-			},
-		}
-	}
-	return &apiserver.WatchAPI{
-		APIName:  "emccmd",
-		Instance: "emccmd",
-		Commands: cmds,
-	}
-}
+// (emccmd commands generated via emccmdapi.EmccmdCommands)
