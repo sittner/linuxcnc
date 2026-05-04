@@ -362,8 +362,11 @@ func TestParamInfoFields(t *testing.T) {
 // TestFunctInfoFields verifies that FunctInfo has the expected fields.
 func TestFunctInfoFields(t *testing.T) {
 	fi := halcmd.FunctInfo{
-		Name:  "mycomp.update",
-		Owner: "mycomp",
+		Name:    "mycomp.update",
+		Owner:   "mycomp",
+		Users:   1,
+		FP:      true,
+		MaxTime: 12345,
 	}
 	_ = fi
 }
@@ -373,6 +376,7 @@ func TestThreadInfoFields(t *testing.T) {
 	ti := halcmd.ThreadInfo{
 		Name:    "servo-thread",
 		Period:  1000000,
+		FP:      true,
 		Functs:  []string{"mycomp.update"},
 		Running: false,
 	}

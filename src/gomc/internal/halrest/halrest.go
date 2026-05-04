@@ -314,8 +314,11 @@ func dispatchListFunctions(_ unsafe.Pointer, body []byte) ([]byte, error) {
 	out := make([]functionInfo, 0, len(result.Functs))
 	for _, f := range result.Functs {
 		out = append(out, functionInfo{
-			Name:  f.Name,
-			Owner: f.Owner,
+			Name:    f.Name,
+			Owner:   f.Owner,
+			Users:   f.Users,
+			Runtime: f.MaxTime,
+			Fp:      f.FP,
 		})
 	}
 	return json.Marshal(out)
@@ -343,6 +346,7 @@ func dispatchListThreads(_ unsafe.Pointer, body []byte) ([]byte, error) {
 		out = append(out, threadInfo{
 			Name:      t.Name,
 			Period:    t.Period,
+			Fp:        t.FP,
 			CpuId:     -1,
 			Functions: t.Functs,
 		})

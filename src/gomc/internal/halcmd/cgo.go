@@ -1385,12 +1385,15 @@ typedef struct {
     char name[HAL_NAME_LEN + 1];
     char owner[HAL_NAME_LEN + 1];
     int  users;
+    int  fp;
+    long maxtime;
 } hal_shim_funct_info_t;
 
 typedef struct {
     char name[HAL_NAME_LEN + 1];
     long period;   // period in nanoseconds
     int  running;  // non-zero if threads are started
+    int  fp;
     int  nfuncts;
     char funct_names[HAL_SHIM_MAX_TH_FNCTS][HAL_NAME_LEN + 1];
 } hal_shim_thread_info_t;
@@ -1571,6 +1574,8 @@ static int hal_shim_show_functs(const char *pattern, hal_shim_funct_info_t *arr,
             }
             snprintf(arr[count].name, sizeof(arr[count].name), "%s", funct->name);
             arr[count].users = funct->users;
+            arr[count].fp = funct->uses_fp;
+            arr[count].maxtime = (long)funct->maxtime;
             if (funct->owner_ptr != 0) {
                 comp = (hal_comp_t *)SHMPTR(funct->owner_ptr);
                 snprintf(arr[count].owner, sizeof(arr[count].owner), "%s", comp->name);
@@ -1608,6 +1613,7 @@ static int hal_shim_show_threads(const char *pattern, hal_shim_thread_info_t *ar
             snprintf(arr[count].name, sizeof(arr[count].name), "%s", tptr->name);
             arr[count].period  = tptr->period;
             arr[count].running = hal_data->threads_running;
+            arr[count].fp      = tptr->uses_fp;
             arr[count].nfuncts = 0;
 
             list_root  = &(tptr->funct_list);
@@ -2662,8 +2668,11 @@ func halShowFuncts(pattern string) ([]FunctInfo, error) {
 		result := make([]FunctInfo, int(n))
 		for i := range result {
 			result[i] = FunctInfo{
-				Name:  C.GoString(&arr[i].name[0]),
-				Owner: C.GoString(&arr[i].owner[0]),
+				Name:    C.GoString(&arr[i].name[0]),
+				Owner:   C.GoString(&arr[i].owner[0]),
+				Users:   int32(arr[i].users),
+				FP:      arr[i].fp != 0,
+				MaxTime: int64(arr[i].maxtime),
 			}
 		}
 		return result, nil
@@ -2698,6 +2707,7 @@ func halShowThreads(pattern string) ([]ThreadInfo, error) {
 			result[i] = ThreadInfo{
 				Name:    C.GoString(&arr[i].name[0]),
 				Period:  int64(arr[i].period),
+				FP:      arr[i].fp != 0,
 				Running: arr[i].running != 0,
 				Functs:  functs,
 			}

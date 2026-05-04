@@ -508,14 +508,18 @@ type SigInfo struct {
 
 // FunctInfo holds all attributes of a HAL realtime function.
 type FunctInfo struct {
-	Name  string `json:"name"`
-	Owner string `json:"owner"`
+	Name    string `json:"name"`
+	Owner   string `json:"owner"`
+	Users   int32  `json:"users"`
+	FP      bool   `json:"fp"`
+	MaxTime int64  `json:"maxtime_ns"`
 }
 
 // ThreadInfo holds all attributes of a HAL thread.
 type ThreadInfo struct {
 	Name    string   `json:"name"`
 	Period  int64    `json:"period_ns"`
+	FP      bool     `json:"fp"`
 	Functs  []string `json:"functs"`
 	Running bool     `json:"running"`
 }
