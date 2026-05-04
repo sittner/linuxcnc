@@ -128,6 +128,9 @@ func (g *serverGoGen) emitCallbacksInterface() {
 	g.printf("// %s defines the API methods that modules must implement.\n", ifaceName)
 	g.printf("type %s interface {\n", ifaceName)
 	for _, fn := range g.api.Funcs {
+		if fn.Method == "" {
+			continue // watch-only function, no REST dispatch
+		}
 		methodName := toPascalCase(fn.Name)
 		params := g.goMethodParams(fn)
 		ret := g.goMethodReturn(fn)
@@ -170,6 +173,9 @@ func (g *serverGoGen) emitDispatchFuncs() {
 	ifaceName := toPascalCase(g.api.Name) + "Callbacks"
 
 	for _, fn := range g.api.Funcs {
+		if fn.Method == "" {
+			continue // watch-only function, no REST dispatch
+		}
 		dispatchName := g.api.Name + "Dispatch" + toPascalCase(fn.Name)
 		g.printf("func %s(callbacks unsafe.Pointer, req []byte) ([]byte, error) {\n", dispatchName)
 		g.printf("\timpl := *(*%s)(callbacks)\n", ifaceName)
@@ -228,6 +234,9 @@ func (g *serverGoGen) emitMeta() {
 	g.printf("\tPrefix:     %q,\n", g.api.Prefix)
 	g.printf("\tFuncs: []apiserver.FuncMeta{\n")
 	for _, fn := range g.api.Funcs {
+		if fn.Method == "" {
+			continue // watch-only function, no REST dispatch
+		}
 		dispatchName := g.api.Name + "Dispatch" + toPascalCase(fn.Name)
 		g.printf("\t\t{\n")
 		g.printf("\t\t\tName:     %q,\n", fn.Name)

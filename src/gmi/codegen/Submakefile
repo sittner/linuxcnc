@@ -174,9 +174,19 @@ GMI_PY_NML_DSTS := $(addprefix ../lib/python/gmi/,$(GMI_PY_NML_SRCS))
 
 TARGETS += $(GMI_PY_NML_DSTS)
 
-# --- halscope API (TypeScript clients only; server dispatch is in gomod) ---
+# --- halscope API (server-go + TypeScript clients) ---
 
 GMI_HALSCOPE_IDL := gmi/idl/halscope.gmi
+
+# Go server dispatch + types
+GMI_HALSCOPE_SERVER_GO := gomc/generated/gmi/halscopeapi/halscope_server.go
+
+$(GMI_HALSCOPE_SERVER_GO): $(GMI_HALSCOPE_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI halscope Go server from $(GMI_HALSCOPE_IDL)"
+	@mkdir -p $(dir $(GMI_HALSCOPE_SERVER_GO))
+	$(Q)$(GMICOMPILE) --server-go $(GMI_HALSCOPE_IDL) -o $(GMI_HALSCOPE_SERVER_GO)
+
+TARGETS += $(GMI_HALSCOPE_SERVER_GO)
 
 # TypeScript REST client
 GMI_HALSCOPE_TS := webapp/halscope/src/generated/halscope_client.ts

@@ -82,6 +82,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/halscopeapi"
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
 	"github.com/sittner/linuxcnc/src/gomc/pkg/gomc"
 	"github.com/sittner/linuxcnc/src/gomc/pkg/inifile"
@@ -89,7 +90,7 @@ import (
 
 func init() {
 	gomc.RegisterModule("halscope", newHalscope)
-	registerHalscopeMeta()
+	apiserver.RegisterMeta(halscopeapi.HalscopeMeta)
 }
 
 // halscope implements gomc.Module.
@@ -221,64 +222,9 @@ func (m *halscope) Destroy() {
 // ------------------------------------------------------------------ //
 
 func (m *halscope) registerREST(reg *apiserver.Registry, instance string) {
-	if err := reg.Register("halscope", 1, instance, unsafe.Pointer(m)); err != nil {
+	if err := halscopeapi.RegisterHalscopeAPI(reg, instance, m); err != nil {
 		m.logger.Error("halscope: register REST API failed", "err", err)
 	}
-}
-
-func registerHalscopeMeta() {
-	apiserver.RegisterMeta(&apiserver.APIMeta{
-		Name:       "halscope",
-		Version:    1,
-		RESTExport: true,
-		Prefix:     "halscope",
-		Funcs: []apiserver.FuncMeta{
-			{Name: "list_threads", Method: "GET", Path: "/threads",
-				Dispatch: func(cb unsafe.Pointer, req []byte) ([]byte, error) {
-					return (*halscope)(cb).dispatchListThreads(req)
-				}},
-			{Name: "configure", Method: "POST", Path: "/configure",
-				Dispatch: func(cb unsafe.Pointer, req []byte) ([]byte, error) {
-					return (*halscope)(cb).dispatchConfigure(req)
-				}},
-			{Name: "set_channel", Method: "POST", Path: "/channel",
-				Dispatch: func(cb unsafe.Pointer, req []byte) ([]byte, error) {
-					return (*halscope)(cb).dispatchSetChannel(req)
-				}},
-			{Name: "clear_channel", Method: "DELETE", Path: "/channel/{channel}",
-				Dispatch: func(cb unsafe.Pointer, req []byte) ([]byte, error) {
-					return (*halscope)(cb).dispatchClearChannel(req)
-				}},
-			{Name: "set_trigger", Method: "POST", Path: "/trigger",
-				Dispatch: func(cb unsafe.Pointer, req []byte) ([]byte, error) {
-					return (*halscope)(cb).dispatchSetTrigger(req)
-				}},
-			{Name: "arm", Method: "POST", Path: "/arm",
-				Dispatch: func(cb unsafe.Pointer, req []byte) ([]byte, error) {
-					return (*halscope)(cb).dispatchArm(req)
-				}},
-			{Name: "force_trigger", Method: "POST", Path: "/force_trigger",
-				Dispatch: func(cb unsafe.Pointer, req []byte) ([]byte, error) {
-					return (*halscope)(cb).dispatchForceTrigger(req)
-				}},
-			{Name: "set_continuous", Method: "POST", Path: "/set_continuous",
-				Dispatch: func(cb unsafe.Pointer, req []byte) ([]byte, error) {
-					return (*halscope)(cb).dispatchSetContinuous(req)
-				}},
-			{Name: "reset", Method: "POST", Path: "/reset",
-				Dispatch: func(cb unsafe.Pointer, req []byte) ([]byte, error) {
-					return (*halscope)(cb).dispatchReset(req)
-				}},
-			{Name: "get_status", Method: "GET", Path: "/status",
-				Dispatch: func(cb unsafe.Pointer, req []byte) ([]byte, error) {
-					return (*halscope)(cb).dispatchGetStatus(req)
-				}},
-			{Name: "list_pins", Method: "GET", Path: "/pins",
-				Dispatch: func(cb unsafe.Pointer, req []byte) ([]byte, error) {
-					return (*halscope)(cb).dispatchListPins(req)
-				}},
-		},
-	})
 }
 
 func (m *halscope) registerWatch(wreg *apiserver.WatchRegistry, instance string) {
@@ -361,56 +307,37 @@ func (m *halscope) watchSamples() ([]byte, uint64, error) {
 }
 
 // ------------------------------------------------------------------ //
-//                     DISPATCH FUNCTIONS                               //
+//                     HalscopeCallbacks IMPLEMENTATION                 //
 // ------------------------------------------------------------------ //
 
-func (m *halscope) dispatchListThreads(_ []byte) ([]byte, error) {
-	type threadInfo struct {
-		Name     string `json:"name"`
-		PeriodNs int64  `json:"periodNs"`
-	}
-
-	var threads []threadInfo
+func (m *halscope) ListThreads() ([]halscopeapi.ThreadInfo, error) {
+	var threads []halscopeapi.ThreadInfo
 	next := C.get_hal_data().thread_list_ptr
 	for next != 0 {
 		t := C.shmptr_thread(next)
-		threads = append(threads, threadInfo{
+		threads = append(threads, halscopeapi.ThreadInfo{
 			Name:     C.GoString(&t.name[0]),
 			PeriodNs: int64(t.period),
 		})
 		next = t.next_ptr
 	}
-	return json.Marshal(threads)
+	return threads, nil
 }
 
-func (m *halscope) dispatchConfigure(req []byte) ([]byte, error) {
-	var params struct {
-		Config struct {
-			ThreadName       string `json:"threadName"`
-			MaxChannels      int    `json:"maxChannels"`
-			SamplePeriodMult int    `json:"samplePeriodMult"`
-			PreTrig          int    `json:"preTrig"`
-		} `json:"config"`
-	}
-	if err := json.Unmarshal(req, &params); err != nil {
-		return nil, fmt.Errorf("invalid params: %w", err)
-	}
-
+func (m *halscope) Configure(config halscopeapi.CaptureConfig) (int32, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	s := m.s
 	state := C.halscope_atomic_load_state((*C.halscope_state_t)(unsafe.Pointer(&s.state)), C.memory_order_acquire)
 	if state != C.HALSCOPE_ST_IDLE && state != C.HALSCOPE_ST_DONE {
-		return json.Marshal(-int(C.EBUSY))
+		return -int32(C.EBUSY), nil
 	}
 
-	cfg := params.Config
-
 	// Handle thread (re-)assignment.
-	if cfg.ThreadName != "" {
+	if config.ThreadName != "" {
 		currentThread := C.GoString(&s.thread_name[0])
-		if currentThread != "" && currentThread != cfg.ThreadName {
+		if currentThread != "" && currentThread != config.ThreadName {
 			ct := C.CString(currentThread)
 			cf := C.CString(m.functName)
 			C.hal_del_funct_from_thread(cf, ct)
@@ -418,24 +345,24 @@ func (m *halscope) dispatchConfigure(req []byte) ([]byte, error) {
 			C.free(unsafe.Pointer(cf))
 			s.thread_name[0] = 0
 		}
-		if C.GoString(&s.thread_name[0]) != cfg.ThreadName {
+		if C.GoString(&s.thread_name[0]) != config.ThreadName {
 			cf := C.CString(m.functName)
-			ct := C.CString(cfg.ThreadName)
+			ct := C.CString(config.ThreadName)
 			rv := C.hal_add_funct_to_thread(cf, ct, -1)
 			C.free(unsafe.Pointer(cf))
 			C.free(unsafe.Pointer(ct))
 			if rv != 0 {
-				return json.Marshal(int(rv))
+				return int32(rv), nil
 			}
-			cName := C.CString(cfg.ThreadName)
+			cName := C.CString(config.ThreadName)
 			C.strncpy(&s.thread_name[0], cName, C.size_t(C.HAL_NAME_LEN))
 			C.free(unsafe.Pointer(cName))
 		}
 	}
 
 	// Set max_channels and derive rec_len from buffer size.
-	if cfg.MaxChannels > 0 {
-		mc := cfg.MaxChannels
+	if config.MaxChannels > 0 {
+		mc := int(config.MaxChannels)
 		// Snap to valid values: 1, 2, 4, 8, 16
 		if mc > 16 {
 			mc = 16
@@ -452,30 +379,19 @@ func (m *halscope) dispatchConfigure(req []byte) ([]byte, error) {
 		s.rec_len = s.num_samples / s.max_channels
 	}
 
-	if cfg.SamplePeriodMult > 0 {
-		s.mult = C.int(cfg.SamplePeriodMult)
+	if config.SamplePeriodMult > 0 {
+		s.mult = C.int(config.SamplePeriodMult)
 	}
 	// Always center trigger at midpoint of buffer (matches original halscope)
 	s.pre_trig = s.rec_len / 2
 
 	go m.saveState()
-	return json.Marshal(0)
+	return 0, nil
 }
 
-func (m *halscope) dispatchSetChannel(req []byte) ([]byte, error) {
-	var params struct {
-		Ch struct {
-			Channel int    `json:"channel"`
-			PinName string `json:"pinName"`
-		} `json:"ch"`
-	}
-	if err := json.Unmarshal(req, &params); err != nil {
-		return nil, fmt.Errorf("invalid params: %w", err)
-	}
-
-	ch := params.Ch
+func (m *halscope) SetChannel(ch halscopeapi.ChannelConfig) (int32, error) {
 	if ch.Channel < 0 || ch.Channel >= C.HALSCOPE_MAX_CHANNELS {
-		return json.Marshal(-int(C.EINVAL))
+		return -int32(C.EINVAL), nil
 	}
 
 	m.mu.Lock()
@@ -484,8 +400,8 @@ func (m *halscope) dispatchSetChannel(req []byte) ([]byte, error) {
 	s := m.s
 
 	// Enforce max_channels limit — channel index must be < max_channels.
-	if ch.Channel >= int(s.max_channels) {
-		return json.Marshal(-int(C.EINVAL))
+	if ch.Channel >= int32(s.max_channels) {
+		return -int32(C.EINVAL), nil
 	}
 
 	// Resolve HAL name.
@@ -497,7 +413,7 @@ func (m *halscope) dispatchSetChannel(req []byte) ([]byte, error) {
 
 	rv := m.resolveHALName(cName, &halType, &dataLen, &dataAddr)
 	if rv != 0 {
-		return json.Marshal(int(rv))
+		return int32(rv), nil
 	}
 
 	c := &s.channels[ch.Channel]
@@ -514,171 +430,135 @@ func (m *halscope) dispatchSetChannel(req []byte) ([]byte, error) {
 	}
 
 	go m.saveState()
-	return json.Marshal(0)
+	return 0, nil
 }
 
-func (m *halscope) dispatchClearChannel(req []byte) ([]byte, error) {
-	var params struct {
-		Channel int `json:"channel"`
-	}
-	if err := json.Unmarshal(req, &params); err != nil {
-		return nil, fmt.Errorf("invalid params: %w", err)
-	}
-
-	if params.Channel < 0 || params.Channel >= C.HALSCOPE_MAX_CHANNELS {
-		return json.Marshal(-int(C.EINVAL))
+func (m *halscope) ClearChannel(channel int32) (int32, error) {
+	if channel < 0 || channel >= C.HALSCOPE_MAX_CHANNELS {
+		return -int32(C.EINVAL), nil
 	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	C.memset(unsafe.Pointer(&m.s.channels[params.Channel]), 0,
+	C.memset(unsafe.Pointer(&m.s.channels[channel]), 0,
 		C.size_t(unsafe.Sizeof(m.s.channels[0])))
 
 	go m.saveState()
-	return json.Marshal(0)
+	return 0, nil
 }
 
-func (m *halscope) dispatchSetTrigger(req []byte) ([]byte, error) {
-	var params struct {
-		Trig struct {
-			Channel  int     `json:"channel"`
-			Level    float64 `json:"level"`
-			Edge     int     `json:"edge"`
-			AutoTrig bool    `json:"autoTrig"`
-		} `json:"trig"`
-	}
-	if err := json.Unmarshal(req, &params); err != nil {
-		return nil, fmt.Errorf("invalid params: %w", err)
-	}
-
-	t := params.Trig
-	if t.Channel < -1 || t.Channel >= C.HALSCOPE_MAX_CHANNELS {
-		return json.Marshal(-int(C.EINVAL))
+func (m *halscope) SetTrigger(trig halscopeapi.TriggerConfig) (int32, error) {
+	if trig.Channel < -1 || trig.Channel >= C.HALSCOPE_MAX_CHANNELS {
+		return -int32(C.EINVAL), nil
 	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	s := m.s
-	s.trig.channel = C.int(t.Channel)
+	s.trig.channel = C.int(trig.Channel)
 
 	// Store level in the correct union member for the trigger channel's type.
-	// For HAL_FLOAT, store as ireal_t for IEEE-754 bit comparison in RT.
-	// For S32/U32, store as integer so the RT comparison reads the right value.
-	if t.Channel >= 0 && t.Channel < C.HALSCOPE_MAX_CHANNELS {
-		switch s.channels[t.Channel].data_type {
+	if trig.Channel >= 0 && trig.Channel < C.HALSCOPE_MAX_CHANNELS {
+		switch s.channels[trig.Channel].data_type {
 		case C.HAL_S32:
-			C.set_trigger_level_s32(&s.trig.level, C.int32_t(t.Level))
+			C.set_trigger_level_s32(&s.trig.level, C.int32_t(trig.Level))
 		case C.HAL_U32:
-			C.set_trigger_level_u32(&s.trig.level, C.uint32_t(t.Level))
+			C.set_trigger_level_u32(&s.trig.level, C.uint32_t(trig.Level))
 		default:
-			C.set_trigger_level(&s.trig.level, C.double(t.Level))
+			C.set_trigger_level(&s.trig.level, C.double(trig.Level))
 		}
 	} else {
-		C.set_trigger_level(&s.trig.level, C.double(t.Level))
+		C.set_trigger_level(&s.trig.level, C.double(trig.Level))
 	}
 
-	if t.Edge == 1 {
+	if trig.Edge == halscopeapi.TrigEdge_RISING {
 		s.trig.edge = 1
 	} else {
 		s.trig.edge = 0
 	}
-	if t.AutoTrig {
+	if trig.AutoTrig {
 		s.trig.auto_trig = 1
 	} else {
 		s.trig.auto_trig = 0
 	}
 
 	go m.saveState()
-	return json.Marshal(0)
+	return 0, nil
 }
 
-func (m *halscope) dispatchArm(_ []byte) ([]byte, error) {
+func (m *halscope) Arm() (int32, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	s := m.s
 	state := C.halscope_atomic_load_state((*C.halscope_state_t)(unsafe.Pointer(&s.state)), C.memory_order_acquire)
 	if state != C.HALSCOPE_ST_IDLE && state != C.HALSCOPE_ST_DONE {
-		return json.Marshal(-int(C.EBUSY))
+		return -int32(C.EBUSY), nil
 	}
 	if s.max_channels == 0 || s.rec_len == 0 {
-		return json.Marshal(-int(C.EINVAL))
+		return -int32(C.EINVAL), nil
 	}
 	if s.thread_name[0] == 0 {
-		return json.Marshal(-int(C.EINVAL))
+		return -int32(C.EINVAL), nil
 	}
 
 	C.halscope_atomic_store_state((*C.halscope_state_t)(unsafe.Pointer(&s.state)), C.HALSCOPE_ST_INIT, C.memory_order_release)
-	return json.Marshal(0)
+	return 0, nil
 }
 
-func (m *halscope) dispatchForceTrigger(_ []byte) ([]byte, error) {
+func (m *halscope) ForceTrigger() (int32, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	state := C.halscope_atomic_load_state((*C.halscope_state_t)(unsafe.Pointer(&m.s.state)), C.memory_order_acquire)
 	if state != C.HALSCOPE_ST_PRE_TRIG && state != C.HALSCOPE_ST_TRIG_WAIT {
-		return json.Marshal(-int(C.EINVAL))
+		return -int32(C.EINVAL), nil
 	}
 	m.s.trig.force = 1
-	return json.Marshal(0)
+	return 0, nil
 }
 
-func (m *halscope) dispatchSetContinuous(req []byte) ([]byte, error) {
-	var params struct {
-		Enabled bool `json:"enabled"`
-	}
-	if err := json.Unmarshal(req, &params); err != nil {
-		return nil, fmt.Errorf("invalid params: %w", err)
-	}
-
+func (m *halscope) SetContinuous(enabled bool) (int32, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if params.Enabled {
+	if enabled {
 		C.halscope_atomic_store_int((*C.int)(unsafe.Pointer(&m.s.continuous)), 1, C.memory_order_release)
 	} else {
 		C.halscope_atomic_store_int((*C.int)(unsafe.Pointer(&m.s.continuous)), 0, C.memory_order_release)
 	}
 
 	go m.saveState()
-	return json.Marshal(0)
+	return 0, nil
 }
 
-func (m *halscope) dispatchReset(_ []byte) ([]byte, error) {
+func (m *halscope) Reset() (int32, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	C.halscope_atomic_store_int((*C.int)(unsafe.Pointer(&m.s.continuous)), 0, C.memory_order_release)
 	C.halscope_atomic_store_state((*C.halscope_state_t)(unsafe.Pointer(&m.s.state)), C.HALSCOPE_ST_RESET, C.memory_order_release)
-	return json.Marshal(0)
+	return 0, nil
 }
 
-func (m *halscope) dispatchGetStatus(_ []byte) ([]byte, error) {
-	return json.Marshal(m.getStatus())
+func (m *halscope) GetStatus() (*halscopeapi.ScopeStatus, error) {
+	st := m.getStatus()
+	return &st, nil
 }
 
-func (m *halscope) dispatchListPins(req []byte) ([]byte, error) {
-	var params struct {
-		Pattern string `json:"pattern"`
-		Kind    string `json:"kind"`
-	}
-	if len(req) > 0 {
-		json.Unmarshal(req, &params)
-	}
-
-	match := params.Pattern
+func (m *halscope) ListPins(pattern string, kind string) ([]string, error) {
+	match := pattern
 	if match == "" {
 		match = "*"
 	}
 	cMatch := C.CString(match)
 	defer C.free(unsafe.Pointer(cMatch))
 
-	wantPins := params.Kind == "" || params.Kind == "pin"
-	wantSigs := params.Kind == "" || params.Kind == "sig"
-	wantParams := params.Kind == "" || params.Kind == "param"
+	wantPins := kind == "" || kind == "pin"
+	wantSigs := kind == "" || kind == "sig"
+	wantParams := kind == "" || kind == "param"
 
 	names := make([]string, 0)
 
@@ -717,7 +597,7 @@ func (m *halscope) dispatchListPins(req []byte) ([]byte, error) {
 
 	C.rtapi_mutex_give(&C.get_hal_data().mutex)
 
-	return json.Marshal(names)
+	return names, nil
 }
 
 // ------------------------------------------------------------------ //
@@ -727,56 +607,24 @@ func (m *halscope) dispatchListPins(req []byte) ([]byte, error) {
 // halscope_state_t alias for readability in Go.
 type halscope_state_t = C.halscope_state_t
 
-type scopeStatus struct {
-	State            int             `json:"state"`
-	Samples          int             `json:"samples"`
-	RecLen           int             `json:"recLen"`
-	PreTrig          int             `json:"preTrig"`
-	SampleLen        int             `json:"sampleLen"`
-	MaxChannels      int             `json:"maxChannels"`
-	SamplePeriodMult int             `json:"samplePeriodMult"`
-	ThreadPeriodNs   int64           `json:"threadPeriodNs"`
-	ThreadName       string          `json:"threadName"`
-	TrigChannel      int             `json:"trigChannel"`
-	TrigLevel        float64         `json:"trigLevel"`
-	TrigEdge         int             `json:"trigEdge"`
-	TrigAutoTrig     bool            `json:"trigAutoTrig"`
-	Generation       uint32          `json:"generation"`
-	Continuous       bool            `json:"continuous"`
-	Channels         []channelInfo   `json:"channels"`
-	ChannelOptions   []channelOption `json:"channelOptions"`
-}
-
-type channelOption struct {
-	MaxChannels int `json:"maxChannels"`
-	RecLen      int `json:"recLen"`
-}
-
-type channelInfo struct {
-	Channel  int    `json:"channel"`
-	PinName  string `json:"pinName"`
-	DataType int    `json:"dataType"`
-	Enabled  bool   `json:"enabled"`
-}
-
-func (m *halscope) getStatus() scopeStatus {
+func (m *halscope) getStatus() halscopeapi.ScopeStatus {
 	s := m.s
-	numSamples := int(s.num_samples)
-	st := scopeStatus{
-		State:            int(C.halscope_atomic_load_state((*C.halscope_state_t)(unsafe.Pointer(&s.state)), C.memory_order_acquire)),
-		Samples:          int(s.samples),
-		RecLen:           int(s.rec_len),
-		PreTrig:          int(s.pre_trig),
-		SampleLen:        int(s.sample_len),
-		MaxChannels:      int(s.max_channels),
-		SamplePeriodMult: int(s.mult),
-		TrigChannel:      int(s.trig.channel),
+	numSamples := int32(s.num_samples)
+	st := halscopeapi.ScopeStatus{
+		State:            halscopeapi.ScopeState(C.halscope_atomic_load_state((*C.halscope_state_t)(unsafe.Pointer(&s.state)), C.memory_order_acquire)),
+		Samples:          int32(s.samples),
+		RecLen:           int32(s.rec_len),
+		PreTrig:          int32(s.pre_trig),
+		SampleLen:        int32(s.sample_len),
+		MaxChannels:      int32(s.max_channels),
+		SamplePeriodMult: int32(s.mult),
+		TrigChannel:      int32(s.trig.channel),
 		TrigLevel:        float64(C.get_trigger_level_real(&s.trig.level)),
-		TrigEdge:         int(s.trig.edge),
+		TrigEdge:         halscopeapi.TrigEdge(s.trig.edge),
 		TrigAutoTrig:     s.trig.auto_trig != 0,
 		Generation:       uint32(atomic.LoadUint32((*uint32)(unsafe.Pointer(&s.done_gen)))),
 		Continuous:       C.halscope_atomic_load_int((*C.int)(unsafe.Pointer(&s.continuous)), C.memory_order_acquire) != 0,
-		ChannelOptions: []channelOption{
+		ChannelOptions: []halscopeapi.ChannelOption{
 			{MaxChannels: 1, RecLen: numSamples / 1},
 			{MaxChannels: 2, RecLen: numSamples / 2},
 			{MaxChannels: 4, RecLen: numSamples / 4},
@@ -804,16 +652,16 @@ func (m *halscope) getStatus() scopeStatus {
 	// Build channel list.
 	for n := 0; n < C.HALSCOPE_MAX_CHANNELS; n++ {
 		if s.channels[n].enabled != 0 {
-			st.Channels = append(st.Channels, channelInfo{
-				Channel:  n,
+			st.Channels = append(st.Channels, halscopeapi.ChannelInfo{
+				Channel:  int32(n),
 				PinName:  C.GoString(&s.channels[n].pin_name[0]),
-				DataType: int(s.channels[n].data_type),
+				DataType: halscopeapi.HalType(s.channels[n].data_type),
 				Enabled:  true,
 			})
 		}
 	}
 	if st.Channels == nil {
-		st.Channels = []channelInfo{}
+		st.Channels = []halscopeapi.ChannelInfo{}
 	}
 
 	return st
