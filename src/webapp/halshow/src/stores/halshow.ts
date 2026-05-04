@@ -81,7 +81,7 @@ const state = reactive<HalshowState>({
 
   watchList: [],
   watchValues: [],
-  watchRate: 200,
+  watchRate: 100,
 
   activeTab: 'show',
 });

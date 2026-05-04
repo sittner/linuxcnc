@@ -193,7 +193,7 @@ export class HalcmdWatchClient {
 
   // --- Subscribe methods ---
 
-  subscribeWatchItems(callback: (data: PinInfo[]) => void, rateMs = 200): void {
+  subscribeWatchItems(callback: (data: PinInfo[]) => void, rateMs = 100): void {
     this.subscribe('watch_items', rateMs, (raw) => callback(raw as PinInfo[]));
   }
 

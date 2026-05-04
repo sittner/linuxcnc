@@ -6,6 +6,7 @@ import (
 
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
 	"github.com/sittner/linuxcnc/src/gomc/internal/config"
+	"github.com/sittner/linuxcnc/src/gomc/internal/halrest"
 )
 
 const (
@@ -40,6 +41,18 @@ func (l *Launcher) startAPIServer() {
 		apiserver.SetDefaultWatchRegistry(watchReg)
 	}
 	l.apiServer.AddWatchEndpoint(watchReg)
+
+	// Register halcmd watch functions (live pin/signal value streaming).
+	// [HAL]WATCH_INTERVAL overrides the default 100ms push rate.
+	watchInterval := time.Duration(0)
+	if l.ini != nil {
+		if ms := l.ini.Get("HAL", "WATCH_INTERVAL"); ms != "" {
+			if d, err := time.ParseDuration(ms); err == nil {
+				watchInterval = d
+			}
+		}
+	}
+	halrest.RegisterWatch(watchReg, watchInterval)
 
 	// Serve web applications from share/gomc/webapp/<app>/
 	if config.EMC2WebAppDir != "" {

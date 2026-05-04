@@ -22,7 +22,7 @@ intended to replace NML with a modern, type-safe approach.
 | 5.6: TypeScript Client Generation | ✅ Complete | — |
 | 5.7: Web App Infrastructure | ✅ Complete | — |
 | 5.8: Halscope (gomod + Vue Web UI) | ✅ Complete | — |
-| 5.9: Halshow (gomod + Vue Web UI) | ❌ Not Started | — |
+| 5.9: Halshow (Vue Web UI, uses halcmd API) | ❌ Not Started | — |
 | 6: Polish | ❌ Not Started | — |
 | 7: Remove Go Plugins | ✅ Complete | — |
 

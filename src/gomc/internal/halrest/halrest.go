@@ -6,6 +6,7 @@ package halrest
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 	"unsafe"
 
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
@@ -1035,4 +1036,54 @@ func buildFuncMetas() []apiserver.FuncMeta {
 		{Name: "set_debug", Method: "PUT", Path: "/debug", Dispatch: dispatchSetDebug},
 		{Name: "save", Method: "GET", Path: "/save", Dispatch: dispatchSave},
 	}
+}
+
+// ─── Watch support ───
+
+// RegisterWatch registers the halcmd watch API with the given watch registry.
+// This enables WebSocket clients to subscribe to live HAL pin/signal values.
+// The interval parameter sets the default push rate; 0 uses the default (100ms).
+// Configurable via [HAL]WATCH_INTERVAL in the INI file.
+func RegisterWatch(wreg *apiserver.WatchRegistry, interval time.Duration) {
+	if interval <= 0 {
+		interval = 100 * time.Millisecond
+	}
+	wreg.Register(&apiserver.WatchAPI{
+		APIName:  "halcmd",
+		Instance: "halcmd",
+		Watches: []apiserver.WatchFuncMeta{
+			{
+				Name:        "watch_items",
+				DefaultRate: interval,
+				Watch:       watchItems,
+			},
+		},
+	})
+}
+
+// watchItems polls all pins and returns their current values as JSON.
+// TODO: support per-subscription name filtering via watch args.
+func watchItems() (json.RawMessage, error) {
+	result, err := halcmd.Show("pin")
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]pinInfo, 0, len(result.Pins))
+	for _, p := range result.Pins {
+		pi := pinInfo{
+			Name:   p.Name,
+			Type:   p.Type,
+			Dir:    p.Direction,
+			Value:  p.Value,
+			Owner:  p.Owner,
+			Linked: p.Signal != "",
+		}
+		if p.Signal != "" {
+			sig := p.Signal
+			pi.Signal = &sig
+		}
+		out = append(out, pi)
+	}
+	return json.Marshal(out)
 }
