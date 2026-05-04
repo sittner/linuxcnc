@@ -45,10 +45,42 @@ $(HALSCOPE_WEBAPP_STAMP): $(HALSCOPE_WEBAPP_SRCS) $(HALSCOPE_NPM_STAMP) $(HALSCO
 
 TARGETS += $(HALSCOPE_WEBAPP_STAMP)
 
+# --- halshow ---
+
+HALSHOW_WEBAPP_SRC := $(WEBAPP_DIR)/halshow
+HALSHOW_WEBAPP_DEST := $(WEBAPP_DEST)/halshow
+
+HALSHOW_WEBAPP_STAMP := $(HALSHOW_WEBAPP_DEST)/.build-stamp
+
+HALSHOW_WEBAPP_SRCS := $(shell find $(HALSHOW_WEBAPP_SRC)/src -type f 2>/dev/null) \
+	$(HALSHOW_WEBAPP_SRC)/index.html \
+	$(HALSHOW_WEBAPP_SRC)/package.json \
+	$(HALSHOW_WEBAPP_SRC)/vite.config.ts \
+	$(HALSHOW_WEBAPP_SRC)/tsconfig.json
+
+HALSHOW_NPM_STAMP := $(HALSHOW_WEBAPP_SRC)/node_modules/.install-stamp
+
+$(HALSHOW_NPM_STAMP): $(HALSHOW_WEBAPP_SRC)/package.json
+	$(ECHO) "Installing halshow webapp dependencies"
+	$(Q)cd $(HALSHOW_WEBAPP_SRC) && npm install --no-audit --no-fund
+	$(Q)touch $@
+
+HALSHOW_GEN_TS := $(WEBAPP_DIR)/halshow/src/generated/halcmd_client.ts \
+	$(WEBAPP_DIR)/halshow/src/generated/halcmd_watch_client.ts
+
+$(HALSHOW_WEBAPP_STAMP): $(HALSHOW_WEBAPP_SRCS) $(HALSHOW_NPM_STAMP) $(HALSHOW_GEN_TS)
+	$(ECHO) "Building halshow webapp"
+	$(Q)rm -rf $(HALSHOW_WEBAPP_DEST)
+	$(Q)cd $(HALSHOW_WEBAPP_SRC) && npx vite build --outDir $(abspath $(HALSHOW_WEBAPP_DEST)) --emptyOutDir
+	$(Q)touch $@
+
+TARGETS += $(HALSHOW_WEBAPP_STAMP)
+
 clean: webapp-clean
 .PHONY: webapp-clean
 webapp-clean:
 	rm -rf $(WEBAPP_DEST)
 	rm -rf $(HALSCOPE_WEBAPP_SRC)/node_modules
+	rm -rf $(HALSHOW_WEBAPP_SRC)/node_modules
 
 endif # BUILD_GOLANG

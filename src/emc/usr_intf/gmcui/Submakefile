@@ -22,4 +22,10 @@ TARGETS += ../bin/gmcui
 	$(Q)ln -sf gmcui $@
 TARGETS += ../bin/halscope
 
+# Symlink: halshow -> gmcui
+../bin/halshow: ../bin/gmcui
+	$(ECHO) Creating symlink $(notdir $@)
+	$(Q)ln -sf gmcui $@
+TARGETS += ../bin/halshow
+
 endif
