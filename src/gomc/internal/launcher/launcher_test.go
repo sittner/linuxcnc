@@ -648,61 +648,6 @@ MODE = 0
 }
 
 // --------------------------------------------------------------------------
-// Tests for showIntroGraphic path resolution
-// --------------------------------------------------------------------------
-
-// resolveIntroGraphicPath exercises the image path resolution logic from
-// showIntroGraphic without actually launching popimage.
-func resolveIntroGraphicPath(img, iniDir, imageDir string) string {
-	switch {
-	case fileExists(img):
-		return img
-	case fileExists(filepath.Join(iniDir, img)):
-		return filepath.Join(iniDir, img)
-	case fileExists(filepath.Join(imageDir, img)):
-		return filepath.Join(imageDir, img)
-	}
-	return ""
-}
-
-// TestShowIntroGraphic_ImageInIniDir verifies that an image found in the INI
-// directory is resolved correctly.
-func TestShowIntroGraphic_ImageInIniDir(t *testing.T) {
-	dir := t.TempDir()
-
-	// Create a fake image file in the INI directory.
-	imgPath := filepath.Join(dir, "splash.png")
-	if err := os.WriteFile(imgPath, []byte{}, 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-
-	got := resolveIntroGraphicPath("splash.png", dir, "/nonexistent")
-	if got != imgPath {
-		t.Errorf("resolved = %q, want %q", got, imgPath)
-	}
-}
-
-// TestShowIntroGraphic_NotFound verifies that a missing image resolves to "".
-func TestShowIntroGraphic_NotFound(t *testing.T) {
-	got := resolveIntroGraphicPath("nosuchfile.png", "/tmp/nosuchdir", "/tmp/nosuchdir2")
-	if got != "" {
-		t.Errorf("resolved = %q, want empty", got)
-	}
-}
-
-// TestShowIntroGraphic_NoOp verifies that showIntroGraphic is a no-op when
-// [DISPLAY]INTRO_GRAPHIC is not set.
-func TestShowIntroGraphic_NoOp(t *testing.T) {
-	dir := t.TempDir()
-	f := writeIni(t, dir, "test.ini", `[DISPLAY]
-DISPLAY = axis
-`)
-	l := newLauncherWithIniPath(t, f)
-	// Should not panic or error.
-	l.showIntroGraphic()
-}
-
-// --------------------------------------------------------------------------
 // Tests for checkConfig (native Go implementation)
 // --------------------------------------------------------------------------
 

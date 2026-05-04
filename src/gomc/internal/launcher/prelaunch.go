@@ -1,7 +1,7 @@
 // Package launcher — prelaunch.go implements the pre-launch validation checks
 // that run after INI parsing but before startServer().
 //
-// These correspond to scripts/linuxcnc.in lines 495–530 and 791–812.
+// These correspond to scripts/linuxcnc.in lines 495–530.
 package launcher
 
 import (
@@ -9,11 +9,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"strconv"
-	"strings"
 
-	"github.com/sittner/linuxcnc/src/gomc/internal/config"
 	"github.com/sittner/linuxcnc/src/gomc/internal/configcheck"
 	"github.com/sittner/linuxcnc/src/gomc/pkg/inifile"
 )
@@ -141,64 +137,6 @@ func (l *Launcher) checkConfig() error {
 	return nil
 }
 
-// showIntroGraphic displays the intro graphic popup if one is configured.
-//
-// This mirrors scripts/linuxcnc.in lines 791–812.
-//
-// The popup is launched in the background (fire-and-forget); errors are logged
-// but never propagate to the caller.
-func (l *Launcher) showIntroGraphic() {
-	img := l.ini.Get("DISPLAY", "INTRO_GRAPHIC")
-	if img == "" {
-		return
-	}
 
-	imgTimeStr := l.ini.Get("DISPLAY", "INTRO_TIME")
-	imgTime := 5
-	if imgTimeStr != "" {
-		if t, err := strconv.Atoi(strings.TrimSpace(imgTimeStr)); err == nil {
-			imgTime = t
-		}
-	}
 
-	// Resolve the image path: try as-is, then INI_DIR/img, then LINUXCNC_IMAGEDIR/img.
-	iniDirPath := filepath.Join(filepath.Dir(l.opts.IniFile), img)
-	imgDirPath := filepath.Join(config.EMC2ImageDir, img)
-	resolvedImg := ""
-	switch {
-	case fileExists(img):
-		resolvedImg = img
-	case fileExists(iniDirPath):
-		resolvedImg = iniDirPath
-	case fileExists(imgDirPath):
-		resolvedImg = imgDirPath
-	}
 
-	if resolvedImg == "" {
-		l.logger.Debug("intro graphic not found, skipping", "image", img)
-		return
-	}
-
-	popimage := filepath.Join(config.EMC2TclDir, "bin", "popimage")
-	if !isExecutable(popimage) {
-		l.logger.Debug("popimage not found or not executable, skipping intro graphic", "path", popimage)
-		return
-	}
-
-	l.logger.Debug("showing intro graphic", "image", resolvedImg, "time", imgTime)
-	cmd := exec.Command(popimage, resolvedImg, strconv.Itoa(imgTime))
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Start(); err != nil {
-		l.logger.Debug("failed to start popimage", "error", err)
-		return
-	}
-	// Fire-and-forget: reap child to avoid zombie.
-	go func() { _ = cmd.Wait() }()
-}
-
-// fileExists reports whether the given path is a regular file (not a directory).
-func fileExists(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && !info.IsDir()
-}

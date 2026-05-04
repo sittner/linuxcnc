@@ -265,9 +265,6 @@ func (l *Launcher) Run() (runErr error) {
 		}
 	}
 
-	// 4. Intro graphic popup (lines 791–812).
-	l.showIntroGraphic()
-
 	// --- M5: Process Manager ---
 
 	// Start in-process NML server before realtime — only when the task
