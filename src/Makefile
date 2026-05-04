@@ -1024,8 +1024,7 @@ ifdef SEQUENTIAL_SUPPORT
 classicladder_rt-objs += hal/classicladder/calc_sequential_rt.o
 endif
 
-RTMODULES += scope_rt.o
-scope_rt-objs := hal/utils/scope_rt.o $(MATHSTUB)
+# Old scope_rt removed — new halscope has its own RT built via cgo.
 
 #RTMODULES += hal_lib.o
 #hal_lib-objs := hal/hal_lib.o $(MATHSTUB)
