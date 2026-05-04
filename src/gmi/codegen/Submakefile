@@ -196,6 +196,28 @@ $(GMI_HALSCOPE_TS_WS): $(GMI_HALSCOPE_IDL) $(GMICOMPILE_BIN)
 
 TARGETS += $(GMI_HALSCOPE_TS) $(GMI_HALSCOPE_TS_WS)
 
+# --- halshow (uses halcmd API; TypeScript clients for the web UI) ---
+
+GMI_HALCMD_IDL := gmi/idl/halcmd.gmi
+
+# TypeScript REST client
+GMI_HALSHOW_TS := webapp/halshow/src/generated/halcmd_client.ts
+
+$(GMI_HALSHOW_TS): $(GMI_HALCMD_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI halcmd TypeScript REST client from $(GMI_HALCMD_IDL)"
+	@mkdir -p $(dir $(GMI_HALSHOW_TS))
+	$(Q)$(GMICOMPILE) --client-ts $(GMI_HALCMD_IDL) -o $(GMI_HALSHOW_TS)
+
+# TypeScript WebSocket watch client
+GMI_HALSHOW_TS_WS := webapp/halshow/src/generated/halcmd_watch_client.ts
+
+$(GMI_HALSHOW_TS_WS): $(GMI_HALCMD_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI halcmd TypeScript WebSocket client from $(GMI_HALCMD_IDL)"
+	@mkdir -p $(dir $(GMI_HALSHOW_TS_WS))
+	$(Q)$(GMICOMPILE) --client-ts-ws $(GMI_HALCMD_IDL) -o $(GMI_HALSHOW_TS_WS)
+
+TARGETS += $(GMI_HALSHOW_TS) $(GMI_HALSHOW_TS_WS)
+
 clean: gmi-codegen-clean
 .PHONY: gmi-codegen-clean
 gmi-codegen-clean:

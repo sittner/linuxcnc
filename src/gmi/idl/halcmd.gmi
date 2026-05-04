@@ -336,3 +336,12 @@ func set_debug(level: i32) -> CmdResult
 @path "/save"
 @rt_safe "false"
 func save(type: string?) -> CmdResult
+
+# ─── Watch Functions (WebSocket push) ───
+
+# Watch a set of pins — values pushed to clients at the subscribed rate.
+# The names list selects which pins/signals/params to include.
+# If names is empty, returns all pins.
+@watch true
+@watch_default_rate 200ms
+func watch_items(names: []string?) -> []PinInfo

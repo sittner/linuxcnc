@@ -332,7 +332,7 @@ func primitiveToTSType(name string) string {
 	}
 }
 
-// toCamelCaseTS converts snake_case to camelCase.
+// toCamelCaseTS converts snake_case to camelCase and escapes JS reserved words.
 func toCamelCaseTS(s string) string {
 	parts := strings.Split(s, "_")
 	for i, p := range parts {
@@ -340,5 +340,21 @@ func toCamelCaseTS(s string) string {
 			parts[i] = strings.ToUpper(p[:1]) + p[1:]
 		}
 	}
-	return strings.Join(parts, "")
+	result := strings.Join(parts, "")
+	return tsEscapeReserved(result)
+}
+
+// tsEscapeReserved adds a trailing underscore to JavaScript/TypeScript reserved words.
+func tsEscapeReserved(name string) string {
+	switch name {
+	case "break", "case", "catch", "class", "const", "continue", "debugger",
+		"default", "delete", "do", "else", "enum", "export", "extends",
+		"false", "finally", "for", "function", "if", "import", "in",
+		"instanceof", "new", "null", "return", "super", "switch", "this",
+		"throw", "true", "try", "typeof", "var", "void", "while", "with",
+		"yield", "let", "static", "implements", "interface", "package",
+		"private", "protected", "public", "await", "async":
+		return name + "_"
+	}
+	return name
 }
