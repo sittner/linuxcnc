@@ -73,6 +73,8 @@ type Launcher struct {
 	logRing      *gomcLogRing       // shared log ring buffer for C module FIFO logging
 	retain       *retainInstance    // integrated retain subsystem (nil if unused)
 	apiServer    *apiserver.Server  // REST API server for halcmd and external tools
+	displayCmd   *exec.Cmd         // display process (set during startDisplay)
+	shutdownCh   chan struct{}      // closed by signal handler to unblock HAL-only wait
 }
 
 // New creates a new Launcher with the given options and logger.
@@ -81,7 +83,7 @@ func New(opts Options, logger *slog.Logger) *Launcher {
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
 	}
-	return &Launcher{opts: opts, logger: logger}
+	return &Launcher{opts: opts, logger: logger, shutdownCh: make(chan struct{})}
 }
 
 // ensureLogRing creates the shared log ring buffer and starts the drain
@@ -174,8 +176,10 @@ func (l *Launcher) Run() (runErr error) {
 	go func() {
 		sig := <-sigCh
 		l.logger.Info("received signal, shutting down", "signal", sig)
-		l.cleanup()
-		os.Exit(0)
+		// Stop the display so that startDisplay() returns and the deferred
+		// cleanup runs through the normal exit path.  Calling os.Exit()
+		// here would race with C plugin destructors causing segfaults.
+		l.stopDisplay()
 	}()
 
 	l.logger.Info("parsing INI file", "path", l.opts.IniFile)
@@ -466,11 +470,9 @@ func (l *Launcher) Run() (runErr error) {
 		}
 	} else {
 		// HAL-only mode: no display is configured.  Log and block until the
-		// signal handler goroutine calls os.Exit(0) on SIGINT/SIGTERM.
+		// signal handler goroutine signals shutdown.
 		l.logger.Info("HAL-only mode: no display configured, waiting for shutdown signal (Ctrl+C to stop)")
-		// select{} blocks indefinitely.  The signal handler goroutine calls
-		// l.cleanup() and os.Exit(0), so deferred cleanup is not needed here.
-		select {}
+		<-l.shutdownCh
 	}
 
 	// Display has exited — cleanup runs via deferred l.cleanup():
@@ -965,8 +967,26 @@ func (l *Launcher) startDisplay() error {
 		}
 	}
 
+	l.displayCmd = cmd
 	if err := cmd.Run(); err != nil {
 		l.logger.Warn("display exited with error", "display", emcDisplay, "error", err)
 	}
 	return nil
+}
+
+// stopDisplay terminates the display process (if running) and signals the
+// HAL-only wait channel.  Called from the signal handler goroutine to trigger
+// an ordered shutdown through the normal defer path.
+func (l *Launcher) stopDisplay() {
+	// Signal HAL-only mode to unblock.
+	select {
+	case <-l.shutdownCh:
+		// already closed
+	default:
+		close(l.shutdownCh)
+	}
+	// Terminate display if running.
+	if l.displayCmd != nil && l.displayCmd.Process != nil {
+		_ = l.displayCmd.Process.Signal(syscall.SIGTERM)
+	}
 }
