@@ -16,6 +16,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -54,11 +55,15 @@ func main() {
 			printUsage()
 			os.Exit(0)
 		case "-f":
-			if len(args) < 2 {
-				fatal("-f requires a filename")
-			}
-			if err := runFile(args[1]); err != nil {
-				fatal(err.Error())
+			if len(args) < 2 || strings.HasPrefix(args[1], "-") {
+				// No filename: read from stdin
+				if err := runStream(os.Stdin, "<stdin>"); err != nil {
+					fatal(err.Error())
+				}
+			} else {
+				if err := runFile(args[1]); err != nil {
+					fatal(err.Error())
+				}
 			}
 			os.Exit(0)
 		case "-k", "--keep-going":
@@ -192,12 +197,38 @@ func runFile(filename string) error {
 		return err
 	}
 	defer f.Close()
+	return runStream(f, filename)
+}
 
-	scanner := bufio.NewScanner(f)
+func runStream(r io.Reader, source string) error {
+	scanner := bufio.NewScanner(r)
 	lineNum := 0
+	var continued strings.Builder
+	continuedFrom := 0
+
 	for scanner.Scan() {
 		lineNum++
-		line := strings.TrimSpace(scanner.Text())
+		raw := scanner.Text()
+		line := strings.TrimSpace(raw)
+
+		// Line continuation: trailing backslash joins next line
+		if strings.HasSuffix(line, "\\") {
+			line = strings.TrimSuffix(line, "\\")
+			if continued.Len() == 0 {
+				continuedFrom = lineNum
+			}
+			continued.WriteString(line)
+			continued.WriteByte(' ')
+			continue
+		}
+
+		if continued.Len() > 0 {
+			continued.WriteString(line)
+			line = continued.String()
+			continued.Reset()
+			lineNum = continuedFrom
+		}
+
 		// Skip empty lines and comments
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -211,9 +242,9 @@ func runFile(filename string) error {
 		}
 		if err := executeCommand(args); err != nil {
 			if keepGoing {
-				warn(fmt.Sprintf("%s:%d: %s", filename, lineNum, err.Error()))
+				warn(fmt.Sprintf("%s:%d: %s", source, lineNum, err.Error()))
 			} else {
-				return fmt.Errorf("%s:%d: %w", filename, lineNum, err)
+				return fmt.Errorf("%s:%d: %w", source, lineNum, err)
 			}
 		}
 	}
@@ -248,6 +279,19 @@ func runInteractive() {
 			fmt.Fprintf(os.Stderr, "error: %s\n", err)
 		}
 	}
+}
+
+// stripArrows removes direction arrows (<=, =>, <=>) from argument lists.
+// These are used in HAL files for documentation but have no semantic meaning.
+func stripArrows(args []string) []string {
+	result := make([]string, 0, len(args))
+	for _, a := range args {
+		if a == "=>" || a == "<=" || a == "<=>" {
+			continue
+		}
+		result = append(result, a)
+	}
+	return result
 }
 
 // parseCommandLine splits a command line respecting quotes
@@ -390,6 +434,12 @@ func executeCommand(args []string) error {
 	case "save":
 		return cmdSave(args)
 
+	// Retain
+	case "retain":
+		return cmdRetain(args)
+	case "unretain":
+		return cmdUnretain(args)
+
 	// Scripting
 	case "source":
 		return cmdSource(args)
@@ -412,9 +462,109 @@ func cmdHelp(args []string) error {
 		printUsage()
 		return nil
 	}
-	// TODO: command-specific help
-	fmt.Printf("Help for '%s' not yet implemented\n", args[0])
-	return nil
+	cmd := strings.ToLower(args[0])
+	if text, ok := commandHelp[cmd]; ok {
+		fmt.Println(text)
+		return nil
+	}
+	return fmt.Errorf("no help for '%s'", cmd)
+}
+
+var commandHelp = map[string]string{
+	"show": `show [type] [pattern]
+  List HAL items of the given type. Type is one of:
+    pin sig param comp funct thread alias all
+  Optional pattern is a glob to filter results.`,
+	"list": `list [type] [pattern]
+  Print names of HAL items (one per line). Type is one of:
+    pin sig param comp funct thread`,
+	"status": `status
+  Show HAL overall status (lock state, thread count, etc.)`,
+	"getp": `getp <pin-or-param>
+  Get the value of a pin or parameter.`,
+	"setp": `setp <pin-or-param> <value>
+  Set the value of a writable pin or parameter.`,
+	"gets": `gets <signal>
+  Get the value of a signal.`,
+	"sets": `sets <signal> <value>
+  Set the value of a signal (only if no writer pin is connected).`,
+	"ptype": `ptype <pin-or-param>
+  Get the type (bit/float/s32/u32) of a pin or parameter.`,
+	"stype": `stype <signal>
+  Get the type of a signal.`,
+	"newsig": `newsig <name> <type>
+  Create a new signal. Type is one of: bit float s32 u32`,
+	"delsig": `delsig <name>
+  Delete a signal (must have no connected pins).`,
+	"net": `net <signal> [arrows] <pin> [[arrows] <pin>...]
+  Connect signal to one or more pins, creating the signal if needed.
+  Direction arrows (<=, =>, <=>) are allowed but ignored.
+  Example: net x-pos-cmd axis.x.pos-cmd => joint.0.motor-pos-cmd`,
+	"linksp": `linksp <signal> <pin>
+  Link an existing signal to a pin.`,
+	"linkps": `linkps <pin> <signal>
+  Link a pin to an existing signal (same as linksp, reversed args).`,
+	"linkpp": `linkpp <pin1> <pin2>
+  Link two pins together (creates an implicit signal).`,
+	"unlinkp": `unlinkp <pin>
+  Unlink a pin from its signal.`,
+	"loadrt": `loadrt <module> [args...]
+  Load a realtime HAL module.
+  Example: loadrt threads name1=servo-thread period1=1000000`,
+	"unloadrt": `unloadrt <module>
+  Unload a realtime module.`,
+	"loadusr": `loadusr [-W] [-Wn name] [-w] [-i] <command> [args...]
+  Start a user-space HAL component.
+  -W   wait for component to become ready
+  -Wn  wait for named component
+  -w   wait for program to exit
+  -i   ignore program exit value`,
+	"unloadusr": `unloadusr <component>
+  Terminate a user-space HAL component.`,
+	"waitusr": `waitusr <component>
+  Wait for a user-space component to exit.`,
+	"load": `load <module> [args...]
+  Load a cmod plugin module into gomc-server.`,
+	"unload": `unload <component>
+  Unload a component (RT or user-space).`,
+	"newthread": `newthread <name> <period-ns> [fp] [cpu=N]
+  Create a new realtime thread.
+  period-ns is the period in nanoseconds.
+  fp        enable floating-point support.
+  cpu=N     pin to CPU N.`,
+	"delthread": `delthread <name>
+  Delete a thread (must have no attached functions).`,
+	"addf": `addf <function> <thread> [position]
+  Add a function to a thread. Position is optional (appends by default).`,
+	"delf": `delf <function> <thread>
+  Remove a function from a thread.`,
+	"start": `start
+  Start all realtime threads.`,
+	"stop": `stop
+  Stop all realtime threads.`,
+	"alias": `alias pin|param <name> <alias>
+  Create an alias for a pin or parameter.`,
+	"unalias": `unalias pin|param <alias>
+  Remove an alias from a pin or parameter.`,
+	"lock": `lock [none|tune|all]
+  Lock HAL against certain modifications.`,
+	"unlock": `unlock [tune|all]
+  Unlock HAL.`,
+	"debug": `debug <level>
+  Set the RTAPI message level (integer).`,
+	"save": `save [type]
+  Output HAL configuration as halcmd commands.
+  Type is one of: all comp sig link linka net neta param thread alias`,
+	"retain": `retain <signal>
+  Set the retain flag on a signal (value preserved across restarts).`,
+	"unretain": `unretain <signal>
+  Clear the retain flag on a signal.`,
+	"source": `source <filename>
+  Execute halcmd commands from a file.`,
+	"echo": `echo
+  Enable command echo (show each command before executing in file mode).`,
+	"unecho": `unecho
+  Disable command echo.`,
 }
 
 func cmdShow(args []string) error {
@@ -441,6 +591,8 @@ func cmdShow(args []string) error {
 		return showFunctions(pattern)
 	case "thread", "threads":
 		return showThreads(pattern)
+	case "alias", "aliases":
+		return showAliases(pattern)
 	case "all":
 		if err := showComponents(pattern); err != nil {
 			return err
@@ -603,6 +755,48 @@ func showThreads(pattern *string) error {
 		}
 	}
 	fmt.Println()
+	return nil
+}
+
+func showAliases(pattern *string) error {
+	pins, err := client.ListPins(pattern)
+	if err != nil {
+		return err
+	}
+	params, err := client.ListParams(pattern)
+	if err != nil {
+		return err
+	}
+
+	hasAny := false
+	for _, p := range pins {
+		if p.Alias != nil {
+			if !hasAny {
+				fmt.Printf("Pin Aliases:\n")
+				fmt.Printf("  %-40s  %s\n", "Alias", "Original")
+				hasAny = true
+			}
+			fmt.Printf("  %-40s  %s\n", *p.Alias, p.Name)
+		}
+	}
+	if hasAny {
+		fmt.Println()
+	}
+
+	hasAny = false
+	for _, p := range params {
+		if p.Alias != nil {
+			if !hasAny {
+				fmt.Printf("Parameter Aliases:\n")
+				fmt.Printf("  %-40s  %s\n", "Alias", "Original")
+				hasAny = true
+			}
+			fmt.Printf("  %-40s  %s\n", *p.Alias, p.Name)
+		}
+	}
+	if hasAny {
+		fmt.Println()
+	}
 	return nil
 }
 
@@ -804,6 +998,7 @@ func cmdDelSig(args []string) error {
 }
 
 func cmdNet(args []string) error {
+	args = stripArrows(args)
 	if len(args) < 2 {
 		return fmt.Errorf("net requires: <signal> <pin> [pin...]")
 	}
@@ -818,6 +1013,7 @@ func cmdNet(args []string) error {
 }
 
 func cmdLinkSP(args []string) error {
+	args = stripArrows(args)
 	if len(args) < 2 {
 		return fmt.Errorf("linksp requires: <signal> <pin>")
 	}
@@ -829,6 +1025,7 @@ func cmdLinkSP(args []string) error {
 }
 
 func cmdLinkPS(args []string) error {
+	args = stripArrows(args)
 	if len(args) < 2 {
 		return fmt.Errorf("linkps requires: <pin> <signal>")
 	}
@@ -840,6 +1037,7 @@ func cmdLinkPS(args []string) error {
 }
 
 func cmdLinkPP(args []string) error {
+	args = stripArrows(args)
 	if len(args) < 2 {
 		return fmt.Errorf("linkpp requires: <pin1> <pin2>")
 	}
@@ -1211,6 +1409,28 @@ func cmdSource(args []string) error {
 		return fmt.Errorf("source requires filename")
 	}
 	return runFile(args[0])
+}
+
+func cmdRetain(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("retain requires signal name")
+	}
+	result, err := client.Retain(args[0])
+	if err != nil {
+		return err
+	}
+	return checkResult(result)
+}
+
+func cmdUnretain(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("unretain requires signal name")
+	}
+	result, err := client.Unretain(args[0])
+	if err != nil {
+		return err
+	}
+	return checkResult(result)
 }
 
 // checkResult returns an error if the result indicates failure

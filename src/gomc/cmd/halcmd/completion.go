@@ -144,6 +144,7 @@ var subcommands = []string{
 	"load", "loadrt", "unloadrt", "loadusr", "unloadusr", "waitusr", "unload",
 	"newthread", "delthread", "addf", "delf", "start", "stop",
 	"alias", "unalias", "lock", "unlock", "debug", "save",
+	"retain", "unretain",
 	"source", "echo", "unecho", "help", "quit", "exit",
 }
 
@@ -194,7 +195,7 @@ func completeArg(cmd string, argPos int, prefix string, prevArgs []string) []str
 		}
 
 	// Signal access
-	case "gets", "sets", "stype", "delsig":
+	case "gets", "sets", "stype", "delsig", "retain", "unretain":
 		if argPos == 1 {
 			return completeSignals(prefix)
 		}

@@ -487,6 +487,20 @@ func (h *halcmdImpl) Save(type_ string) (*halcmdapi.CmdResult, error) {
 	return &halcmdapi.CmdResult{Success: true, Output: output}, nil
 }
 
+func (h *halcmdImpl) Retain(name string) (*halcmdapi.CmdResult, error) {
+	if err := halcmd.Retain(name); err != nil {
+		return errCmd(err)
+	}
+	return &halcmdapi.CmdResult{Success: true}, nil
+}
+
+func (h *halcmdImpl) Unretain(name string) (*halcmdapi.CmdResult, error) {
+	if err := halcmd.Unretain(name); err != nil {
+		return errCmd(err)
+	}
+	return &halcmdapi.CmdResult{Success: true}, nil
+}
+
 func (h *halcmdImpl) WatchItems(names []string) ([]halcmdapi.PinInfo, error) {
 	result, err := halcmd.Show("pin")
 	if err != nil {

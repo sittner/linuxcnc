@@ -336,6 +336,20 @@ func set_debug(level: i32) -> CmdResult
 @rt_safe "false"
 func save(type: string?) -> CmdResult
 
+# ─── Retain Commands ───
+
+# Set retain flag on a signal (preserved across restarts)
+@method "POST"
+@path "/signal/{name}/retain"
+@rt_safe "false"
+func retain(name: string) -> CmdResult
+
+# Clear retain flag on a signal
+@method "DELETE"
+@path "/signal/{name}/retain"
+@rt_safe "false"
+func unretain(name: string) -> CmdResult
+
 # ─── Watch Functions (WebSocket push) ───
 
 # Watch a set of pins — values pushed to clients at the subscribed rate.
