@@ -67,7 +67,7 @@ class Command:
         """Jog an axis or joint."""
         self._post("/jog", {
             "jog_type": jog_type,
-            "jjogmode": jjogmode,
+            "jjogmode": bool(jjogmode),
             "axis_or_joint": axis_or_joint,
             "velocity": velocity,
             "distance": distance,
@@ -76,7 +76,7 @@ class Command:
     def jog_stop(self, jjogmode: bool, axis_or_joint: int):
         """Stop a jog."""
         self._post("/jog-stop", {
-            "jjogmode": jjogmode,
+            "jjogmode": bool(jjogmode),
             "axis_or_joint": axis_or_joint,
         })
 
@@ -104,7 +104,7 @@ class Command:
 
     def teleop_enable(self, enable: bool):
         """Enable/disable teleop mode."""
-        self._post("/teleop", {"enable": enable})
+        self._post("/teleop", {"enable": bool(enable)})
 
     def feedrate(self, rate: float):
         """Set feed override (0.0 - 1.0+)."""
