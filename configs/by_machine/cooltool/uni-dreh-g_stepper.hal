@@ -99,6 +99,3 @@ setp stepgen.3.maxaccel [JOINT_3]STEPGEN_MAXACCEL
 setp stepgen.4.maxaccel [JOINT_4]STEPGEN_MAXACCEL
 setp stepgen.5.maxaccel [JOINT_5]STEPGEN_MAXACCEL
 
-# load realtime portion of scope, just to have it handy
-loadrt scope_rt
-

@@ -8,7 +8,6 @@ loadrt hal_gm
 loadrt [EMCMOT]EMCMOT servo_period_nsec=[EMCMOT]SERVO_PERIOD num_joints=[KINS]JOINTS
 load not <not.0>
 loadusr halmeter
-#loadusr halscope -f
 
 #########################################################################
 # 			Adding functions				#

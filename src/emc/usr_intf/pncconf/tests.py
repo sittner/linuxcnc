@@ -575,7 +575,6 @@ But there is not one in the machine-named folder.."""),True)
             halrun.write("echo\n")
         halrun.write("  newthread servo-thread %d\n"%
                     (self.d.servoperiod ))
-        halrun.write("  loadusr halscope\n")
         halrun.write("  loadrt scale names=scale_to_rpm\n")
         halrun.write("  loadrt axistest\n")
         halrun.write("  loadrt simple_tp  \n")
@@ -955,7 +954,6 @@ But there is not one in the machine-named folder.."""),True)
         load,read,write = self.a.hostmot2_command_string()
         for i in load:
             halrun.write('%s\n'%i)
-        halrun.write("loadusr halscope\n")
         for i in read:
             halrun.write('%s\n'%i)
         if pump:

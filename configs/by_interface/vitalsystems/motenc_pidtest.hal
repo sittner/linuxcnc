@@ -171,11 +171,6 @@ sets pid-enable 0
 # want to do
 #linksp pid-enable <= motenc.0.in-00
 
-# load realtime portion of scope
-loadrt scope_rt
-# start up scope user interface
-loadusr halscope
-
 # start realtime execution
 start
 

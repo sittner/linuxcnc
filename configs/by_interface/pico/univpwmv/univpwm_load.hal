@@ -21,9 +21,6 @@ loadrt pid num_chan=4
 
 loadrt hal_ppmc port_addr="0x378" timestamp="0x00"
 
-# load realtime portion of scope, just to have it handy
-loadrt scope_rt
-
 # make some signals for the scope for tuning.
 load ddt <ddt.0,ddt.1,ddt.2,ddt.3>
 load not <not.0>

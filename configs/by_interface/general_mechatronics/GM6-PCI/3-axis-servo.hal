@@ -10,7 +10,6 @@ loadrt pid num_chan=3
 load not <not.0>
 
 loadusr halmeter
-#loadusr halscope -f
 
 #########################################################################
 # 			Adding functions				#
