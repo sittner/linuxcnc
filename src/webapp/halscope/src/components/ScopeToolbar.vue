@@ -140,6 +140,7 @@ function onPosWheel(e: WheelEvent) {
         <button class="btn" @click="onSingle" :disabled="!canArm">⎍ Single</button>
         <button class="btn btn-stop" @click="onStop" :disabled="!isRunning">■ Stop</button>
         <button class="btn" @click="scopeStore.forceTrigger()" :disabled="!canForce">⚡ Force</button>
+        <button class="btn btn-reset" @click="scopeStore.fullReset()" :disabled="isRunning">⟲ Reset</button>
       </div>
 
       <div class="toolbar-group config-group">
@@ -347,6 +348,8 @@ function onPosWheel(e: WheelEvent) {
 .btn-run:hover { background: #243; }
 .btn-stop { color: #f44; border-color: #a44; }
 .btn-stop:hover { background: #422; }
+.btn-reset { color: #fa4; border-color: #a84; }
+.btn-reset:hover { background: #432; }
 
 .connected-badge {
   color: #4f4;

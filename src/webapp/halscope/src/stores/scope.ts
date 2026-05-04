@@ -147,6 +147,7 @@ let restClient: HalscopeClient | null = null;
 let wsClient: HalscopeWatchClient | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectDelay = 1000;
+let configSynced = false;
 
 function getBaseUrl(): string {
   return window.location.origin;
@@ -264,27 +265,40 @@ function onStatusUpdate(status: Partial<ScopeStatus>) {
     }
   }
 
-  // Always sync captureConfig from server — controls are disabled during
-  // capture so there's nothing to clobber, and on page reload we need
-  // the dropdown to reflect the actual server state.
-  if ('maxChannels' in status && status.maxChannels! > 0) {
-    state.captureConfig.maxChannels = status.maxChannels!;
-  }
-  if ('samplePeriodMult' in status && status.samplePeriodMult! > 0) {
-    state.captureConfig.samplePeriodMult = status.samplePeriodMult!;
-  }
-  if ('threadName' in status && status.threadName) {
-    state.captureConfig.threadName = status.threadName;
-    state.selectedThread = status.threadName;
-  }
-  if ('trigChannel' in status) {
-    state.triggerConfig.channel = status.trigChannel!;
+  // Sync capture/trigger config from server only on first status after
+  // (re-)connect.  Once synced, the UI owns these values — the watch
+  // stream must not clobber in-flight edits.
+  if (!configSynced) {
+    configSynced = true;
+    if ('maxChannels' in status && status.maxChannels! > 0) {
+      state.captureConfig.maxChannels = status.maxChannels!;
+    }
+    if ('samplePeriodMult' in status && status.samplePeriodMult! > 0) {
+      state.captureConfig.samplePeriodMult = status.samplePeriodMult!;
+    }
+    if ('threadName' in status && status.threadName) {
+      state.captureConfig.threadName = status.threadName;
+      state.selectedThread = status.threadName;
+    }
+    if ('trigChannel' in status) {
+      state.triggerConfig.channel = status.trigChannel!;
+    }
+    if ('trigLevel' in status) {
+      state.triggerConfig.level = status.trigLevel!;
+    }
+    if ('trigEdge' in status) {
+      state.triggerConfig.edge = status.trigEdge!;
+    }
+    if ('trigAutoTrig' in status) {
+      state.triggerConfig.autoTrig = status.trigAutoTrig!;
+    }
   }
 }
 
 function onWsClose() {
   state.connected = false;
   wsClient = null;
+  configSynced = false;
   scheduleReconnect();
 }
 
@@ -411,6 +425,36 @@ async function stop() {
     state.error = '';
   } catch (e) {
     state.error = `Reset failed: ${e}`;
+  }
+}
+
+async function fullReset() {
+  if (!restClient) return;
+  try {
+    // Stop any running capture
+    await restClient.setContinuous(false);
+    await restClient.reset();
+    // Clear all channels on server
+    for (let i = 0; i < state.status.channels.length; i++) {
+      const ch = state.status.channels[i];
+      if (ch.enabled) {
+        await restClient.clearChannel(ch.channel);
+      }
+    }
+    // Reset local UI state
+    state.samples = [];
+    state.timeBase = new Float64Array(0);
+    state.selectedChannel = -1;
+    state.triggerConfig.channel = -1;
+    state.triggerConfig.level = 0;
+    state.triggerConfig.edge = 0;
+    state.triggerConfig.autoTrig = true;
+    state.error = '';
+    // Refresh status
+    const status = await restClient.getStatus();
+    onStatusUpdate(status);
+  } catch (e) {
+    state.error = `Full reset failed: ${e}`;
   }
 }
 
@@ -579,6 +623,7 @@ export const scopeStore = {
   arm,
   run,
   stop,
+  fullReset,
   forceTrigger,
   searchPins,
   applyConfig,

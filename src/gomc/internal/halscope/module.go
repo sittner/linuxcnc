@@ -64,6 +64,10 @@ static void set_trigger_level_u32(halscope_data_t *d, uint32_t v) {
     d->d_u32 = v;
 }
 
+static double get_trigger_level_real(halscope_data_t *d) {
+    return (double)d->d_real;
+}
+
 */
 import "C"
 
@@ -71,6 +75,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -94,6 +100,7 @@ type halscope struct {
 	mu        sync.Mutex // protects non-atomic config writes
 	name      string     // HAL component name (from load command)
 	functName string     // HAL function name: name + ".sample"
+	statePath string     // path for persistent state file (empty = disabled)
 }
 
 func newHalscope(ini *inifile.IniFile, logger *slog.Logger, name string, args []string) (gomc.Module, error) {
@@ -138,6 +145,17 @@ func newHalscope(ini *inifile.IniFile, logger *slog.Logger, name string, args []
 		functName: functName,
 	}
 
+	// Resolve state file path from INI: [HAL]SCOPE_STATE_STORAGE,
+	// defaulting to <config_dir>/halscope_state.json.
+	if ini != nil {
+		sp := ini.Get("HAL", "SCOPE_STATE_STORAGE")
+		if sp == "" {
+			configDir := filepath.Dir(ini.SourceFile())
+			sp = filepath.Join(configDir, "halscope_state.json")
+		}
+		m.statePath = sp
+	}
+
 	// Register REST API.
 	reg := apiserver.DefaultRegistry()
 	if reg != nil {
@@ -154,13 +172,34 @@ func newHalscope(ini *inifile.IniFile, logger *slog.Logger, name string, args []
 		m.registerWatch(wreg, name)
 	}
 
+	// Restore state from file if available.
+	// NOTE: deferred to Start() — at module load time, not all HAL pins
+	// may exist yet (e.g. motmod pins are loaded after plugin modules).
+
 	logger.Info("halscope loaded", "name", name, "num_samples", int(numSamples), "comp_id", int(compID))
 	return m, nil
 }
 
-func (m *halscope) Start() error { return nil }
+func (m *halscope) Start() error {
+	if m.statePath != "" {
+		if err := m.loadState(); err != nil {
+			m.logger.Warn("halscope: failed to load state", "path", m.statePath, "err", err)
+		} else {
+			m.logger.Info("halscope: restored state", "path", m.statePath)
+		}
+	}
+	return nil
+}
 
-func (m *halscope) Stop() {}
+func (m *halscope) Stop() {
+	if m.statePath != "" {
+		if err := m.saveState(); err != nil {
+			m.logger.Warn("halscope: failed to save state on stop", "path", m.statePath, "err", err)
+		} else {
+			m.logger.Info("halscope: saved state on stop", "path", m.statePath)
+		}
+	}
+}
 
 func (m *halscope) Destroy() {
 	// Unwire from thread if attached.
@@ -419,6 +458,7 @@ func (m *halscope) dispatchConfigure(req []byte) ([]byte, error) {
 	// Always center trigger at midpoint of buffer (matches original halscope)
 	s.pre_trig = s.rec_len / 2
 
+	go m.saveState()
 	return json.Marshal(0)
 }
 
@@ -473,6 +513,7 @@ func (m *halscope) dispatchSetChannel(req []byte) ([]byte, error) {
 		s.trig.channel = C.int(ch.Channel)
 	}
 
+	go m.saveState()
 	return json.Marshal(0)
 }
 
@@ -494,6 +535,7 @@ func (m *halscope) dispatchClearChannel(req []byte) ([]byte, error) {
 	C.memset(unsafe.Pointer(&m.s.channels[params.Channel]), 0,
 		C.size_t(unsafe.Sizeof(m.s.channels[0])))
 
+	go m.saveState()
 	return json.Marshal(0)
 }
 
@@ -548,6 +590,7 @@ func (m *halscope) dispatchSetTrigger(req []byte) ([]byte, error) {
 		s.trig.auto_trig = 0
 	}
 
+	go m.saveState()
 	return json.Marshal(0)
 }
 
@@ -599,6 +642,8 @@ func (m *halscope) dispatchSetContinuous(req []byte) ([]byte, error) {
 	} else {
 		C.halscope_atomic_store_int((*C.int)(unsafe.Pointer(&m.s.continuous)), 0, C.memory_order_release)
 	}
+
+	go m.saveState()
 	return json.Marshal(0)
 }
 
@@ -693,6 +738,9 @@ type scopeStatus struct {
 	ThreadPeriodNs   int64           `json:"threadPeriodNs"`
 	ThreadName       string          `json:"threadName"`
 	TrigChannel      int             `json:"trigChannel"`
+	TrigLevel        float64         `json:"trigLevel"`
+	TrigEdge         int             `json:"trigEdge"`
+	TrigAutoTrig     bool            `json:"trigAutoTrig"`
 	Generation       uint32          `json:"generation"`
 	Continuous       bool            `json:"continuous"`
 	Channels         []channelInfo   `json:"channels"`
@@ -723,6 +771,9 @@ func (m *halscope) getStatus() scopeStatus {
 		MaxChannels:      int(s.max_channels),
 		SamplePeriodMult: int(s.mult),
 		TrigChannel:      int(s.trig.channel),
+		TrigLevel:        float64(C.get_trigger_level_real(&s.trig.level)),
+		TrigEdge:         int(s.trig.edge),
+		TrigAutoTrig:     s.trig.auto_trig != 0,
 		Generation:       uint32(atomic.LoadUint32((*uint32)(unsafe.Pointer(&s.done_gen)))),
 		Continuous:       C.halscope_atomic_load_int((*C.int)(unsafe.Pointer(&s.continuous)), C.memory_order_acquire) != 0,
 		ChannelOptions: []channelOption{
@@ -818,4 +869,234 @@ func (m *halscope) setDataLen(t C.hal_type_t, dataLen *C.int) {
 	default:
 		*dataLen = 0
 	}
+}
+
+// ------------------------------------------------------------------ //
+//                   STATE PERSISTENCE                                 //
+// ------------------------------------------------------------------ //
+
+// scopeStateFile is the JSON format for the persistent state file.
+type scopeStateFile struct {
+	Version  int            `json:"version"`
+	Config   stateConfig    `json:"config"`
+	Channels []stateChannel `json:"channels"`
+	Trigger  stateTrigger   `json:"trigger"`
+}
+
+type stateConfig struct {
+	ThreadName       string `json:"threadName"`
+	MaxChannels      int    `json:"maxChannels"`
+	SamplePeriodMult int    `json:"samplePeriodMult"`
+	Continuous       bool   `json:"continuous"`
+}
+
+type stateChannel struct {
+	Channel  int    `json:"channel"`
+	PinName  string `json:"pinName"`
+	DataType int    `json:"dataType"`
+}
+
+type stateTrigger struct {
+	Channel  int     `json:"channel"`
+	Level    float64 `json:"level"`
+	Edge     int     `json:"edge"`
+	AutoTrig bool    `json:"autoTrig"`
+}
+
+// saveState writes the current scope configuration to the state file.
+// Caller must NOT hold m.mu.
+func (m *halscope) saveState() error {
+	if m.statePath == "" {
+		return nil
+	}
+
+	m.mu.Lock()
+	s := m.s
+
+	sf := scopeStateFile{
+		Version: 1,
+		Config: stateConfig{
+			ThreadName:       C.GoString(&s.thread_name[0]),
+			MaxChannels:      int(s.max_channels),
+			SamplePeriodMult: int(s.mult),
+			Continuous:       C.halscope_atomic_load_int((*C.int)(unsafe.Pointer(&s.continuous)), C.memory_order_acquire) != 0,
+		},
+		Trigger: stateTrigger{
+			Channel:  int(s.trig.channel),
+			Level:    float64(C.get_trigger_level_real(&s.trig.level)),
+			Edge:     int(s.trig.edge),
+			AutoTrig: s.trig.auto_trig != 0,
+		},
+	}
+
+	for i := 0; i < C.HALSCOPE_MAX_CHANNELS; i++ {
+		if s.channels[i].enabled != 0 {
+			sf.Channels = append(sf.Channels, stateChannel{
+				Channel:  i,
+				PinName:  C.GoString(&s.channels[i].pin_name[0]),
+				DataType: int(s.channels[i].data_type),
+			})
+		}
+	}
+	m.mu.Unlock()
+
+	if sf.Channels == nil {
+		sf.Channels = []stateChannel{}
+	}
+
+	data, err := json.MarshalIndent(sf, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal: %w", err)
+	}
+
+	// Atomic write: tmp file + rename
+	tmp := m.statePath + ".tmp"
+	if err := os.WriteFile(tmp, data, 0644); err != nil {
+		return fmt.Errorf("write tmp: %w", err)
+	}
+	if err := os.Rename(tmp, m.statePath); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("rename: %w", err)
+	}
+	return nil
+}
+
+// loadState restores scope configuration from the state file.
+// Channels whose HAL pins no longer exist or whose data type changed
+// are silently skipped.
+// Must be called before any captures start (during init).
+func (m *halscope) loadState() error {
+	if m.statePath == "" {
+		return nil
+	}
+
+	data, err := os.ReadFile(m.statePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // no state file yet — not an error
+		}
+		return fmt.Errorf("read: %w", err)
+	}
+
+	var sf scopeStateFile
+	if err := json.Unmarshal(data, &sf); err != nil {
+		return fmt.Errorf("unmarshal: %w", err)
+	}
+	if sf.Version != 1 {
+		return fmt.Errorf("unsupported state file version %d", sf.Version)
+	}
+
+	s := m.s
+
+	// Restore thread assignment.
+	if sf.Config.ThreadName != "" {
+		cf := C.CString(m.functName)
+		ct := C.CString(sf.Config.ThreadName)
+		rv := C.hal_add_funct_to_thread(cf, ct, -1)
+		C.free(unsafe.Pointer(cf))
+		C.free(unsafe.Pointer(ct))
+		if rv != 0 {
+			m.logger.Warn("halscope: state restore: thread not available",
+				"thread", sf.Config.ThreadName, "rc", int(rv))
+		} else {
+			cName := C.CString(sf.Config.ThreadName)
+			C.strncpy(&s.thread_name[0], cName, C.size_t(C.HAL_NAME_LEN))
+			C.free(unsafe.Pointer(cName))
+		}
+	}
+
+	// Restore max_channels and derive rec_len.
+	if sf.Config.MaxChannels > 0 {
+		mc := sf.Config.MaxChannels
+		if mc > 16 {
+			mc = 16
+		}
+		s.max_channels = C.int(mc)
+		s.rec_len = s.num_samples / s.max_channels
+		s.pre_trig = s.rec_len / 2
+	}
+
+	if sf.Config.SamplePeriodMult > 0 {
+		s.mult = C.int(sf.Config.SamplePeriodMult)
+	}
+
+	if sf.Config.Continuous {
+		C.halscope_atomic_store_int((*C.int)(unsafe.Pointer(&s.continuous)), 1, C.memory_order_release)
+	}
+
+	// Restore channels — validate each pin still exists with same type.
+	restoredCount := 0
+	for _, ch := range sf.Channels {
+		if ch.Channel < 0 || ch.Channel >= C.HALSCOPE_MAX_CHANNELS {
+			m.logger.Warn("halscope: state restore: channel index out of range",
+				"channel", ch.Channel, "pin", ch.PinName)
+			continue
+		}
+		if ch.Channel >= int(s.max_channels) {
+			m.logger.Warn("halscope: state restore: channel >= max_channels",
+				"channel", ch.Channel, "max_channels", int(s.max_channels), "pin", ch.PinName)
+			continue
+		}
+
+		cName := C.CString(ch.PinName)
+		var halType C.hal_type_t
+		var dataLen C.int
+		var dataAddr unsafe.Pointer
+
+		rv := m.resolveHALName(cName, &halType, &dataLen, &dataAddr)
+		C.free(unsafe.Pointer(cName))
+
+		if rv != 0 {
+			m.logger.Warn("halscope: state restore: pin not found, skipping",
+				"channel", ch.Channel, "pin", ch.PinName)
+			continue
+		}
+		if int(halType) != ch.DataType {
+			m.logger.Warn("halscope: state restore: pin type changed, skipping",
+				"channel", ch.Channel, "pin", ch.PinName,
+				"expected", ch.DataType, "got", int(halType))
+			continue
+		}
+
+		c := &s.channels[ch.Channel]
+		c.enabled = 1
+		cPN := C.CString(ch.PinName)
+		C.strncpy(&c.pin_name[0], cPN, C.size_t(C.HAL_NAME_LEN))
+		C.free(unsafe.Pointer(cPN))
+		c.data_type = halType
+		c.data_len = dataLen
+		c.data_addr = dataAddr
+		restoredCount++
+	}
+
+	// Restore trigger — only if the trigger channel was successfully restored.
+	if sf.Trigger.Channel >= 0 && sf.Trigger.Channel < C.HALSCOPE_MAX_CHANNELS &&
+		s.channels[sf.Trigger.Channel].enabled != 0 {
+		s.trig.channel = C.int(sf.Trigger.Channel)
+		// Use type-specific setter matching the trigger channel's data type.
+		switch s.channels[sf.Trigger.Channel].data_type {
+		case C.HAL_S32:
+			C.set_trigger_level_s32(&s.trig.level, C.int32_t(sf.Trigger.Level))
+		case C.HAL_U32:
+			C.set_trigger_level_u32(&s.trig.level, C.uint32_t(sf.Trigger.Level))
+		default:
+			C.set_trigger_level(&s.trig.level, C.double(sf.Trigger.Level))
+		}
+		if sf.Trigger.Edge == 1 {
+			s.trig.edge = 1
+		} else {
+			s.trig.edge = 0
+		}
+		if sf.Trigger.AutoTrig {
+			s.trig.auto_trig = 1
+		} else {
+			s.trig.auto_trig = 0
+		}
+	} else {
+		s.trig.channel = -1
+	}
+
+	m.logger.Info("halscope: state restored",
+		"channels", restoredCount, "thread", sf.Config.ThreadName)
+	return nil
 }

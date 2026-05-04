@@ -65,6 +65,7 @@ docs/help/vi/*
 docs/help/zh_CN/*
 configs/**/*.tbl.bak
 configs/**/halshow.preferences
+configs/**/halscope_state.json
 
 # Web app build outputs
 share/gomc/
