@@ -29,25 +29,6 @@ USERSRCS += $(HALRMTSRCS)
 TARGETS += ../bin/halrmt
 endif # BUILD_GOLANG
 
-ifneq ($(GTK_VERSION),)
-HALMETERSRCS := \
-    hal/utils/meter.c \
-    hal/utils/miscgtk.c
-
-USERSRCS += $(HALMETERSRCS)
-
-../bin/halmeter: $(call TOOBJS, $(HALMETERSRCS)) ../lib/liblinuxcnchal.so.0
-	$(ECHO) Linking $(notdir $@)
-	$(Q)$(CC) $(LDFLAGS) -o $@ $^  $(GTK_LIBS)
-TARGETS += ../bin/halmeter
-
-HALGTKSRCS := \
-    hal/utils/meter.c \
-    hal/utils/miscgtk.c
-$(call TOOBJSDEPS, $(HALGTKSRCS)) : EXTRAFLAGS = $(GTK_CFLAGS)
-$(call TOOBJS, $(HALGTKSRCS)): Makefile.inc
-endif
-
 
 ../bin/halcompile: ../bin/%: objects/hal/utils/%.py
 	@$(ECHO) Syntax checking python script $(notdir $@)

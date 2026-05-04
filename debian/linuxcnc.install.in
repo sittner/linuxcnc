@@ -16,7 +16,6 @@ usr/bin/gscreen
 usr/bin/hal-histogram
 usr/bin/hal_input
 usr/bin/halcmd
-usr/bin/halmeter
 usr/bin/halreport
 usr/bin/halrmt
 usr/bin/halsampler

@@ -41,7 +41,6 @@ TCLSRCS := \
 	../tcl/bin/emctuning.tcl \
 	../tcl/bin/genedit.tcl \
 	../tcl/bin/halconfig.tcl \
-	../tcl/bin/halshow.tcl \
 	../tcl/bin/pickconfig.tcl \
 	../tcl/bin/tkbackplot.tcl \
 	../tcl/show_errors.tcl \

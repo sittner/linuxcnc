@@ -169,15 +169,11 @@ setup_menu_accel .menu.machine end [_ "Paste to MDI histor_y"]
 setup_menu_accel .menu.machine end [_ "_Calibration"]
 
 .menu.machine add command \
-        -command {exec $env(LINUXCNC_TCL_DIR)/bin/halshow.tcl &}
+        -command {exec halshow &}
 setup_menu_accel .menu.machine end [_ "Show _Hal Configuration"]
 
 .menu.machine add command \
-        -command {exec halmeter &}
-setup_menu_accel .menu.machine end [_ "H_al Meter"]
-
-.menu.machine add command \
-        -command {exec halscope -- -ini $emcini &}
+        -command {exec halscope &}
 setup_menu_accel .menu.machine end [_ "Ha_l Scope"]
 
 .menu.machine add command \
