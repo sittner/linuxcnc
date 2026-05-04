@@ -54,12 +54,14 @@ function isModified(item: TunableItem): boolean {
           />
         </td>
         <td class="col-actions">
-          <button @click="calibStore.testValue(item)" :disabled="!hasEdit(item)" title="Apply to HAL (live)">
-            Test
-          </button>
-          <button @click="calibStore.revertValue(item)" :disabled="!isModified(item)" title="Revert to INI value">
-            Revert
-          </button>
+          <div class="action-btns">
+            <button @click="calibStore.testValue(item)" :disabled="!hasEdit(item)" title="Apply to HAL (live)">
+              Test
+            </button>
+            <button @click="calibStore.revertValue(item)" :disabled="!isModified(item)" title="Revert to INI value">
+              Revert
+            </button>
+          </div>
         </td>
       </tr>
     </tbody>
@@ -112,7 +114,16 @@ tr.modified td {
 .col-ini { width: 12%; }
 .col-current { width: 12%; }
 .col-edit { width: 20%; }
-.col-actions { width: 16%; }
+.col-actions {
+  width: 16%;
+  white-space: nowrap;
+}
+
+.action-btns {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
 
 input {
   width: 100%;
@@ -128,11 +139,6 @@ input {
 input:focus {
   outline: none;
   border-color: #0e639c;
-}
-
-.col-actions {
-  display: flex;
-  gap: 4px;
 }
 
 .col-actions button {
