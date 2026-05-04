@@ -2419,6 +2419,11 @@ Profile entry in `gmcui.c`:
 - [x] Backend enhanced: full pin/param/signal metadata in REST responses
 - [x] Watch panel: Set dialog, bit toggle, canSet() logic (hides for OUT/linked/RO)
 - [x] Node overview: child pin table, +W per pin, +Watch All
+- [x] halcmd console: parse+execute, history, color-coded output
+- [x] gmcui native container with halshow symlink
+- [x] AXIS menu integration (`exec halshow &`)
+- [x] Old halshow.tcl, halmeter, and associated files removed
+- [x] Build system cleaned (Submakefiles, debian packaging)
 
 ### Step 5.10: Emccalib — Live Calibration Tuning (NOT STARTED)
 
@@ -2544,11 +2549,6 @@ Users add `HALFILE = emccalib.hal` to their `[HAL]` section to enable.
 - [ ] Build integration: `configure.ac` (`--enable-emccalib`), `packages.conf.in`,
       `Submakefile` rules
 - [ ] gmcui profile entry + `bin/emccalib` symlink
-- [x] halcmd console: parse+execute, history, color-coded output
-- [x] gmcui native container with halshow symlink
-- [x] AXIS menu integration (`exec halshow &`)
-- [x] Old halshow.tcl, halmeter, and associated files removed
-- [x] Build system cleaned (Submakefiles, debian packaging)
 
 ### Step 6: Polish (NOT STARTED)
 - [ ] Error handling standardization
