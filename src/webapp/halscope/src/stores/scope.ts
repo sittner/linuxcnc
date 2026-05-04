@@ -8,6 +8,7 @@ import {
   type ChannelConfig,
   ScopeState,
   TrigEdge,
+  HalType,
   MAX_CHANNELS,
 } from '../generated/halscope_client';
 import { HalscopeWatchClient } from '../generated/halscope_watch_client';
@@ -597,7 +598,181 @@ function setHorizPos(setting: number) {
   state.posSetting = Math.max(0, Math.min(1, setting));
 }
 
+const HAL_TYPE_NAMES: Record<number, string> = {
+  [HalType.BIT]: 'BIT',
+  [HalType.FLOAT]: 'FLOAT',
+  [HalType.S32]: 'S32',
+  [HalType.U32]: 'U32',
+};
 
+/** Export the current capture as semicolon-separated CSV and trigger a download. */
+function saveCapture() {
+  if (state.samples.length === 0 || state.timeBase.length === 0) {
+    state.error = 'No capture data to save';
+    return;
+  }
+
+  const channels = state.status.channels.filter(c => c.enabled);
+  const sampleCount = state.timeBase.length;
+  const periodNs = Math.round(getSamplePeriod() * 1e9);
+
+  // Build comment header
+  const lines: string[] = [];
+  lines.push(`# halscope capture ${new Date().toISOString()}`);
+  lines.push(`# sample_period_ns=${periodNs}`);
+  const trigCh = state.triggerConfig.channel;
+  if (trigCh >= 0) {
+    const edgeName = state.triggerConfig.edge === TrigEdge.RISING ? 'rising' : 'falling';
+    lines.push(`# trigger_channel=${trigCh} trigger_level=${state.triggerConfig.level} trigger_edge=${edgeName}`);
+  }
+
+  // Column header: time + channel names with type annotation
+  const colHeaders = ['time_s'];
+  for (const ch of channels) {
+    const typeName = HAL_TYPE_NAMES[ch.dataType] ?? `TYPE${ch.dataType}`;
+    colHeaders.push(`${ch.pinName}[${typeName}]`);
+  }
+  lines.push(colHeaders.join(';'));
+
+  // Lookup sample arrays by channel index
+  const sampleMap = new Map<number, Float64Array>();
+  for (const s of state.samples) {
+    sampleMap.set(s.channel, s.data);
+  }
+
+  // Data rows
+  for (let i = 0; i < sampleCount; i++) {
+    const row = [state.timeBase[i].toFixed(9)];
+    for (const ch of channels) {
+      const data = sampleMap.get(ch.channel);
+      const v = data ? data[i] : 0;
+      row.push(v.toFixed(14));
+    }
+    lines.push(row.join(';'));
+  }
+
+  const csv = lines.join('\n') + '\n';
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `halscope_${new Date().toISOString().replace(/[:.]/g, '-')}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/** Load a previously saved CSV capture file and display it. */
+function loadCapture() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.csv,.txt';
+  input.onchange = () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        parseAndLoadCapture(reader.result as string);
+      } catch (e) {
+        state.error = `Failed to load capture: ${e}`;
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+function parseAndLoadCapture(text: string) {
+  const lines = text.split('\n').filter(l => l.length > 0);
+
+  // Parse comment headers
+  let periodNs = 0;
+  const comments: string[] = [];
+  let dataStart = 0;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].startsWith('#')) {
+      comments.push(lines[i]);
+      dataStart = i + 1;
+      const m = lines[i].match(/sample_period_ns=(\d+)/);
+      if (m) periodNs = Number(m[1]);
+    } else {
+      break;
+    }
+  }
+
+  if (dataStart >= lines.length) throw new Error('No data found');
+
+  // Parse column header
+  const header = lines[dataStart].split(';');
+  dataStart++;
+
+  // Detect columns: first is time_s, rest are channels
+  const hasTimeCol = header[0].toLowerCase().startsWith('time');
+  const chanStart = hasTimeCol ? 1 : 0;
+
+  // Parse channel names and types from header like "pin.name[FLOAT]"
+  const chanNames: string[] = [];
+  const chanTypes: number[] = [];
+  const typeMap: Record<string, number> = { BIT: 1, FLOAT: 2, S32: 3, U32: 4 };
+  for (let i = chanStart; i < header.length; i++) {
+    const col = header[i].trim();
+    const tm = col.match(/^(.+)\[(\w+)\]$/);
+    if (tm) {
+      chanNames.push(tm[1]);
+      chanTypes.push(typeMap[tm[2]] ?? 2);
+    } else {
+      chanNames.push(col);
+      chanTypes.push(2); // default FLOAT
+    }
+  }
+
+  const sampleCount = lines.length - dataStart;
+  if (sampleCount === 0) throw new Error('No sample rows');
+
+  // Parse data
+  const timeArr = new Float64Array(sampleCount);
+  const chanData: Float64Array[] = chanNames.map(() => new Float64Array(sampleCount));
+
+  for (let si = 0; si < sampleCount; si++) {
+    const cols = lines[dataStart + si].split(';');
+    if (hasTimeCol) {
+      timeArr[si] = Number(cols[0]);
+    }
+    for (let ci = 0; ci < chanNames.length; ci++) {
+      chanData[ci][si] = Number(cols[chanStart + ci]);
+    }
+  }
+
+  // If no time column, reconstruct from period
+  if (!hasTimeCol && periodNs > 0) {
+    const dt = periodNs / 1e9;
+    for (let i = 0; i < sampleCount; i++) {
+      timeArr[i] = i * dt;
+    }
+  }
+
+  // Update store with loaded data
+  const samples: ChannelSamples[] = [];
+  const channels = [];
+  for (let ci = 0; ci < chanNames.length; ci++) {
+    samples.push({ channel: ci, data: chanData[ci] });
+    channels.push({
+      channel: ci,
+      pinName: chanNames[ci],
+      dataType: chanTypes[ci],
+      enabled: true,
+    });
+  }
+
+  state.samples = samples;
+  state.timeBase = timeArr;
+  state.status.channels = channels;
+  state.status.maxChannels = Math.max(chanNames.length, state.status.maxChannels);
+  state.status.recLen = sampleCount;
+  state.status.state = ScopeState.DONE;
+  state.selectedChannel = 0;
+  state.error = '';
+}
 
 function formatTimeValue(seconds: number): string {
   const sign = seconds < 0 ? '-' : '';
@@ -650,4 +825,6 @@ export const scopeStore = {
   calcDisplayWindow,
   getSamplePeriod,
   formatTimeValue,
+  saveCapture,
+  loadCapture,
 };

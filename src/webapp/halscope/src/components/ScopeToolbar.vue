@@ -37,6 +37,8 @@ const canForce = computed(() => {
   return s === ScopeState.PRE_TRIG || s === ScopeState.TRIG_WAIT;
 });
 
+const hasSamples = computed(() => scopeStore.state.samples.length > 0);
+
 const trigChannels = computed(() =>
   scopeStore.state.status.channels.filter(c => c.enabled)
 );
@@ -141,6 +143,8 @@ function onPosWheel(e: WheelEvent) {
         <button class="btn btn-stop" @click="onStop" :disabled="!isRunning">■ Stop</button>
         <button class="btn" @click="scopeStore.forceTrigger()" :disabled="!canForce">⚡ Force</button>
         <button class="btn btn-reset" @click="scopeStore.fullReset()" :disabled="isRunning">⟲ Reset</button>
+        <button class="btn btn-file" @click="scopeStore.saveCapture()" :disabled="!hasSamples">💾 Save</button>
+        <button class="btn btn-file" @click="scopeStore.loadCapture()">📂 Load</button>
       </div>
 
       <div class="toolbar-group config-group">
@@ -350,6 +354,8 @@ function onPosWheel(e: WheelEvent) {
 .btn-stop:hover { background: #422; }
 .btn-reset { color: #fa4; border-color: #a84; }
 .btn-reset:hover { background: #432; }
+.btn-file { color: #aaf; border-color: #88a; }
+.btn-file:hover { background: #234; }
 
 .connected-badge {
   color: #4f4;
