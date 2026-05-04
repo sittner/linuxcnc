@@ -89,6 +89,25 @@ const state = reactive<HalshowState>({
 let client: HalcmdClient;
 let watchClient: HalcmdWatchClient;
 
+const WATCH_STORAGE_KEY = 'halshow-watch-list';
+
+function saveWatchList(names: string[]) {
+  try {
+    localStorage.setItem(WATCH_STORAGE_KEY, JSON.stringify(names));
+  } catch { /* quota or private mode — ignore */ }
+}
+
+function loadWatchList(): string[] {
+  try {
+    const raw = localStorage.getItem(WATCH_STORAGE_KEY);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) return arr.filter((s): s is string => typeof s === 'string');
+    }
+  } catch { /* corrupt data — ignore */ }
+  return [];
+}
+
 function buildTree(items: { name: string }[], kind: TreeCategory): TreeNode[] {
   const root: TreeNode[] = [];
   const map = new Map<string, TreeNode>();
@@ -168,6 +187,8 @@ export const halshowStore = {
       watchClient.onClose = () => {
         state.connected = false;
       };
+      // Restore saved watch list now that WebSocket is ready
+      this.restoreWatchList();
     } catch {
       // Watch is optional — REST still works
     }
@@ -257,6 +278,7 @@ export const halshowStore = {
   addToWatch(name: string) {
     if (!state.watchList.includes(name)) {
       state.watchList.push(name);
+      saveWatchList(state.watchList);
       this.updateWatch();
     }
   },
@@ -265,6 +287,7 @@ export const halshowStore = {
     const idx = state.watchList.indexOf(name);
     if (idx >= 0) {
       state.watchList.splice(idx, 1);
+      saveWatchList(state.watchList);
       this.updateWatch();
     }
   },
@@ -272,7 +295,29 @@ export const halshowStore = {
   clearWatch() {
     state.watchList = [];
     state.watchValues = [];
+    saveWatchList(state.watchList);
     watchClient?.unsubscribeWatchItems();
+  },
+
+  /** Restore watch list from localStorage, dropping pins/params that no longer exist. */
+  restoreWatchList() {
+    const saved = loadWatchList();
+    if (saved.length === 0) return;
+
+    const knownNames = new Set<string>();
+    for (const p of state.pins) knownNames.add(p.name);
+    for (const p of state.params) knownNames.add(p.name);
+    for (const s of state.signals) knownNames.add(s.name);
+
+    const valid = saved.filter(n => knownNames.has(n));
+    if (valid.length !== saved.length) {
+      saveWatchList(valid); // prune stale entries
+    }
+    if (valid.length > 0) {
+      state.watchList = valid;
+      state.activeTab = 'watch';
+      this.updateWatch();
+    }
   },
 
   updateWatch() {
