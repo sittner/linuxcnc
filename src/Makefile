@@ -709,7 +709,6 @@ install-kernel-indep: install-dirs
 	$(FILE) ../tcl/TkLinuxCNC $(DESTDIR)/etc/X11/app-defaults
 	$(FILE) Makefile.modinc $(DESTDIR)$(datadir)/linuxcnc
 	$(EXE) $(TCL) $(DESTDIR)$(tcldir)
-	$(FILE) ../tcl/hal.so $(DESTDIR)$(tcldir)
 	$(FILE) ../tcl/linuxcnc.so $(DESTDIR)$(tcldir)
 	$(FILE) ../tcl/pkgIndex.tcl $(DESTDIR)$(tcldir)
 	$(EXE) $(TCL_BIN) $(DESTDIR)$(tcldir)/bin
