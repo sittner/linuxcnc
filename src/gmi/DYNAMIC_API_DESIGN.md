@@ -23,7 +23,7 @@ intended to replace NML with a modern, type-safe approach.
 | 5.7: Web App Infrastructure | ✅ Complete | — |
 | 5.8: Halscope (gomod + Vue Web UI) | ✅ Complete | — |
 | 5.9: Halshow (Vue Web UI, uses halcmd API) | ✅ Complete | — |
-| 5.10: Emccalib (gomod + Vue Web UI) | ❌ Not Started | — |
+| 5.10: Emccalib (gomod + Vue Web UI) | ✅ Complete | — |
 | 6: Polish | ❌ Not Started | — |
 | 7: Remove Go Plugins | ✅ Complete | — |
 
@@ -2425,7 +2425,7 @@ Profile entry in `gmcui.c`:
 - [x] Old halshow.tcl, halmeter, and associated files removed
 - [x] Build system cleaned (Submakefiles, debian packaging)
 
-### Step 5.10: Emccalib — Live Calibration Tuning (NOT STARTED)
+### Step 5.10: Emccalib — Live Calibration Tuning (COMPLETE)
 
 Replace the old Tcl emccalib (`tcl/bin/emccalib.tcl`) with a gomod + Vue 3 web UI
 that discovers tunable HAL parameters from INI/HAL file references, allows live
@@ -2549,14 +2549,14 @@ This registry accumulates during the entire HAL loading phase. The emccalib
 gomod reads it when initialized — guaranteed to capture all tunables regardless
 of Tcl/template processing.
 
-**Convenience HAL file (`configs/common/emccalib.hal`):**
+**Convenience HAL file (`lib/hallib/emccalib.hal`):**
 
 ```hal
 load emccalib
 ```
 
-Users add `HALFILE = emccalib.hal` (or `POSTGUI_HALFILE = emccalib.hal`) to
-their `[HAL]` section to enable.
+Users add `HALFILE = emccalib.hal` to their `[HAL]` section to enable.
+The file is found via `HALLIB_PATH` resolution.
 
 **INI Parser Enhancement (`pkg/inifile`):**
 
@@ -2573,17 +2573,20 @@ their `[HAL]` section to enable.
 - Generated TypeScript client from `emccalib.gmi`
 
 **Deliverables:**
-- [ ] `pkg/inifile` — provenance tracking (`SourceFile`, `SourceLine` per entry)
-- [ ] Setp interceptor — record INI→pin mappings during HAL load
-- [ ] `gmi/idl/emccalib.gmi` — IDL definition
-- [ ] Generated dispatch: `gomc/generated/gmi/emccalib/` (server-go output)
-- [ ] Generated TypeScript client: `src/webapp/emccalib/src/generated/`
-- [ ] `internal/emccalib/module.go` — gomod implementation
-- [ ] `configs/common/emccalib.hal` — convenience HAL file
-- [ ] `src/webapp/emccalib/` — Vue 3 web app
-- [ ] Build integration: `configure.ac` (`--enable-emccalib`), `packages.conf.in`,
+- [x] `pkg/inifile` — provenance tracking (`SourceFile`, `SourceLine` per entry)
+- [x] Setp interceptor (`internal/calibreg/`) — record INI→pin mappings during HAL load
+- [x] `gmi/idl/emccalib.gmi` — IDL definition
+- [x] Generated dispatch: `gomc/generated/gmi/emccalibapi/` (server-go output)
+- [x] Generated TypeScript client: `src/webapp/emccalib/src/generated/`
+- [x] `internal/emccalib/module.go` — gomod implementation
+- [x] `lib/hallib/emccalib.hal` — convenience HAL file
+- [x] `src/webapp/emccalib/` — Vue 3 web app
+- [x] Build integration: `configure.ac` (`--enable-emccalib`), `packages.conf.in`,
       `Submakefile` rules
-- [ ] gmcui profile entry + `bin/emccalib` symlink
+- [x] gmcui profile entry + `bin/emccalib` symlink
+- [x] Sim config: `configs/sim/emccalib/` (3-axis servo sim with PID tunables)
+- [x] UI integration: axis, gmoccapy, gscreen, qtvcp, tklinuxcnc menus updated
+- [x] Old Tcl source removed (`tcl/bin/emccalib.tcl`)
 
 ### Step 6: Polish (NOT STARTED)
 - [ ] Error handling standardization
