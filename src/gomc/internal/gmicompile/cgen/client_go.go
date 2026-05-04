@@ -94,7 +94,7 @@ func (g *clientGoGen) emitEnums() {
 		g.printf("type %s int32\n\n", goName)
 		g.printf("const (\n")
 		for _, v := range e.Values {
-			g.printf("\t%s %s = %d\n", v.Name, goName, v.Value)
+			g.printf("\t%s_%s %s = %d\n", goName, v.Name, goName, v.Value)
 		}
 		g.printf(")\n\n")
 	}

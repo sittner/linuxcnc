@@ -228,6 +228,33 @@ $(GMI_HALCMD_SERVER_GO): $(GMI_HALCMD_IDL) $(GMICOMPILE_BIN)
 
 TARGETS += $(GMI_HALCMD_SERVER_GO)
 
+# --- emcgateway (emcstat, emccmd, emcerror) ---
+
+GMI_EMCSTAT_IDL := gmi/idl/emcstat.gmi
+GMI_EMCCMD_IDL := gmi/idl/emccmd.gmi
+GMI_EMCERROR_IDL := gmi/idl/emcerror.gmi
+
+GMI_EMCSTAT_SERVER_GO := gomc/generated/gmi/emcstatapi/emcstat_server.go
+GMI_EMCCMD_SERVER_GO := gomc/generated/gmi/emccmdapi/emccmd_server.go
+GMI_EMCERROR_SERVER_GO := gomc/generated/gmi/emcerrorapi/emcerror_server.go
+
+$(GMI_EMCSTAT_SERVER_GO): $(GMI_EMCSTAT_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI emcstat Go server dispatch from $(GMI_EMCSTAT_IDL)"
+	@mkdir -p $(dir $(GMI_EMCSTAT_SERVER_GO))
+	$(Q)$(GMICOMPILE) --server-go $(GMI_EMCSTAT_IDL) -o $(GMI_EMCSTAT_SERVER_GO)
+
+$(GMI_EMCCMD_SERVER_GO): $(GMI_EMCCMD_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI emccmd Go server dispatch from $(GMI_EMCCMD_IDL)"
+	@mkdir -p $(dir $(GMI_EMCCMD_SERVER_GO))
+	$(Q)$(GMICOMPILE) --server-go $(GMI_EMCCMD_IDL) -o $(GMI_EMCCMD_SERVER_GO)
+
+$(GMI_EMCERROR_SERVER_GO): $(GMI_EMCERROR_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI emcerror Go server dispatch from $(GMI_EMCERROR_IDL)"
+	@mkdir -p $(dir $(GMI_EMCERROR_SERVER_GO))
+	$(Q)$(GMICOMPILE) --server-go $(GMI_EMCERROR_IDL) -o $(GMI_EMCERROR_SERVER_GO)
+
+TARGETS += $(GMI_EMCSTAT_SERVER_GO) $(GMI_EMCCMD_SERVER_GO) $(GMI_EMCERROR_SERVER_GO)
+
 clean: gmi-codegen-clean
 .PHONY: gmi-codegen-clean
 gmi-codegen-clean:

@@ -1,6 +1,6 @@
 package emcgateway
 
-// Command handlers — translate REST/WS JSON requests into NML shim calls.
+// Command handlers — implement emccmdapi.EmccmdCallbacks by calling NML shim.
 
 /*
 #include "nml_shim.h"
@@ -9,309 +9,128 @@ package emcgateway
 import "C"
 
 import (
-	"encoding/json"
-	"fmt"
 	"unsafe"
+
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emccmdapi"
 )
 
-// ─── Command request types ───
-
-type cmdStateReq struct {
-	State int `json:"state"`
-}
-type cmdModeReq struct {
-	Mode int `json:"mode"`
-}
-type cmdAutoReq struct {
-	Cmd  int `json:"cmd"`
-	Line int `json:"line"`
-}
-type cmdMdiReq struct {
-	Command string `json:"command"`
-}
-type cmdJogReq struct {
-	JogType     int     `json:"jog_type"`
-	Jjogmode    flexInt `json:"jjogmode"`
-	AxisOrJoint int     `json:"axis_or_joint"`
-	Velocity    float64 `json:"velocity"`
-	Distance    float64 `json:"distance"`
-}
-type cmdJogStopReq struct {
-	Jjogmode    flexInt `json:"jjogmode"`
-	AxisOrJoint int     `json:"axis_or_joint"`
-}
-type cmdSpindleReq struct {
-	Cmd        int     `json:"cmd"`
-	Speed      float64 `json:"speed"`
-	SpindleNum int     `json:"spindle_num"`
-	Wait       int     `json:"wait"`
-}
-type cmdJointReq struct {
-	Joint int `json:"joint"`
-}
-type cmdBoolReq struct {
-	Enable flexInt `json:"enable,omitempty"`
-	On     flexInt `json:"on,omitempty"`
-}
-type cmdRateReq struct {
-	Rate float64 `json:"rate"`
-}
-type cmdSpindleOverrideReq struct {
-	Rate       float64 `json:"rate"`
-	SpindleNum int     `json:"spindle_num"`
-}
-type cmdVelocityReq struct {
-	Velocity float64 `json:"velocity"`
-}
-type cmdBrakeReq struct {
-	On         flexInt `json:"on"`
-	SpindleNum int     `json:"spindle_num"`
-}
-type cmdFileReq struct {
-	File string `json:"file"`
-}
-type cmdTimeoutReq struct {
-	Timeout float64 `json:"timeout"`
-}
-type cmdDebugReq struct {
-	Debug int `json:"debug"`
-}
-
-// ─── Helpers ───
-
-// flexInt accepts both JSON numbers (0, 1) and booleans (true, false).
-type flexInt int
-
-func (f *flexInt) UnmarshalJSON(b []byte) error {
-	s := string(b)
-	if s == "true" {
-		*f = 1
-		return nil
+func boolToInt(b bool) C.int {
+	if b {
+		return 1
 	}
-	if s == "false" {
-		*f = 0
-		return nil
-	}
-	var n int
-	if err := json.Unmarshal(b, &n); err != nil {
-		return err
-	}
-	*f = flexInt(n)
-	return nil
+	return 0
 }
 
-func cmdResult(rc C.int) (json.RawMessage, error) {
-	if rc != 0 {
-		return nil, fmt.Errorf("command failed (rc=%d)", int(rc))
-	}
-	return json.Marshal(map[string]int{"result": 0})
+func rc(r C.int) (int32, error) {
+	return int32(r), nil
 }
 
-func unmarshal[T any](req json.RawMessage) (*T, error) {
-	var v T
-	if err := json.Unmarshal(req, &v); err != nil {
-		return nil, fmt.Errorf("invalid request: %w", err)
-	}
-	return &v, nil
+func (gw *emcGateway) SetState(state int32) (int32, error) {
+	return rc(C.nml_shim_set_state(C.int(state)))
 }
 
-// ─── Command Handlers ───
-
-func (gw *emcGateway) cmdSetState(req json.RawMessage) (json.RawMessage, error) {
-	r, err := unmarshal[cmdStateReq](req)
-	if err != nil {
-		return nil, err
-	}
-	return cmdResult(C.nml_shim_set_state(C.int(r.State)))
+func (gw *emcGateway) SetMode(mode int32) (int32, error) {
+	return rc(C.nml_shim_set_mode(C.int(mode)))
 }
 
-func (gw *emcGateway) cmdSetMode(req json.RawMessage) (json.RawMessage, error) {
-	r, err := unmarshal[cmdModeReq](req)
-	if err != nil {
-		return nil, err
-	}
-	return cmdResult(C.nml_shim_set_mode(C.int(r.Mode)))
+func (gw *emcGateway) AutoCmd(cmd emccmdapi.AutoCmd, line int32) (int32, error) {
+	return rc(C.nml_shim_auto_cmd(C.int(cmd), C.int(line)))
 }
 
-func (gw *emcGateway) cmdAuto(req json.RawMessage) (json.RawMessage, error) {
-	r, err := unmarshal[cmdAutoReq](req)
-	if err != nil {
-		return nil, err
-	}
-	return cmdResult(C.nml_shim_auto_cmd(C.int(r.Cmd), C.int(r.Line)))
-}
-
-func (gw *emcGateway) cmdMdi(req json.RawMessage) (json.RawMessage, error) {
-	r, err := unmarshal[cmdMdiReq](req)
-	if err != nil {
-		return nil, err
-	}
-	cCmd := C.CString(r.Command)
+func (gw *emcGateway) Mdi(command string) (int32, error) {
+	cCmd := C.CString(command)
 	defer C.free(unsafe.Pointer(cCmd))
-	return cmdResult(C.nml_shim_mdi(cCmd))
+	return rc(C.nml_shim_mdi(cCmd))
 }
 
-func (gw *emcGateway) cmdJog(req json.RawMessage) (json.RawMessage, error) {
-	r, err := unmarshal[cmdJogReq](req)
-	if err != nil {
-		return nil, err
-	}
-	return cmdResult(C.nml_shim_jog(C.int(r.JogType), C.int(r.Jjogmode),
-		C.int(r.AxisOrJoint), C.double(r.Velocity), C.double(r.Distance)))
+func (gw *emcGateway) Jog(jogType emccmdapi.JogType, jjogmode bool, axisOrJoint int32, velocity float64, distance float64) (int32, error) {
+	return rc(C.nml_shim_jog(C.int(jogType), C.int(boolToInt(jjogmode)),
+		C.int(axisOrJoint), C.double(velocity), C.double(distance)))
 }
 
-func (gw *emcGateway) cmdJogStop(req json.RawMessage) (json.RawMessage, error) {
-	r, err := unmarshal[cmdJogStopReq](req)
-	if err != nil {
-		return nil, err
-	}
-	return cmdResult(C.nml_shim_jog_stop(C.int(r.Jjogmode), C.int(r.AxisOrJoint)))
+func (gw *emcGateway) JogStop(jjogmode bool, axisOrJoint int32) (int32, error) {
+	return rc(C.nml_shim_jog_stop(C.int(boolToInt(jjogmode)), C.int(axisOrJoint)))
 }
 
-func (gw *emcGateway) cmdSpindle(req json.RawMessage) (json.RawMessage, error) {
-	r, err := unmarshal[cmdSpindleReq](req)
-	if err != nil {
-		return nil, err
-	}
-	return cmdResult(C.nml_shim_spindle(C.int(r.Cmd), C.double(r.Speed),
-		C.int(r.SpindleNum), C.int(r.Wait)))
+func (gw *emcGateway) Spindle(cmd emccmdapi.SpindleCmd, speed float64, spindleNum int32, wait int32) (int32, error) {
+	return rc(C.nml_shim_spindle(C.int(cmd), C.double(speed),
+		C.int(spindleNum), C.int(wait)))
 }
 
-func (gw *emcGateway) cmdHome(req json.RawMessage) (json.RawMessage, error) {
-	r, err := unmarshal[cmdJointReq](req)
-	if err != nil {
-		return nil, err
-	}
-	return cmdResult(C.nml_shim_home(C.int(r.Joint)))
+func (gw *emcGateway) Home(joint int32) (int32, error) {
+	return rc(C.nml_shim_home(C.int(joint)))
 }
 
-func (gw *emcGateway) cmdUnhome(req json.RawMessage) (json.RawMessage, error) {
-	r, err := unmarshal[cmdJointReq](req)
-	if err != nil {
-		return nil, err
-	}
-	return cmdResult(C.nml_shim_unhome(C.int(r.Joint)))
+func (gw *emcGateway) Unhome(joint int32) (int32, error) {
+	return rc(C.nml_shim_unhome(C.int(joint)))
 }
 
-func (gw *emcGateway) cmdOverrideLimits(req json.RawMessage) (json.RawMessage, error) {
-	return cmdResult(C.nml_shim_override_limits())
+func (gw *emcGateway) OverrideLimits() (int32, error) {
+	return rc(C.nml_shim_override_limits())
 }
 
-func (gw *emcGateway) cmdTeleopEnable(req json.RawMessage) (json.RawMessage, error) {
-	r, err := unmarshal[cmdBoolReq](req)
-	if err != nil {
-		return nil, err
-	}
-	return cmdResult(C.nml_shim_teleop_enable(C.int(r.Enable)))
+func (gw *emcGateway) TeleopEnable(enable bool) (int32, error) {
+	return rc(C.nml_shim_teleop_enable(C.int(boolToInt(enable))))
 }
 
-func (gw *emcGateway) cmdSetFeedOverride(req json.RawMessage) (json.RawMessage, error) {
-	r, err := unmarshal[cmdRateReq](req)
-	if err != nil {
-		return nil, err
-	}
-	return cmdResult(C.nml_shim_set_feed_override(C.double(r.Rate)))
+func (gw *emcGateway) SetFeedOverride(rate float64) (int32, error) {
+	return rc(C.nml_shim_set_feed_override(C.double(rate)))
 }
 
-func (gw *emcGateway) cmdSetSpindleOverride(req json.RawMessage) (json.RawMessage, error) {
-	r, err := unmarshal[cmdSpindleOverrideReq](req)
-	if err != nil {
-		return nil, err
-	}
-	return cmdResult(C.nml_shim_set_spindle_override(C.double(r.Rate), C.int(r.SpindleNum)))
+func (gw *emcGateway) SetSpindleOverride(rate float64, spindleNum int32) (int32, error) {
+	return rc(C.nml_shim_set_spindle_override(C.double(rate), C.int(spindleNum)))
 }
 
-func (gw *emcGateway) cmdSetRapidOverride(req json.RawMessage) (json.RawMessage, error) {
-	r, err := unmarshal[cmdRateReq](req)
-	if err != nil {
-		return nil, err
-	}
-	return cmdResult(C.nml_shim_set_rapid_override(C.double(r.Rate)))
+func (gw *emcGateway) SetRapidOverride(rate float64) (int32, error) {
+	return rc(C.nml_shim_set_rapid_override(C.double(rate)))
 }
 
-func (gw *emcGateway) cmdSetMaxVelocity(req json.RawMessage) (json.RawMessage, error) {
-	r, err := unmarshal[cmdVelocityReq](req)
-	if err != nil {
-		return nil, err
-	}
-	return cmdResult(C.nml_shim_set_max_velocity(C.double(r.Velocity)))
+func (gw *emcGateway) SetMaxVelocity(velocity float64) (int32, error) {
+	return rc(C.nml_shim_set_max_velocity(C.double(velocity)))
 }
 
-func (gw *emcGateway) cmdFlood(req json.RawMessage) (json.RawMessage, error) {
-	r, err := unmarshal[cmdBoolReq](req)
-	if err != nil {
-		return nil, err
-	}
-	return cmdResult(C.nml_shim_flood(C.int(r.On)))
+func (gw *emcGateway) Flood(on bool) (int32, error) {
+	return rc(C.nml_shim_flood(C.int(boolToInt(on))))
 }
 
-func (gw *emcGateway) cmdMist(req json.RawMessage) (json.RawMessage, error) {
-	r, err := unmarshal[cmdBoolReq](req)
-	if err != nil {
-		return nil, err
-	}
-	return cmdResult(C.nml_shim_mist(C.int(r.On)))
+func (gw *emcGateway) Mist(on bool) (int32, error) {
+	return rc(C.nml_shim_mist(C.int(boolToInt(on))))
 }
 
-func (gw *emcGateway) cmdBrake(req json.RawMessage) (json.RawMessage, error) {
-	r, err := unmarshal[cmdBrakeReq](req)
-	if err != nil {
-		return nil, err
-	}
-	return cmdResult(C.nml_shim_brake(C.int(r.On), C.int(r.SpindleNum)))
+func (gw *emcGateway) Brake(on bool, spindleNum int32) (int32, error) {
+	return rc(C.nml_shim_brake(C.int(boolToInt(on)), C.int(spindleNum)))
 }
 
-func (gw *emcGateway) cmdAbort(req json.RawMessage) (json.RawMessage, error) {
-	return cmdResult(C.nml_shim_abort())
+func (gw *emcGateway) Abort() (int32, error) {
+	return rc(C.nml_shim_abort())
 }
 
-func (gw *emcGateway) cmdTaskPlanSynch(req json.RawMessage) (json.RawMessage, error) {
-	return cmdResult(C.nml_shim_task_plan_synch())
+func (gw *emcGateway) TaskPlanSynch() (int32, error) {
+	return rc(C.nml_shim_task_plan_synch())
 }
 
-func (gw *emcGateway) cmdSetOptionalStop(req json.RawMessage) (json.RawMessage, error) {
-	r, err := unmarshal[cmdBoolReq](req)
-	if err != nil {
-		return nil, err
-	}
-	return cmdResult(C.nml_shim_set_optional_stop(C.int(r.On)))
+func (gw *emcGateway) SetOptionalStop(on bool) (int32, error) {
+	return rc(C.nml_shim_set_optional_stop(C.int(boolToInt(on))))
 }
 
-func (gw *emcGateway) cmdSetBlockDelete(req json.RawMessage) (json.RawMessage, error) {
-	r, err := unmarshal[cmdBoolReq](req)
-	if err != nil {
-		return nil, err
-	}
-	return cmdResult(C.nml_shim_set_block_delete(C.int(r.On)))
+func (gw *emcGateway) SetBlockDelete(on bool) (int32, error) {
+	return rc(C.nml_shim_set_block_delete(C.int(boolToInt(on))))
 }
 
-func (gw *emcGateway) cmdLoadToolTable(req json.RawMessage) (json.RawMessage, error) {
-	return cmdResult(C.nml_shim_load_tool_table())
+func (gw *emcGateway) LoadToolTable() (int32, error) {
+	return rc(C.nml_shim_load_tool_table())
 }
 
-func (gw *emcGateway) cmdProgramOpen(req json.RawMessage) (json.RawMessage, error) {
-	r, err := unmarshal[cmdFileReq](req)
-	if err != nil {
-		return nil, err
-	}
-	cFile := C.CString(r.File)
+func (gw *emcGateway) ProgramOpen(file string) (int32, error) {
+	cFile := C.CString(file)
 	defer C.free(unsafe.Pointer(cFile))
-	return cmdResult(C.nml_shim_program_open(cFile))
+	return rc(C.nml_shim_program_open(cFile))
 }
 
-func (gw *emcGateway) cmdWaitComplete(req json.RawMessage) (json.RawMessage, error) {
-	r, err := unmarshal[cmdTimeoutReq](req)
-	if err != nil {
-		return nil, err
-	}
-	rc := C.nml_shim_wait_complete(C.double(r.Timeout))
-	return json.Marshal(map[string]int{"result": int(rc)})
+func (gw *emcGateway) WaitComplete(timeout float64) (int32, error) {
+	return rc(C.nml_shim_wait_complete(C.double(timeout)))
 }
 
-func (gw *emcGateway) cmdSetDebug(req json.RawMessage) (json.RawMessage, error) {
-	r, err := unmarshal[cmdDebugReq](req)
-	if err != nil {
-		return nil, err
-	}
-	return cmdResult(C.nml_shim_set_debug(C.int(r.Debug)))
+func (gw *emcGateway) SetDebug(debug int32) (int32, error) {
+	return rc(C.nml_shim_set_debug(C.int(debug)))
 }

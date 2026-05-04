@@ -164,8 +164,7 @@ class Command:
         Returns:
             1 (RCS_DONE), 3 (RCS_ERROR), or -1 (timeout)
         """
-        result = self._post("/wait-complete", {"timeout": timeout})
-        return result.get("result", -1)
+        return self._post("/wait-complete", {"timeout": timeout})
 
     def debug(self, level: int):
         """Set debug level (bitmask of DEBUG_* flags)."""

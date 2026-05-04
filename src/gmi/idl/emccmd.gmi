@@ -162,3 +162,8 @@ func program_open(file: string) -> i32
 @method "POST"
 @path "/wait-complete"
 func wait_complete(timeout: f64) -> i32
+
+# Set debug level (bitmask of DEBUG_* flags)
+@method "POST"
+@path "/debug"
+func set_debug(debug: i32) -> i32

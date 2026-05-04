@@ -179,6 +179,7 @@ type StatFull {
     homed: [MAX_JOINTS]bool
     limit: [MAX_JOINTS]i32
     state: i32              # RCS state for connectivity check
+    debug: i32              # debug flags bitmask
 }
 
 # ─── Functions ───
