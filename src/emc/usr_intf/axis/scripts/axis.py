@@ -4435,6 +4435,88 @@ install_help(root_window)
 widgets.numbers_text.bind("<Configure>", commands.redraw_soon)
 live_plotter.update()
 live_plotter.error_task()
+
+# --- Integrated manual tool change support ---
+# Detect manualtoolchange REST endpoint and poll for tool change requests.
+_mtc_poller = None
+try:
+    from gmi.manualtoolchange_client import ManualtoolchangeClient
+    _mtc_rest_url = gmi.rest_url()
+    _mtc_instance = os.environ.get("GMC_MTC_INSTANCE", "manualtoolchange")
+    _mtc_client = ManualtoolchangeClient(_mtc_rest_url)
+    _mtc_client.base_url = f"{_mtc_rest_url}/api/v1/{_mtc_instance}"
+    # Probe endpoint availability with a GET /state
+    _mtc_client.get_state()
+
+    _mtc_prev_change = False
+    _mtc_dialog_active = False
+
+    def _mtc_do_change(tool_number):
+        global _mtc_dialog_active
+        if tool_number:
+            message = _("Insert tool %d and click continue when ready") % tool_number
+        else:
+            message = _("Remove the tool and click continue when ready")
+
+        _mtc_dialog_active = True
+        dismissed = [False]
+
+        def check_still_pending():
+            if dismissed[0]:
+                return
+            try:
+                state = _mtc_client.get_state()
+                if not state.change_requested or state.change_confirmed:
+                    root_window.tk.call("set", "::tkPriv(button)", -1)
+                    dismissed[0] = True
+                    return
+            except Exception:
+                pass
+            root_window.after(1000, check_still_pending)
+
+        root_window.after(1000, check_still_pending)
+
+        try:
+            r = root_window.tk.call("nf_dialog", ".tool_change",
+                                     _("Tool change"), message, "info", 0, _("Continue"))
+        finally:
+            dismissed[0] = True
+            _mtc_dialog_active = False
+
+        if isinstance(r, str):
+            r = int(r)
+        if r == 0:
+            try:
+                _mtc_client.confirm()
+            except Exception:
+                pass
+
+    def _mtc_poll():
+        global _mtc_prev_change
+        if _mtc_dialog_active:
+            root_window.after(1000, _mtc_poll)
+            return
+        try:
+            state = _mtc_client.get_state()
+        except Exception:
+            root_window.after(1000, _mtc_poll)
+            return
+
+        if state.change_requested and not state.change_confirmed and not _mtc_prev_change:
+            _mtc_prev_change = True
+            _mtc_do_change(state.tool_number)
+        elif not state.change_requested:
+            _mtc_prev_change = False
+
+        root_window.after(1000, _mtc_poll)
+
+    root_window.after(1000, _mtc_poll)
+    _mtc_poller = True
+    print("axis: manualtoolchange endpoint detected, integrated tool change UI active")
+except Exception:
+    # Endpoint not available — manualtoolchange not loaded, skip integration
+    pass
+
 o.mainloop()
 live_plotter.stop()
 if hal_present == 1:

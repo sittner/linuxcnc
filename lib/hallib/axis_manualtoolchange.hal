@@ -1,8 +1,5 @@
 load manualtoolchange
 addf manualtoolchange servo-thread
-# load manualtoolchange_ui without waiting, since it is no component anymore
-# we have to remove this later, ui launcher script should handle it
-loadusr manualtoolchange_ui
 
 # in case they were linked already
 unlinkp iocontrol.tool-change
