@@ -212,9 +212,6 @@ class AxisPreferences(cp):
         self.set("DEFAULT", option, str(value))
         self.write(open(self.fn, "w"))
 
-if sys.argv[1] != "-ini":
-    raise SystemExit("-ini must be first argument")
-
 inifile = gmi.IniFile()
 
 ap = AxisPreferences()
@@ -1457,8 +1454,12 @@ def open_file_guts(f, filtered=False, addrecent=True):
 
         parameter = inifile.find("RS274NGC", "PARAMETER_FILE")
         temp_parameter = os.path.join(tempdir, os.path.basename(parameter))
-        if os.path.exists(parameter):
-            shutil.copy(parameter, temp_parameter)
+        try:
+            content = gmi.fetch_parameter_file()
+            with open(temp_parameter, 'w') as pf:
+                pf.write(content)
+        except Exception:
+            pass
         canon.parameter_file = temp_parameter
 
         timeout = inifile.find("DISPLAY", "PREVIEW_TIMEOUT") or ""
@@ -1817,7 +1818,12 @@ def parse_gcode_expression(e):
 
     parameter = inifile.find("RS274NGC", "PARAMETER_FILE")
     temp_parameter = os.path.join(tempdir, os.path.basename(parameter))
-    shutil.copy(parameter, temp_parameter)
+    try:
+        content = gmi.fetch_parameter_file()
+        with open(temp_parameter, 'w') as pf:
+            pf.write(content)
+    except Exception:
+        pass
     canon.parameter_file = temp_parameter
 
     result, seq = gcode.parse("", canon, "M199 P["+e+"]", "M2")
@@ -3565,7 +3571,6 @@ def units(s, d=1.0):
         return unit_values.get(s, d)
 
 random_toolchanger = int(inifile.find("EMCIO", "RANDOM_TOOLCHANGER") or 0)
-vars.emcini.set(sys.argv[2])
 jointcount = int(inifile.find("KINS", "JOINTS"))
 open_directory = inifile.find("DISPLAY", "PROGRAM_PREFIX") or open_directory
 vars.machine.set(inifile.find("EMC", "MACHINE"))

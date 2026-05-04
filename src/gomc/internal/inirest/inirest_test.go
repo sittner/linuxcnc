@@ -1,14 +1,16 @@
 package inirest
 
 import (
-	"encoding/json"
 	"testing"
 
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/iniapi"
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
 	"github.com/sittner/linuxcnc/src/gomc/pkg/inifile"
 )
 
-func setupTestINI(t *testing.T) {
+func boolPtr(v bool) *bool { return &v }
+
+func setupTestINI(t *testing.T) *iniImpl {
 	t.Helper()
 	parsed, err := inifile.ParseString(`
 [DISPLAY]
@@ -35,93 +37,70 @@ MACHINE = Test Machine
 	if err := Register(reg, parsed); err != nil {
 		t.Fatal(err)
 	}
+	return &iniImpl{ini: parsed}
 }
 
 func TestQuerySingleValue(t *testing.T) {
-	setupTestINI(t)
+	impl := setupTestINI(t)
 
-	body, _ := json.Marshal([]queryItem{
+	results, err := impl.Query([]iniapi.IniQueryItem{
 		{Section: "DISPLAY", Key: "GEOMETRY"},
 	})
-	resp, err := dispatchQuery(nil, body)
 	if err != nil {
-		t.Fatal(err)
-	}
-
-	var results []resultItem
-	if err := json.Unmarshal(resp, &results); err != nil {
 		t.Fatal(err)
 	}
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
-	if results[0].Value == nil || *results[0].Value != "XYZABCUVW" {
+	if results[0].Value != "XYZABCUVW" {
 		t.Errorf("expected XYZABCUVW, got %v", results[0].Value)
 	}
 }
 
 func TestQueryMissingKey(t *testing.T) {
-	setupTestINI(t)
+	impl := setupTestINI(t)
 
-	body, _ := json.Marshal([]queryItem{
+	results, err := impl.Query([]iniapi.IniQueryItem{
 		{Section: "DISPLAY", Key: "NONEXISTENT"},
 	})
-	resp, err := dispatchQuery(nil, body)
 	if err != nil {
-		t.Fatal(err)
-	}
-
-	var results []resultItem
-	if err := json.Unmarshal(resp, &results); err != nil {
 		t.Fatal(err)
 	}
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
-	if results[0].Value != nil {
-		t.Errorf("expected nil value for missing key, got %v", *results[0].Value)
+	if results[0].Value != "" {
+		t.Errorf("expected empty value for missing key, got %v", results[0].Value)
 	}
 }
 
 func TestQueryEmptyValue(t *testing.T) {
-	setupTestINI(t)
+	impl := setupTestINI(t)
 
-	body, _ := json.Marshal([]queryItem{
+	results, err := impl.Query([]iniapi.IniQueryItem{
 		{Section: "DISPLAY", Key: "LATHE"},
 	})
-	resp, err := dispatchQuery(nil, body)
 	if err != nil {
-		t.Fatal(err)
-	}
-
-	var results []resultItem
-	if err := json.Unmarshal(resp, &results); err != nil {
 		t.Fatal(err)
 	}
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
-	// Empty value should still return a pointer (key exists).
-	if results[0].Value == nil {
-		t.Error("expected non-nil value for existing key with empty value")
-	} else if *results[0].Value != "" {
-		t.Errorf("expected empty string, got %q", *results[0].Value)
+	// Empty value — key exists but value is "".
+	// With generated types we can't distinguish via pointer,
+	// but the value should be returned as empty string.
+	if results[0].Value != "" {
+		t.Errorf("expected empty string, got %q", results[0].Value)
 	}
 }
 
 func TestQueryFindAll(t *testing.T) {
-	setupTestINI(t)
+	impl := setupTestINI(t)
 
-	body, _ := json.Marshal([]queryItem{
-		{Section: "FILTER", Key: "PROGRAM_EXTENSION", All: true},
+	results, err := impl.Query([]iniapi.IniQueryItem{
+		{Section: "FILTER", Key: "PROGRAM_EXTENSION", All: boolPtr(true)},
 	})
-	resp, err := dispatchQuery(nil, body)
 	if err != nil {
-		t.Fatal(err)
-	}
-
-	var results []resultItem
-	if err := json.Unmarshal(resp, &results); err != nil {
 		t.Fatal(err)
 	}
 	if len(results) != 1 {
@@ -139,18 +118,12 @@ func TestQueryFindAll(t *testing.T) {
 }
 
 func TestQueryFindAllMissing(t *testing.T) {
-	setupTestINI(t)
+	impl := setupTestINI(t)
 
-	body, _ := json.Marshal([]queryItem{
-		{Section: "FILTER", Key: "NONEXISTENT", All: true},
+	results, err := impl.Query([]iniapi.IniQueryItem{
+		{Section: "FILTER", Key: "NONEXISTENT", All: boolPtr(true)},
 	})
-	resp, err := dispatchQuery(nil, body)
 	if err != nil {
-		t.Fatal(err)
-	}
-
-	var results []resultItem
-	if err := json.Unmarshal(resp, &results); err != nil {
 		t.Fatal(err)
 	}
 	if len(results) != 1 {
@@ -164,38 +137,31 @@ func TestQueryFindAllMissing(t *testing.T) {
 }
 
 func TestQueryBulk(t *testing.T) {
-	setupTestINI(t)
+	impl := setupTestINI(t)
 
-	body, _ := json.Marshal([]queryItem{
+	results, err := impl.Query([]iniapi.IniQueryItem{
 		{Section: "DISPLAY", Key: "GEOMETRY"},
 		{Section: "DISPLAY", Key: "MAX_FEED_OVERRIDE"},
 		{Section: "EMC", Key: "MACHINE"},
 		{Section: "KINS", Key: "JOINTS"},
 		{Section: "DISPLAY", Key: "NONEXISTENT"},
-		{Section: "FILTER", Key: "PROGRAM_EXTENSION", All: true},
+		{Section: "FILTER", Key: "PROGRAM_EXTENSION", All: boolPtr(true)},
 	})
-	resp, err := dispatchQuery(nil, body)
 	if err != nil {
-		t.Fatal(err)
-	}
-
-	var results []resultItem
-	if err := json.Unmarshal(resp, &results); err != nil {
 		t.Fatal(err)
 	}
 	if len(results) != 6 {
 		t.Fatalf("expected 6 results, got %d", len(results))
 	}
 
-	// Check a few values.
-	if results[0].Value == nil || *results[0].Value != "XYZABCUVW" {
+	if results[0].Value != "XYZABCUVW" {
 		t.Errorf("result[0]: want XYZABCUVW, got %v", results[0].Value)
 	}
-	if results[1].Value == nil || *results[1].Value != "1.5" {
+	if results[1].Value != "1.5" {
 		t.Errorf("result[1]: want 1.5, got %v", results[1].Value)
 	}
-	if results[4].Value != nil {
-		t.Errorf("result[4]: want nil for missing key, got %v", *results[4].Value)
+	if results[4].Value != "" {
+		t.Errorf("result[4]: want empty for missing key, got %v", results[4].Value)
 	}
 	if len(results[5].Values) != 3 {
 		t.Errorf("result[5]: want 3 values, got %d", len(results[5].Values))

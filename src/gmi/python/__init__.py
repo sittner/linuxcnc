@@ -91,6 +91,8 @@ class IniFile:
     """
 
     def __init__(self):
+        from gmi.ini_client import IniClient, IniQueryItem
+        self._client = IniClient(rest_url())
         self._cache = {}  # (section, key) -> str or None (find)
         self._cache_all = {}  # (section, key) -> list[str] (findall)
 
@@ -99,9 +101,10 @@ class IniFile:
         cache_key = (section, key)
         if cache_key in self._cache:
             return self._cache[cache_key]
-        result = self._query([{"section": section, "key": key}])
-        if result and len(result) == 1:
-            val = result[0].get("value")
+        from gmi.ini_client import IniQueryItem
+        results = self._client.query([IniQueryItem(section=section, key=key).to_dict()])
+        if results and len(results) == 1:
+            val = results[0].value
             self._cache[cache_key] = val
             return val
         self._cache[cache_key] = None
@@ -112,24 +115,18 @@ class IniFile:
         cache_key = (section, key)
         if cache_key in self._cache_all:
             return self._cache_all[cache_key]
-        result = self._query([{"section": section, "key": key, "all": True}])
-        if result and len(result) == 1:
-            vals = result[0].get("values", [])
+        from gmi.ini_client import IniQueryItem
+        results = self._client.query([IniQueryItem(section=section, key=key, all=True).to_dict()])
+        if results and len(results) == 1:
+            vals = results[0].values or []
             self._cache_all[cache_key] = vals
             return vals
         self._cache_all[cache_key] = []
         return []
 
-    def _query(self, items):
-        """Issue a bulk query to the INI REST endpoint."""
-        import json
-        import urllib.request
-        url = rest_url() + "/api/v1/ini/query"
-        data = json.dumps(items).encode("utf-8")
-        req = urllib.request.Request(
-            url, data=data,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return json.loads(resp.read())
+
+def fetch_parameter_file():
+    """Fetch the RS274NGC parameter file content from the REST service."""
+    from gmi.ini_client import IniClient
+    client = IniClient(rest_url())
+    return client.get_parameter_file()

@@ -277,6 +277,28 @@ $(GMI_EMCERROR_SERVER_GO): $(GMI_EMCERROR_IDL) $(GMICOMPILE_BIN)
 
 TARGETS += $(GMI_EMCSTAT_SERVER_GO) $(GMI_EMCCMD_SERVER_GO) $(GMI_EMCERROR_SERVER_GO)
 
+# --- ini API (server-go + Python client) ---
+
+GMI_INI_IDL := gmi/idl/ini.gmi
+
+GMI_INI_SERVER_GO := gomc/generated/gmi/iniapi/ini_server.go
+
+$(GMI_INI_SERVER_GO): $(GMI_INI_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI ini Go server from $(GMI_INI_IDL)"
+	@mkdir -p $(dir $(GMI_INI_SERVER_GO))
+	$(Q)$(GMICOMPILE) --server-go $(GMI_INI_IDL) -o $(GMI_INI_SERVER_GO)
+
+TARGETS += $(GMI_INI_SERVER_GO)
+
+GMI_INI_PY := ../lib/python/gmi/ini_client.py
+
+$(GMI_INI_PY): $(GMI_INI_IDL) $(GMICOMPILE_BIN) $(GMI_INIT_DST)
+	$(ECHO) "Generating GMI ini Python client from $(GMI_INI_IDL)"
+	@mkdir -p $(dir $(GMI_INI_PY))
+	$(Q)$(GMICOMPILE) --client-python $(GMI_INI_IDL) -o $(GMI_INI_PY)
+
+TARGETS += $(GMI_INI_PY)
+
 # --- emccalib API (server-go + TypeScript client) ---
 
 GMI_EMCCALIB_IDL := gmi/idl/emccalib.gmi

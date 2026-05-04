@@ -177,11 +177,11 @@ setup_menu_accel .menu.machine end [_ "Show _Hal Configuration"]
 setup_menu_accel .menu.machine end [_ "Ha_l Scope"]
 
 .menu.machine add command \
-	-command {exec linuxcnctop -ini $emcini &}
+	-command {exec linuxcnctop &}
 setup_menu_accel .menu.machine end [_ "Sho_w LinuxCNC Status"]
 
 .menu.machine add command \
-	-command {exec debuglevel -ini $emcini &}
+	-command {exec debuglevel &}
 setup_menu_accel .menu.machine end [_ "Set _Debug Level"]
 
 .menu.machine add separator
