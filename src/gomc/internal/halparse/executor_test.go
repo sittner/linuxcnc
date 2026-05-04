@@ -41,7 +41,6 @@ func TestExecuteToken_AllTypes(t *testing.T) {
 		check func(*testing.T, Token)
 	}{
 		{"LoadRT", Token{loc, &LoadRTToken{Comp: "pid", Count: 1}}, noCGO},
-		{"LoadUSR", Token{loc, &LoadUSRToken{Prog: "halui"}}, noCGO},
 		{"Net", Token{loc, &NetToken{Signal: "sig", Pins: []string{"p.pin"}}}, noCGO},
 		{"SetP", Token{loc, &SetPToken{Name: "x.y", Value: "1"}}, noCGO},
 		{"SetS", Token{loc, &SetSToken{Name: "s", Value: "0"}}, noCGO},
@@ -62,9 +61,7 @@ func TestExecuteToken_AllTypes(t *testing.T) {
 		{"Lock", Token{loc, &LockToken{Level: LockAll}}, noCGO},
 		{"Unlock", Token{loc, &UnlockToken{Level: LockNone}}, noCGO},
 		{"UnloadRT", Token{loc, &UnloadRTToken{Comp: "c"}}, noCGO},
-		{"UnloadUSR", Token{loc, &UnloadUSRToken{Comp: "c"}}, noCGO},
 		{"Unload", Token{loc, &UnloadToken{Comp: "c"}}, noCGO},
-		{"WaitUSR", Token{loc, &WaitUSRToken{Comp: "c"}}, noCGO},
 		{"List", Token{loc, &ListToken{ObjType: ObjPin}}, noCGO},
 		{"Show", Token{loc, &ShowToken{ObjType: ObjAll}}, noCGO},
 		{"Save", Token{loc, &SaveToken{SaveType: SaveAll}}, noCGO},
@@ -156,33 +153,6 @@ func TestBuildLoadRTArgs_Empty(t *testing.T) {
 	}
 }
 
-// TestLoadUSROpts verifies the helper maps LoadUSRToken fields to LoadUSROptions.
-func TestLoadUSROpts(t *testing.T) {
-	d := &LoadUSRToken{
-		WaitReady: true,
-		WaitName:  "mycomp",
-		WaitExit:  false,
-		NoStdin:   true,
-		Timeout:   15,
-	}
-	opts := loadUSROpts(d)
-	if !opts.WaitReady {
-		t.Error("WaitReady should be true")
-	}
-	if opts.WaitName != "mycomp" {
-		t.Errorf("WaitName = %q, want %q", opts.WaitName, "mycomp")
-	}
-	if opts.WaitExit {
-		t.Error("WaitExit should be false")
-	}
-	if !opts.NoStdin {
-		t.Error("NoStdin should be true")
-	}
-	if opts.TimeoutSecs != 15 {
-		t.Errorf("TimeoutSecs = %d, want 15", opts.TimeoutSecs)
-	}
-}
-
 // TestHalObjTypeToString verifies all enum values map to the correct string.
 func TestHalObjTypeToString(t *testing.T) {
 	tests := []struct {
@@ -240,38 +210,6 @@ func TestAliasKindStr(t *testing.T) {
 	}
 }
 
-// TestParseResultLoad verifies that Load returns ErrNoCGO from the first
-// loadusr call when LoadUSR tokens are present.
-func TestParseResultLoad(t *testing.T) {
-	r := &ParseResult{
-		LoadRT: []Token{
-			{
-				Location: SourceLoc{File: "test.hal", Line: 1},
-				Data:     &LoadRTToken{Comp: "pid", Count: 2},
-			},
-		},
-		LoadUSR: []Token{
-			{
-				Location: SourceLoc{File: "test.hal", Line: 2},
-				Data:     &LoadUSRToken{Prog: "halui"},
-			},
-		},
-		HALCmd: []Token{
-			{
-				Location: SourceLoc{File: "test.hal", Line: 3},
-				Data:     &SetPToken{Name: "x.y", Value: "1"},
-			},
-		},
-	}
-	err := r.ExecLoadUSR()
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if !errors.Is(err, halcmd.ErrNoCGO) {
-		t.Errorf("expected ErrNoCGO, got %v", err)
-	}
-}
-
 // TestParseResultExecute verifies that Execute returns ErrNoCGO from the first
 // HALCmd token.
 func TestParseResultExecute(t *testing.T) {
@@ -295,9 +233,6 @@ func TestParseResultExecute(t *testing.T) {
 // TestParseResultLoad_Empty verifies that an empty ParseResult's Load returns nil.
 func TestParseResultLoad_Empty(t *testing.T) {
 	r := &ParseResult{}
-	if err := r.ExecLoadUSR(); err != nil {
-		t.Errorf("expected nil for empty ParseResult ExecLoadUSR, got %v", err)
-	}
 	if err := r.ExecLoadRT(); err != nil {
 		t.Errorf("expected nil for empty ParseResult ExecLoadRT, got %v", err)
 	}

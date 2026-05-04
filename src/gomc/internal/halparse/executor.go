@@ -27,8 +27,6 @@ func executeToken(tok Token) error {
 	switch d := tok.Data.(type) {
 	case *LoadRTToken:
 		err = halcmd.LoadRT(d.Comp, buildLoadRTArgs(d)...)
-	case *LoadUSRToken:
-		err = halcmd.LoadUSR(loadUSROpts(d), d.Prog, d.Args...)
 	case *NetToken:
 		err = halcmd.Net(d.Signal, d.Pins...)
 	case *SetPToken:
@@ -81,12 +79,8 @@ func executeToken(tok Token) error {
 		err = halcmd.SetLock(int(LockAll) &^ int(d.Level))
 	case *UnloadRTToken:
 		err = halcmd.UnloadRT(d.Comp)
-	case *UnloadUSRToken:
-		err = halcmd.UnloadUSR(d.Comp)
 	case *UnloadToken:
-		err = halcmd.Unload(d.Comp)
-	case *WaitUSRToken:
-		err = halcmd.WaitUSR(d.Comp)
+		err = halcmd.UnloadRT(d.Comp)
 	case *ListToken:
 		_, err = halcmd.List(halObjTypeToString(d.ObjType), d.Patterns...)
 	case *ShowToken:
@@ -122,18 +116,6 @@ func executeToken(tok Token) error {
 	}
 	if err != nil {
 		return &ExecutionError{Loc: tok.Location, Err: err}
-	}
-	return nil
-}
-
-// ExecLoadUSR executes the loadusr phase: all "loadusr" commands with their
-// -W/-Wn wait flags.  Call this before loading plugin modules and before
-// ExecLoadRT.
-func (r *ParseResult) ExecLoadUSR() error {
-	for _, tok := range r.LoadUSR {
-		if err := executeToken(tok); err != nil {
-			return err
-		}
 	}
 	return nil
 }
@@ -235,17 +217,6 @@ func buildLoadRTArgs(d *LoadRTToken) []string {
 		args = append(args, fmt.Sprintf("%s=%s", k, d.Params[k]))
 	}
 	return args
-}
-
-// loadUSROpts converts a LoadUSRToken to *halcmd.LoadUSROptions for halcmd.LoadUSR().
-func loadUSROpts(d *LoadUSRToken) *halcmd.LoadUSROptions {
-	return &halcmd.LoadUSROptions{
-		WaitReady:   d.WaitReady,
-		WaitName:    d.WaitName,
-		WaitExit:    d.WaitExit,
-		NoStdin:     d.NoStdin,
-		TimeoutSecs: d.Timeout,
-	}
 }
 
 // aliasKindStr converts an AliasKind enum to the string accepted by Alias()/UnAlias().

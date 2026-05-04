@@ -6,7 +6,6 @@
 package launcher
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -73,8 +72,7 @@ type Launcher struct {
 	logRing      *gomcLogRing       // shared log ring buffer for C module FIFO logging
 	retain       *retainInstance    // integrated retain subsystem (nil if unused)
 	apiServer    *apiserver.Server  // REST API server for halcmd and external tools
-	displayCmd   *exec.Cmd          // display process (set during startDisplay)
-	shutdownCh   chan struct{}      // closed by signal handler to unblock HAL-only wait
+	shutdownCh   chan struct{}      // closed by signal handler to unblock wait
 }
 
 // New creates a new Launcher with the given options and logger.
@@ -106,8 +104,8 @@ func (l *Launcher) ensureLogRing() {
 //  4. Validates cross-section INI dependencies (validateDependencies).
 //  5. Starts NML server (emcsvr cmod plugin) — only if [TASK]TASK is configured (M5).
 //  6. Starts the realtime environment (M4).
-//  7. Starts iocontrol via halcmd loadusr -Wn — only if [TASK]TASK is configured (M5).
-//  8. Starts halui via halcmd loadusr -Wn — only if [HAL]HALUI is configured (M5).
+//  7. Starts iocontrol — only if [TASK]TASK is configured (M5).
+//  8. Starts halui — only if [HAL]HALUI is configured (M5).
 //  9. Preloads tpmod/homemod — only if [TASK]TASK is configured (M4).
 //  10. Executes [HAL]HALFILE entries (M3, step 4.3.6).
 //  11. Starts the task controller in background — only if [TASK]TASK is configured (M6, step 4.3.7).
@@ -115,17 +113,15 @@ func (l *Launcher) ensureLogRing() {
 //  13. Loads retained signals if any are present (M6, step 4.3.9).
 //  14. Starts HAL threads (M6, step 4.3.10).
 //  15. Launches [APPLICATIONS]APP entries in background (M6, step 4.3.11).
-//  16. If [DISPLAY]DISPLAY is configured: launches the display in the foreground — blocks
-//     until the user closes the GUI (M6, step 4.3.12).
-//     Otherwise (HAL-only mode): blocks until SIGINT/SIGTERM is received.
-//  17. Shuts down in ordered sequence (M7): display helpers → AXIS quit → [HAL]SHUTDOWN →
-//     user-space → halcmd stop → halcmd unload all → wait → realtime stop → NML shm → lock.
+//  16. Blocks until SIGINT/SIGTERM is received.
+//  17. Shuts down in ordered sequence (M7): [HAL]SHUTDOWN →
+//     halcmd stop → halcmd unload all → wait → realtime stop → NML shm → lock.
 //
 // Operational modes:
 //   - Full CNC mode: [TASK]TASK is set → linuxcncsvr, iocontrol, task controller and
-//     optionally halui and a display are started.
+//     optionally halui are started.
 //   - HAL-only mode: [TASK]TASK is not set → only the realtime environment, HAL files,
-//     and HAL threads are started.  The launcher blocks until a signal is received.
+//     and HAL threads are started.
 //     This mode is suitable for machines that only require HAL-based automation without
 //     the full CNC stack (G-code interpreter, trajectory planner, etc.).
 //
@@ -176,10 +172,10 @@ func (l *Launcher) Run() (runErr error) {
 	go func() {
 		sig := <-sigCh
 		l.logger.Info("received signal, shutting down", "signal", sig)
-		// Stop the display so that startDisplay() returns and the deferred
+		// Signal the main wait loop to unblock so that the deferred
 		// cleanup runs through the normal exit path.  Calling os.Exit()
 		// here would race with C plugin destructors causing segfaults.
-		l.stopDisplay()
+		l.shutdown()
 	}()
 
 	l.logger.Info("parsing INI file", "path", l.opts.IniFile)
@@ -224,10 +220,7 @@ func (l *Launcher) Run() (runErr error) {
 	// Determine operational mode from the INI configuration.
 	// hasTask is true when [TASK]TASK is set; this enables the full CNC stack
 	// (NML server, iocontrol, motion modules, task controller).
-	// hasDisplay is true when [DISPLAY]DISPLAY is set; if false the launcher
-	// runs in HAL-only mode and blocks waiting for a shutdown signal.
 	hasTask := l.ini.Get("TASK", "TASK") != ""
-	hasDisplay := l.ini.Get("DISPLAY", "DISPLAY") != ""
 
 	// Validate cross-section INI dependencies before starting any processes.
 	// This catches contradictory configurations (e.g. [HAL]HALUI without
@@ -359,16 +352,8 @@ func (l *Launcher) Run() (runErr error) {
 	}
 
 	// Load components in dependency order:
-	//  1. loadusr — userspace components (e.g. halui)
-	//  2. load   — plugin modules that prepare shared state for RT modules
-	//  3. loadrt — realtime components (merged via twopass)
-	if err := halResult.ExecLoadUSR(); err != nil {
-		if !l.opts.ContinueOnError {
-			return fmt.Errorf("HAL loadusr failed: %w", err)
-		}
-		l.logger.Warn("HAL loadusr error (continuing)", "error", err)
-	}
-
+	//  1. load   — plugin modules that prepare shared state for RT modules
+	//  2. loadrt — realtime components (merged via twopass)
 	if err := halResult.IterLoads(func(path string, name string, args []string) error {
 		cmodPath := resolveCModulePath(path)
 		if cModuleExists(cmodPath) {
@@ -463,21 +448,13 @@ func (l *Launcher) Run() (runErr error) {
 		l.logger.Warn("application launch error", "error", err)
 	}
 
-	// 6f. Launch display in foreground or wait in HAL-only mode (step 4.3.12).
-	if hasDisplay {
-		if err := l.startDisplay(); err != nil {
-			return fmt.Errorf("display: %w", err)
-		}
-	} else {
-		// HAL-only mode: no display is configured.  Log and block until the
-		// signal handler goroutine signals shutdown.
-		l.logger.Info("HAL-only mode: no display configured, waiting for shutdown signal (Ctrl+C to stop)")
-		<-l.shutdownCh
-	}
+	// 6f. Wait for shutdown signal (Ctrl+C / SIGTERM).
+	l.logger.Info("ready, waiting for shutdown signal (Ctrl+C to stop)")
+	<-l.shutdownCh
 
-	// Display has exited — cleanup runs via deferred l.cleanup():
-	//   kill displays → axis-remote quit → [HAL]SHUTDOWN → kill user-space →
-	//   halcmd stop → halcmd unload all → wait → realtime stop → NML shm → lock
+	// Shutdown signal received — cleanup runs via deferred l.cleanup():
+	//   kill apps → stop modules → halcmd stop → halcmd unload all →
+	//   wait → realtime stop → NML shm → lock
 	return nil
 }
 
@@ -860,133 +837,13 @@ func (l *Launcher) stopApplications() {
 	}
 }
 
-// startDisplay launches the configured display GUI in the foreground (blocking).
-//
-// This mirrors scripts/linuxcnc.in lines 1004–1036.  The display program is
-// read from [DISPLAY]DISPLAY and dispatched based on the program name:
-//
-//   - dummy:         prints a prompt and waits for Enter
-//   - linuxcncrsh:   <display> [args] -- -ini <ini>
-//   - default:       <display> -ini <ini> [args]
-//
-// cmd.Run() blocks until the user closes the GUI.
-// startDisplay is only called when [DISPLAY]DISPLAY is configured; Run()
-// handles the no-display (HAL-only) case separately.
-func (l *Launcher) startDisplay() error {
-	displayVal := l.ini.Get("DISPLAY", "DISPLAY")
-	if displayVal == "" {
-		// This should not be reached — Run() only calls startDisplay when
-		// hasDisplay is true.  Return nil for safety (HAL-only wait is in Run()).
-		l.logger.Debug("no [DISPLAY]DISPLAY configured, startDisplay is a no-op")
-		return nil
-	}
-
-	fields := strings.Fields(displayVal)
-	emcDisplay := fields[0]
-	displayArgs := fields[1:]
-
-	// Legacy rename.
-	if emcDisplay == "tkemc" {
-		emcDisplay = "tklinuxcnc"
-	}
-
-	l.logger.Info("starting display", "display", emcDisplay)
-
-	var cmd *exec.Cmd
-
-	switch emcDisplay {
-	case "dummy":
-		fmt.Println("DUMMY DISPLAY MODULE, press <ENTER> to continue.")
-		_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
-		return nil
-
-	case "linuxcncrsh":
-		// Note the -- separator before -ini.
-		args := make([]string, 0, len(displayArgs)+3)
-		args = append(args, displayArgs...)
-		args = append(args, "--", "-ini", l.opts.IniFile)
-		cmd = exec.Command(emcDisplay, args...)
-
-	default:
-		args := append([]string{"-ini", l.opts.IniFile}, displayArgs...)
-		cmd = exec.Command(emcDisplay, args...)
-	}
-
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Pdeathsig: syscall.SIGTERM,
-	}
-
-	// If GDB_DISPLAY=1 is set, wrap the display command with gdb so that
-	// segfaults produce an immediate backtrace.
-	if os.Getenv("GDB_DISPLAY") != "" {
-		// The display may be a Python script (e.g. axis) rather than a
-		// native binary.  Detect this by reading the first two bytes for
-		// a "#!" shebang and, if found, extract the interpreter so gdb
-		// can load the real executable.
-		execPath := cmd.Path
-		scriptArgs := cmd.Args[1:]
-		if f, err := os.Open(execPath); err == nil {
-			var magic [2]byte
-			if _, err := f.Read(magic[:]); err == nil && string(magic[:]) == "#!" {
-				scanner := bufio.NewScanner(f)
-				if scanner.Scan() {
-					interp := strings.TrimSpace(scanner.Text())
-					// shebang line (after "#!") may have args, e.g. "#!/usr/bin/env python3"
-					parts := strings.Fields(interp)
-					if len(parts) > 0 {
-						scriptArgs = append([]string{execPath}, scriptArgs...)
-						execPath = parts[len(parts)-1] // use last token (handles /usr/bin/env python3)
-						if len(parts) > 1 && parts[0] != execPath {
-							// e.g. /usr/bin/env python3 → insert env args between interpreter and script
-							scriptArgs = append(parts[1:len(parts)-1], scriptArgs...)
-						}
-					}
-				}
-			}
-			f.Close()
-		}
-
-		gdbArgs := []string{
-			"-q",
-			"-ex", "run",
-			"-ex", "thread apply all bt full",
-			"-ex", "quit",
-			"--args", execPath,
-		}
-		gdbArgs = append(gdbArgs, scriptArgs...)
-		l.logger.Info("wrapping display with gdb (GDB_DISPLAY set)", "display", emcDisplay, "exec", execPath)
-		cmd = exec.Command("gdb", gdbArgs...)
-		cmd.Stdin = os.Stdin
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		cmd.SysProcAttr = &syscall.SysProcAttr{
-			Pdeathsig: syscall.SIGTERM,
-		}
-	}
-
-	l.displayCmd = cmd
-	if err := cmd.Run(); err != nil {
-		l.logger.Warn("display exited with error", "display", emcDisplay, "error", err)
-	}
-	return nil
-}
-
-// stopDisplay terminates the display process (if running) and signals the
-// HAL-only wait channel.  Called from the signal handler goroutine to trigger
-// an ordered shutdown through the normal defer path.
-func (l *Launcher) stopDisplay() {
-	// Signal HAL-only mode to unblock.
+// shutdown signals the main wait loop to unblock.  Called from the signal
+// handler goroutine to trigger an ordered shutdown through the normal defer path.
+func (l *Launcher) shutdown() {
 	select {
 	case <-l.shutdownCh:
 		// already closed
 	default:
 		close(l.shutdownCh)
-	}
-	// Terminate display if running.
-	if l.displayCmd != nil && l.displayCmd.Process != nil {
-		_ = l.displayCmd.Process.Signal(syscall.SIGTERM)
 	}
 }

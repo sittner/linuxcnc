@@ -148,120 +148,14 @@ func TestParseLoadRT(t *testing.T) {
 	})
 }
 
-// --- TestParseLoadUSR ---
+// --- TestParseLoadUSRError ---
 
-func TestParseLoadUSR(t *testing.T) {
+func TestParseLoadUSRError(t *testing.T) {
 	loc := SourceLoc{File: "test.hal", Line: 1}
-
-	t.Run("-W flag", func(t *testing.T) {
-		tok, err := parseLoadUSR([]string{"-W", "myprog"}, loc)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		lt := tok.Data.(*LoadUSRToken)
-		if !lt.WaitReady {
-			t.Error("WaitReady should be true")
-		}
-		if lt.Prog != "myprog" {
-			t.Errorf("Prog = %q, want %q", lt.Prog, "myprog")
-		}
-	})
-
-	t.Run("-w flag", func(t *testing.T) {
-		tok, err := parseLoadUSR([]string{"-w", "myprog"}, loc)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		lt := tok.Data.(*LoadUSRToken)
-		if !lt.WaitExit {
-			t.Error("WaitExit should be true")
-		}
-	})
-
-	t.Run("-Wn name", func(t *testing.T) {
-		tok, err := parseLoadUSR([]string{"-Wn", "mycomp", "myprog"}, loc)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		lt := tok.Data.(*LoadUSRToken)
-		if lt.WaitName != "mycomp" {
-			t.Errorf("WaitName = %q, want %q", lt.WaitName, "mycomp")
-		}
-		if lt.Prog != "myprog" {
-			t.Errorf("Prog = %q, want %q", lt.Prog, "myprog")
-		}
-	})
-
-	t.Run("-i flag", func(t *testing.T) {
-		tok, err := parseLoadUSR([]string{"-i", "myprog"}, loc)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		lt := tok.Data.(*LoadUSRToken)
-		if !lt.NoStdin {
-			t.Error("NoStdin should be true")
-		}
-	})
-
-	t.Run("-T timeout", func(t *testing.T) {
-		tok, err := parseLoadUSR([]string{"-T", "10", "myprog"}, loc)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		lt := tok.Data.(*LoadUSRToken)
-		if lt.Timeout != 10 {
-			t.Errorf("Timeout = %d, want 10", lt.Timeout)
-		}
-	})
-
-	t.Run("program with args", func(t *testing.T) {
-		tok, err := parseLoadUSR([]string{"myprog", "arg1", "arg2"}, loc)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		lt := tok.Data.(*LoadUSRToken)
-		if lt.Prog != "myprog" {
-			t.Errorf("Prog = %q, want %q", lt.Prog, "myprog")
-		}
-		if len(lt.Args) != 2 || lt.Args[0] != "arg1" || lt.Args[1] != "arg2" {
-			t.Errorf("Args = %v, want [arg1 arg2]", lt.Args)
-		}
-	})
-
-	t.Run("missing program error", func(t *testing.T) {
-		_, err := parseLoadUSR([]string{"-W"}, loc)
-		if err == nil {
-			t.Error("expected error, got nil")
-		}
-	})
-
-	t.Run("-Wn missing name error", func(t *testing.T) {
-		_, err := parseLoadUSR([]string{"-Wn"}, loc)
-		if err == nil {
-			t.Error("expected error, got nil")
-		}
-	})
-
-	t.Run("-T invalid timeout error", func(t *testing.T) {
-		_, err := parseLoadUSR([]string{"-T", "abc", "prog"}, loc)
-		if err == nil {
-			t.Error("expected error, got nil")
-		}
-	})
-
-	t.Run("combined flags", func(t *testing.T) {
-		tok, err := parseLoadUSR([]string{"-W", "-i", "-T", "5", "myprog", "a"}, loc)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		lt := tok.Data.(*LoadUSRToken)
-		if !lt.WaitReady || !lt.NoStdin || lt.Timeout != 5 || lt.Prog != "myprog" {
-			t.Errorf("unexpected values: %+v", lt)
-		}
-		if len(lt.Args) != 1 || lt.Args[0] != "a" {
-			t.Errorf("Args = %v, want [a]", lt.Args)
-		}
-	})
+	_, err := parseLine([]string{"loadusr", "-W", "myprog"}, loc)
+	if err == nil {
+		t.Error("expected error for loadusr, got nil")
+	}
 }
 
 // --- TestParseLoad ---
@@ -1128,7 +1022,6 @@ func TestParseLine(t *testing.T) {
 		kind   string
 	}{
 		{[]string{"loadrt", "mod"}, "*halparse.LoadRTToken"},
-		{[]string{"loadusr", "prog"}, "*halparse.LoadUSRToken"},
 		{[]string{"net", "sig"}, "*halparse.NetToken"},
 		{[]string{"setp", "a", "b"}, "*halparse.SetPToken"},
 		{[]string{"sets", "a", "b"}, "*halparse.SetSToken"},
@@ -1149,9 +1042,7 @@ func TestParseLine(t *testing.T) {
 		{[]string{"lock"}, "*halparse.LockToken"},
 		{[]string{"unlock"}, "*halparse.UnlockToken"},
 		{[]string{"unloadrt", "c"}, "*halparse.UnloadRTToken"},
-		{[]string{"unloadusr", "c"}, "*halparse.UnloadUSRToken"},
 		{[]string{"unload", "c"}, "*halparse.UnloadToken"},
-		{[]string{"waitusr", "c"}, "*halparse.WaitUSRToken"},
 		{[]string{"list", "pin"}, "*halparse.ListToken"},
 		{[]string{"show"}, "*halparse.ShowToken"},
 		{[]string{"save"}, "*halparse.SaveToken"},
@@ -1272,7 +1163,6 @@ func TestSingleFileParser(t *testing.T) {
 		files := map[string]string{
 			"test.hal": strings.Join([]string{
 				"loadrt pid names=pid.0",
-				"loadusr -W hal_input -KRAL SpacePilot",
 				"setp pid.0.Pgain 1000",
 				"addf pid.0.do-pid-calcs servo-thread",
 			}, "\n"),
@@ -1289,15 +1179,12 @@ func TestSingleFileParser(t *testing.T) {
 		if len(result.LoadRT) != 1 {
 			t.Errorf("LoadRT count = %d, want 1", len(result.LoadRT))
 		}
-		if len(result.LoadUSR) != 1 {
-			t.Errorf("LoadUSR count = %d, want 1", len(result.LoadUSR))
-		}
 		if len(result.HALCmd) != 2 {
 			t.Errorf("HALCmd count = %d, want 2", len(result.HALCmd))
 		}
 	})
 
-	t.Run("loadusr without -W goes to HALCmd", func(t *testing.T) {
+	t.Run("loadusr returns parse error", func(t *testing.T) {
 		files := map[string]string{
 			"test.hal": "loadusr myprog",
 		}
@@ -1306,51 +1193,9 @@ func TestSingleFileParser(t *testing.T) {
 				return files[path], nil
 			},
 		}
-		result, err := sp.Parse("test.hal")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(result.LoadUSR) != 0 {
-			t.Errorf("LoadUSR count = %d, want 0", len(result.LoadUSR))
-		}
-		if len(result.HALCmd) != 1 {
-			t.Errorf("HALCmd count = %d, want 1 (loadusr without -W)", len(result.HALCmd))
-		}
-	})
-
-	t.Run("loadusr -W goes to LoadUSR bucket", func(t *testing.T) {
-		files := map[string]string{
-			"test.hal": "loadusr -W myprog",
-		}
-		sp := &SingleFileParser{
-			readFile: func(path string) (string, error) {
-				return files[path], nil
-			},
-		}
-		result, err := sp.Parse("test.hal")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(result.LoadUSR) != 1 {
-			t.Errorf("LoadUSR count = %d, want 1", len(result.LoadUSR))
-		}
-	})
-
-	t.Run("loadusr -Wn goes to LoadUSR bucket", func(t *testing.T) {
-		files := map[string]string{
-			"test.hal": "loadusr -Wn mycomp myprog",
-		}
-		sp := &SingleFileParser{
-			readFile: func(path string) (string, error) {
-				return files[path], nil
-			},
-		}
-		result, err := sp.Parse("test.hal")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(result.LoadUSR) != 1 {
-			t.Errorf("LoadUSR count = %d, want 1", len(result.LoadUSR))
+		_, err := sp.Parse("test.hal")
+		if err == nil {
+			t.Fatal("expected error for loadusr, got nil")
 		}
 	})
 
@@ -1614,7 +1459,7 @@ func TestMultiFileParser(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(result.LoadRT) != 0 || len(result.LoadUSR) != 0 || len(result.HALCmd) != 0 {
+		if len(result.LoadRT) != 0 || len(result.HALCmd) != 0 {
 			t.Error("expected empty result for empty file list")
 		}
 	})

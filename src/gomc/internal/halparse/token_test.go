@@ -9,7 +9,6 @@ import (
 // Compile-time interface compliance checks for all 35 token structs.
 var (
 	_ TokenData = (*LoadRTToken)(nil)
-	_ TokenData = (*LoadUSRToken)(nil)
 	_ TokenData = (*NetToken)(nil)
 	_ TokenData = (*SetPToken)(nil)
 	_ TokenData = (*SetSToken)(nil)
@@ -30,9 +29,7 @@ var (
 	_ TokenData = (*LockToken)(nil)
 	_ TokenData = (*UnlockToken)(nil)
 	_ TokenData = (*UnloadRTToken)(nil)
-	_ TokenData = (*UnloadUSRToken)(nil)
 	_ TokenData = (*UnloadToken)(nil)
-	_ TokenData = (*WaitUSRToken)(nil)
 	_ TokenData = (*ListToken)(nil)
 	_ TokenData = (*ShowToken)(nil)
 	_ TokenData = (*SaveToken)(nil)

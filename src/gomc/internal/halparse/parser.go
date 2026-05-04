@@ -358,53 +358,6 @@ func parseLoadRT(tokens []string, loc SourceLoc) (Token, *ParseError) {
 	return Token{Location: loc, Data: tok}, nil
 }
 
-func parseLoadUSR(tokens []string, loc SourceLoc) (Token, *ParseError) {
-	tok := &LoadUSRToken{}
-	i := 0
-	for i < len(tokens) {
-		arg := tokens[i]
-		matched := true
-		switch arg {
-		case "-W":
-			tok.WaitReady = true
-		case "-w":
-			tok.WaitExit = true
-		case "-i":
-			tok.NoStdin = true
-		case "-Wn":
-			i++
-			if i >= len(tokens) {
-				return Token{}, &ParseError{Loc: loc, Msg: "loadusr: -Wn requires a name argument"}
-			}
-			tok.WaitName = tokens[i]
-		case "-T":
-			i++
-			if i >= len(tokens) {
-				return Token{}, &ParseError{Loc: loc, Msg: "loadusr: -T requires a seconds argument"}
-			}
-			n, err := strconv.Atoi(tokens[i])
-			if err != nil {
-				return Token{}, &ParseError{Loc: loc, Msg: fmt.Sprintf("loadusr: invalid timeout: %q", tokens[i])}
-			}
-			tok.Timeout = n
-		default:
-			matched = false
-		}
-		if !matched {
-			break
-		}
-		i++
-	}
-	if i >= len(tokens) {
-		return Token{}, &ParseError{Loc: loc, Msg: "loadusr: missing program name"}
-	}
-	tok.Prog = tokens[i]
-	if i+1 < len(tokens) {
-		tok.Args = tokens[i+1:]
-	}
-	return Token{Location: loc, Data: tok}, nil
-}
-
 func parseNet(tokens []string, loc SourceLoc) (Token, *ParseError) {
 	if len(tokens) < 1 {
 		return Token{}, &ParseError{Loc: loc, Msg: "net: missing signal name"}
@@ -638,25 +591,11 @@ func parseUnloadRT(tokens []string, loc SourceLoc) (Token, *ParseError) {
 	return Token{Location: loc, Data: &UnloadRTToken{Comp: tokens[0]}}, nil
 }
 
-func parseUnloadUSR(tokens []string, loc SourceLoc) (Token, *ParseError) {
-	if len(tokens) != 1 {
-		return Token{}, &ParseError{Loc: loc, Msg: fmt.Sprintf("unloadusr: expected 1 argument, got %d", len(tokens))}
-	}
-	return Token{Location: loc, Data: &UnloadUSRToken{Comp: tokens[0]}}, nil
-}
-
 func parseUnload(tokens []string, loc SourceLoc) (Token, *ParseError) {
 	if len(tokens) != 1 {
 		return Token{}, &ParseError{Loc: loc, Msg: fmt.Sprintf("unload: expected 1 argument, got %d", len(tokens))}
 	}
 	return Token{Location: loc, Data: &UnloadToken{Comp: tokens[0]}}, nil
-}
-
-func parseWaitUSR(tokens []string, loc SourceLoc) (Token, *ParseError) {
-	if len(tokens) != 1 {
-		return Token{}, &ParseError{Loc: loc, Msg: fmt.Sprintf("waitusr: expected 1 argument, got %d", len(tokens))}
-	}
-	return Token{Location: loc, Data: &WaitUSRToken{Comp: tokens[0]}}, nil
 }
 
 func parseList(tokens []string, loc SourceLoc) (Token, *ParseError) {
@@ -790,7 +729,7 @@ func parseLine(tokens []string, loc SourceLoc) (Token, *ParseError) {
 	case "loadrt":
 		return parseLoadRT(args, loc)
 	case "loadusr":
-		return parseLoadUSR(args, loc)
+		return Token{}, &ParseError{Loc: loc, Msg: "loadusr is no longer supported; start user-space components externally"}
 	case "net":
 		return parseNet(args, loc)
 	case "setp":
@@ -840,11 +779,11 @@ func parseLine(tokens []string, loc SourceLoc) (Token, *ParseError) {
 	case "unloadrt":
 		return parseUnloadRT(args, loc)
 	case "unloadusr":
-		return parseUnloadUSR(args, loc)
+		return Token{}, &ParseError{Loc: loc, Msg: "unloadusr is no longer supported; user-space components are managed externally"}
 	case "unload":
 		return parseUnload(args, loc)
 	case "waitusr":
-		return parseWaitUSR(args, loc)
+		return Token{}, &ParseError{Loc: loc, Msg: "waitusr is no longer supported; user-space components are managed externally"}
 	case "list":
 		return parseList(args, loc)
 	case "show":
@@ -975,7 +914,6 @@ func (sp *SingleFileParser) Parse(path string) (*ParseResult, error) {
 				return nil, parseErr
 			}
 			result.LoadRT = append(result.LoadRT, childResult.LoadRT...)
-			result.LoadUSR = append(result.LoadUSR, childResult.LoadUSR...)
 			result.Loads = append(result.Loads, childResult.Loads...)
 			result.HALCmd = append(result.HALCmd, childResult.HALCmd...)
 			continue
@@ -988,15 +926,9 @@ func (sp *SingleFileParser) Parse(path string) (*ParseResult, error) {
 		}
 
 		// Classify into the appropriate bucket
-		switch d := tok.Data.(type) {
+		switch tok.Data.(type) {
 		case *LoadRTToken:
 			result.LoadRT = append(result.LoadRT, tok)
-		case *LoadUSRToken:
-			if d.WaitReady || d.WaitName != "" {
-				result.LoadUSR = append(result.LoadUSR, tok)
-			} else {
-				result.HALCmd = append(result.HALCmd, tok)
-			}
 		case *LoadToken:
 			result.Loads = append(result.Loads, tok)
 		default:
@@ -1062,7 +994,6 @@ func (mp *MultiFileParser) Parse(paths []string) (*ParseResult, error) {
 			return nil, err
 		}
 		result.LoadRT = append(result.LoadRT, fileResult.LoadRT...)
-		result.LoadUSR = append(result.LoadUSR, fileResult.LoadUSR...)
 		result.Loads = append(result.Loads, fileResult.Loads...)
 		result.HALCmd = append(result.HALCmd, fileResult.HALCmd...)
 	}

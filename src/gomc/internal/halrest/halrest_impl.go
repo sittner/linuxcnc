@@ -359,38 +359,6 @@ func (h *halcmdImpl) Unloadrt(module string) (*halcmdapi.CmdResult, error) {
 	return okCmd(), nil
 }
 
-func (h *halcmdImpl) Loadusr(name string, args []string, wait *bool, ignore *bool) (*halcmdapi.CmdResult, error) {
-	opts := &halcmd.LoadUSROptions{}
-	if wait != nil && *wait {
-		opts.WaitReady = true
-	}
-	if err := halcmd.LoadUSR(opts, name, args...); err != nil {
-		return errCmd(err)
-	}
-	return okCmd(), nil
-}
-
-func (h *halcmdImpl) Unloadusr(name string) (*halcmdapi.CmdResult, error) {
-	if err := halcmd.UnloadUSR(name); err != nil {
-		return errCmd(err)
-	}
-	return okCmd(), nil
-}
-
-func (h *halcmdImpl) Waitusr(name string, timeoutMs *int32) (*halcmdapi.CmdResult, error) {
-	if err := halcmd.WaitUSR(name); err != nil {
-		return errCmd(err)
-	}
-	return okCmd(), nil
-}
-
-func (h *halcmdImpl) Unload(module string) (*halcmdapi.CmdResult, error) {
-	if err := halcmd.Unload(module); err != nil {
-		return errCmd(err)
-	}
-	return okCmd(), nil
-}
-
 func (h *halcmdImpl) Newthread(name string, periodNs int64, fp *bool, cpuId *int32) (*halcmdapi.CmdResult, error) {
 	usesFP := 0
 	if fp != nil && *fp {

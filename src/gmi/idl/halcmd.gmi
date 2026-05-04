@@ -240,23 +240,7 @@ func loadrt(module: string, args: []string?) -> CmdResult
 @rt_safe "false"
 func unloadrt(module: string) -> CmdResult
 
-# Load user module (loadusr)
-@method "POST"
-@path "/loadusr"
-@rt_safe "false"
-func loadusr(name: string, args: []string?, wait: bool?, ignore: bool?) -> CmdResult
 
-# Unload user module (unloadusr)
-@method "DELETE"
-@path "/loadusr/{name}"
-@rt_safe "false"
-func unloadusr(name: string) -> CmdResult
-
-# Wait for user component to be ready (waitusr)
-@method "POST"
-@path "/waitusr/{name}"
-@rt_safe "false"
-func waitusr(name: string, timeout_ms: i32?) -> CmdResult
 
 # Load cmod plugin (load)
 @method "POST"
@@ -264,11 +248,7 @@ func waitusr(name: string, timeout_ms: i32?) -> CmdResult
 @rt_safe "false"
 func load(module: string, args: []string?) -> CmdResult
 
-# Generic unload (deprecated - use unloadrt/unloadusr)
-@method "DELETE"
-@path "/module/{module}"
-@rt_safe "false"
-func unload(module: string) -> CmdResult
+
 
 # ─── Thread Commands ───
 

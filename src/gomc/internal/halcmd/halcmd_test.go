@@ -176,44 +176,6 @@ func TestUnloadRTSignature(t *testing.T) {
 	_ = fn
 }
 
-// ===== User-space component management signature tests =====
-
-// TestLoadUSROptionsType verifies that LoadUSROptions has the expected fields.
-func TestLoadUSROptionsType(t *testing.T) {
-	opts := &halcmd.LoadUSROptions{
-		WaitReady:   true,
-		WaitName:    "mycomp",
-		WaitExit:    false,
-		NoStdin:     true,
-		TimeoutSecs: 10,
-	}
-	_ = opts
-}
-
-// TestLoadUSRSignature verifies that LoadUSR has the correct signature.
-func TestLoadUSRSignature(t *testing.T) {
-	var fn func(*halcmd.LoadUSROptions, string, ...string) error = halcmd.LoadUSR
-	_ = fn
-}
-
-// TestUnloadUSRSignature verifies that UnloadUSR has the correct signature.
-func TestUnloadUSRSignature(t *testing.T) {
-	var fn func(string) error = halcmd.UnloadUSR
-	_ = fn
-}
-
-// TestUnloadSignature verifies that Unload has the correct signature.
-func TestUnloadSignature(t *testing.T) {
-	var fn func(string) error = halcmd.Unload
-	_ = fn
-}
-
-// TestWaitUSRSignature verifies that WaitUSR has the correct signature.
-func TestWaitUSRSignature(t *testing.T) {
-	var fn func(string) error = halcmd.WaitUSR
-	_ = fn
-}
-
 // ===== Lock/unlock signature tests =====
 
 // TestLockSignature verifies that Lock has the correct signature.

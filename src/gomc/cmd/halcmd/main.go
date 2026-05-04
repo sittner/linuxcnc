@@ -396,13 +396,13 @@ func executeCommand(args []string) error {
 	case "unloadrt":
 		return cmdUnloadRT(args)
 	case "loadusr":
-		return cmdLoadUsr(args)
+		return fmt.Errorf("loadusr is no longer supported; start user-space components externally")
 	case "unloadusr":
-		return cmdUnloadUsr(args)
+		return fmt.Errorf("unloadusr is no longer supported; user-space components are managed externally")
 	case "waitusr":
-		return cmdWaitUsr(args)
+		return fmt.Errorf("waitusr is no longer supported; user-space components are managed externally")
 	case "unload":
-		return cmdUnload(args)
+		return cmdUnloadRT(args)
 
 	// Threads
 	case "newthread":
@@ -513,20 +513,10 @@ var commandHelp = map[string]string{
   Example: loadrt threads name1=servo-thread period1=1000000`,
 	"unloadrt": `unloadrt <module>
   Unload a realtime module.`,
-	"loadusr": `loadusr [-W] [-Wn name] [-w] [-i] <command> [args...]
-  Start a user-space HAL component.
-  -W   wait for component to become ready
-  -Wn  wait for named component
-  -w   wait for program to exit
-  -i   ignore program exit value`,
-	"unloadusr": `unloadusr <component>
-  Terminate a user-space HAL component.`,
-	"waitusr": `waitusr <component>
-  Wait for a user-space component to exit.`,
 	"load": `load <module> [args...]
   Load a cmod plugin module into gomc-server.`,
 	"unload": `unload <component>
-  Unload a component (RT or user-space).`,
+  Unload a component (alias for unloadrt).`,
 	"newthread": `newthread <name> <period-ns> [fp] [cpu=N]
   Create a new realtime thread.
   period-ns is the period in nanoseconds.
@@ -1110,97 +1100,6 @@ func cmdUnloadRT(args []string) error {
 		return fmt.Errorf("unloadrt requires module name")
 	}
 	result, err := client.Unloadrt(args[0])
-	if err != nil {
-		return err
-	}
-	return checkResult(result)
-}
-
-func cmdLoadUsr(args []string) error {
-	if len(args) < 1 {
-		return fmt.Errorf("loadusr requires component name/command")
-	}
-
-	// Parse options
-	var wait, ignore *bool
-	i := 0
-	for i < len(args) && strings.HasPrefix(args[i], "-") {
-		switch args[i] {
-		case "-W", "-w":
-			t := true
-			wait = &t
-		case "-i":
-			t := true
-			ignore = &t
-		case "-Wn", "-wn":
-			// Wait with name - next arg is the name
-			t := true
-			wait = &t
-			i++
-		}
-		i++
-	}
-
-	if i >= len(args) {
-		return fmt.Errorf("loadusr requires component name/command")
-	}
-
-	name := args[i]
-	var modArgs []*string
-	for _, a := range args[i+1:] {
-		s := a
-		modArgs = append(modArgs, &s)
-	}
-
-	result, err := client.Loadusr(name, modArgs, wait, ignore)
-	if err != nil {
-		return err
-	}
-	if err := checkResult(result); err != nil {
-		return err
-	}
-	if result.Output != nil && *result.Output != "" && !quietMode {
-		fmt.Println(*result.Output)
-	}
-	return nil
-}
-
-func cmdUnloadUsr(args []string) error {
-	if len(args) < 1 {
-		return fmt.Errorf("unloadusr requires component name")
-	}
-	result, err := client.Unloadusr(args[0])
-	if err != nil {
-		return err
-	}
-	return checkResult(result)
-}
-
-func cmdWaitUsr(args []string) error {
-	if len(args) < 1 {
-		return fmt.Errorf("waitusr requires component name")
-	}
-	var timeout *int32
-	if len(args) > 1 {
-		t, err := strconv.ParseInt(args[1], 10, 32)
-		if err != nil {
-			return fmt.Errorf("invalid timeout: %w", err)
-		}
-		t32 := int32(t)
-		timeout = &t32
-	}
-	result, err := client.Waitusr(args[0], timeout)
-	if err != nil {
-		return err
-	}
-	return checkResult(result)
-}
-
-func cmdUnload(args []string) error {
-	if len(args) < 1 {
-		return fmt.Errorf("unload requires module name")
-	}
-	result, err := client.Unload(args[0])
 	if err != nil {
 		return err
 	}

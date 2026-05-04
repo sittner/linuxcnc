@@ -96,19 +96,6 @@ type LoadRTToken struct {
 
 func (*LoadRTToken) tokenData() {}
 
-// LoadUSRToken represents a "loadusr" command.
-type LoadUSRToken struct {
-	WaitReady bool   // -W flag
-	WaitName  string // -Wn <name> flag
-	WaitExit  bool   // -w flag
-	NoStdin   bool   // -i flag
-	Timeout   int    // -T <secs> flag; 0 = default
-	Prog      string
-	Args      []string
-}
-
-func (*LoadUSRToken) tokenData() {}
-
 // NetToken represents a "net" command.
 type NetToken struct {
 	Signal string   // signal name (first argument)
@@ -267,20 +254,10 @@ type UnloadRTToken struct{ Comp string }
 
 func (*UnloadRTToken) tokenData() {}
 
-// UnloadUSRToken represents an "unloadusr" command.
-type UnloadUSRToken struct{ Comp string }
-
-func (*UnloadUSRToken) tokenData() {}
-
-// UnloadToken represents an "unload" command (dispatches to RT or USR).
+// UnloadToken represents an "unload" command (dispatches to RT).
 type UnloadToken struct{ Comp string }
 
 func (*UnloadToken) tokenData() {}
-
-// WaitUSRToken represents a "waitusr" command.
-type WaitUSRToken struct{ Comp string }
-
-func (*WaitUSRToken) tokenData() {}
 
 // ListToken represents a "list" command.
 type ListToken struct {
@@ -372,13 +349,11 @@ type INILookup interface {
 
 // ParseResult holds the execution buckets produced by MultiFileParser.
 // LoadRT tokens are merged via TwopassCollector before execution.
-// LoadUSR tokens with -W or -Wn flags are executed after all RT components load.
 // Loads tokens are from the "load" command; they are exclusively for Go
 // plugins and resolved against EMC2_GOMOD_DIR by the launcher.
 // HALCmd tokens are everything else, executed in order after components start.
 type ParseResult struct {
 	LoadRT  []Token
-	LoadUSR []Token
 	Loads   []Token // "load" command tokens (*LoadToken) — Go plugins only
 	HALCmd  []Token
 }

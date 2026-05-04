@@ -351,11 +351,6 @@ static void hal_shim_rtapi_app_cleanup(void) {
     rt_msg_queue_consume_all();
 }
 
-// --- loadusr child PID tracking (forward declarations for unload_all) ---
-static pid_t *loadusr_pids;
-static int    loadusr_pid_count;
-static int    loadusr_pid_cap;
-
 // hal_shim_unload_all unloads all HAL components:
 //   - Userspace components: send SIGTERM to their owning process
 //   - Realtime components: unload via direct rtapi_dlclose (in-process)
@@ -383,26 +378,6 @@ static int hal_shim_unload_all(int except_id) {
         next = comp->next_ptr;
     }
     rtapi_mutex_give(&(hal_data->mutex));
-
-    // Phase 1b: send SIGTERM to tracked loadusr PIDs that may not have
-    // registered as HAL components (e.g. pure REST/WS client processes).
-    // Skip PIDs that already appeared in the HAL component list above.
-    {
-        int i;
-        for (i = 0; i < loadusr_pid_count; i++) {
-            pid_t p = loadusr_pids[i];
-            if (p > 0 && p != ourpid) {
-                // kill(pid, 0) checks if process exists without sending a signal
-                if (kill(p, 0) == 0) {
-                    kill(p, SIGTERM);
-                }
-            }
-        }
-        loadusr_pid_count = 0;
-        free(loadusr_pids);
-        loadusr_pids = NULL;
-        loadusr_pid_cap = 0;
-    }
 
     // Phase 2: collect realtime component names then unload in-process
     {
@@ -877,115 +852,6 @@ static int hal_shim_net(const char *sig_name, const char *pin_names, int num_pin
 // component to become ready or to disappear.
 #define HAL_SHIM_POLL_USECS 10000
 
-// --- loadusr child PID tracking ---
-// Processes spawned by loadusr that may not register as HAL components
-// (e.g. pure REST/WS clients like manualtoolchange_ui) need explicit
-// SIGTERM during cleanup.  We track all loadusr PIDs here; unload_all
-// signals them alongside HAL-registered components.
-// Variables declared above (before hal_shim_unload_all).
-
-static void loadusr_track_pid(pid_t pid) {
-    if (loadusr_pid_count >= loadusr_pid_cap) {
-        int newcap = loadusr_pid_cap == 0 ? 16 : loadusr_pid_cap * 2;
-        pid_t *tmp = (pid_t *)realloc(loadusr_pids, (size_t)newcap * sizeof(pid_t));
-        if (!tmp) return; // OOM — silently skip
-        loadusr_pids = tmp;
-        loadusr_pid_cap = newcap;
-    }
-    loadusr_pids[loadusr_pid_count++] = pid;
-}
-
-// hal_shim_loadusr starts a user-space process.
-// flags: 1=wait_ready, 2=wait_exit, 4=no_stdin
-// wait_name: component name to wait for (if wait_ready is set), or NULL to derive from prog.
-// timeout_s: timeout in seconds; 0 means use default (10 seconds).
-// Returns 0 on success, negative errno on error.
-static int hal_shim_loadusr(int flags, const char *wait_name, int timeout_s,
-                            const char *prog, const char *const args[], int nargs) {
-    int wait_ready = flags & 1;
-    int wait_exit  = flags & 2;
-    int no_stdin   = flags & 4;
-    const char *argv[256];
-    int m = 0, i;
-    pid_t pid;
-
-    if (m + 1 + nargs >= 256) return -E2BIG;
-
-    argv[m++] = prog;
-    for (i = 0; i < nargs; i++) {
-        argv[m++] = args[i];
-    }
-    argv[m] = NULL;
-
-    {
-        posix_spawn_file_actions_t file_actions;
-        posix_spawnattr_t attr;
-        int spawn_ret;
-
-        posix_spawn_file_actions_init(&file_actions);
-        if (no_stdin) {
-            posix_spawn_file_actions_addopen(&file_actions, 0, "/dev/null", O_RDONLY, 0);
-        }
-        posix_spawnattr_init(&attr);
-
-        spawn_ret = posix_spawnp(&pid, prog, &file_actions, &attr, (char *const *)argv, environ);
-
-        posix_spawn_file_actions_destroy(&file_actions);
-        posix_spawnattr_destroy(&attr);
-
-        if (spawn_ret != 0) {
-            return -spawn_ret;
-        }
-    }
-
-    // Track the child PID for cleanup (in case it never registers with HAL).
-    loadusr_track_pid(pid);
-
-    // Parent process
-    if (wait_exit) {
-        int status;
-        if (waitpid(pid, &status, 0) < 0) return -errno;
-        if (WIFEXITED(status) && WEXITSTATUS(status) != 0) return -ECHILD;
-        return 0;
-    }
-
-    if (wait_ready) {
-        const char *comp_name = (wait_name && *wait_name) ? wait_name : prog;
-        int max_us = (timeout_s > 0 ? timeout_s : 10) * HAL_SHIM_USECS_PER_SEC;
-        int elapsed = 0;
-        int step_us = HAL_SHIM_POLL_USECS;
-        int ready = 0, exited = 0;
-
-        while (!ready && !exited && elapsed < max_us) {
-            usleep((useconds_t)step_us);
-            elapsed += step_us;
-
-            // Check if child exited prematurely
-            int status;
-            int ret = waitpid(pid, &status, WNOHANG);
-            if (ret != 0) {
-                exited = 1;
-                if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
-                    return -ESRCH;
-                }
-            }
-
-            // Check if component became ready
-            if (hal_data != NULL) {
-                hal_comp_t *comp;
-                rtapi_mutex_get(&(hal_data->mutex));
-                comp = halpr_find_comp_by_name(comp_name);
-                if (comp && comp->ready) ready = 1;
-                rtapi_mutex_give(&(hal_data->mutex));
-            }
-        }
-
-        if (!ready) return -ETIMEDOUT;
-    }
-
-    return 0;
-}
-
 // hal_shim_loadrt loads a realtime module in-process via rtapi_dlopen.
 // Replaces the former fork+exec of rtapi_app.  The module's .so is opened
 // with RTLD_GLOBAL|RTLD_NOW, module parameters are parsed via dlsym'd
@@ -1089,53 +955,6 @@ static int hal_shim_newinst(const char *type, const char *name, const char *arg)
     }
     if (!arg) arg = "";
     return comp->make((char *)name, (char *)arg);
-}
-
-// hal_shim_unloadusr sends SIGTERM to the process owning a user-space component.
-// Returns 0 on success, negative errno on error.
-static int hal_shim_unloadusr(const char *comp_name) {
-    hal_comp_t *comp;
-    int pid;
-
-    if (hal_data == NULL) return -EINVAL;
-
-    rtapi_mutex_get(&(hal_data->mutex));
-    comp = halpr_find_comp_by_name(comp_name);
-    if (comp == NULL) {
-        rtapi_mutex_give(&(hal_data->mutex));
-        return -ENOENT;
-    }
-    pid = comp->pid;
-    rtapi_mutex_give(&(hal_data->mutex));
-
-    if (pid <= 0) return -EINVAL;
-
-    if (kill(pid, SIGTERM) < 0) return -errno;
-    return 0;
-}
-
-// hal_shim_waitusr waits until a user-space component disappears from HAL.
-// timeout_s: timeout in seconds; 0 means use default (30 seconds).
-// Returns 0 on success, -ETIMEDOUT if timeout expires.
-static int hal_shim_waitusr(const char *comp_name, int timeout_s) {
-    int max_us = (timeout_s > 0 ? timeout_s : 30) * HAL_SHIM_USECS_PER_SEC;
-    int elapsed = 0;
-    int step_us = HAL_SHIM_POLL_USECS;
-
-    while (elapsed < max_us) {
-        hal_comp_t *comp;
-        usleep((useconds_t)step_us);
-        elapsed += step_us;
-
-        if (hal_data == NULL) return 0; // HAL gone means component gone
-
-        rtapi_mutex_get(&(hal_data->mutex));
-        comp = halpr_find_comp_by_name(comp_name);
-        rtapi_mutex_give(&(hal_data->mutex));
-
-        if (comp == NULL) return 0; // component has disappeared
-    }
-    return -ETIMEDOUT;
 }
 
 // ===== 1e. Query/list shims =====
@@ -2305,49 +2124,6 @@ func halRtapiInitializeApp() {
 // Must be called after all components are unloaded and before hal_exit().
 func halRtapiAppCleanup() {
 	C.hal_shim_rtapi_app_cleanup()
-}
-
-// halLoadUSR wraps hal_shim_loadusr() to start a user-space HAL component.
-// flags: 1=wait_ready, 2=wait_exit, 4=no_stdin
-func halLoadUSR(flags int, waitName string, timeoutSecs int, prog string, args []string) error {
-	cProg := C.CString(prog)
-	defer C.free(unsafe.Pointer(cProg))
-
-	var cWaitName *C.char
-	if waitName != "" {
-		cWaitName = C.CString(waitName)
-		defer C.free(unsafe.Pointer(cWaitName))
-	}
-
-	if len(args) == 0 {
-		ret := C.hal_shim_loadusr(C.int(flags), cWaitName, C.int(timeoutSecs), cProg, nil, 0)
-		return halError(int(ret), "hal_shim_loadusr")
-	}
-
-	cArgs := make([]*C.char, len(args))
-	for i, arg := range args {
-		cArgs[i] = C.CString(arg)
-		defer C.free(unsafe.Pointer(cArgs[i]))
-	}
-	ret := C.hal_shim_loadusr(C.int(flags), cWaitName, C.int(timeoutSecs), cProg,
-		(**C.char)(unsafe.Pointer(&cArgs[0])), C.int(len(cArgs)))
-	return halError(int(ret), "hal_shim_loadusr")
-}
-
-// halUnloadUSR wraps hal_shim_unloadusr() to send SIGTERM to a user-space component.
-func halUnloadUSR(compName string) error {
-	cName := C.CString(compName)
-	defer C.free(unsafe.Pointer(cName))
-	ret := C.hal_shim_unloadusr(cName)
-	return halError(int(ret), "hal_shim_unloadusr")
-}
-
-// halWaitUSR wraps hal_shim_waitusr() to wait for a component to disappear from HAL.
-func halWaitUSR(compName string, timeoutSecs int) error {
-	cName := C.CString(compName)
-	defer C.free(unsafe.Pointer(cName))
-	ret := C.hal_shim_waitusr(cName, C.int(timeoutSecs))
-	return halError(int(ret), "hal_shim_waitusr")
 }
 
 // ===== Go wrappers for 1e list shims =====

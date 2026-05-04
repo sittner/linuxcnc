@@ -192,9 +192,6 @@ func (e *Executor) ExecuteHalCommands() error {
 		if err != nil {
 			return fmt.Errorf("parsing HALCMD %q: %w", cmd, err)
 		}
-		if err := result.ExecLoadUSR(); err != nil {
-			return fmt.Errorf("loading HALCMD %q: %w", cmd, err)
-		}
 		if err := result.ExecLoadRT(); err != nil {
 			return fmt.Errorf("loading HALCMD %q: %w", cmd, err)
 		}
@@ -233,9 +230,6 @@ func (e *Executor) ExecuteShutdown() error {
 	result, err := sp.Parse(resolved)
 	if err != nil {
 		return fmt.Errorf("parsing HAL shutdown script %q: %w", resolved, err)
-	}
-	if err := result.ExecLoadUSR(); err != nil {
-		return fmt.Errorf("loading HAL shutdown script %q: %w", resolved, err)
 	}
 	if err := result.ExecLoadRT(); err != nil {
 		return fmt.Errorf("loading HAL shutdown script %q: %w", resolved, err)
@@ -286,9 +280,6 @@ func (e *Executor) ExecutePostGUI() error {
 	result, err := mp.Parse(paths)
 	if err != nil {
 		return fmt.Errorf("parsing POSTGUI_HALFILE: %w", err)
-	}
-	if err := result.ExecLoadUSR(); err != nil {
-		return fmt.Errorf("loading POSTGUI_HALFILE: %w", err)
 	}
 	if err := result.ExecLoadRT(); err != nil {
 		return fmt.Errorf("loading POSTGUI_HALFILE: %w", err)
