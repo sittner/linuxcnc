@@ -3,7 +3,7 @@
 This document describes the dynamic inter-module communication system for LinuxCNC,
 intended to replace NML with a modern, type-safe approach.
 
-## Current Status (April 2026)
+## Current Status (May 2026)
 
 | Step | Status | Tests |
 |------|--------|-------|
@@ -703,6 +703,11 @@ src/gomc/                   # Go module: github.com/sittner/linuxcnc/src/gomc
 │   │   └── poslog.go        # Server-side position sampler goroutine (100Hz)
 │   ├── halrest/             # Server-side REST handler for halcmd API (Step 4.5)
 │   │   └── halrest.go       # Dispatches REST calls to internal/halcmd
+│   ├── halscope/            # Halscope gomod with embedded C RT (Step 5.8)
+│   │   ├── module.go        # gomod: lifecycle, REST/WS dispatch, state persistence
+│   │   ├── halscope_rt.h    # C RT data structures, state machine enums
+│   │   ├── halscope_rt.c    # C RT sampling engine (runs in HAL thread via cgo)
+│   │   └── testrt/          # Standalone C unit tests (mock HAL headers)
 │   ├── inirest/             # Server-side REST handler for INI file access (Step 5.4)
 │   │   ├── inirest.go       # POST /query dispatch, reads from launcher's parsed INI
 │   │   └── inirest_test.go  # 6 tests (single, missing, empty, findall, bulk)
@@ -2015,16 +2020,16 @@ a single TypeScript module with:
 
 **Implementation Plan:**
 
-1. [ ] **TS codegen in gmicompile** — `--client-ts` flag, generates
+1. [x] **TS codegen in gmicompile** — `--client-ts` flag, generates
        enums, interfaces, REST client, WS client in a single `.ts` file
-2. [ ] **Test with existing APIs** — Generate TS clients for `halcmd`
+2. [x] **Test with existing APIs** — Generate TS clients for `halcmd`
        and `emcstat`, validate against running gomc-server
-3. [ ] **Output convention** — `src/webapp/<app>/src/generated/<api>.ts`
+3. [x] **Output convention** — `src/webapp/<app>/src/generated/<api>.ts`
 
 **Deliverables:**
-- [ ] `--client-ts` in gmicompile (enums, interfaces, REST client, WS client)
-- [ ] Generated TS clients for existing APIs as validation
-- [ ] Tests
+- [x] `--client-ts` in gmicompile (enums, interfaces, REST client, WS client)
+- [x] Generated TS clients for existing APIs as validation
+- [x] Tests
 
 ### Step 5.7: Web App Infrastructure
 
@@ -2089,210 +2094,221 @@ src/webapp/halscope/
 
 **Implementation Plan:**
 
-1. [ ] Add `EMC2WebAppDir` config variable + ldflags
-2. [ ] Static file handler in `apiserver` with SPA fallback
-3. [ ] Root index handler listing discovered apps
-4. [ ] Wire into Makefile: `npm run build` → copy `dist/` to `share/gomc/webapp/<name>/`
+1. [x] Add `EMC2WebAppDir` config variable + ldflags
+2. [x] Static file handler in `apiserver` with SPA fallback
+3. [x] Root index handler listing discovered apps
+4. [x] Wire into Makefile: `npm run build` → copy `dist/` to `share/gomc/webapp/<name>/`
 
 **Deliverables:**
-- [ ] Static file serving in gomc-server
-- [ ] Webapp directory convention documented
-- [ ] Build system integration (Vite build + install)
+- [x] Static file serving in gomc-server
+- [x] Webapp directory convention documented
+- [x] Build system integration (Vite build + install)
 
-### Step 5.8: Halscope — RT Capture gomod + Vue Web UI
+### Step 5.8: Halscope — gomod with Embedded C RT + Vue Web UI (COMPLETE)
 
-Migrate `halscope` from its current shared-memory architecture to the GMI
-infrastructure: a cmod for RT sample capture and a Vue 3 + TypeScript web UI
-consuming the generated TS client from Step 5.6.
+Replaced the old shared-memory GTK3 halscope with a unified gomod that embeds
+the RT sampling engine via cgo and serves a Vue 3 web UI.
 
-**Current Architecture:**
-- `scope_rt.c` — RT component loaded on demand by the GUI, exports `scope.sample`
-  function added to a HAL thread. Captures up to 16 channels into a shared
-  memory ring buffer (up to 16K samples × 16 channels × 8 bytes).
-- `scope.c` + `scope_*.c` — GTK3 GUI that maps the same shared memory block
-  (`SCOPE_SHM_KEY = 0x130CF406`), configures channels/trigger/record length,
-  and renders waveforms.
-- Communication via `scope_shm_control_t` struct in shared memory with a
-  state machine (IDLE→INIT→PRE_TRIG→TRIG_WAIT→POST_TRIG→DONE→RESET).
-- GUI writes raw `SHMPTR` offsets into the control struct so the RT code
-  knows where to sample from — fragile and tightly coupled.
+**Previous Architecture (removed):**
+- `scope_rt.c` — standalone RT module, shared memory ring buffer
+- `scope.c` + `scope_*.c` — GTK3 GUI mapping same shared memory
+- Tight coupling via `SHMPTR` offsets, fragile state machine
 
-**Target Architecture:**
+**New Architecture:**
 
 ```
-  Vue halscope (browser)                 other clients (CLI, recorder)
+  Vue halscope (browser/gmcui)          other clients (future)
        │                                        │
-       └──────── WebSocket (text + binary) ─────┘
+       └──────── WebSocket + REST ──────────────┘
                           │
                     gomc-server
                           │
-                    scope_rt (cmod)
+                    halscope gomod (internal/halscope/)
                           │
-                    scope.sample (RT function, added to HAL thread)
+                    ├── Go: module lifecycle, REST/WS dispatch, state persistence
+                    └── C (via cgo): RT sampling engine (halscope_rt.h/halscope_rt.c)
+                          │
+                    halscope.sample (RT function, added to HAL thread)
 ```
 
-- **`scope_rt` cmod**: Loaded once via `load scope_rt num_samples=16000` in
-  HAL config. Registers the `halscope` API. Exports RT-safe `scope.sample`
-  function. Sits idle until a client configures and arms capture.
-- **Vue Web UI**: Uses generated TypeScript client (`--client-ts` from Step 5.6).
-  Renders waveforms via HTML5 `<canvas>` with `requestAnimationFrame`.
-  Served as static files from `share/gomc/webapp/halscope/`.
-- **Multi-client broadcast**: All connected WS clients receive state change
-  events and completed capture snapshots. Any client can configure/trigger
-  (last-writer-wins for simplicity).
-- **Decoupled lifetimes**: cmod stays loaded for the entire machine session.
-  UI can connect/disconnect/crash without affecting RT capture.
-- **Remote access**: Open `http://cnc-machine:5080/app/halscope/` from any
-  device on the network for remote monitoring.
+**Key Design Decisions:**
 
-**UI Technology:**
-- **Vue 3 + TypeScript** — Composition API with `<script setup lang="ts">`
-- **Vite** — Build tool, produces optimized static files (~20KB JS)
-- **Canvas API** — Waveform rendering, trigger markers, grid overlay
-- **No component library** — Custom components, minimal dependencies
+1. **gomod with embedded C RT** — not a separate cmod. The RT sampling code
+   (`halscope_rt.c`) is compiled via cgo into the gomc-server binary. The Go
+   module (`module.go`) owns the lifecycle, REST/WS API, and state persistence.
+   The C code handles only the hot loop: sample capture and trigger detection.
 
-**Key Design Changes:**
+2. **No GMI IDL** — hand-written REST/WS dispatch (same pattern as pyvcpmodule,
+   inirest). The API is specific to halscope and unlikely to be consumed by
+   other modules via direct calls.
 
-1. **Channel setup via API**: Instead of GUI writing `SHMPTR` offsets into
-   shared memory, client calls `set_channel(ch: i32, pin_name: string)`.
-   The cmod resolves the HAL pin/signal/param address internally — safer
-   and eliminates the tight coupling to HAL shared memory layout.
+3. **uPlot** — lightweight (~35KB) charting library for waveform rendering.
+   Chosen over raw Canvas for built-in zoom/pan, axis labeling, and series
+   management. Data is in "divisions" space (-5 to +5 vertical).
 
-2. **Binary sample transport**: Sample buffer is up to ~2MB (16 × 16K × 8).
-   Binary WebSocket frames deliver the raw sample buffer. The Flutter app
-   interprets the bytes directly via `ByteData` views — zero JSON overhead.
+4. **gmcui native container** — GTK3+WebKit2 wrapper (~150 LOC) providing a
+   native window for the web UI. Detected via `basename(argv[0])` symlink
+   (e.g., `halscope` → `gmcui`). DevTools enabled.
 
-3. **State push via WS**: All state transitions (IDLE→PRE_TRIG→DONE etc.)
-   are broadcast to connected clients as JSON text WS events. No polling.
+5. **State persistence** — Scope configuration (thread, channels, trigger,
+   continuous mode) is saved to a JSON file on every config change and on
+   `Stop()`. Path configurable via `[HAL]SCOPE_STATE_STORAGE` in the INI file.
+   State is restored in `Start()` (after all HAL pins exist).
 
-4. **Configure only when idle**: `configure()` enforces state == IDLE or
-   DONE. If mid-capture, client must `reset()` first (maps to existing
-   RESET state).
+6. **Client-side capture save/load** — CSV export with `#` comment headers
+   (sample period, trigger info), semicolon separator, pin names with `[TYPE]`
+   annotations. Load reconstructs waveforms without server involvement.
 
-5. **Flutter rendering**: `CustomPainter` draws waveforms from the binary
-   sample buffer. Flutter's 60fps rendering loop and GPU-accelerated canvas
-   replace GTK3's manual expose-event drawing. Pinch-to-zoom and scroll
-   come naturally from Flutter's gesture system.
+**Server-Side Implementation:**
 
-**GMI IDL:**
-
-```gmi
-@api halscope
-@version 1
-@prefix "halscope"
-@rest_export true
-
-const MAX_CHANNELS = 16
-const MAX_SAMPLES = 65536
-
-enum ScopeState {
-    IDLE = 0
-    INIT = 1
-    PRE_TRIG = 2
-    TRIG_WAIT = 3
-    POST_TRIG = 4
-    DONE = 5
-    RESET = 6
-}
-
-enum TrigEdge {
-    FALLING = 0
-    RISING = 1
-}
-
-type ChannelConfig {
-    channel: i32
-    pin_name: string
-}
-
-type TriggerConfig {
-    channel: i32
-    level: f64
-    edge: TrigEdge
-    force: bool
-    auto_trig: bool
-}
-
-type CaptureConfig {
-    thread_name: string
-    rec_len: i32
-    sample_period_mult: i32
-    pre_trig: i32
-}
-
-type ScopeStatus {
-    state: ScopeState
-    samples: i32
-    rec_len: i32
-    pre_trig: i32
-    sample_len: i32
-}
-
-# Control functions (non-RT, called via REST/WS)
-func configure(config: CaptureConfig) -> i32
-func set_channel(ch: ChannelConfig) -> i32
-func clear_channel(channel: i32) -> i32
-func set_trigger(trig: TriggerConfig) -> i32
-func arm() -> i32
-func reset() -> i32
-func get_status() -> ScopeStatus
-
-# Watch: pushes state changes + completed captures to WS clients
-@watch true
-func watch_state() -> ScopeStatus
-
-# Sample data delivered as binary WS frames on capture complete
-@watch true
-@binary true
-func watch_samples() -> []u8
+```
+src/gomc/internal/halscope/
+├── module.go          # gomod: init(), New(), Start(), Stop(), REST/WS dispatch
+│                      # State save/load, watch loop (100ms status push)
+│                      # Dispatches: configure, set_channel, clear_channel,
+│                      # set_trigger, arm, force_trigger, reset, get_status,
+│                      # set_continuous, set_sample_period_mult
+├── halscope_rt.h      # C header: RT data structures, state machine enums
+│                      # scope_data_t union (bit/u32/s32/float), channel config,
+│                      # trigger config, sample buffer management
+├── halscope_rt.c      # C RT code: halscope_sample() function (runs in HAL thread)
+│                      # State machine: IDLE→PRE_TRIG→TRIG_WAIT→POST_TRIG→DONE
+│                      # Per-channel sampling, trigger detection (rising/falling edge)
+│                      # Supports bit, u32, s32, float HAL types
+└── testrt/            # C unit tests for RT code (standalone, no Go)
+    ├── test_halscope_rt.c
+    └── testmock/hal.h # Mock HAL headers for testing
 ```
 
-**Binary sample buffer layout:**
+**State Machine (C RT code):**
 
-The `watch_samples` binary frame contains a header followed by raw sample data:
 ```
-[4 bytes: sample_count (uint32 LE)]
-[4 bytes: sample_len (uint32 LE)]      // channels per sample
-[4 bytes: start_offset (uint32 LE)]    // first valid sample index
-[4 bytes: reserved]
-[sample_count × sample_len × 8 bytes: scope_data_t values (little-endian)]
+IDLE → (arm) → PRE_TRIG → (pre-trig samples done) → TRIG_WAIT
+     → (trigger condition met OR force) → POST_TRIG
+     → (post-trig samples done) → DONE → (reset/re-arm) → IDLE
 ```
-Each `scope_data_t` is an 8-byte union (u8/u32/s32/f64) — the client
-knows the type per channel from `ChannelConfig` / `hal_type_t`.
 
-**RT-safe function (exported to HAL, not in IDL):**
+Continuous mode: DONE → automatic re-arm → PRE_TRIG (no manual reset needed).
 
-The `scope.sample` function is exported via `hal_export_funct()` as today.
-It runs in the HAL thread context and is not part of the REST/WS API.
-The cmod internally manages the buffer and state machine; the API functions
-manipulate the same control struct that the RT function reads.
+**REST Endpoints (instance "halscope"):**
 
-**Implementation Plan:**
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/configure` | Set thread, max channels, sample period mult |
+| POST | `/set_channel` | Assign HAL pin/sig/param to channel slot |
+| POST | `/clear_channel` | Remove channel assignment |
+| POST | `/set_trigger` | Configure trigger (channel, level, edge, auto) |
+| POST | `/arm` | Start capture |
+| POST | `/force_trigger` | Force immediate trigger |
+| POST | `/reset` | Return to IDLE |
+| POST | `/set_continuous` | Enable/disable continuous mode |
+| POST | `/set_sample_period_mult` | Change sample decimation |
+| GET | `/status` | Current state, channels, trigger config |
 
-1. [ ] **IDL file** — `gmi/idl/halscope.gmi`
-2. [ ] **cmod** — `src/hal/utils/scope_rt_cmod.c` implementing the halscope
-       API callbacks plus the RT `scope.sample` export. Built as cmod,
-       output: `cmod/scope_rt.so`.
-3. [ ] **Vue web app** — `src/webapp/halscope/` with Vue 3 + TypeScript.
-       Uses generated `halscope.ts` client from Step 5.6.
-4. [ ] **Waveform renderer** — HTML5 `<canvas>` with `requestAnimationFrame`,
-       interpreting binary sample buffer, channel color/scale/offset,
-       trigger marker, grid overlay.
-5. [ ] **Multi-client broadcast** — State events and sample snapshots
-       pushed to all subscribed WS clients.
-6. [ ] **Tests** — Capture lifecycle, multi-client, binary frame delivery.
-7. [ ] **Retire old halscope** — Remove `scope.c`, `scope_*.c` (GTK3),
-       old `scope_rt.c` once web UI is validated.
-8. [ ] **Remove Flutter** — Delete `src/hal/utils/halscope_flutter/`,
-       Flutter SDK download rules, `--client-dart`/`--client-dart-ws`
-       from gmicompile, Dart codegen Go sources.
+**WebSocket (via `/api/v1/watch`):**
 
-**Deliverables:**
-- [ ] `gmi/idl/halscope.gmi`
-- [ ] `src/hal/utils/scope_rt_cmod.c` (cmod replacing old `scope_rt.c`)
-- [ ] `src/webapp/halscope/` (Vue 3 + TypeScript web app)
-- [ ] HAL config example: `load scope_rt num_samples=16000`
-- [ ] Tests
+- `watch halscope/status` — 100ms push of state + sample data (binary samples
+  included when capture is complete)
+- Client subscribes once; receives JSON status + base64-encoded sample buffer
+
+**Client-Side Implementation:**
+
+```
+src/webapp/halscope/
+├── index.html
+├── package.json           # Vue 3, uPlot, vite
+├── vite.config.ts
+├── tsconfig*.json
+└── src/
+    ├── main.ts
+    ├── App.vue
+    ├── stores/
+    │   └── scope.ts       # Pinia store: WS connection, chart data, save/load
+    ├── components/
+    │   ├── ScopeChart.vue         # uPlot wrapper, data transformation
+    │   ├── ScopeToolbar.vue       # Arm/Reset/Run Mode/Save/Load buttons
+    │   ├── ChannelSetup.vue       # Channel config panel (pin selection)
+    │   ├── TriggerControls.vue    # Trigger config (source, level, edge)
+    │   ├── HorizontalControls.vue # Zoom + position sliders
+    │   └── VerticalControls.vue   # Per-channel gain + offset sliders
+    └── generated/
+        ├── halscope_client.ts     # Generated REST client (from --client-ts)
+        └── halscope_watch_client.ts # Generated WS watch client
+```
+
+**Native Container (gmcui):**
+
+```
+src/emc/usr_intf/gmcui/
+├── gmcui.c        # GTK3+WebKit2, profile table, symlink detection
+└── Submakefile    # Conditional on BUILD_WEBKIT2GTK=yes
+```
+
+Profile table maps symlink names to webapp paths:
+```c
+{ "halscope", "/app/halscope/", "HAL Oscilloscope", 1280, 800 }
+```
+
+Build produces `bin/gmcui` + `bin/halscope` symlink. CLI supports
+`--url`, `--title`, `--width`, `--height` for custom use.
+
+**State Persistence Format (version 1):**
+
+```json
+{
+  "version": 1,
+  "config": {
+    "threadName": "servo-thread",
+    "maxChannels": 4,
+    "samplePeriodMult": 1,
+    "continuous": true
+  },
+  "channels": [
+    {"slot": 1, "pinName": "joint.0.motor-pos-cmd"}
+  ],
+  "trigger": {
+    "channel": 1,
+    "level": 0.0,
+    "edge": 1,
+    "autoTrig": true
+  }
+}
+```
+
+**Build Dependencies:**
+
+| Dependency | Build-time | Runtime | configure.ac check |
+|------------|-----------|---------|-------------------|
+| Node.js + npm | Yes (Vite build) | No | `HAVE_NODEJS` |
+| webkit2gtk-4.1 | Yes (gmcui) | Yes | `HAVE_WEBKIT2GTK` (pkg-config) |
+
+Both are optional — gomc-server and the web UI work in a browser without them.
+
+**Completed:**
+- [x] RT sampling engine (`halscope_rt.h` / `halscope_rt.c`) with C unit tests
+- [x] Go module (`internal/halscope/module.go`) — full REST/WS API
+- [x] State persistence (JSON, INI-configured path, save on change + Stop)
+- [x] Vue 3 web app with uPlot charting, channel/trigger/horizontal/vertical controls
+- [x] Generated TypeScript clients (REST + WS watch)
+- [x] Mouse wheel on all sliders, hover tooltip with cursor dot, drag rubberband
+- [x] CSV capture save/load (client-side, with legacy format support)
+- [x] gmcui native WebKit container with halscope symlink
+- [x] Old halscope removed: `scope.c`, `scope_*.c`, `scope_rt.c`, `scope_shm.h` (git rm)
+- [x] `scope_rt` RTMODULE removed from Makefile
+- [x] All `loadrt scope_rt` / `loadusr halscope` references cleaned from configs
+- [x] `configure.ac`: Node.js/npm + webkit2gtk-4.1 checks (replaces Flutter deps)
+- [x] Debian packaging: `libwebkit2gtk-4.1-dev` (build), `libwebkit2gtk-4.1-0` (runtime), `nodejs`, `npm`
+- [x] `.gitignore`: `configs/**/halscope_state.json`
+
+**Notes:**
+- No Flutter code was ever merged — Flutter evaluation was abandoned in favor of
+  Vue 3 + native WebKit container (simpler build, smaller footprint, web-native)
+- The RT code is tested standalone via a C test harness with mock HAL headers,
+  independently of the Go module
+- Continuous mode auto-rearms after DONE, providing oscilloscope-like live view
+- Trigger supports rising/falling edge detection on any channel type (bit/s32/u32/float)
+- Sample period multiplier allows decimation (sample every Nth thread invocation)
+- The gomod is loaded via `load halscope` in HAL config files
 
 ### Step 6: Polish (NOT STARTED)
 - [ ] Error handling standardization
