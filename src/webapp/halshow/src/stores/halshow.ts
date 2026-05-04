@@ -335,6 +335,10 @@ export const halshowStore = {
     }
   },
 
+  isWatched(name: string): boolean {
+    return state.watchList.includes(name);
+  },
+
   removeFromWatch(name: string) {
     const idx = state.watchList.indexOf(name);
     if (idx >= 0) {

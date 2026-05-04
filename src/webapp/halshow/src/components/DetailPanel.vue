@@ -58,6 +58,11 @@ function addToWatch() {
     halshowStore.addToWatch(item.name);
   }
 }
+
+function isItemWatched(): boolean {
+  const item = halshowStore.state.selectedItem;
+  return item ? halshowStore.isWatched(item.name) : false;
+}
 </script>
 
 <template>
@@ -83,7 +88,7 @@ function addToWatch() {
       <div class="actions">
         <button @click="startEdit((halshowStore.state.selectedItem as PinInfo).value)">Set Value</button>
         <button v-if="(halshowStore.state.selectedItem as PinInfo).linked" @click="doUnlink">Unlink</button>
-        <button @click="addToWatch">+ Watch</button>
+        <button :class="{ watched: isItemWatched() }" @click="addToWatch">{{ isItemWatched() ? '✓ Watched' : '+ Watch' }}</button>
       </div>
     </template>
 
@@ -99,7 +104,7 @@ function addToWatch() {
       </table>
       <div class="actions">
         <button v-if="(halshowStore.state.selectedItem as ParamInfo).dir === 'RW'" @click="startEdit((halshowStore.state.selectedItem as ParamInfo).value)">Set Value</button>
-        <button @click="addToWatch">+ Watch</button>
+        <button :class="{ watched: isItemWatched() }" @click="addToWatch">{{ isItemWatched() ? '✓ Watched' : '+ Watch' }}</button>
       </div>
     </template>
 
@@ -125,7 +130,7 @@ function addToWatch() {
       </table>
       <div class="actions">
         <button @click="startEdit((halshowStore.state.selectedItem as SignalInfo).value)">Set Value</button>
-        <button @click="addToWatch">+ Watch</button>
+        <button :class="{ watched: isItemWatched() }" @click="addToWatch">{{ isItemWatched() ? '✓ Watched' : '+ Watch' }}</button>
       </div>
     </template>
 
@@ -256,6 +261,12 @@ function addToWatch() {
 .actions button:hover {
   background: #2a4a6a;
   border-color: #4a8abf;
+}
+
+.actions button.watched {
+  background: #1a3a2a;
+  color: #4f4;
+  border-color: #484;
 }
 
 .edit-overlay {

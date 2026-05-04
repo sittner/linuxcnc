@@ -54,8 +54,7 @@ func RegisterWatch(wreg *apiserver.WatchRegistry, interval time.Duration) {
 	})
 }
 
-// watchItems polls all pins and returns their current values as JSON.
-// TODO: support per-subscription name filtering via watch args.
+// watchItems polls all pins, params, and signals and returns their current values as JSON.
 func watchItems() (json.RawMessage, error) {
 	result, err := halcmd.Show("pin")
 	if err != nil {
@@ -77,5 +76,41 @@ func watchItems() (json.RawMessage, error) {
 		}
 		out = append(out, pi)
 	}
+
+	// Also include signals so watched signals show values.
+	// Mark signals with writers as "linked" so the frontend knows they can't be set.
+	sigResult, err := halcmd.Show("sig")
+	if err == nil {
+		// Build set of signals that have writer pins (OUT pins connected).
+		sigHasWriter := make(map[string]bool, len(sigResult.Signals))
+		for _, p := range result.Pins {
+			if p.Signal != "" && p.Direction == "OUT" {
+				sigHasWriter[p.Signal] = true
+			}
+		}
+		for _, s := range sigResult.Signals {
+			out = append(out, halcmdapi.PinInfo{
+				Name:   s.Name,
+				Type:   s.Type,
+				Value:  s.Value,
+				Linked: sigHasWriter[s.Name],
+			})
+		}
+	}
+
+	// Also include params so watched params show values.
+	paramResult, err := halcmd.Show("param")
+	if err == nil {
+		for _, p := range paramResult.Params {
+			out = append(out, halcmdapi.PinInfo{
+				Name:  p.Name,
+				Type:  p.Type,
+				Dir:   p.Direction,
+				Value: p.Value,
+				Owner: p.Owner,
+			})
+		}
+	}
+
 	return json.Marshal(out)
 }

@@ -13,13 +13,18 @@ function addToWatch(name: string) {
 function addAllToWatch() {
   halshowStore.addAllNodePinsToWatch();
 }
+
+function allWatched(): boolean {
+  const pins = getNodePins();
+  return pins.length > 0 && pins.every(p => halshowStore.isWatched(p.name));
+}
 </script>
 
 <template>
   <div class="node-overview">
     <div class="overview-header">
       <span>{{ halshowStore.state.selectedNode?.fullPath }} ({{ getNodePins().length }} items)</span>
-      <button v-if="getNodePins().length > 0" @click="addAllToWatch">+ Watch All</button>
+      <button v-if="getNodePins().length > 0" :class="{ watched: allWatched() }" @click="addAllToWatch">{{ allWatched() ? '✓ All Watched' : '+ Watch All' }}</button>
     </div>
 
     <div v-if="getNodePins().length === 0" class="empty">
@@ -45,7 +50,7 @@ function addAllToWatch() {
           <td class="dir">{{ pin.dir ?? '' }}</td>
           <td class="signal">{{ pin.linked ? pin.signal : '' }}</td>
           <td class="action">
-            <button @click="addToWatch(pin.name)" title="Add to watch">+W</button>
+            <button :class="{ watched: halshowStore.isWatched(pin.name) }" @click="addToWatch(pin.name)" title="Add to watch">{{ halshowStore.isWatched(pin.name) ? '✓' : '+W' }}</button>
           </td>
         </tr>
       </tbody>
@@ -149,5 +154,15 @@ function addAllToWatch() {
 
 .overview-table .action button:hover {
   color: #4af;
+}
+
+.overview-table .action button.watched {
+  color: #4f4;
+}
+
+.overview-header button.watched {
+  background: #1a3a2a;
+  color: #4f4;
+  border-color: #484;
 }
 </style>

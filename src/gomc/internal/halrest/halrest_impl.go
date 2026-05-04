@@ -181,13 +181,34 @@ func (h *halcmdImpl) GetSignal(name string) (*halcmdapi.SignalInfo, error) {
 		return nil, fmt.Errorf("signal %q not found", name)
 	}
 	s := result.Signals[0]
+
+	// Find connected pins by listing all pins and filtering by signal name.
+	pinResult, err := halcmd.Show("pin")
+	writers := []string{}
+	readers := []string{}
+	bidirs := []string{}
+	if err == nil {
+		for _, p := range pinResult.Pins {
+			if p.Signal == name {
+				switch p.Direction {
+				case "OUT":
+					writers = append(writers, p.Name)
+				case "IN":
+					readers = append(readers, p.Name)
+				case "IO":
+					bidirs = append(bidirs, p.Name)
+				}
+			}
+		}
+	}
+
 	return &halcmdapi.SignalInfo{
 		Name:    s.Name,
 		Type:    s.Type,
 		Value:   s.Value,
-		Writers: []string{},
-		Readers: []string{},
-		Bidirs:  []string{},
+		Writers: writers,
+		Readers: readers,
+		Bidirs:  bidirs,
 	}, nil
 }
 
