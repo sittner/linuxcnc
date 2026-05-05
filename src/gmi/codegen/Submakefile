@@ -336,6 +336,17 @@ $(GMI_TOOLS_SERVER_GO): $(GMI_TOOLS_IDL) $(GMICOMPILE_BIN)
 
 TARGETS += $(GMI_TOOLS_SERVER_GO)
 
+# --- tools API (client-ts) ---
+
+GMI_TOOLS_TS := webapp/tooledit/src/generated/tools_client.ts
+
+$(GMI_TOOLS_TS): $(GMI_TOOLS_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI tools TypeScript REST client from $(GMI_TOOLS_IDL)"
+	@mkdir -p $(dir $(GMI_TOOLS_TS))
+	$(Q)$(GMICOMPILE) --client-ts $(GMI_TOOLS_IDL) -o $(GMI_TOOLS_TS)
+
+TARGETS += $(GMI_TOOLS_TS)
+
 clean: gmi-codegen-clean
 .PHONY: gmi-codegen-clean
 gmi-codegen-clean:

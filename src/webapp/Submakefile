@@ -106,6 +106,36 @@ $(EMCCALIB_WEBAPP_STAMP): $(EMCCALIB_WEBAPP_SRCS) $(EMCCALIB_NPM_STAMP) $(EMCCAL
 
 TARGETS += $(EMCCALIB_WEBAPP_STAMP)
 
+# --- tooledit ---
+
+TOOLEDIT_WEBAPP_SRC := $(WEBAPP_DIR)/tooledit
+TOOLEDIT_WEBAPP_DEST := $(WEBAPP_DEST)/tooledit
+
+TOOLEDIT_WEBAPP_STAMP := $(TOOLEDIT_WEBAPP_DEST)/.build-stamp
+
+TOOLEDIT_WEBAPP_SRCS := $(shell find $(TOOLEDIT_WEBAPP_SRC)/src -type f 2>/dev/null) \
+	$(TOOLEDIT_WEBAPP_SRC)/index.html \
+	$(TOOLEDIT_WEBAPP_SRC)/package.json \
+	$(TOOLEDIT_WEBAPP_SRC)/vite.config.ts \
+	$(TOOLEDIT_WEBAPP_SRC)/tsconfig.json
+
+TOOLEDIT_NPM_STAMP := $(TOOLEDIT_WEBAPP_SRC)/node_modules/.install-stamp
+
+$(TOOLEDIT_NPM_STAMP): $(TOOLEDIT_WEBAPP_SRC)/package.json
+	$(ECHO) "Installing tooledit webapp dependencies"
+	$(Q)cd $(TOOLEDIT_WEBAPP_SRC) && npm install --no-audit --no-fund
+	$(Q)touch $@
+
+TOOLEDIT_GEN_TS := $(WEBAPP_DIR)/tooledit/src/generated/tools_client.ts
+
+$(TOOLEDIT_WEBAPP_STAMP): $(TOOLEDIT_WEBAPP_SRCS) $(TOOLEDIT_NPM_STAMP) $(TOOLEDIT_GEN_TS)
+	$(ECHO) "Building tooledit webapp"
+	$(Q)rm -rf $(TOOLEDIT_WEBAPP_DEST)
+	$(Q)cd $(TOOLEDIT_WEBAPP_SRC) && npx vite build --outDir $(abspath $(TOOLEDIT_WEBAPP_DEST)) --emptyOutDir
+	$(Q)touch $@
+
+TARGETS += $(TOOLEDIT_WEBAPP_STAMP)
+
 clean: webapp-clean
 .PHONY: webapp-clean
 webapp-clean:
@@ -113,5 +143,6 @@ webapp-clean:
 	rm -rf $(HALSCOPE_WEBAPP_SRC)/node_modules
 	rm -rf $(HALSHOW_WEBAPP_SRC)/node_modules
 	rm -rf $(EMCCALIB_WEBAPP_SRC)/node_modules
+	rm -rf $(TOOLEDIT_WEBAPP_SRC)/node_modules
 
 endif # BUILD_GOLANG

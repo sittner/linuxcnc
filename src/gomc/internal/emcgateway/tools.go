@@ -1,6 +1,7 @@
 package emcgateway
 
 /*
+#include <stdlib.h>
 #include "tool_shim.h"
 #include "nml_shim.h"
 */
@@ -8,13 +9,16 @@ import "C"
 
 import (
 	"fmt"
+	"unsafe"
 
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/toolsapi"
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
 )
 
 // toolsImpl implements toolsapi.ToolsCallbacks via the tool_shim C interface.
-type toolsImpl struct{}
+type toolsImpl struct {
+	toolTableFile string
+}
 
 func init() {
 	apiserver.RegisterMeta(toolsapi.ToolsMeta)
@@ -37,27 +41,37 @@ func shimToToolEntry(s *C.tool_shim_entry_t) toolsapi.ToolEntry {
 		Frontangle:  float64(s.frontangle),
 		Backangle:   float64(s.backangle),
 		Orientation: int32(s.orientation),
+		Comment:     C.GoString(&s.comment[0]),
 	}
 }
 
 func toolEntryToShim(e *toolsapi.ToolEntry) C.tool_shim_entry_t {
-	return C.tool_shim_entry_t{
-		toolno:      C.int(e.Toolno),
-		pocketno:    C.int(e.Pocketno),
-		x_offset:    C.double(e.XOffset),
-		y_offset:    C.double(e.YOffset),
-		z_offset:    C.double(e.ZOffset),
-		a_offset:    C.double(e.AOffset),
-		b_offset:    C.double(e.BOffset),
-		c_offset:    C.double(e.COffset),
-		u_offset:    C.double(e.UOffset),
-		v_offset:    C.double(e.VOffset),
-		w_offset:    C.double(e.WOffset),
-		diameter:    C.double(e.Diameter),
-		frontangle:  C.double(e.Frontangle),
-		backangle:   C.double(e.Backangle),
-		orientation: C.int(e.Orientation),
+	var s C.tool_shim_entry_t
+	s.toolno = C.int(e.Toolno)
+	s.pocketno = C.int(e.Pocketno)
+	s.x_offset = C.double(e.XOffset)
+	s.y_offset = C.double(e.YOffset)
+	s.z_offset = C.double(e.ZOffset)
+	s.a_offset = C.double(e.AOffset)
+	s.b_offset = C.double(e.BOffset)
+	s.c_offset = C.double(e.COffset)
+	s.u_offset = C.double(e.UOffset)
+	s.v_offset = C.double(e.VOffset)
+	s.w_offset = C.double(e.WOffset)
+	s.diameter = C.double(e.Diameter)
+	s.frontangle = C.double(e.Frontangle)
+	s.backangle = C.double(e.Backangle)
+	s.orientation = C.int(e.Orientation)
+	// Copy comment string into fixed-size C array
+	cComment := e.Comment
+	if len(cComment) >= C.TOOL_SHIM_COMMENT_LEN {
+		cComment = cComment[:C.TOOL_SHIM_COMMENT_LEN-1]
 	}
+	for i := 0; i < len(cComment); i++ {
+		s.comment[i] = C.char(cComment[i])
+	}
+	s.comment[len(cComment)] = 0
+	return s
 }
 
 func ensureToolMmap() error {
@@ -72,11 +86,11 @@ func (t *toolsImpl) ListTools() ([]toolsapi.ToolEntry, error) {
 		return nil, err
 	}
 	lastIdx := int(C.tool_shim_last_index())
-	tools := make([]toolsapi.ToolEntry, lastIdx+1)
+	tools := make([]toolsapi.ToolEntry, 0, lastIdx)
 	for i := 0; i <= lastIdx; i++ {
 		var s C.tool_shim_entry_t
-		if C.tool_shim_get(C.int(i), &s) == 0 {
-			tools[i] = shimToToolEntry(&s)
+		if C.tool_shim_get(C.int(i), &s) == 0 && int(s.toolno) > 0 {
+			tools = append(tools, shimToToolEntry(&s))
 		}
 	}
 	return tools, nil
@@ -119,6 +133,12 @@ func (t *toolsImpl) PutTool(toolno int32, entry toolsapi.ToolEntry) (*toolsapi.P
 	if C.tool_shim_put(C.int(idx), &s) != 0 {
 		return nil, fmt.Errorf("failed to write tool at index %d", idx)
 	}
+	// Persist to file
+	if t.toolTableFile != "" {
+		cFile := C.CString(t.toolTableFile)
+		C.tool_shim_save(cFile)
+		C.free(unsafe.Pointer(cFile))
+	}
 	return &toolsapi.PutToolResult{Ok: true, Index: int32(idx)}, nil
 }
 
@@ -134,6 +154,12 @@ func (t *toolsImpl) DeleteTool(toolno int32) (*toolsapi.CmdResult, error) {
 	if C.tool_shim_put(C.int(idx), &empty) != 0 {
 		return nil, fmt.Errorf("failed to clear tool at index %d", idx)
 	}
+	// Persist to file
+	if t.toolTableFile != "" {
+		cFile := C.CString(t.toolTableFile)
+		C.tool_shim_save(cFile)
+		C.free(unsafe.Pointer(cFile))
+	}
 	return &toolsapi.CmdResult{Ok: "true"}, nil
 }
 
@@ -141,6 +167,12 @@ func (t *toolsImpl) ReloadTools() (*toolsapi.CmdResult, error) {
 	rc := C.nml_shim_load_tool_table()
 	if rc != 0 {
 		return nil, fmt.Errorf("failed to reload tool table")
+	}
+	// Refresh comments from file
+	if t.toolTableFile != "" {
+		cFile := C.CString(t.toolTableFile)
+		C.tool_shim_load(cFile)
+		C.free(unsafe.Pointer(cFile))
 	}
 	return &toolsapi.CmdResult{Ok: "true"}, nil
 }

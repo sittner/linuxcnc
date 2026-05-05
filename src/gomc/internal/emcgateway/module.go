@@ -16,6 +16,7 @@ package emcgateway
 #cgo LDFLAGS: -L${SRCDIR}/../../../../lib -llinuxcnc -lnml -lposemath -ltooldata -lstdc++
 
 #include "nml_shim.h"
+#include "tool_shim.h"
 #include <stdlib.h>
 #include <string.h>
 */
@@ -95,7 +96,16 @@ func newEmcGateway(ini *inifile.IniFile, logger *slog.Logger, name string, args 
 	if err := emcerrorapi.RegisterEmcerrorAPI(apiserver.DefaultRegistry(), "emcerror", gw); err != nil {
 		return nil, fmt.Errorf("emcgateway: register emcerror: %w", err)
 	}
-	if err := toolsapi.RegisterToolsAPI(apiserver.DefaultRegistry(), "tools", &toolsImpl{}); err != nil {
+	toolFile := ini.Get("EMCIO", "TOOL_TABLE")
+	// Load comments from tool table file at startup
+	if toolFile != "" {
+		cFile := C.CString(toolFile)
+		C.tool_shim_load(cFile)
+		C.free(unsafe.Pointer(cFile))
+	}
+	if err := toolsapi.RegisterToolsAPI(apiserver.DefaultRegistry(), "tools", &toolsImpl{
+		toolTableFile: toolFile,
+	}); err != nil {
 		return nil, fmt.Errorf("emcgateway: register tools: %w", err)
 	}
 

@@ -24,6 +24,7 @@ type ToolEntry {
     frontangle: f64
     backangle: f64
     orientation: i32
+    comment: string
 }
 
 type PutToolResult {

@@ -13,6 +13,7 @@ extern "C" {
 #endif
 
 #define TOOL_SHIM_MAX_POCKETS 1001
+#define TOOL_SHIM_COMMENT_LEN 256
 
 typedef struct {
     int     toolno;
@@ -30,10 +31,17 @@ typedef struct {
     double  frontangle;
     double  backangle;
     int     orientation;
+    char    comment[TOOL_SHIM_COMMENT_LEN];
 } tool_shim_entry_t;
 
 /* Initialize tool mmap (user/client mode). Returns 0 on success. */
 int tool_shim_init(void);
+
+/* Load tool table from file (populates mmap + comments). Returns 0 on success. */
+int tool_shim_load(const char *filename);
+
+/* Save tool table to file (persists mmap + comments). Returns 0 on success. */
+int tool_shim_save(const char *filename);
 
 /* Return the highest occupied tool index. */
 int tool_shim_last_index(void);

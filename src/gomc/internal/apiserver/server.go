@@ -233,7 +233,14 @@ func mergePathParamsIntoBody(pathParams map[string]string, body []byte) []byte {
 	}
 	for k, v := range pathParams {
 		if _, exists := m[k]; !exists {
-			m[k] = v
+			// Convert numeric strings so json.Unmarshal into int/float fields works.
+			if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+				m[k] = n
+			} else if f, err := strconv.ParseFloat(v, 64); err == nil {
+				m[k] = f
+			} else {
+				m[k] = v
+			}
 		}
 	}
 	data, _ := json.Marshal(m)
