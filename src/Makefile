@@ -469,15 +469,6 @@ TARGETS += $(patsubst po/%.po, ../share/locale/%/LC_MESSAGES/linuxcnc.mo, $(wild
 TARGETS += $(patsubst po/gmoccapy/%.po, ../share/locale/%/LC_MESSAGES/gmoccapy.mo, $(wildcard po/gmoccapy/*.po))
 TARGETS += $(patsubst po/%.po, objects/%.msg, $(wildcard po/*.po))
 
-# tooledit as standalone app:
-TARGETS += ../bin/tooledit
-../bin/tooledit: Makefile
-	$(Q)rm -f $@
-	$(Q)(echo "#!$(TCLSH)")>|$@
-	$(Q)(echo "source $(EMC2_TCL_LIB_DIR)/tooledit.tcl")>>$@
-	$(Q)(echo "standalone_tooledit")>>$@
-	$(Q)chmod +x $@
-
 # ngcgui as standalone app:
 TARGETS += ../bin/ngcgui
 ../bin/ngcgui: Makefile

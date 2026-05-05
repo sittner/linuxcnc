@@ -36,6 +36,7 @@ static const app_profile_t profiles[] = {
     { "halscope",  "/app/halscope/",  "HAL Oscilloscope", 1280, 800 },
     { "halshow",   "/app/halshow/",   "HAL Show",         1024, 700 },
     { "emccalib",  "/app/emccalib/",  "EMC Calibration",   900, 700 },
+    { "tooledit",  "/app/tooledit/",  "Tool Editor",       900, 700 },
     { NULL, NULL, NULL, 0, 0 }
 };
 
@@ -90,10 +91,11 @@ int main(int argc, char *argv[])
             for (const app_profile_t *p = profiles; p->name; p++)
                 printf("  %-12s %s (%dx%d)\n", p->name, p->title, p->width, p->height);
             return 0;
-        } else {
+        } else if (argv[i][0] == '-') {
             fprintf(stderr, "%s: unknown argument: %s\n", progname, argv[i]);
             return 1;
         }
+        /* Ignore positional args (e.g. file path passed by axis). */
     }
 
     /* Build URL from profile if not given explicitly. */
