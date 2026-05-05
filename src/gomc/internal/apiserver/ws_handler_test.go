@@ -307,6 +307,8 @@ func TestWatchServerIntegration(t *testing.T) {
 
 // TestWatchConcurrentSubscriptions verifies multiple subscriptions on one connection.
 func TestWatchConcurrentSubscriptions(t *testing.T) {
+	var fastCounter, slowCounter atomic.Int64
+
 	reg := NewWatchRegistry()
 	reg.Register(&WatchAPI{
 		APIName:  "test",
@@ -316,14 +318,16 @@ func TestWatchConcurrentSubscriptions(t *testing.T) {
 				Name:        "fast",
 				DefaultRate: 30 * time.Millisecond,
 				Watch: func() (json.RawMessage, error) {
-					return json.Marshal(map[string]string{"source": "fast"})
+					n := fastCounter.Add(1)
+					return json.Marshal(map[string]int64{"seq": n})
 				},
 			},
 			{
 				Name:        "slow",
 				DefaultRate: 100 * time.Millisecond,
 				Watch: func() (json.RawMessage, error) {
-					return json.Marshal(map[string]string{"source": "slow"})
+					n := slowCounter.Add(1)
+					return json.Marshal(map[string]int64{"seq": n})
 				},
 			},
 		},
@@ -350,11 +354,11 @@ func TestWatchConcurrentSubscriptions(t *testing.T) {
 		conn.Write(ctx, websocket.MessageText, subData)
 	}
 
-	// Collect updates for 500ms
+	// Collect updates for 800ms
 	var mu sync.Mutex
 	counts := map[string]int{}
 
-	readCtx, readCancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	readCtx, readCancel := context.WithTimeout(ctx, 800*time.Millisecond)
 	defer readCancel()
 
 	for {

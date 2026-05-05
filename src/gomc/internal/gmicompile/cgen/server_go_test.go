@@ -207,9 +207,8 @@ func TestGenerateServerGoNoREST(t *testing.T) {
 	assertContains(t, out, "type InternalCallbacks interface")
 	assertContains(t, out, "DoWork(id int32) error")
 	assertContains(t, out, `RESTExport: false`)
-	assertContains(t, out, `RTSafe:   true`)
-	assertContains(t, out, `Method:   ""`)
-	assertContains(t, out, `Path:     ""`)
+	// Non-REST functions get dispatch generated but are NOT in FuncMeta
+	assertContains(t, out, "func internalDispatchDoWork(callbacks unsafe.Pointer, req []byte) ([]byte, error)")
 }
 
 func assertContains(t *testing.T, s, substr string) {

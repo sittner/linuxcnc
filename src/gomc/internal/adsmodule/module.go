@@ -141,7 +141,7 @@ func newADSModule(ini *inifile.IniFile, logger *slog.Logger, name string, args [
 
 	// Create ADS TCP server (not started yet).
 	addr := fmt.Sprintf("%s:%d", conf.Bind, conf.Port)
-	server := ads.NewServer(addr, netID, DefaultAMSPort, st, debug)
+	server := ads.NewServer(addr, netID, DefaultAMSPort, st, debug, logger)
 
 	logger.Info("ADS instance initialized",
 		"name", name,

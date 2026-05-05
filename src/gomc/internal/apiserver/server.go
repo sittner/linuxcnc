@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/pprof"
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 // Server is the REST API server that dispatches to registered APIs.
@@ -18,6 +20,7 @@ type Server struct {
 	mux      *http.ServeMux
 	server   *http.Server
 	prefix   string // e.g. "/api/v1"
+	logger   *slog.Logger
 }
 
 // NewServer creates a new API server bound to the given registry.
@@ -27,6 +30,7 @@ func NewServer(registry *Registry, addr string) *Server {
 		registry: registry,
 		mux:      http.NewServeMux(),
 		prefix:   "/api/v1",
+		logger:   slog.Default(),
 	}
 
 	s.mux.HandleFunc(s.prefix+"/", s.handleAPIRequest)
@@ -66,13 +70,20 @@ func (s *Server) Handler() http.Handler {
 	return s.mux
 }
 
+// SetLogger sets the logger for request and error logging.
+func (s *Server) SetLogger(logger *slog.Logger) {
+	s.logger = logger
+}
+
 // handleAPIRequest is the generic REST dispatcher.
 // URL format: /api/v1/{instance}/{func-path...}
 func (s *Server) handleAPIRequest(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
 	// Strip prefix: "/api/v1/hal0/pin/axis.0" → "hal0/pin/axis.0"
 	path := strings.TrimPrefix(r.URL.Path, s.prefix+"/")
 	if path == "" {
 		writeErrorJSON(w, http.StatusNotFound, "missing instance name")
+		s.logger.Debug("api request", "method", r.Method, "path", r.URL.Path, "status", 404, "dur", time.Since(start))
 		return
 	}
 
@@ -130,12 +141,14 @@ func (s *Server) handleAPIRequest(w http.ResponseWriter, r *http.Request) {
 	resp, err := fn.Dispatch(api.Callbacks, body)
 	if err != nil {
 		writeDispatchError(w, err)
+		s.logger.Debug("api request", "method", r.Method, "path", r.URL.Path, "status", 500, "dur", time.Since(start))
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(resp)
+	s.logger.Debug("api request", "method", r.Method, "path", r.URL.Path, "status", 200, "dur", time.Since(start))
 }
 
 // matchFunc finds the FuncMeta index matching the given HTTP method and path.

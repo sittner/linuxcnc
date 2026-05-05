@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -135,11 +135,17 @@ type wsError struct {
 // WatchHandler handles WebSocket connections for the watch channel.
 type WatchHandler struct {
 	registry *WatchRegistry
+	logger   *slog.Logger
 }
 
 // NewWatchHandler creates a new WebSocket watch handler.
 func NewWatchHandler(registry *WatchRegistry) *WatchHandler {
-	return &WatchHandler{registry: registry}
+	return &WatchHandler{registry: registry, logger: slog.Default()}
+}
+
+// SetLogger sets the logger for the watch handler.
+func (h *WatchHandler) SetLogger(logger *slog.Logger) {
+	h.logger = logger
 }
 
 // ServeHTTP upgrades the connection to WebSocket and runs the watch loop.
@@ -149,7 +155,7 @@ func (h *WatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		InsecureSkipVerify: true,
 	})
 	if err != nil {
-		log.Printf("watch: websocket accept: %v", err)
+		h.logger.Warn("websocket accept failed", "error", err)
 		return
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "")
@@ -482,6 +488,7 @@ func (c *wsConn) deltaEncode(data json.RawMessage, prevMap *map[string]json.RawM
 // AddWatchEndpoint registers the WebSocket handler on the server's mux.
 func (s *Server) AddWatchEndpoint(registry *WatchRegistry) {
 	handler := NewWatchHandler(registry)
+	handler.SetLogger(s.logger)
 	pattern := strings.TrimSuffix(s.prefix, "/") + "/watch"
 	s.mux.Handle(pattern, handler)
 }

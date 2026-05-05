@@ -3,7 +3,6 @@ package ads
 import (
 	"bytes"
 	"encoding/binary"
-	"log"
 	"net"
 	"sync"
 	"time"
@@ -240,7 +239,7 @@ func (nm *notifyManager) sendNotifications(now time.Time, items []notifySample) 
 
 	if _, err := nm.conn.Write(pkt); err != nil {
 		if nm.server.verbose {
-			log.Printf("ADS notification send error: %v", err)
+			nm.server.logger.Debug("ADS notification send error", "error", err)
 		}
 	}
 }

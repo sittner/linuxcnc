@@ -33,6 +33,7 @@ func (l *Launcher) startAPIServer() {
 	}
 
 	l.apiServer = apiserver.NewServer(reg, addr)
+	l.apiServer.SetLogger(l.logger)
 
 	// Add WebSocket watch endpoint if a watch registry is available
 	watchReg := apiserver.DefaultWatchRegistry()

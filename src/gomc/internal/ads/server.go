@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"sync"
 	"time"
@@ -39,6 +39,7 @@ type Server struct {
 	port     uint16
 	symbols  *SymbolTable
 	verbose  bool
+	logger   *slog.Logger
 	listener net.Listener
 	wg       sync.WaitGroup
 	quit     chan struct{}
@@ -48,13 +49,17 @@ type Server struct {
 
 // NewServer creates a new ADS server listening on addr (e.g. ":48898").
 // netID and port identify this device in AMS routing.
-func NewServer(addr string, netID AMSNetID, port uint16, symbols *SymbolTable, verbose bool) *Server {
+func NewServer(addr string, netID AMSNetID, port uint16, symbols *SymbolTable, verbose bool, logger *slog.Logger) *Server {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &Server{
 		addr:    addr,
 		netID:   netID,
 		port:    port,
 		symbols: symbols,
 		verbose: verbose,
+		logger:  logger,
 		quit:    make(chan struct{}),
 		conns:   make(map[net.Conn]struct{}),
 	}
@@ -68,7 +73,7 @@ func (s *Server) Start() error {
 		return fmt.Errorf("ADS server listen %s: %w", s.addr, err)
 	}
 	s.listener = ln
-	log.Printf("ADS server listening on %s (AMS Net ID %s)", s.addr, s.netID)
+	s.logger.Info("ADS server listening", "addr", s.addr, "netID", s.netID.String())
 
 	s.wg.Add(1)
 	go s.acceptLoop()
@@ -95,7 +100,7 @@ func (s *Server) Stop() {
 	select {
 	case <-done:
 	case <-time.After(shutdownTimeout):
-		log.Printf("Timeout waiting for connections to close")
+		s.logger.Warn("timeout waiting for connections to close")
 	}
 }
 
@@ -109,7 +114,7 @@ func (s *Server) acceptLoop() {
 			case <-s.quit:
 				return // normal shutdown
 			default:
-				log.Printf("ADS accept error: %v", err)
+				s.logger.Error("ADS accept error", "error", err)
 				continue
 			}
 		}
@@ -133,7 +138,7 @@ func (s *Server) handleConn(conn net.Conn) {
 	}()
 
 	if s.verbose {
-		log.Printf("ADS connection from %s", conn.RemoteAddr())
+		s.logger.Debug("ADS connection", "remote", conn.RemoteAddr())
 	}
 
 	nm := newNotifyManager(s, conn)
@@ -160,13 +165,13 @@ func (s *Server) handleConn(conn net.Conn) {
 			}
 			if err == io.EOF {
 				if s.verbose {
-					log.Printf("ADS client %s disconnected", conn.RemoteAddr())
+					s.logger.Debug("ADS client disconnected", "remote", conn.RemoteAddr())
 				}
 			} else {
 				select {
 				case <-s.quit:
 				default:
-					log.Printf("ADS read error from %s: %v", conn.RemoteAddr(), err)
+					s.logger.Error("ADS read error", "remote", conn.RemoteAddr(), "error", err)
 				}
 			}
 			return
@@ -174,11 +179,11 @@ func (s *Server) handleConn(conn net.Conn) {
 
 		amsLen := binary.LittleEndian.Uint32(tcpHdr[2:])
 		if amsLen < AMSHeaderSize {
-			log.Printf("ADS packet too short from %s: %d", conn.RemoteAddr(), amsLen)
+			s.logger.Error("ADS packet too short", "remote", conn.RemoteAddr(), "len", amsLen)
 			return
 		}
 		if amsLen > maxAMSPacketSize {
-			log.Printf("ADS packet too large from %s: %d (max %d)", conn.RemoteAddr(), amsLen, maxAMSPacketSize)
+			s.logger.Error("ADS packet too large", "remote", conn.RemoteAddr(), "len", amsLen, "max", maxAMSPacketSize)
 			return
 		}
 
@@ -192,7 +197,7 @@ func (s *Server) handleConn(conn net.Conn) {
 			select {
 			case <-s.quit:
 			default:
-				log.Printf("ADS read error from %s: %v", conn.RemoteAddr(), err)
+				s.logger.Error("ADS read error", "remote", conn.RemoteAddr(), "error", err)
 			}
 			return
 		}
@@ -202,7 +207,7 @@ func (s *Server) handleConn(conn net.Conn) {
 		payload := amsData[AMSHeaderSize:]
 
 		if s.verbose {
-			log.Printf("ADS cmd=0x%04X from %s port %d", hdr.CommandID, hdr.SourceNetID, hdr.SourcePort)
+			s.logger.Debug("ADS command", "cmd", fmt.Sprintf("0x%04X", hdr.CommandID), "source", hdr.SourceNetID.String(), "port", hdr.SourcePort)
 		}
 
 		switch hdr.CommandID {
@@ -237,7 +242,7 @@ func (s *Server) handleReadDeviceInfo(conn net.Conn, hdr *AMSHeader) {
 	binary.LittleEndian.PutUint16(data[6:], 4024)       // build version
 	copy(data[8:24], []byte("hal-ads-server\x00"))      // device name (up to 16 bytes)
 	if err := s.sendAMSResponse(conn, hdr, CmdReadDeviceInfo, ErrNoError, data); err != nil {
-		log.Printf("ADS sendReadDeviceInfo error: %v", err)
+		s.logger.Error("ADS send response failed", "cmd", "ReadDeviceInfo", "error", err)
 	}
 }
 
@@ -250,7 +255,7 @@ func (s *Server) handleReadState(conn net.Conn, hdr *AMSHeader) {
 	binary.LittleEndian.PutUint16(data[4:], 5)          // ADS state: Run
 	binary.LittleEndian.PutUint16(data[6:], 0)          // device state
 	if err := s.sendAMSResponse(conn, hdr, CmdReadState, ErrNoError, data); err != nil {
-		log.Printf("ADS sendReadState error: %v", err)
+		s.logger.Error("ADS send response failed", "cmd", "ReadState", "error", err)
 	}
 }
 
@@ -267,7 +272,7 @@ func (s *Server) handleRead(conn net.Conn, hdr *AMSHeader, payload []byte) {
 	length := binary.LittleEndian.Uint32(payload[8:])
 
 	if s.verbose {
-		log.Printf("ADS Read: IG=0x%08X IO=0x%08X len=%d", indexGroup, indexOffset, length)
+		s.logger.Debug("ADS Read", "indexGroup", fmt.Sprintf("0x%08X", indexGroup), "indexOffset", fmt.Sprintf("0x%08X", indexOffset), "len", length)
 	}
 
 	readData, errCode := s.symbols.ReadData(indexGroup, indexOffset, length)
@@ -278,7 +283,7 @@ func (s *Server) handleRead(conn net.Conn, hdr *AMSHeader, payload []byte) {
 	copy(resp[8:], readData)
 
 	if err := s.sendAMSResponse(conn, hdr, CmdRead, ErrNoError, resp); err != nil {
-		log.Printf("ADS sendRead error: %v", err)
+		s.logger.Error("ADS send response failed", "cmd", "Read", "error", err)
 	}
 }
 
@@ -300,7 +305,7 @@ func (s *Server) handleWrite(conn net.Conn, hdr *AMSHeader, payload []byte) {
 	writeData := payload[12 : 12+length]
 
 	if s.verbose {
-		log.Printf("ADS Write: IG=0x%08X IO=0x%08X len=%d", indexGroup, indexOffset, length)
+		s.logger.Debug("ADS Write", "indexGroup", fmt.Sprintf("0x%08X", indexGroup), "indexOffset", fmt.Sprintf("0x%08X", indexOffset), "len", length)
 	}
 
 	errCode := s.symbols.WriteData(indexGroup, indexOffset, writeData)
@@ -309,7 +314,7 @@ func (s *Server) handleWrite(conn net.Conn, hdr *AMSHeader, payload []byte) {
 	binary.LittleEndian.PutUint32(resp[0:], errCode)
 
 	if err := s.sendAMSResponse(conn, hdr, CmdWrite, ErrNoError, resp); err != nil {
-		log.Printf("ADS sendWrite error: %v", err)
+		s.logger.Error("ADS send response failed", "cmd", "Write", "error", err)
 	}
 }
 
@@ -332,8 +337,7 @@ func (s *Server) handleReadWrite(conn net.Conn, hdr *AMSHeader, payload []byte) 
 	writeData := payload[16 : 16+writeLength]
 
 	if s.verbose {
-		log.Printf("ADS ReadWrite: IG=0x%08X IO=0x%08X rlen=%d wlen=%d",
-			indexGroup, indexOffset, readLength, writeLength)
+		s.logger.Debug("ADS ReadWrite", "indexGroup", fmt.Sprintf("0x%08X", indexGroup), "indexOffset", fmt.Sprintf("0x%08X", indexOffset), "rlen", readLength, "wlen", writeLength)
 	}
 
 	readData, errCode := s.symbols.ReadWriteData(indexGroup, indexOffset, readLength, writeData)
@@ -344,7 +348,7 @@ func (s *Server) handleReadWrite(conn net.Conn, hdr *AMSHeader, payload []byte) 
 	copy(resp[8:], readData)
 
 	if err := s.sendAMSResponse(conn, hdr, CmdReadWrite, ErrNoError, resp); err != nil {
-		log.Printf("ADS sendReadWrite error: %v", err)
+		s.logger.Error("ADS send response failed", "cmd", "ReadWrite", "error", err)
 	}
 }
 
@@ -367,8 +371,7 @@ func (s *Server) handleAddNotification(conn net.Conn, hdr *AMSHeader, payload []
 	cycleTimeRaw := binary.LittleEndian.Uint32(payload[20:]) // in 100ns units
 
 	if s.verbose {
-		log.Printf("ADS AddNotification: IG=0x%08X IO=0x%08X len=%d mode=%d cycle=%d",
-			indexGroup, indexOffset, length, transMode, cycleTimeRaw)
+		s.logger.Debug("ADS AddNotification", "indexGroup", fmt.Sprintf("0x%08X", indexGroup), "indexOffset", fmt.Sprintf("0x%08X", indexOffset), "len", length, "mode", transMode, "cycle", cycleTimeRaw)
 	}
 
 	// Convert cycleTime from 100ns units to Go duration.
@@ -385,7 +388,7 @@ func (s *Server) handleAddNotification(conn net.Conn, hdr *AMSHeader, payload []
 	binary.LittleEndian.PutUint32(resp[4:], handle)
 
 	if err := s.sendAMSResponse(conn, hdr, CmdAddNotification, ErrNoError, resp); err != nil {
-		log.Printf("ADS sendAddNotification error: %v", err)
+		s.logger.Error("ADS send response failed", "cmd", "AddNotification", "error", err)
 	}
 }
 
@@ -400,7 +403,7 @@ func (s *Server) handleDelNotification(conn net.Conn, hdr *AMSHeader, payload []
 	handle := binary.LittleEndian.Uint32(payload[0:])
 
 	if s.verbose {
-		log.Printf("ADS DelNotification: handle=%d", handle)
+		s.logger.Debug("ADS DelNotification", "handle", handle)
 	}
 
 	var errCode uint32
@@ -414,7 +417,7 @@ func (s *Server) handleDelNotification(conn net.Conn, hdr *AMSHeader, payload []
 	binary.LittleEndian.PutUint32(resp[0:], errCode)
 
 	if err := s.sendAMSResponse(conn, hdr, CmdDelNotification, ErrNoError, resp); err != nil {
-		log.Printf("ADS sendDelNotification error: %v", err)
+		s.logger.Error("ADS send response failed", "cmd", "DelNotification", "error", err)
 	}
 }
 
@@ -423,6 +426,6 @@ func (s *Server) sendErrorResponse(conn net.Conn, hdr *AMSHeader, errCode uint32
 	data := make([]byte, 4)
 	binary.LittleEndian.PutUint32(data[0:], errCode)
 	if err := s.sendAMSResponse(conn, hdr, hdr.CommandID, ErrNoError, data); err != nil {
-		log.Printf("ADS sendError error: %v", err)
+		s.logger.Error("ADS send response failed", "cmd", "Error", "error", err)
 	}
 }

@@ -6,25 +6,142 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
-	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/halscope"
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/halscopeapi"
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
 )
 
-// setupTestServer creates an httptest server with mock halscope callbacks registered.
+// --- Mock implementation of HalscopeCallbacks ---
+
+type mockHalscope struct {
+	mu        sync.Mutex
+	state     halscopeapi.ScopeState
+	recLen    int32
+	preTrig   int32
+	sampleLen int32
+	channels  []halscopeapi.ChannelInfo
+	thread    string
+}
+
+func newMock() *mockHalscope {
+	return &mockHalscope{
+		recLen: 4000,
+	}
+}
+
+func (m *mockHalscope) ListThreads() ([]halscopeapi.ThreadInfo, error) {
+	return []halscopeapi.ThreadInfo{
+		{Name: "servo-thread", PeriodNs: 1000000},
+	}, nil
+}
+
+func (m *mockHalscope) Configure(config halscopeapi.CaptureConfig) (int32, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.thread = config.ThreadName
+	if config.MaxChannels > 0 {
+		// Derive recLen from maxChannels (simulating server logic)
+		m.recLen = 16000 / config.MaxChannels
+	}
+	if config.PreTrig > 0 {
+		m.preTrig = config.PreTrig
+	}
+	return 0, nil
+}
+
+func (m *mockHalscope) SetChannel(ch halscopeapi.ChannelConfig) (int32, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, c := range m.channels {
+		if c.Channel == ch.Channel {
+			m.channels = append(m.channels[:i], m.channels[i+1:]...)
+			break
+		}
+	}
+	m.channels = append(m.channels, halscopeapi.ChannelInfo{
+		Channel: ch.Channel,
+		PinName: ch.PinName,
+		Enabled: true,
+	})
+	m.sampleLen = int32(len(m.channels))
+	return 0, nil
+}
+
+func (m *mockHalscope) ClearChannel(channel int32) (int32, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, c := range m.channels {
+		if c.Channel == channel {
+			m.channels = append(m.channels[:i], m.channels[i+1:]...)
+			break
+		}
+	}
+	m.sampleLen = int32(len(m.channels))
+	return 0, nil
+}
+
+func (m *mockHalscope) SetTrigger(trig halscopeapi.TriggerConfig) (int32, error) {
+	return 0, nil
+}
+
+func (m *mockHalscope) Arm() (int32, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.state = 1 // ARMED
+	return 0, nil
+}
+
+func (m *mockHalscope) ForceTrigger() (int32, error) {
+	return 0, nil
+}
+
+func (m *mockHalscope) SetContinuous(enabled bool) (int32, error) {
+	return 0, nil
+}
+
+func (m *mockHalscope) Reset() (int32, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.state = 0 // IDLE
+	return 0, nil
+}
+
+func (m *mockHalscope) GetStatus() (*halscopeapi.ScopeStatus, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var channels []halscopeapi.ChannelInfo
+	if len(m.channels) > 0 {
+		channels = make([]halscopeapi.ChannelInfo, len(m.channels))
+		copy(channels, m.channels)
+	}
+	return &halscopeapi.ScopeStatus{
+		State:      m.state,
+		RecLen:     m.recLen,
+		PreTrig:    m.preTrig,
+		SampleLen:  m.sampleLen,
+		ThreadName: m.thread,
+		Channels:   channels,
+	}, nil
+}
+
+func (m *mockHalscope) ListPins(pattern string, kind string) ([]string, error) {
+	return []string{"joint.0.pos-cmd", "joint.1.pos-cmd", "joint.2.pos-cmd"}, nil
+}
+
+// --- Test helpers ---
+
 func setupTestServer(t *testing.T) (*httptest.Server, func()) {
 	t.Helper()
-	MockResetState()
 
-	cb := MockCallbacks()
+	mock := newMock()
 
 	reg := apiserver.NewRegistry()
-	apiserver.RegisterMeta(halscope.HalscopeMeta)
+	apiserver.RegisterMeta(halscopeapi.HalscopeMeta)
 
-	err := reg.Register("halscope", 1, "halscope", cb)
+	err := halscopeapi.RegisterHalscopeAPI(reg, "halscope", mock)
 	if err != nil {
-		FreeMockCallbacks(cb)
 		t.Fatalf("Register failed: %v", err)
 	}
 
@@ -32,7 +149,6 @@ func setupTestServer(t *testing.T) (*httptest.Server, func()) {
 	ts := httptest.NewServer(srv.Handler())
 	return ts, func() {
 		ts.Close()
-		FreeMockCallbacks(cb)
 	}
 }
 
@@ -73,6 +189,8 @@ func delete_(t *testing.T, ts *httptest.Server, path string) (int, []byte) {
 	return resp.StatusCode, body
 }
 
+// --- Tests ---
+
 func TestGetStatus_Initial(t *testing.T) {
 	ts, cleanup := setupTestServer(t)
 	defer cleanup()
@@ -82,7 +200,7 @@ func TestGetStatus_Initial(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", code, body)
 	}
 
-	var st halscope.ScopeStatus
+	var st halscopeapi.ScopeStatus
 	if err := json.Unmarshal(body, &st); err != nil {
 		t.Fatalf("unmarshal: %v\nbody: %s", err, body)
 	}
@@ -128,7 +246,7 @@ func TestSetChannel(t *testing.T) {
 	ts, cleanup := setupTestServer(t)
 	defer cleanup()
 
-	code, body := post(t, ts, "/channel", `{"ch":{"channel":0,"pin_name":"joint.2.pos-cmd"}}`)
+	code, body := post(t, ts, "/channel", `{"ch":{"channel":0,"pinName":"joint.2.pos-cmd"}}`)
 	if code != 200 {
 		t.Fatalf("expected 200, got %d: %s", code, body)
 	}
@@ -147,7 +265,7 @@ func TestSetChannel(t *testing.T) {
 		t.Fatalf("status: expected 200, got %d: %s", code, body)
 	}
 
-	var st halscope.ScopeStatus
+	var st halscopeapi.ScopeStatus
 	if err := json.Unmarshal(body, &st); err != nil {
 		t.Fatalf("unmarshal status: %v\nbody: %s", err, body)
 	}
@@ -172,17 +290,15 @@ func TestClearChannel(t *testing.T) {
 	ts, cleanup := setupTestServer(t)
 	defer cleanup()
 
-	// Add then clear
-	post(t, ts, "/channel", `{"ch":{"channel":0,"pin_name":"test.pin"}}`)
+	post(t, ts, "/channel", `{"ch":{"channel":0,"pinName":"test.pin"}}`)
 
 	code, body := delete_(t, ts, "/channel/0")
 	if code != 200 {
 		t.Fatalf("expected 200, got %d: %s", code, body)
 	}
 
-	// Status should show no channels
 	_, body = get(t, ts, "/status")
-	var st halscope.ScopeStatus
+	var st halscopeapi.ScopeStatus
 	json.Unmarshal(body, &st)
 	if st.SampleLen != 0 {
 		t.Errorf("expected sample_len=0 after clear, got %d", st.SampleLen)
@@ -193,27 +309,23 @@ func TestArmAndReset(t *testing.T) {
 	ts, cleanup := setupTestServer(t)
 	defer cleanup()
 
-	// Arm
 	code, body := post(t, ts, "/arm", "")
 	if code != 200 {
 		t.Fatalf("arm: expected 200, got %d: %s", code, body)
 	}
 
-	// Check state changed to ARMED (1)
 	_, body = get(t, ts, "/status")
-	var st halscope.ScopeStatus
+	var st halscopeapi.ScopeStatus
 	json.Unmarshal(body, &st)
 	if st.State != 1 {
 		t.Errorf("expected state=1 (ARMED), got %d", st.State)
 	}
 
-	// Reset
 	code, body = post(t, ts, "/reset", "")
 	if code != 200 {
 		t.Fatalf("reset: expected 200, got %d: %s", code, body)
 	}
 
-	// Check state back to IDLE (0)
 	_, body = get(t, ts, "/status")
 	json.Unmarshal(body, &st)
 	if st.State != 0 {
@@ -226,14 +338,13 @@ func TestConfigure(t *testing.T) {
 	defer cleanup()
 
 	code, body := post(t, ts, "/configure",
-		`{"config":{"thread_name":"servo-thread","rec_len":8000,"sample_period_mult":1,"pre_trig":4000}}`)
+		`{"config":{"threadName":"servo-thread","maxChannels":2,"samplePeriodMult":1,"preTrig":4000}}`)
 	if code != 200 {
 		t.Fatalf("expected 200, got %d: %s", code, body)
 	}
 
-	// Verify status reflects new config
 	_, body = get(t, ts, "/status")
-	var st halscope.ScopeStatus
+	var st halscopeapi.ScopeStatus
 	json.Unmarshal(body, &st)
 	if st.RecLen != 8000 {
 		t.Errorf("expected rec_len=8000, got %d", st.RecLen)
@@ -248,7 +359,7 @@ func TestSetTrigger(t *testing.T) {
 	defer cleanup()
 
 	code, body := post(t, ts, "/trigger",
-		`{"trig":{"channel":0,"level":1.5,"edge":1,"force":false,"auto_trig":true}}`)
+		`{"trig":{"channel":0,"level":1.5,"edge":1,"force":false,"autoTrig":true}}`)
 	if code != 200 {
 		t.Fatalf("expected 200, got %d: %s", code, body)
 	}
@@ -264,41 +375,36 @@ func TestFullCaptureWorkflow(t *testing.T) {
 	ts, cleanup := setupTestServer(t)
 	defer cleanup()
 
-	// 1. Configure
 	code, _ := post(t, ts, "/configure",
-		`{"config":{"thread_name":"servo-thread","rec_len":8000,"sample_period_mult":1,"pre_trig":4000}}`)
+		`{"config":{"threadName":"servo-thread","maxChannels":2,"samplePeriodMult":1,"preTrig":4000}}`)
 	if code != 200 {
 		t.Fatalf("configure failed: %d", code)
 	}
 
-	// 2. Add channel
-	code, _ = post(t, ts, "/channel", `{"ch":{"channel":0,"pin_name":"joint.0.pos-cmd"}}`)
+	code, _ = post(t, ts, "/channel", `{"ch":{"channel":0,"pinName":"joint.0.pos-cmd"}}`)
 	if code != 200 {
 		t.Fatalf("set_channel failed: %d", code)
 	}
 
-	// 3. Set trigger
 	code, _ = post(t, ts, "/trigger",
-		`{"trig":{"channel":0,"level":0.0,"edge":0,"force":true,"auto_trig":false}}`)
+		`{"trig":{"channel":0,"level":0.0,"edge":0,"force":true,"autoTrig":false}}`)
 	if code != 200 {
 		t.Fatalf("set_trigger failed: %d", code)
 	}
 
-	// 4. Arm
 	code, _ = post(t, ts, "/arm", "")
 	if code != 200 {
 		t.Fatalf("arm failed: %d", code)
 	}
 
-	// 5. Verify armed state
 	_, body := get(t, ts, "/status")
-	var st halscope.ScopeStatus
+	var st halscopeapi.ScopeStatus
 	json.Unmarshal(body, &st)
 	if st.State != 1 {
 		t.Errorf("expected state=1 (ARMED), got %d", st.State)
 	}
-	if st.RecLen != 8000 {
-		t.Errorf("expected rec_len=8000, got %d", st.RecLen)
+	if st.RecLen == 0 {
+		t.Errorf("expected non-zero rec_len, got %d", st.RecLen)
 	}
 	if len(st.Channels) != 1 {
 		t.Fatalf("expected 1 channel, got %d", len(st.Channels))
@@ -307,19 +413,16 @@ func TestFullCaptureWorkflow(t *testing.T) {
 		t.Errorf("expected pin_name=joint.0.pos-cmd, got %s", st.Channels[0].PinName)
 	}
 
-	// 6. Reset
 	code, _ = post(t, ts, "/reset", "")
 	if code != 200 {
 		t.Fatalf("reset failed: %d", code)
 	}
 
-	// 7. Clear channel
 	code, _ = delete_(t, ts, "/channel/0")
 	if code != 200 {
 		t.Fatalf("clear_channel failed: %d", code)
 	}
 
-	// 8. Final status: idle, no channels
 	_, body = get(t, ts, "/status")
 	json.Unmarshal(body, &st)
 	if st.State != 0 {

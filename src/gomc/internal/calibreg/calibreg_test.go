@@ -1,4 +1,3 @@
-package calibreg
 package calibreg_test
 
 import (
