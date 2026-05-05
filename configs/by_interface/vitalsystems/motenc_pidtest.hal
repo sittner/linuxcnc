@@ -10,10 +10,10 @@ loadrt hal_motenc
 newthread motenc.thread 1000000
 
 # then load the PID module, for three PID loops
-loadrt pid num_chan=3
+load pid <pid.0,pid.1,pid.2>
 
 # and load the signal generator module
-loadrt siggen
+load siggen <siggen.0>
 
 # hook functions to realtime thread
 addf motenc.0.encoder-read motenc.thread

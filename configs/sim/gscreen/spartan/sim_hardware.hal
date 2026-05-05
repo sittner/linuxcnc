@@ -1,6 +1,6 @@
 # This file sets up simulated limits/home/spindle encoder hardware.
 
-loadrt sim_encoder names=sim-encoder
+load sim_encoder <sim-encoder>
 setp sim-encoder.ppr 100
 setp sim-encoder.scale 1
 

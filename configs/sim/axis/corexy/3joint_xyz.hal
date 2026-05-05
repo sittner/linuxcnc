@@ -16,7 +16,7 @@ load [KINS]KINEMATICS
 loadrt [EMCMOT]EMCMOT  base_period_nsec=[EMCMOT]BASE_PERIOD \
                        servo_period_nsec=[EMCMOT]SERVO_PERIOD \
                        num_joints=[KINS]JOINTS
-loadrt stepgen         step_type=0,0,0
+load stepgen <stepgen.0,stepgen.1,stepgen.2> step_type=0
 
 # simulated home switches:
 load sim_home_switch <j0home,j1home,j2home>
@@ -49,12 +49,18 @@ setp j1home.home-pos 0.2
 setp j2home.home-pos 0.1
 
 #----------------------------------------------------------
-addf stepgen.make-pulses      base-thread
+addf stepgen.0.make-pulses base-thread
+addf stepgen.1.make-pulses base-thread
+addf stepgen.2.make-pulses base-thread
 
-addf stepgen.capture-position servo-thread
+addf stepgen.0.capture-position servo-thread
+addf stepgen.1.capture-position servo-thread
+addf stepgen.2.capture-position servo-thread
 addf motion-command-handler   servo-thread
 addf motion-controller        servo-thread
-addf stepgen.update-freq      servo-thread
+addf stepgen.0.update-freq servo-thread
+addf stepgen.1.update-freq servo-thread
+addf stepgen.2.update-freq servo-thread
 addf j0home                   servo-thread
 addf j1home                   servo-thread
 addf j2home                   servo-thread

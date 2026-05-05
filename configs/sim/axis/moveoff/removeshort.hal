@@ -14,7 +14,7 @@ delsig Ypos
 delsig Zpos
 
 # add pid components, and addf in right sequence
-loadrt pid names=xpid,ypid,zpid
+load pid <xpid,ypid,zpid>
 addf xpid.do-pid-calcs servo-thread 3
 addf ypid.do-pid-calcs servo-thread 3
 addf zpid.do-pid-calcs servo-thread 3

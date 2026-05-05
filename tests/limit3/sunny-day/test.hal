@@ -10,7 +10,7 @@ setp limit3.0.maxv 630
 setp limit3.0.maxa 4000
 
 
-loadrt siggen
+load siggen <siggen.0>
 setp siggen.0.amplitude 50
 setp siggen.0.offset -50
 

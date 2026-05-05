@@ -9,7 +9,7 @@ load [KINS]KINEMATICS
 loadrt [EMCMOT]EMCMOT base_period_nsec=[EMCMOT]BASE_PERIOD servo_period_nsec=[EMCMOT]SERVO_PERIOD traj_period_nsec=[EMCMOT]SERVO_PERIOD key=[EMCMOT]SHMEM_KEY
 
 # next load the PID module, for four PID loops
-loadrt pid num_chan=4
+load pid <pid.0,pid.1,pid.2,pid.3>
 
 # install Universal PWM Controller driver
 # port_addr is the address of the parallel port data register

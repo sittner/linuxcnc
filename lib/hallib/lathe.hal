@@ -1,7 +1,7 @@
 # counting the spindle encoder in software
-loadrt encoder names=encoder_0
+load encoder <encoder_0>
 # simulate the encoder
-loadrt sim_encoder names=sim_encoder_0
+load sim_encoder <sim_encoder_0>
 load limit2 <limit_speed>
 
 addf limit_speed servo-thread
@@ -62,8 +62,8 @@ net spindle-at-speed near_speed.out spindle.0.at-speed
 
 net  spindle-fwd <= spindle.0.forward
 
-addf encoder.capture-position servo-thread
-addf sim-encoder.update-speed servo-thread
+addf encoder_0.capture-position servo-thread
+addf sim_encoder_0.update-speed servo-thread
 
-addf sim-encoder.make-pulses    base-thread
-addf encoder.update-counters    base-thread
+addf sim_encoder_0.make-pulses    base-thread
+addf encoder_0.update-counters    base-thread

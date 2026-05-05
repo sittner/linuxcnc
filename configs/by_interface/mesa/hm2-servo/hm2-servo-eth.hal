@@ -32,7 +32,7 @@ load [KINS]KINEMATICS
 loadrt [EMCMOT]EMCMOT servo_period_nsec=[EMCMOT]SERVO_PERIOD num_joints=[KINS]JOINTS
 
 # standard components
-loadrt pid num_chan=3 
+load pid <pid.0,pid.1,pid.2>
 
 # hostmot2 driver
 # if you have any firmware trouble, enable the debug flags here and see what's going on in the syslog

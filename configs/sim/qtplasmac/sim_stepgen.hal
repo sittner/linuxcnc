@@ -11,15 +11,23 @@ load plasmac <plasmac.0>
 {{- range $jNum := count .Joints}}
 load sim_home_switch <sim-joint.{{$jNum}}.home-switch>
 {{- end}}
-loadrt stepgen step_type={{range $jNum := count .Joints}}{{if gt $jNum 0}},{{end}}0{{end}}
+{{- range $jNum := count .Joints}}
+load stepgen <stepgen.{{$jNum}}> step_type=0
+{{- end}}
 
 # ---LINK TO THREADS---
-addf stepgen.make-pulses      base-thread
-addf stepgen.capture-position servo-thread
+{{- range $jNum := count .Joints}}
+addf stepgen.{{$jNum}}.make-pulses base-thread
+{{- end}}
+{{- range $jNum := count .Joints}}
+addf stepgen.{{$jNum}}.capture-position servo-thread
+{{- end}}
 addf motion-command-handler   servo-thread
 addf motion-controller        servo-thread
 addf plasmac                  servo-thread
-addf stepgen.update-freq      servo-thread
+{{- range $jNum := count .Joints}}
+addf stepgen.{{$jNum}}.update-freq servo-thread
+{{- end}}
 {{- range $jNum := count .Joints}}
 addf sim-joint.{{$jNum}}.home-switch servo-thread
 {{- end}}

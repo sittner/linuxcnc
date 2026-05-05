@@ -98,10 +98,10 @@ net chargepump hm2_5i20.0.gpio.022.out charge-pump.out
 # Safety Relay Monitoring Contacts
 net estop-enable hm2_5i20.0.gpio.037.in iocontrol.emc-enable-in
 # Run Switch
-loadrt debounce cfg=1
+load debounce <debounce.0>
 setp debounce.0.delay 1000
-net key-on hm2_5i20.0.gpio.039.in_not debounce.0.0.in
-net machine-on debounce.0.0.out halui.machine.on
+net key-on hm2_5i20.0.gpio.039.in_not debounce.0.in
+net machine-on debounce.0.out halui.machine.on
 
 # Spindle Contactor - False when spindle contactor is energized
 net SOFF hm2_5i20.0.gpio.033.in halui.program.pause motion.feed-hold

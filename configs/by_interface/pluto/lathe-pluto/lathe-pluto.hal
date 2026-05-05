@@ -1,12 +1,12 @@
 # load realtime modules
 load [KINS]KINEMATICS
 loadrt [EMCMOT]EMCMOT servo_period_nsec=[EMCMOT]SERVO_PERIOD num_joints=[KINS]JOINTS
-loadrt pid num_chan=2 debug=1
+load pid <pid.0,pid.1> debug=1
 load ddt <ddt.0,ddt.1,ddt.2,ddt.3>
 loadrt pluto_servo
 load scale <scale.0>
 load mux2 <mux2.0>
-loadrt debounce cfg=1
+load debounce <debounce.0>
 load limit1 <limit1.0>
 
 # define the order of execution for RT code
@@ -80,8 +80,8 @@ net estop-loop iocontrol.user-enable-out iocontrol.emc-enable-in
 # net spindle-fwd spindle.0.forward pluto-servo.dout.00
 
 setp debounce.0.delay 3
-net Xswitch pluto-servo.din.00-not => debounce.0.0.in
-net Xswitch-debounced debounce.0.0.out => joint.0.home-sw-in joint.0.pos-lim-sw-in
+net Xswitch pluto-servo.din.00-not => debounce.0.in
+net Xswitch-debounced debounce.0.out => joint.0.home-sw-in joint.0.pos-lim-sw-in
 
 # tool loading loopback
 net tool-prep-loop iocontrol.tool-prepare iocontrol.tool-prepared

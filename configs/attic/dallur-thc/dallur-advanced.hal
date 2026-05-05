@@ -94,7 +94,7 @@ net limit-reached-z joint.2.neg-lim-sw-in
 
 # This is for Charge Pump which requires a 15khz signal to activate, maxfreq is the limiter 
 loadrt freqgen step_type=0
-loadrt siggen
+load siggen <siggen.0>
 newthread fastcp 30000
 newthread slowcp 1000000
 

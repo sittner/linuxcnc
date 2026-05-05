@@ -170,7 +170,7 @@ proc core_sim {axes
   }
   set pid_names [string trimleft $pid_names ,]
   set mux_names [string trimleft $mux_names ,]
-  loadrt pid  names=$pid_names
+  load pid  <$pid_names>
   load mux2 <$mux_names>
 
   # pid components

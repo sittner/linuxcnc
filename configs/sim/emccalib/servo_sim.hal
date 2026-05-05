@@ -14,7 +14,7 @@ load [EMCMOT]EMCMOT servo_period_nsec=[EMCMOT]SERVO_PERIOD num_joints=[KINS]JOIN
 load mux2 <mux.x,mux.y,mux.z>
 
 # Load realtime PID (rtlib)
-loadrt pid names=pid.x,pid.y,pid.z
+load pid <pid.x,pid.y,pid.z>
 
 # Add functions to servo thread
 addf motion-command-handler servo-thread

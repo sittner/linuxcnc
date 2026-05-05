@@ -22,7 +22,7 @@ loadusr -W lcec_conf ethercat-conf.xml
 loadrt lcec
 
 # load position controller PID instances
-loadrt pid names=x-pid,y-pid,z-pid 
+load pid <x-pid,y-pid,z-pid>
 
 ###########################################################
 # Functions

@@ -5,17 +5,26 @@ load [KINS]KINEMATICS
 loadrt [EMCMOT]EMCMOT base_period_nsec=[EMCMOT]BASE_PERIOD servo_period_nsec=[EMCMOT]SERVO_PERIOD num_joints=[KINS]JOINTS
 loadrt hal_parport cfg="0 out"
 setp parport.0.reset-time 5000
-loadrt stepgen step_type=0,0,0,0
+load stepgen <stepgen.0,stepgen.1,stepgen.2,stepgen.3> step_type=0
 
 addf parport.0.read base-thread
-addf stepgen.make-pulses base-thread
+addf stepgen.0.make-pulses base-thread
+addf stepgen.1.make-pulses base-thread
+addf stepgen.2.make-pulses base-thread
+addf stepgen.3.make-pulses base-thread
 addf parport.0.write base-thread
 addf parport.0.reset base-thread
 
-addf stepgen.capture-position servo-thread
+addf stepgen.0.capture-position servo-thread
+addf stepgen.1.capture-position servo-thread
+addf stepgen.2.capture-position servo-thread
+addf stepgen.3.capture-position servo-thread
 addf motion-command-handler servo-thread
 addf motion-controller servo-thread
-addf stepgen.update-freq servo-thread
+addf stepgen.0.update-freq servo-thread
+addf stepgen.1.update-freq servo-thread
+addf stepgen.2.update-freq servo-thread
+addf stepgen.3.update-freq servo-thread
 net spindle-cmd-rpm     <= spindle.0.speed-out
 net spindle-cmd-rpm-abs <= spindle.0.speed-out-abs
 net spindle-cmd-rps     <= spindle.0.speed-out-rps

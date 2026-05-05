@@ -5,7 +5,7 @@ setexact_for_test_suite_only
 # This siggen produces test patterns for limit3 to try to follow.
 #
 
-loadrt siggen
+load siggen <siggen.0>
 setp siggen.0.frequency 2
 setp siggen.0.amplitude 100
 setp siggen.0.offset 0
@@ -81,7 +81,7 @@ net heartbeat <= charge-pump.out
 
 # The scale of the encoder makes the .position output move forward by
 # about 1.0 per second.
-loadrt encoder num_chan=1
+load encoder <encoder.0>
 encoder.0.counter-mode = 1
 encoder.0.position-scale = 500
 
@@ -111,8 +111,8 @@ net mux-select => sampler.0.pin.4
 newthread t 1000000
 
 addf charge-pump              t
-addf encoder.update-counters  t
-addf encoder.capture-position t
+addf encoder.0.update-counters t
+addf encoder.0.capture-position t
 addf conv-float-u32.0         t
 
 addf siggen.0.update          t
