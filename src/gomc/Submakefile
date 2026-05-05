@@ -87,6 +87,7 @@ define filter_packages_conf
 	$(if $(filter yes,$(BUILD_EMCGATEWAY)),-e 's/ @GOMOD:EMCGATEWAY@//',-e '/@GOMOD:EMCGATEWAY@/d') \
 	$(if $(filter yes,$(BUILD_HALSCOPE)),-e 's/ @GOMOD:HALSCOPE@//',-e '/@GOMOD:HALSCOPE@/d') \
 	$(if $(filter yes,$(BUILD_EMCCALIB)),-e 's/ @GOMOD:EMCCALIB@//',-e '/@GOMOD:EMCCALIB@/d') \
+	$(if $(filter yes,$(BUILD_HALJSON)),-e 's/ @GOMOD:HALJSON@//',-e '/@GOMOD:HALJSON@/d') \
 	$< > $@.tmp && mv $@.tmp $@
 endef
 

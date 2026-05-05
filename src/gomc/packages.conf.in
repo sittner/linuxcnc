@@ -19,4 +19,5 @@ gomod internal/pyvcpmodule
 gomod internal/emcgateway @GOMOD:EMCGATEWAY@
 gomod internal/halscope @GOMOD:HALSCOPE@
 gomod internal/emccalib @GOMOD:EMCCALIB@
+gomod internal/haljson @GOMOD:HALJSON@
 

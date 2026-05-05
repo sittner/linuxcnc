@@ -1554,6 +1554,7 @@ HAVE_ADSSERVER=no
 HAVE_EMCGATEWAY=no
 HAVE_HALSCOPE=no
 HAVE_EMCCALIB=no
+HAVE_HALJSON=no
 
 if test "x$HAVE_GOLANG" = "xyes"; then
     AC_ARG_ENABLE([adsserver],
@@ -1587,12 +1588,21 @@ if test "x$HAVE_GOLANG" = "xyes"; then
     if test "x$enable_emccalib" = "xyes"; then
         HAVE_EMCCALIB=yes
     fi
+
+    AC_ARG_ENABLE([haljson],
+        AS_HELP_STRING([--enable-haljson], [Build HAL-to-JSON bridge Go module (default: yes)]),
+        [enable_haljson=$enableval],
+        [enable_haljson=yes])
+    if test "x$enable_haljson" = "xyes"; then
+        HAVE_HALJSON=yes
+    fi
 fi
 
 AC_SUBST([HAVE_ADSSERVER])
 AC_SUBST([HAVE_EMCGATEWAY])
 AC_SUBST([HAVE_HALSCOPE])
 AC_SUBST([HAVE_EMCCALIB])
+AC_SUBST([HAVE_HALJSON])
 
 # Web application build dependencies (Node.js for Vite/Vue webapp builds)
 HAVE_NODEJS=no
