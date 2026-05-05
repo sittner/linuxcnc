@@ -5,6 +5,7 @@ package halrest
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/halcmdapi"
@@ -48,69 +49,89 @@ func RegisterWatch(wreg *apiserver.WatchRegistry, interval time.Duration) {
 			{
 				Name:        "watch_items",
 				DefaultRate: interval,
-				Watch:       watchItems,
+				Factory:     watchItemsFactory,
 			},
 		},
 	})
 }
 
-// watchItems polls all pins, params, and signals and returns their current values as JSON.
-func watchItems() (json.RawMessage, error) {
-	result, err := halcmd.Show("pin")
+// watchItemsArgs holds the subscription arguments sent by the client.
+type watchItemsArgs struct {
+	Names []string `json:"names"`
+}
+
+// watchItemsMeta is sent once on the first poll to provide item metadata.
+type watchItemsMeta struct {
+	Meta   []watchItemMetaEntry `json:"meta"`
+	Values map[string]string    `json:"values"`
+}
+
+type watchItemMetaEntry struct {
+	Name   string `json:"name"`
+	Type   string `json:"type"`
+	Dir    string `json:"dir,omitempty"`
+	Kind   string `json:"kind"`
+	Owner  string `json:"owner,omitempty"`
+	Linked bool   `json:"linked"`
+	Signal string `json:"signal,omitempty"`
+}
+
+// watchItemsFactory creates a per-connection stateful watch function.
+// It resolves HAL item names to direct shmem pointers and polls only those,
+// doing raw memory comparison to avoid serialization of unchanged values.
+func watchItemsFactory(args json.RawMessage) (apiserver.WatchFunc, error) {
+	var filter watchItemsArgs
+	if len(args) > 0 {
+		_ = json.Unmarshal(args, &filter)
+	}
+	if len(filter.Names) == 0 {
+		return nil, fmt.Errorf("watch_items requires 'names' argument")
+	}
+
+	ws, err := halcmd.NewWatchSet(filter.Names)
 	if err != nil {
 		return nil, err
 	}
 
-	out := make([]halcmdapi.PinInfo, 0, len(result.Pins))
-	for _, p := range result.Pins {
-		pi := halcmdapi.PinInfo{
-			Name:   p.Name,
-			Type:   p.Type,
-			Dir:    p.Direction,
-			Value:  p.Value,
-			Owner:  p.Owner,
-			Linked: p.Signal != "",
-		}
-		if p.Signal != "" {
-			pi.Signal = p.Signal
-		}
-		out = append(out, pi)
-	}
+	// First call flag — send metadata + initial values
+	first := true
 
-	// Also include signals so watched signals show values.
-	// Mark signals with writers as "linked" so the frontend knows they can't be set.
-	sigResult, err := halcmd.Show("sig")
-	if err == nil {
-		// Build set of signals that have writer pins (OUT pins connected).
-		sigHasWriter := make(map[string]bool, len(sigResult.Signals))
-		for _, p := range result.Pins {
-			if p.Signal != "" && p.Direction == "OUT" {
-				sigHasWriter[p.Signal] = true
+	return func() (json.RawMessage, error) {
+		changed := ws.Poll()
+
+		if first {
+			first = false
+			// Build metadata response with initial values
+			metas := ws.Meta()
+			resp := watchItemsMeta{
+				Meta:   make([]watchItemMetaEntry, len(metas)),
+				Values: make(map[string]string, len(changed)),
 			}
+			for i, m := range metas {
+				resp.Meta[i] = watchItemMetaEntry{
+					Name:   m.Name,
+					Type:   m.Type,
+					Dir:    m.Dir,
+					Kind:   m.Kind,
+					Owner:  m.Owner,
+					Linked: m.Linked,
+					Signal: m.Signal,
+				}
+			}
+			for _, v := range changed {
+				resp.Values[v.Name] = v.Value
+			}
+			return json.Marshal(resp)
 		}
-		for _, s := range sigResult.Signals {
-			out = append(out, halcmdapi.PinInfo{
-				Name:   s.Name,
-				Type:   s.Type,
-				Value:  s.Value,
-				Linked: sigHasWriter[s.Name],
-			})
-		}
-	}
 
-	// Also include params so watched params show values.
-	paramResult, err := halcmd.Show("param")
-	if err == nil {
-		for _, p := range paramResult.Params {
-			out = append(out, halcmdapi.PinInfo{
-				Name:  p.Name,
-				Type:  p.Type,
-				Dir:   p.Direction,
-				Value: p.Value,
-				Owner: p.Owner,
-			})
+		// Subsequent calls: only send changed name→value pairs
+		if changed == nil {
+			return nil, nil // nothing changed — pushLoop skips nil
 		}
-	}
-
-	return json.Marshal(out)
+		out := make(map[string]string, len(changed))
+		for _, v := range changed {
+			out[v.Name] = v.Value
+		}
+		return json.Marshal(out)
+	}, nil
 }

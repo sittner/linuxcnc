@@ -382,9 +382,47 @@ export const halshowStore = {
       state.watchValues = [];
       return;
     }
-    watchClient?.subscribeWatchItems((data) => {
-      state.watchValues = data;
-    }, state.watchRate);
+
+    // Track metadata received from first message
+    let metaMap = new Map<string, { type: string; dir: string; owner: string; linked: boolean }>();
+    // Track current values
+    let valueMap = new Map<string, string>();
+
+    watchClient?.subscribeWatchItems((data: unknown) => {
+      const msg = data as Record<string, unknown>;
+
+      if (msg.meta && Array.isArray(msg.meta)) {
+        // First message: contains metadata + initial values
+        metaMap.clear();
+        for (const m of msg.meta as Array<{ name: string; type: string; dir: string; owner: string; linked: boolean }>) {
+          metaMap.set(m.name, { type: m.type, dir: m.dir, owner: m.owner, linked: m.linked });
+        }
+        const values = (msg.values ?? {}) as Record<string, string>;
+        for (const [name, value] of Object.entries(values)) {
+          valueMap.set(name, value);
+        }
+      } else {
+        // Subsequent messages: only changed name→value pairs
+        for (const [name, value] of Object.entries(msg)) {
+          valueMap.set(name, value as string);
+        }
+      }
+
+      // Rebuild watchValues array from metadata + current values
+      state.watchValues = state.watchList
+        .filter(n => metaMap.has(n))
+        .map(n => {
+          const meta = metaMap.get(n)!;
+          return {
+            name: n,
+            type: meta.type,
+            dir: meta.dir,
+            value: valueMap.get(n) ?? '—',
+            owner: meta.owner,
+            linked: meta.linked,
+          };
+        });
+    }, state.watchRate, state.watchList);
   },
 
   // --- Mutations ---

@@ -333,8 +333,11 @@ func unretain(name: string) -> CmdResult
 # ─── Watch Functions (WebSocket push) ───
 
 # Watch a set of pins — values pushed to clients at the subscribed rate.
-# The names list selects which pins/signals/params to include.
-# If names is empty, returns all pins.
+# The names list selects which pins/signals/params to include (required).
+# First response: {meta: [{name, type, dir, kind, owner, linked}], values: {name: value}}
+# Subsequent responses: {name: value} — only items whose raw value changed.
+# Uses per-connection state with direct shmem reads and shadow-buffer diffing.
 @watch true
 @watch_default_rate 100ms
+@watch_factory true
 func watch_items(names: []string?) -> []PinInfo

@@ -18,6 +18,12 @@ import (
 // Generated code produces these from the registered callbacks.
 type WatchFunc func() (json.RawMessage, error)
 
+// WatchFactory is called ONCE at subscribe time with the client's args.
+// It returns a per-connection WatchFunc (stateful closure with its own diff state).
+// This avoids expensive serialization on every tick — the closure can diff at the
+// source data level and only serialize changed values.
+type WatchFactory func(args json.RawMessage) (WatchFunc, error)
+
 // BinaryWatchFunc is called periodically by the watch server to produce a
 // binary snapshot. Used for bulk data (e.g. scope sample buffers) where JSON
 // would be too large. The uint64 is a generation counter for change detection.
@@ -31,7 +37,8 @@ type CommandFunc func(req json.RawMessage) (json.RawMessage, error)
 type WatchFuncMeta struct {
 	Name        string          // e.g. "get_status"
 	DefaultRate time.Duration   // e.g. 50ms
-	Watch       WatchFunc       // JSON watch (mutually exclusive with BinaryWatch)
+	Watch       WatchFunc       // JSON watch — shared across connections (no per-conn state)
+	Factory     WatchFactory    // Per-connection watch factory (mutually exclusive with Watch)
 	BinaryWatch BinaryWatchFunc // Binary watch — sent as binary frames
 	Delta       bool            // If true, diff JSON top-level keys per connection.
 }
@@ -82,11 +89,12 @@ func (r *WatchRegistry) Get(apiName, instance string) *WatchAPI {
 
 // wsSubscribe is sent by the client to start receiving updates.
 type wsSubscribe struct {
-	Action   string `json:"action"`   // "subscribe"
-	API      string `json:"api"`      // "axis"
-	Instance string `json:"instance"` // "default"
-	Func     string `json:"func"`     // "get_status"
-	RateMS   int    `json:"rate_ms"`  // 50
+	Action   string          `json:"action"`         // "subscribe"
+	API      string          `json:"api"`            // "axis"
+	Instance string          `json:"instance"`       // "default"
+	Func     string          `json:"func"`           // "get_status"
+	RateMS   int             `json:"rate_ms"`        // 50
+	Args     json.RawMessage `json:"args,omitempty"` // optional args passed to WatchFuncWithArgs
 }
 
 // wsUnsubscribe is sent by the client to stop receiving updates.
@@ -298,6 +306,17 @@ func (c *wsConn) handleSubscribe(sub wsSubscribe) {
 	// Start push goroutine
 	if watchMeta.BinaryWatch != nil {
 		go c.pushLoopBinary(subCtx, sub.Func, rate, watchMeta.BinaryWatch)
+	} else if watchMeta.Factory != nil {
+		watchFn, err := watchMeta.Factory(sub.Args)
+		if err != nil {
+			c.sendError(fmt.Sprintf("watch factory error: %v", err))
+			cancelFn()
+			c.mu.Lock()
+			delete(c.subs, key)
+			c.mu.Unlock()
+			return
+		}
+		go c.pushLoop(subCtx, sub.API, sub.Instance, sub.Func, rate, watchFn, watchMeta.Delta)
 	} else {
 		go c.pushLoop(subCtx, sub.API, sub.Instance, sub.Func, rate, watchMeta.Watch, watchMeta.Delta)
 	}

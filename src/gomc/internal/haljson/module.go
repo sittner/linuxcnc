@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
 	"github.com/sittner/linuxcnc/src/gomc/pkg/gomc"
@@ -148,6 +149,14 @@ func newHaljsonModule(ini *inifile.IniFile, logger *slog.Logger, name string, ar
 		Watches:  watches,
 		Commands: commands,
 	})
+
+	// Register REST API (GET to read pins, POST to write pins).
+	meta := buildRESTMeta(name, roots)
+	apiserver.RegisterMeta(meta)
+	reg := apiserver.DefaultRegistry()
+	if err := reg.Register(name, 1, name, unsafe.Pointer(&roots)); err != nil {
+		return nil, fmt.Errorf("haljson %q: registering REST API: %w", name, err)
+	}
 
 	logger.Info("haljson initialized", "instance", name, "roots", len(roots), "rate_ms", rateMS)
 
