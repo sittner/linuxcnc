@@ -32,6 +32,7 @@ import (
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emccmdapi"
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcerrorapi"
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcstatapi"
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/toolsapi"
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
 	"github.com/sittner/linuxcnc/src/gomc/internal/config"
 	"github.com/sittner/linuxcnc/src/gomc/pkg/gomc"
@@ -94,7 +95,7 @@ func newEmcGateway(ini *inifile.IniFile, logger *slog.Logger, name string, args 
 	if err := emcerrorapi.RegisterEmcerrorAPI(apiserver.DefaultRegistry(), "emcerror", gw); err != nil {
 		return nil, fmt.Errorf("emcgateway: register emcerror: %w", err)
 	}
-	if err := apiserver.DefaultRegistry().Register("tools", 1, "tools", unsafe.Pointer(gw)); err != nil {
+	if err := toolsapi.RegisterToolsAPI(apiserver.DefaultRegistry(), "tools", &toolsImpl{}); err != nil {
 		return nil, fmt.Errorf("emcgateway: register tools: %w", err)
 	}
 

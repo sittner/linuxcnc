@@ -7,36 +7,23 @@ package emcgateway
 import "C"
 
 import (
-	"encoding/json"
 	"fmt"
-	"unsafe"
 
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/toolsapi"
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
 )
 
-// toolEntry is the JSON representation of a single tool.
-type toolEntry struct {
-	Toolno      int     `json:"toolno"`
-	Pocketno    int     `json:"pocketno"`
-	XOffset     float64 `json:"x_offset"`
-	YOffset     float64 `json:"y_offset"`
-	ZOffset     float64 `json:"z_offset"`
-	AOffset     float64 `json:"a_offset"`
-	BOffset     float64 `json:"b_offset"`
-	COffset     float64 `json:"c_offset"`
-	UOffset     float64 `json:"u_offset"`
-	VOffset     float64 `json:"v_offset"`
-	WOffset     float64 `json:"w_offset"`
-	Diameter    float64 `json:"diameter"`
-	FrontAngle  float64 `json:"frontangle"`
-	BackAngle   float64 `json:"backangle"`
-	Orientation int     `json:"orientation"`
+// toolsImpl implements toolsapi.ToolsCallbacks via the tool_shim C interface.
+type toolsImpl struct{}
+
+func init() {
+	apiserver.RegisterMeta(toolsapi.ToolsMeta)
 }
 
-func shimToEntry(s *C.tool_shim_entry_t) toolEntry {
-	return toolEntry{
-		Toolno:      int(s.toolno),
-		Pocketno:    int(s.pocketno),
+func shimToToolEntry(s *C.tool_shim_entry_t) toolsapi.ToolEntry {
+	return toolsapi.ToolEntry{
+		Toolno:      int32(s.toolno),
+		Pocketno:    int32(s.pocketno),
 		XOffset:     float64(s.x_offset),
 		YOffset:     float64(s.y_offset),
 		ZOffset:     float64(s.z_offset),
@@ -47,13 +34,13 @@ func shimToEntry(s *C.tool_shim_entry_t) toolEntry {
 		VOffset:     float64(s.v_offset),
 		WOffset:     float64(s.w_offset),
 		Diameter:    float64(s.diameter),
-		FrontAngle:  float64(s.frontangle),
-		BackAngle:   float64(s.backangle),
-		Orientation: int(s.orientation),
+		Frontangle:  float64(s.frontangle),
+		Backangle:   float64(s.backangle),
+		Orientation: int32(s.orientation),
 	}
 }
 
-func entryToShim(e *toolEntry) C.tool_shim_entry_t {
+func toolEntryToShim(e *toolsapi.ToolEntry) C.tool_shim_entry_t {
 	return C.tool_shim_entry_t{
 		toolno:      C.int(e.Toolno),
 		pocketno:    C.int(e.Pocketno),
@@ -67,68 +54,9 @@ func entryToShim(e *toolEntry) C.tool_shim_entry_t {
 		v_offset:    C.double(e.VOffset),
 		w_offset:    C.double(e.WOffset),
 		diameter:    C.double(e.Diameter),
-		frontangle:  C.double(e.FrontAngle),
-		backangle:   C.double(e.BackAngle),
+		frontangle:  C.double(e.Frontangle),
+		backangle:   C.double(e.Backangle),
 		orientation: C.int(e.Orientation),
-	}
-}
-
-func init() {
-	registerToolMeta()
-}
-
-func registerToolMeta() {
-	apiserver.RegisterMeta(&apiserver.APIMeta{
-		Name:       "tools",
-		Version:    1,
-		RESTExport: true,
-		Prefix:     "tools",
-		Funcs:      toolRESTFuncs(),
-	})
-}
-
-func toolRESTFuncs() []apiserver.FuncMeta {
-	return []apiserver.FuncMeta{
-		{
-			Name:   "list_tools",
-			Method: "GET",
-			Path:   "/",
-			Dispatch: func(cb unsafe.Pointer, req []byte) ([]byte, error) {
-				return handleListTools()
-			},
-		},
-		{
-			Name:   "get_tool",
-			Method: "GET",
-			Path:   "/{toolno}",
-			Dispatch: func(cb unsafe.Pointer, req []byte) ([]byte, error) {
-				return handleGetTool(req)
-			},
-		},
-		{
-			Name:   "put_tool",
-			Method: "PUT",
-			Path:   "/{toolno}",
-			Dispatch: func(cb unsafe.Pointer, req []byte) ([]byte, error) {
-				return handlePutTool(req)
-			},
-		},
-		{
-			Name:   "delete_tool",
-			Method: "DELETE",
-			Path:   "/{toolno}",
-			Dispatch: func(cb unsafe.Pointer, req []byte) ([]byte, error) {
-				return handleDeleteTool(req)
-			},
-		},
-		{
-			Name:   "reload_tools",
-			Method: "POST",
-			Path:   "/reload",
-			Dispatch: func(cb unsafe.Pointer, req []byte) ([]byte, error) {
-				return handleReloadTools()
-			},
-		},
 	}
 }
 
@@ -139,99 +67,80 @@ func ensureToolMmap() error {
 	return nil
 }
 
-func handleListTools() ([]byte, error) {
+func (t *toolsImpl) ListTools() ([]toolsapi.ToolEntry, error) {
 	if err := ensureToolMmap(); err != nil {
 		return nil, err
 	}
 	lastIdx := int(C.tool_shim_last_index())
-	// Return ALL entries in mmap index order (including empty slots).
-	// Index 0 = spindle tool. Callers rely on positional indexing.
-	tools := make([]toolEntry, lastIdx+1)
+	tools := make([]toolsapi.ToolEntry, lastIdx+1)
 	for i := 0; i <= lastIdx; i++ {
 		var s C.tool_shim_entry_t
 		if C.tool_shim_get(C.int(i), &s) == 0 {
-			tools[i] = shimToEntry(&s)
+			tools[i] = shimToToolEntry(&s)
 		}
 	}
-	return json.Marshal(tools)
+	return tools, nil
 }
 
-func handleGetTool(req []byte) ([]byte, error) {
+func (t *toolsImpl) GetTool(toolno int32) (*toolsapi.ToolEntry, error) {
 	if err := ensureToolMmap(); err != nil {
 		return nil, err
 	}
-	var params struct {
-		Toolno int `json:"toolno"`
-	}
-	if err := json.Unmarshal(req, &params); err != nil {
-		return nil, fmt.Errorf("invalid request: %w", err)
-	}
-	idx := int(C.tool_shim_find_by_toolno(C.int(params.Toolno)))
+	idx := int(C.tool_shim_find_by_toolno(C.int(toolno)))
 	if idx < 0 {
-		return nil, fmt.Errorf("tool %d not found", params.Toolno)
+		return nil, fmt.Errorf("tool %d not found", toolno)
 	}
 	var s C.tool_shim_entry_t
 	if C.tool_shim_get(C.int(idx), &s) != 0 {
 		return nil, fmt.Errorf("failed to read tool at index %d", idx)
 	}
-	return json.Marshal(shimToEntry(&s))
+	entry := shimToToolEntry(&s)
+	return &entry, nil
 }
 
-func handlePutTool(req []byte) ([]byte, error) {
+func (t *toolsImpl) PutTool(toolno int32, entry toolsapi.ToolEntry) (*toolsapi.PutToolResult, error) {
 	if err := ensureToolMmap(); err != nil {
 		return nil, err
 	}
-	var entry toolEntry
-	if err := json.Unmarshal(req, &entry); err != nil {
-		return nil, fmt.Errorf("invalid tool data: %w", err)
-	}
-	if entry.Toolno <= 0 {
+	if toolno <= 0 {
 		return nil, fmt.Errorf("toolno must be > 0")
 	}
+	entry.Toolno = toolno
 
-	// Find existing index or use next available slot
-	idx := int(C.tool_shim_find_by_toolno(C.int(entry.Toolno)))
+	idx := int(C.tool_shim_find_by_toolno(C.int(toolno)))
 	if idx < 0 {
-		// New tool — put at last_index + 1
 		idx = int(C.tool_shim_last_index()) + 1
 		if idx >= C.TOOL_SHIM_MAX_POCKETS {
 			return nil, fmt.Errorf("tool table full")
 		}
 	}
 
-	s := entryToShim(&entry)
+	s := toolEntryToShim(&entry)
 	if C.tool_shim_put(C.int(idx), &s) != 0 {
 		return nil, fmt.Errorf("failed to write tool at index %d", idx)
 	}
-	return json.Marshal(map[string]interface{}{"ok": true, "index": idx})
+	return &toolsapi.PutToolResult{Ok: true, Index: int32(idx)}, nil
 }
 
-func handleDeleteTool(req []byte) ([]byte, error) {
+func (t *toolsImpl) DeleteTool(toolno int32) (*toolsapi.CmdResult, error) {
 	if err := ensureToolMmap(); err != nil {
 		return nil, err
 	}
-	var params struct {
-		Toolno int `json:"toolno"`
-	}
-	if err := json.Unmarshal(req, &params); err != nil {
-		return nil, fmt.Errorf("invalid request: %w", err)
-	}
-	idx := int(C.tool_shim_find_by_toolno(C.int(params.Toolno)))
+	idx := int(C.tool_shim_find_by_toolno(C.int(toolno)))
 	if idx < 0 {
-		return nil, fmt.Errorf("tool %d not found", params.Toolno)
+		return nil, fmt.Errorf("tool %d not found", toolno)
 	}
-	// Zero out the entry
 	empty := C.tool_shim_entry_t{}
 	if C.tool_shim_put(C.int(idx), &empty) != 0 {
 		return nil, fmt.Errorf("failed to clear tool at index %d", idx)
 	}
-	return json.Marshal(map[string]string{"ok": "true"})
+	return &toolsapi.CmdResult{Ok: "true"}, nil
 }
 
-func handleReloadTools() ([]byte, error) {
+func (t *toolsImpl) ReloadTools() (*toolsapi.CmdResult, error) {
 	rc := C.nml_shim_load_tool_table()
 	if rc != 0 {
 		return nil, fmt.Errorf("failed to reload tool table")
 	}
-	return json.Marshal(map[string]string{"ok": "true"})
+	return &toolsapi.CmdResult{Ok: "true"}, nil
 }
