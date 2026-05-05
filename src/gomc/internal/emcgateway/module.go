@@ -105,22 +105,33 @@ func newEmcGateway(ini *inifile.IniFile, logger *slog.Logger, name string, args 
 	}
 	wreg := apiserver.DefaultWatchRegistry()
 
-	// emcstat: use generated watch (get_stat with Delta) + extra position watch & poslogger commands.
-	emcstatapi.RegisterEmcstatWatch(wreg, "emcstat", gw, []apiserver.CommandMeta{
-		{Name: "start_logger", Handler: gw.cmdStartLogger},
-		{Name: "stop_logger", Handler: gw.cmdStopLogger},
-		{Name: "clear_logger", Handler: gw.cmdClearLogger},
-	})
-	// Additional position stream watch (drain-style, not in .gmi).
+	// emcstat: get_stat (delta) + get_positions (drain-style) + poslogger commands.
 	wreg.Register(&apiserver.WatchAPI{
 		APIName:  "emcstat",
-		Instance: "emcstat_positions",
+		Instance: "emcstat",
 		Watches: []apiserver.WatchFuncMeta{
+			{
+				Name:        "get_stat",
+				DefaultRate: 50 * time.Millisecond,
+				Delta:       true,
+				Watch: func() (json.RawMessage, error) {
+					result, err := gw.GetStat()
+					if err != nil {
+						return nil, err
+					}
+					return json.Marshal(result)
+				},
+			},
 			{
 				Name:        "get_positions",
 				DefaultRate: 100 * time.Millisecond,
 				Watch:       func() (json.RawMessage, error) { return gw.pollPositions() },
 			},
+		},
+		Commands: []apiserver.CommandMeta{
+			{Name: "start_logger", Handler: gw.cmdStartLogger},
+			{Name: "stop_logger", Handler: gw.cmdStopLogger},
+			{Name: "clear_logger", Handler: gw.cmdClearLogger},
 		},
 	})
 
