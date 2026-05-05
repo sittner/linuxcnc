@@ -232,10 +232,18 @@ modules: $(CMOD_TARGETS)
 # cmod native C components (hand-written .c files, not from .comp)
 # ---------------------------------------------------------------------------
 
-CMOD_C_SRCS := spindle
+CMOD_C_SRCS := spindle supply watchdog modmath weighted_sum counter \
+    debounce siggen encoder_ratio sim_encoder pwmgen encoder pid stepgen \
+    boss_plc joint_ctrl
 CMOD_C_TARGETS := $(addprefix ../cmod/, $(addsuffix .so, $(CMOD_C_SRCS)))
 
-# spindle.c → spindle.so
+# Generic rule for hand-written cmod C components
+../cmod/%.so: hal/components/%_cmod.c
+	$(ECHO) "Compiling cmod $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -o $@ $< -lm
+
+# spindle.c uses a different naming convention (no _cmod suffix)
 ../cmod/spindle.so: hal/components/spindle.c
 	$(ECHO) "Compiling cmod $(notdir $@)"
 	@mkdir -p $(dir $@)
