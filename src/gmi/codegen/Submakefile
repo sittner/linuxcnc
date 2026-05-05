@@ -323,6 +323,19 @@ $(GMI_EMCCALIB_TS): $(GMI_EMCCALIB_IDL) $(GMICOMPILE_BIN)
 
 TARGETS += $(GMI_EMCCALIB_TS)
 
+# --- tools API (server-go) ---
+
+GMI_TOOLS_IDL := gmi/idl/tools.gmi
+
+GMI_TOOLS_SERVER_GO := gomc/generated/gmi/toolsapi/tools_server.go
+
+$(GMI_TOOLS_SERVER_GO): $(GMI_TOOLS_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI tools Go server from $(GMI_TOOLS_IDL)"
+	@mkdir -p $(dir $(GMI_TOOLS_SERVER_GO))
+	$(Q)$(GMICOMPILE) --server-go $(GMI_TOOLS_IDL) -o $(GMI_TOOLS_SERVER_GO)
+
+TARGETS += $(GMI_TOOLS_SERVER_GO)
+
 clean: gmi-codegen-clean
 .PHONY: gmi-codegen-clean
 gmi-codegen-clean:

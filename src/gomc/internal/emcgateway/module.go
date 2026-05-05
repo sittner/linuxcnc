@@ -104,7 +104,26 @@ func newEmcGateway(ini *inifile.IniFile, logger *slog.Logger, name string, args 
 		apiserver.SetDefaultWatchRegistry(apiserver.NewWatchRegistry())
 	}
 	wreg := apiserver.DefaultWatchRegistry()
-	wreg.Register(newStatWatchAPI(gw))
+
+	// emcstat: use generated watch (get_stat with Delta) + extra position watch & poslogger commands.
+	emcstatapi.RegisterEmcstatWatch(wreg, "emcstat", gw, []apiserver.CommandMeta{
+		{Name: "start_logger", Handler: gw.cmdStartLogger},
+		{Name: "stop_logger", Handler: gw.cmdStopLogger},
+		{Name: "clear_logger", Handler: gw.cmdClearLogger},
+	})
+	// Additional position stream watch (drain-style, not in .gmi).
+	wreg.Register(&apiserver.WatchAPI{
+		APIName:  "emcstat",
+		Instance: "emcstat_positions",
+		Watches: []apiserver.WatchFuncMeta{
+			{
+				Name:        "get_positions",
+				DefaultRate: 100 * time.Millisecond,
+				Watch:       func() (json.RawMessage, error) { return gw.pollPositions() },
+			},
+		},
+	})
+
 	emcerrorapi.RegisterEmcerrorWatch(wreg, "emcerror", gw, nil)
 
 	// Register command handlers on the watch WebSocket too.
@@ -116,33 +135,6 @@ func newEmcGateway(ini *inifile.IniFile, logger *slog.Logger, name string, args 
 
 	logger.Info("NML gateway initialized")
 	return gw, nil
-}
-
-// ─── Stat Watch ───
-
-func newStatWatchAPI(gw *emcGateway) *apiserver.WatchAPI {
-	return &apiserver.WatchAPI{
-		APIName:  "emcstat",
-		Instance: "emcstat",
-		Watches: []apiserver.WatchFuncMeta{
-			{
-				Name:        "get_stat",
-				DefaultRate: 50 * time.Millisecond,
-				Watch:       func() (json.RawMessage, error) { return gw.pollStat() },
-				Delta:       true,
-			},
-			{
-				Name:        "get_positions",
-				DefaultRate: 100 * time.Millisecond,
-				Watch:       func() (json.RawMessage, error) { return gw.pollPositions() },
-			},
-		},
-		Commands: []apiserver.CommandMeta{
-			{Name: "start_logger", Handler: gw.cmdStartLogger},
-			{Name: "stop_logger", Handler: gw.cmdStopLogger},
-			{Name: "clear_logger", Handler: gw.cmdClearLogger},
-		},
-	}
 }
 
 // pollStat calls the NML shim to get current stat and marshals to JSON.
