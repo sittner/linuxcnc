@@ -49,10 +49,11 @@ func init() {
 
 // emcGateway implements gomc.Module.
 type emcGateway struct {
-	logger  *slog.Logger
-	nmlFile string
-	mu      sync.Mutex
-	poslog  posLogger
+	logger   *slog.Logger
+	nmlFile  string
+	mu       sync.Mutex
+	poslog   posLogger
+	prevStat C.nml_stat_t // shadow copy for stat change detection
 }
 
 func (m *emcGateway) Start() error { return nil }
@@ -124,13 +125,7 @@ func newEmcGateway(ini *inifile.IniFile, logger *slog.Logger, name string, args 
 				Name:        "get_stat",
 				DefaultRate: 50 * time.Millisecond,
 				Delta:       true,
-				Watch: func() (json.RawMessage, error) {
-					result, err := gw.GetStat()
-					if err != nil {
-						return nil, err
-					}
-					return json.Marshal(result)
-				},
+				Watch:       gw.watchStat,
 			},
 			{
 				Name:        "get_positions",
@@ -158,20 +153,6 @@ func newEmcGateway(ini *inifile.IniFile, logger *slog.Logger, name string, args 
 	return gw, nil
 }
 
-// pollStat calls the NML shim to get current stat and marshals to JSON.
-func (gw *emcGateway) pollStat() (json.RawMessage, error) {
-	gw.mu.Lock()
-	defer gw.mu.Unlock()
-
-	var cstat C.nml_stat_t
-	if rc := C.nml_shim_poll_stat(&cstat); rc != 0 {
-		return nil, fmt.Errorf("stat poll failed")
-	}
-
-	stat := convertStat(&cstat)
-	return json.Marshal(stat)
-}
-
 // GetStat implements emcstatapi.EmcstatCallbacks.
 func (gw *emcGateway) GetStat() (*emcstatapi.StatFull, error) {
 	gw.mu.Lock()
@@ -182,6 +163,31 @@ func (gw *emcGateway) GetStat() (*emcstatapi.StatFull, error) {
 		return nil, fmt.Errorf("stat poll failed")
 	}
 	return convertStat(&cstat), nil
+}
+
+// watchStat is the WatchFunc for "get_stat". It polls the NML stat channel
+// and compares the raw C struct against a shadow copy. If unchanged, returns
+// nil (pushLoop skips). This avoids expensive convertStat + json.Marshal when
+// the machine is idle and nothing is changing.
+func (gw *emcGateway) watchStat() (json.RawMessage, error) {
+	gw.mu.Lock()
+	var cstat C.nml_stat_t
+	if rc := C.nml_shim_poll_stat(&cstat); rc != 0 {
+		gw.mu.Unlock()
+		return nil, fmt.Errorf("stat poll failed")
+	}
+
+	// Fast path: memcmp against shadow — skip marshal if unchanged.
+	if C.memcmp(unsafe.Pointer(&cstat), unsafe.Pointer(&gw.prevStat), C.size_t(unsafe.Sizeof(cstat))) == 0 {
+		gw.mu.Unlock()
+		return nil, nil
+	}
+	gw.prevStat = cstat
+	gw.mu.Unlock()
+
+	// Something changed — convert and marshal (outside lock).
+	stat := convertStat(&cstat)
+	return json.Marshal(stat)
 }
 
 // ─── Error Watch (generated via emcerrorapi.RegisterEmcerrorWatch) ───

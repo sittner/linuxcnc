@@ -178,15 +178,17 @@ func (g *clientTSWSGen) emitClient() {
 	g.printf("  }\n\n")
 
 	// subscribe (generic)
-	g.printf("  subscribe(funcName: string, rateMs: number, callback: (data: unknown) => void): void {\n")
+	g.printf("  subscribe(funcName: string, rateMs: number, callback: (data: unknown) => void, args?: Record<string, unknown>): void {\n")
 	g.printf("    this.callbacks.set(funcName, callback);\n")
-	g.printf("    this.ws?.send(JSON.stringify({\n")
+	g.printf("    const msg: Record<string, unknown> = {\n")
 	g.printf("      action: 'subscribe',\n")
 	g.printf("      api: this.api,\n")
 	g.printf("      instance: this.instance,\n")
 	g.printf("      func: funcName,\n")
 	g.printf("      rate_ms: rateMs,\n")
-	g.printf("    }));\n")
+	g.printf("    };\n")
+	g.printf("    if (args) { msg.args = args; }\n")
+	g.printf("    this.ws?.send(JSON.stringify(msg));\n")
 	g.printf("  }\n\n")
 
 	// unsubscribe
@@ -254,9 +256,41 @@ func (g *clientTSWSGen) emitSubscribeMethods() {
 				g.printf("    }));\n")
 			} else {
 				retType := g.toTSType(*fn.Return)
-				g.printf("  subscribe%s(callback: (data: %s) => void, rateMs = %s): void {\n",
-					toPascalCase(fn.Name), retType, defaultRate)
-				g.printf("    this.subscribe('%s', rateMs, (raw) => callback(raw as %s));\n", fn.Name, retType)
+				if fn.WatchFactory && len(fn.Params) > 0 {
+					// Factory watch: accept params and pass as subscribe args
+					g.printf("  subscribe%s(callback: (data: %s) => void, rateMs = %s",
+						toPascalCase(fn.Name), retType, defaultRate)
+					for _, p := range fn.Params {
+						pType := g.toTSType(p.Type)
+						optional := p.Type.Nullable || (p.Type.Kind == ast.TypeSlice && p.Type.Elem != nil && p.Type.Elem.Nullable)
+						if optional {
+							// For nullable slices ([]T?), emit the non-nullable array type with optional marker
+							if p.Type.Kind == ast.TypeSlice && p.Type.Elem != nil && p.Type.Elem.Nullable {
+								elemType := ast.TypeRef{Kind: p.Type.Elem.Kind, Name: p.Type.Elem.Name}
+								pType = g.toTSType(elemType) + "[]"
+							}
+							g.printf(", %s?: %s", toCamelCaseTS(p.Name), pType)
+						} else {
+							g.printf(", %s: %s", toCamelCaseTS(p.Name), pType)
+						}
+					}
+					g.printf("): void {\n")
+					g.printf("    const args: Record<string, unknown> = {};\n")
+					for _, p := range fn.Params {
+						pName := toCamelCaseTS(p.Name)
+						optional := p.Type.Nullable || (p.Type.Kind == ast.TypeSlice && p.Type.Elem != nil && p.Type.Elem.Nullable)
+						if optional {
+							g.printf("    if (%s !== undefined) { args['%s'] = %s; }\n", pName, p.Name, pName)
+						} else {
+							g.printf("    args['%s'] = %s;\n", p.Name, pName)
+						}
+					}
+					g.printf("    this.subscribe('%s', rateMs, (raw) => callback(raw as %s), args);\n", fn.Name, retType)
+				} else {
+					g.printf("  subscribe%s(callback: (data: %s) => void, rateMs = %s): void {\n",
+						toPascalCase(fn.Name), retType, defaultRate)
+					g.printf("    this.subscribe('%s', rateMs, (raw) => callback(raw as %s));\n", fn.Name, retType)
+				}
 			}
 		} else {
 			g.printf("  subscribe%s(callback: (data: unknown) => void, rateMs = %s): void {\n",
