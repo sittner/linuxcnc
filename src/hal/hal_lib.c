@@ -336,6 +336,7 @@ int hal_exit(int comp_id)
     }
 #endif
     /* release mutex */
+    hal_data->struct_generation++;
     rtapi_mutex_give(&(hal_data->mutex));
     --ref_cnt;
     if(ref_cnt == 0) {
@@ -760,6 +761,7 @@ int hal_pin_new(const char *name, hal_type_t type, hal_pin_dir_t dir,
 	    /* reached end of list, insert here */
 	    new->next_ptr = next;
 	    *prev = SHMOFF(new);
+            hal_data->struct_generation++;
 	    rtapi_mutex_give(&(hal_data->mutex));
 	    return 0;
 	}
@@ -769,6 +771,7 @@ int hal_pin_new(const char *name, hal_type_t type, hal_pin_dir_t dir,
 	    /* found the right place for it, insert here */
 	    new->next_ptr = next;
 	    *prev = SHMOFF(new);
+            hal_data->struct_generation++;
 	    rtapi_mutex_give(&(hal_data->mutex));
 	    return 0;
 	}
@@ -892,6 +895,7 @@ int hal_pin_alias(const char *pin_name, const char *alias)
 	    /* reached end of list, insert here */
 	    pin->next_ptr = next;
 	    *prev = SHMOFF(pin);
+            hal_data->struct_generation++;
 	    rtapi_mutex_give(&(hal_data->mutex));
 	    return 0;
 	}
@@ -901,6 +905,7 @@ int hal_pin_alias(const char *pin_name, const char *alias)
 	    /* found the right place for it, insert here */
 	    pin->next_ptr = next;
 	    *prev = SHMOFF(pin);
+            hal_data->struct_generation++;
 	    rtapi_mutex_give(&(hal_data->mutex));
 	    return 0;
 	}
@@ -1023,6 +1028,7 @@ with the C standard.
 	    /* reached end of list, insert here */
 	    new->next_ptr = next;
 	    *prev = SHMOFF(new);
+            hal_data->struct_generation++;
 	    rtapi_mutex_give(&(hal_data->mutex));
 	    return 0;
 	}
@@ -1032,6 +1038,7 @@ with the C standard.
 	    /* found the right place for it, insert here */
 	    new->next_ptr = next;
 	    *prev = SHMOFF(new);
+            hal_data->struct_generation++;
 	    rtapi_mutex_give(&(hal_data->mutex));
 	    return 0;
 	}
@@ -1072,6 +1079,7 @@ int hal_signal_delete(const char *name)
 	    /* and delete it */
 	    free_sig_struct(sig);
 	    /* done */
+	    hal_data->struct_generation++;
 	    rtapi_mutex_give(&(hal_data->mutex));
 	    return 0;
 	}
@@ -1255,6 +1263,7 @@ int hal_link(const char *pin_name, const char *sig_name)
     /* and update the pin */
     pin->signal = SHMOFF(sig);
     /* done, release the mutex and return */
+    hal_data->struct_generation++;
     rtapi_mutex_give(&(hal_data->mutex));
     return 0;
 }
@@ -1295,6 +1304,7 @@ int hal_unlink(const char *pin_name)
     /* found pin, unlink it */
     unlink_pin(pin);
     /* done, release the mutex and return */
+    hal_data->struct_generation++;
     rtapi_mutex_give(&(hal_data->mutex));
     return 0;
 }
@@ -1476,6 +1486,7 @@ int hal_param_new(const char *name, hal_type_t type, hal_param_dir_t dir, void *
 	    /* reached end of list, insert here */
 	    new->next_ptr = next;
 	    *prev = SHMOFF(new);
+            hal_data->struct_generation++;
 	    rtapi_mutex_give(&(hal_data->mutex));
 	    return 0;
 	}
@@ -1485,6 +1496,7 @@ int hal_param_new(const char *name, hal_type_t type, hal_param_dir_t dir, void *
 	    /* found the right place for it, insert here */
 	    new->next_ptr = next;
 	    *prev = SHMOFF(new);
+            hal_data->struct_generation++;
 	    rtapi_mutex_give(&(hal_data->mutex));
 	    return 0;
 	}
@@ -1706,6 +1718,7 @@ int hal_param_alias(const char *param_name, const char *alias)
 	    /* reached end of list, insert here */
 	    param->next_ptr = next;
 	    *prev = SHMOFF(param);
+            hal_data->struct_generation++;
 	    rtapi_mutex_give(&(hal_data->mutex));
 	    return 0;
 	}
@@ -1715,6 +1728,7 @@ int hal_param_alias(const char *param_name, const char *alias)
 	    /* found the right place for it, insert here */
 	    param->next_ptr = next;
 	    *prev = SHMOFF(param);
+            hal_data->struct_generation++;
 	    rtapi_mutex_give(&(hal_data->mutex));
 	    return 0;
 	}

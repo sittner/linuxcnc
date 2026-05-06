@@ -141,11 +141,17 @@ static inline int hal_shim_watch_poll_item(void *d_ptr, int type_, uint64_t *pre
         return 0;
     }
 }
+
+// hal_shim_struct_generation reads the HAL structural change counter.
+// This is a single aligned uint32 read — no lock needed.
+static inline unsigned int hal_shim_struct_generation(void) {
+    if (hal_data == NULL) return 0;
+    return hal_data->struct_generation;
+}
 */
 import "C"
 
 import (
-	"fmt"
 	"unsafe"
 )
 
@@ -164,7 +170,8 @@ type WatchItemMeta struct {
 // WatchItem holds the resolved state for a single watched item.
 type WatchItem struct {
 	Meta WatchItemMeta
-	dPtr unsafe.Pointer
+	name string         // original requested name (for re-resolve)
+	dPtr unsafe.Pointer // nil if item is dead (unresolvable)
 	typ  C.int
 	prev C.uint64_t // shadow: bitcast of last seen value
 }
@@ -172,16 +179,20 @@ type WatchItem struct {
 // WatchSet is a per-subscription set of resolved watch items with shadow buffers.
 // It is NOT thread-safe — each subscription goroutine owns one instance.
 type WatchSet struct {
-	items []WatchItem
-	first bool // true if first poll (send all values)
+	items      []WatchItem
+	names      []string // original requested names (for re-resolve)
+	first      bool     // true if first poll (send all values)
+	generation C.uint   // last seen HAL struct_generation
 }
 
 // NewWatchSet resolves a list of HAL item names and returns a WatchSet ready for polling.
 // Names that cannot be resolved are silently skipped (they may have been removed).
 func NewWatchSet(names []string) (*WatchSet, error) {
 	ws := &WatchSet{
-		items: make([]WatchItem, 0, len(names)),
-		first: true,
+		items:      make([]WatchItem, 0, len(names)),
+		names:      names,
+		first:      true,
+		generation: C.hal_shim_struct_generation(),
 	}
 
 	for _, name := range names {
@@ -191,7 +202,12 @@ func NewWatchSet(names []string) (*WatchSet, error) {
 		C.free(unsafe.Pointer(cName))
 
 		if rc != 0 {
-			continue // skip unresolvable names
+			// Keep as dead item — UI shows "-" for value
+			ws.items = append(ws.items, WatchItem{
+				Meta: WatchItemMeta{Name: name, Kind: "unknown"},
+				name: name,
+			})
+			continue
 		}
 
 		wi := WatchItem{
@@ -204,14 +220,11 @@ func NewWatchSet(names []string) (*WatchSet, error) {
 				Linked: item.linked != 0,
 				Signal: C.GoString(&item.signal_name[0]),
 			},
+			name: name,
 			dPtr: item.d_ptr,
 			typ:  item.type_,
 		}
 		ws.items = append(ws.items, wi)
-	}
-
-	if len(ws.items) == 0 && len(names) > 0 {
-		return nil, fmt.Errorf("no valid watch items resolved")
 	}
 
 	return ws, nil
@@ -236,10 +249,29 @@ type WatchValue struct {
 // only items whose raw value has changed. On first call, returns all values.
 // Returns nil if nothing changed.
 func (ws *WatchSet) Poll() []WatchValue {
+	// Check if HAL structure changed — re-resolve all items if so.
+	gen := C.hal_shim_struct_generation()
+	if gen != ws.generation {
+		ws.generation = gen
+		ws.reResolve()
+	}
+
 	var changed []WatchValue
 
 	for i := range ws.items {
 		item := &ws.items[i]
+
+		if item.dPtr == nil {
+			// Dead item — report "-" on first poll, skip afterwards
+			if ws.first {
+				changed = append(changed, WatchValue{
+					Name:  item.Meta.Name,
+					Value: "-",
+				})
+			}
+			continue
+		}
+
 		var buf [64]C.char
 
 		if ws.first {
@@ -267,6 +299,38 @@ func (ws *WatchSet) Poll() []WatchValue {
 		return nil
 	}
 	return changed
+}
+
+// reResolve re-resolves all items against the current HAL state.
+// Items that disappeared become dead (dPtr=nil). Items that reappeared
+// or changed (e.g. pin linked to signal) get updated pointers and metadata.
+func (ws *WatchSet) reResolve() {
+	for i := range ws.items {
+		item := &ws.items[i]
+		cName := C.CString(item.name)
+		var cItem C.hal_shim_watch_item_t
+		rc := C.hal_shim_watch_resolve(cName, &cItem)
+		C.free(unsafe.Pointer(cName))
+
+		if rc != 0 {
+			// Item disappeared — mark dead
+			item.dPtr = nil
+			item.Meta.Kind = "unknown"
+			continue
+		}
+
+		// Update pointer and metadata (pin may have been linked/unlinked)
+		item.dPtr = cItem.d_ptr
+		item.typ = cItem.type_
+		item.Meta.Type = halTypeToString(int(cItem.type_))
+		item.Meta.Dir = halDirToString(int(cItem.dir), int(cItem.kind))
+		item.Meta.Kind = halKindToString(int(cItem.kind))
+		item.Meta.Owner = C.GoString(&cItem.owner[0])
+		item.Meta.Linked = cItem.linked != 0
+		item.Meta.Signal = C.GoString(&cItem.signal_name[0])
+		// Reset shadow to force value update on next poll
+		item.prev = ^item.prev
+	}
 }
 
 func halTypeToString(t int) string {

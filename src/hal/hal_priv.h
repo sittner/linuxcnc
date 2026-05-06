@@ -274,6 +274,7 @@ typedef struct hal_data_t {
     int exact_base_period;      /* if set, pretend that rtapi satisfied our
 				   period request exactly */
     unsigned char lock;         /* hal locking, can be one of the HAL_LOCK_* types */
+    unsigned int struct_generation;  /* incremented on structural changes (link/unlink/signal/comp) */
 } hal_data_t;
 
 /* component_type_t is defined in hal.h */
