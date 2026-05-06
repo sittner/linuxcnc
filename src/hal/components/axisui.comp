@@ -80,7 +80,7 @@ pin out bit error_pin "True when error notification is active";
 pin out bit abort_pin "Pulsed true on abort";
 
 // --- Watchdog ---
-param rw s32 timeout_ms = 500 "Client heartbeat timeout in ms (0 = disabled)";
+param rw s32 timeout_ms = 2000 "Client heartbeat timeout in ms (0 = disabled)";
 variable int64_t last_heartbeat_ns;
 
 function _ nofp;
@@ -92,7 +92,7 @@ license "GPL";
 /* Thread function: watchdog for client heartbeat.
  * If no set_is_running(true) call arrives within timeout_ms, reset all
  * output pins to safe defaults.  axis.py calls set_is_running(true) every
- * update cycle (~100ms), so a 500ms default catches UI crashes quickly. */
+ * ~1s, so a 2000ms default catches UI crashes quickly. */
 FUNCTION(_) {
     (void)period;
     if (timeout_ms <= 0) return;  /* watchdog disabled */

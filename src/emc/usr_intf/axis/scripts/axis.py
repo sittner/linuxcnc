@@ -132,11 +132,15 @@ class WSCompat:
         "resume-inhibit":          ("_notif", "resume_inhibit"),
     }
 
+    _HEARTBEAT_INTERVAL = 1.0  # seconds between is-running / has-notifications sends
+
     def __init__(self, ws_thread):
         self._ws = ws_thread
         self._jog = JogInputs()
         self._sliders = SliderInputs()
         self._notif = NotificationInputs()
+        self._last_heartbeat = 0.0
+        self._last_has_notifications = None
 
     def _on_jog(self, state):
         self._jog = state
@@ -156,9 +160,16 @@ class WSCompat:
 
     def __setitem__(self, pin, value):
         if pin == "is-running":
-            self._ws.set_is_running(bool(value))
+            import time
+            now = time.monotonic()
+            if now - self._last_heartbeat >= self._HEARTBEAT_INTERVAL:
+                self._ws.set_is_running(bool(value))
+                self._last_heartbeat = now
         elif pin == "has-notifications":
-            self._ws.set_has_notifications(bool(value))
+            v = bool(value)
+            if v != self._last_has_notifications:
+                self._ws.set_has_notifications(v)
+                self._last_has_notifications = v
         elif pin == "error":
             self._ws.set_error(bool(value))
         elif pin == "abort":
