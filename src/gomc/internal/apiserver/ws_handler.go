@@ -94,7 +94,7 @@ type wsSubscribe struct {
 	Instance string          `json:"instance"`       // "default"
 	Func     string          `json:"func"`           // "get_status"
 	RateMS   int             `json:"rate_ms"`        // 50
-	Args     json.RawMessage `json:"args,omitempty"` // optional args passed to WatchFuncWithArgs
+	Args     json.RawMessage `json:"args,omitempty"` // optional args passed to WatchFactory
 }
 
 // wsUnsubscribe is sent by the client to stop receiving updates.
