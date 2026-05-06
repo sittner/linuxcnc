@@ -190,7 +190,6 @@ type Func struct {
 	Doc              string // documentation string
 	Watch            bool   // true if this function supports WebSocket watch subscriptions
 	WatchDefaultRate string // default push rate (e.g. "50ms", "1s")
-	WatchDelta       bool   // true if watch should diff top-level JSON keys
 	WatchFactory     bool   // true if watch uses per-connection factory (params sent as subscribe args)
 }
 

@@ -387,6 +387,27 @@ func (c *wsConn) pushLoop(ctx context.Context, apiName, instance, funcName strin
 	var prevData json.RawMessage           // suppress unchanged sends
 	var prevMap map[string]json.RawMessage // per-connection delta state
 
+	// Immediate first poll — deliver data to new subscriber without waiting
+	// for the first ticker tick.
+	if data, err := watch(); err == nil && data != nil {
+		sendData := data
+		if delta {
+			sendData = c.deltaEncode(data, &prevMap)
+		}
+		if sendData != nil {
+			if err := c.writeJSON(wsUpdate{
+				Type:     "update",
+				API:      apiName,
+				Instance: instance,
+				Func:     updateFunc,
+				Data:     sendData,
+			}); err != nil {
+				return
+			}
+			prevData = append(prevData[:0], data...)
+		}
+	}
+
 	for {
 		select {
 		case <-ctx.Done():

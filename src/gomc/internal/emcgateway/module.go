@@ -49,11 +49,14 @@ func init() {
 
 // emcGateway implements gomc.Module.
 type emcGateway struct {
-	logger   *slog.Logger
-	nmlFile  string
-	mu       sync.Mutex
-	poslog   posLogger
-	prevStat C.nml_stat_t // shadow copy for stat change detection
+	logger    *slog.Logger
+	nmlFile   string
+	mu        sync.Mutex
+	poslog    posLogger
+	prevStat  C.nml_stat_t        // shadow copy for section-level change detection
+	curStat   emcstatapi.StatFull // current Go stat, updated in place per-section
+	firstPoll bool                // true after first successful poll
+	lastJSON  json.RawMessage     // cached last marshaled result for multi-subscriber fanout
 }
 
 func (m *emcGateway) Start() error { return nil }
@@ -124,7 +127,6 @@ func newEmcGateway(ini *inifile.IniFile, logger *slog.Logger, name string, args 
 			{
 				Name:        "get_stat",
 				DefaultRate: 50 * time.Millisecond,
-				Delta:       true,
 				Watch:       gw.watchStat,
 			},
 			{
@@ -166,9 +168,11 @@ func (gw *emcGateway) GetStat() (*emcstatapi.StatFull, error) {
 }
 
 // watchStat is the WatchFunc for "get_stat". It polls the NML stat channel
-// and compares the raw C struct against a shadow copy. If unchanged, returns
-// nil (pushLoop skips). This avoids expensive convertStat + json.Marshal when
-// the machine is idle and nothing is changing.
+// and compares individual sections of the C struct against a shadow copy.
+// Only sections that actually changed get converted from C to Go (expensive:
+// string copies, array iterations). The full Go struct is then marshalled
+// to JSON every tick (cheap: ~5µs for this struct size). pushLoop's per-
+// connection bytes.Equal suppresses duplicate sends to existing subscribers.
 func (gw *emcGateway) watchStat() (json.RawMessage, error) {
 	gw.mu.Lock()
 	var cstat C.nml_stat_t
@@ -177,17 +181,202 @@ func (gw *emcGateway) watchStat() (json.RawMessage, error) {
 		return nil, fmt.Errorf("stat poll failed")
 	}
 
-	// Fast path: memcmp against shadow — skip marshal if unchanged.
-	if C.memcmp(unsafe.Pointer(&cstat), unsafe.Pointer(&gw.prevStat), C.size_t(unsafe.Sizeof(cstat))) == 0 {
-		gw.mu.Unlock()
-		return nil, nil
+	// On first call, force all sections.
+	forceAll := !gw.firstPoll
+	if forceAll {
+		gw.firstPoll = true
 	}
-	gw.prevStat = cstat
-	gw.mu.Unlock()
 
-	// Something changed — convert and marshal (outside lock).
-	stat := convertStat(&cstat)
-	return json.Marshal(stat)
+	prev := &gw.prevStat
+	anyChanged := forceAll
+	s := &gw.curStat
+
+	// Task section
+	if forceAll || C.memcmp(unsafe.Pointer(&cstat.task_mode), unsafe.Pointer(&prev.task_mode),
+		C.size_t(unsafe.Offsetof(cstat.motion_mode)-unsafe.Offsetof(cstat.task_mode))) != 0 {
+		s.Task = convertTask(&cstat)
+		anyChanged = true
+	}
+
+	// Motion section
+	if forceAll || C.memcmp(unsafe.Pointer(&cstat.motion_mode), unsafe.Pointer(&prev.motion_mode),
+		C.size_t(unsafe.Offsetof(cstat.position)-unsafe.Offsetof(cstat.motion_mode))) != 0 {
+		s.Motion = convertMotion(&cstat)
+		anyChanged = true
+	}
+
+	// Position
+	if forceAll || C.memcmp(unsafe.Pointer(&cstat.position), unsafe.Pointer(&prev.position),
+		C.size_t(unsafe.Sizeof(cstat.position))) != 0 {
+		s.Position = convertPos(&cstat.position)
+		anyChanged = true
+	}
+
+	// Actual position
+	if forceAll || C.memcmp(unsafe.Pointer(&cstat.actual_position), unsafe.Pointer(&prev.actual_position),
+		C.size_t(unsafe.Sizeof(cstat.actual_position))) != 0 {
+		s.ActualPosition = convertPos(&cstat.actual_position)
+		anyChanged = true
+	}
+
+	// Joint actual positions
+	if forceAll || C.memcmp(unsafe.Pointer(&cstat.joint_actual_position), unsafe.Pointer(&prev.joint_actual_position),
+		C.size_t(unsafe.Sizeof(cstat.joint_actual_position))) != 0 {
+		for i := 0; i < maxJoints; i++ {
+			s.JointActualPosition[i] = float64(cstat.joint_actual_position[i])
+		}
+		anyChanged = true
+	}
+
+	// Probed position
+	if forceAll || C.memcmp(unsafe.Pointer(&cstat.probed_position), unsafe.Pointer(&prev.probed_position),
+		C.size_t(unsafe.Sizeof(cstat.probed_position))) != 0 {
+		s.ProbedPosition = convertPos(&cstat.probed_position)
+		anyChanged = true
+	}
+
+	// G5x offset
+	if forceAll || C.memcmp(unsafe.Pointer(&cstat.g5x_offset), unsafe.Pointer(&prev.g5x_offset),
+		C.size_t(unsafe.Sizeof(cstat.g5x_offset))) != 0 {
+		s.G5xOffset = convertPos(&cstat.g5x_offset)
+		anyChanged = true
+	}
+
+	// G92 offset
+	if forceAll || C.memcmp(unsafe.Pointer(&cstat.g92_offset), unsafe.Pointer(&prev.g92_offset),
+		C.size_t(unsafe.Sizeof(cstat.g92_offset))) != 0 {
+		s.G92Offset = convertPos(&cstat.g92_offset)
+		anyChanged = true
+	}
+
+	// Tool offset
+	if forceAll || C.memcmp(unsafe.Pointer(&cstat.tool_offset), unsafe.Pointer(&prev.tool_offset),
+		C.size_t(unsafe.Sizeof(cstat.tool_offset))) != 0 {
+		s.ToolOffset = convertPos(&cstat.tool_offset)
+		anyChanged = true
+	}
+
+	// Rotation XY
+	if forceAll || cstat.rotation_xy != prev.rotation_xy {
+		s.RotationXy = float64(cstat.rotation_xy)
+		anyChanged = true
+	}
+
+	// Joints array
+	if forceAll || C.memcmp(unsafe.Pointer(&cstat.joints), unsafe.Pointer(&prev.joints),
+		C.size_t(unsafe.Sizeof(cstat.joints))) != 0 {
+		s.Joints = convertJoints(&cstat)
+		anyChanged = true
+	}
+
+	// Spindles
+	if forceAll || C.memcmp(unsafe.Pointer(&cstat.spindle), unsafe.Pointer(&prev.spindle),
+		C.size_t(unsafe.Sizeof(cstat.spindle))) != 0 {
+		s.Spindle = convertSpindles(&cstat)
+		anyChanged = true
+	}
+
+	// Axis
+	if forceAll || C.memcmp(unsafe.Pointer(&cstat.axis), unsafe.Pointer(&prev.axis),
+		C.size_t(unsafe.Sizeof(cstat.axis))) != 0 {
+		s.Axis = convertAxes(&cstat)
+		anyChanged = true
+	}
+
+	// Active G-codes
+	if forceAll || C.memcmp(unsafe.Pointer(&cstat.active_gcodes), unsafe.Pointer(&prev.active_gcodes),
+		C.size_t(unsafe.Sizeof(cstat.active_gcodes))) != 0 {
+		gc := make([]int32, C.NML_SHIM_ACTIVE_G_CODES)
+		for i := range gc {
+			gc[i] = int32(cstat.active_gcodes[i])
+		}
+		s.ActiveGcodes = gc
+		anyChanged = true
+	}
+
+	// Active M-codes
+	if forceAll || C.memcmp(unsafe.Pointer(&cstat.active_mcodes), unsafe.Pointer(&prev.active_mcodes),
+		C.size_t(unsafe.Sizeof(cstat.active_mcodes))) != 0 {
+		mc := make([]int32, C.NML_SHIM_ACTIVE_M_CODES)
+		for i := range mc {
+			mc[i] = int32(cstat.active_mcodes[i])
+		}
+		s.ActiveMcodes = mc
+		anyChanged = true
+	}
+
+	// Active settings
+	if forceAll || C.memcmp(unsafe.Pointer(&cstat.active_settings), unsafe.Pointer(&prev.active_settings),
+		C.size_t(unsafe.Sizeof(cstat.active_settings))) != 0 {
+		as := make([]float64, C.NML_SHIM_ACTIVE_SETTINGS)
+		for i := range as {
+			as[i] = float64(cstat.active_settings[i])
+		}
+		s.ActiveSettings = as
+		anyChanged = true
+	}
+
+	// Scalar fields (group them: kinematics_type through linear_units)
+	if forceAll || C.memcmp(unsafe.Pointer(&cstat.kinematics_type), unsafe.Pointer(&prev.kinematics_type),
+		C.size_t(unsafe.Offsetof(cstat.homed)-unsafe.Offsetof(cstat.kinematics_type))) != 0 {
+		s.KinematicsType = emcstatapi.KinematicsType(cstat.kinematics_type)
+		s.JointsCount = int32(cstat.joints_count)
+		s.NumExtrajoints = int32(cstat.num_extrajoints)
+		s.AxisMask = int32(cstat.axis_mask)
+		s.Flood = cstat.flood != 0
+		s.Mist = cstat.mist != 0
+		s.ToolInSpindle = int32(cstat.tool_in_spindle)
+		s.PocketPrepped = int32(cstat.pocket_prepped)
+		s.LinearUnits = float64(cstat.linear_units)
+		anyChanged = true
+	}
+
+	// Homed array
+	if forceAll || C.memcmp(unsafe.Pointer(&cstat.homed), unsafe.Pointer(&prev.homed),
+		C.size_t(unsafe.Sizeof(cstat.homed))) != 0 {
+		for i := 0; i < maxJoints; i++ {
+			s.Homed[i] = cstat.homed[i] != 0
+		}
+		anyChanged = true
+	}
+
+	// Limit array
+	if forceAll || C.memcmp(unsafe.Pointer(&cstat.limit), unsafe.Pointer(&prev.limit),
+		C.size_t(unsafe.Sizeof(cstat.limit))) != 0 {
+		for i := 0; i < maxJoints; i++ {
+			s.Limit[i] = int32(cstat.limit[i])
+		}
+		anyChanged = true
+	}
+
+	// State + echo_serial_number + debug
+	if forceAll || cstat.state != prev.state || cstat.echo_serial_number != prev.echo_serial_number || cstat.debug != prev.debug {
+		s.State = int32(cstat.state)
+		s.Debug = int32(cstat.debug)
+		anyChanged = true
+	}
+
+	// Update shadow
+	gw.prevStat = cstat
+
+	if !anyChanged {
+		// Return cached last result so other subscribers (with different
+		// pushLoop timers) still get the data. Their per-connection
+		// bytes.Equal dedup will suppress if they already have it.
+		cached := gw.lastJSON
+		gw.mu.Unlock()
+		return cached, nil
+	}
+
+	// Marshal the full struct. pushLoop's per-connection bytes.Equal
+	// suppresses duplicate sends; the immediate-first-poll ensures new
+	// subscribers always receive the complete state.
+	data, err := json.Marshal(s)
+	if err == nil {
+		gw.lastJSON = data
+	}
+	gw.mu.Unlock()
+	return data, err
 }
 
 // ─── Error Watch (generated via emcerrorapi.RegisterEmcerrorWatch) ───

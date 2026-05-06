@@ -187,7 +187,6 @@ type StatFull {
 # Full machine status, pushed via WebSocket at 50ms intervals
 @watch true
 @watch_default_rate 50ms
-@watch_delta true
 @method "GET"
 @path "/stat"
 func get_stat() -> StatFull

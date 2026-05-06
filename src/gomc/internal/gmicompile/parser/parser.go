@@ -267,8 +267,6 @@ func (p *Parser) parseFunc(anns []annotation) ast.Func {
 			fn.Watch = ann.value == "true"
 		case "watch_default_rate":
 			fn.WatchDefaultRate = ann.value
-		case "watch_delta":
-			fn.WatchDelta = ann.value == "true"
 		case "watch_factory":
 			fn.WatchFactory = ann.value == "true"
 		}
