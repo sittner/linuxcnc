@@ -2378,6 +2378,7 @@ class TclCommands(nf.TclCommands):
 
     def reload_tool_table(*args):
         c.load_tool_table()
+        s.invalidate_tool_table()
 
     def program_verify(*args):
         set_first_line(-1)

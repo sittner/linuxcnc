@@ -378,22 +378,38 @@ class Stat:
         raise AttributeError(f"Stat has no attribute {name!r}")
 
     def _stub_tool_table(self):
-        """Fetch tool table via REST API.
+        """Fetch tool table via REST API (cached).
 
         Returns a list indexed by mmap index, matching the linuxcnc
         C extension's tool_table semantics. Index 0 is the spindle tool.
         The REST API returns all entries in mmap index order.
+
+        Cached: only re-fetches when tool_in_spindle changes.
         """
+        data = self._data
+        current_tool_in_spindle = data.get("tool_in_spindle", 0)
+        if (hasattr(self, '_tool_table_cache') and
+                self._tool_table_last_spindle == current_tool_in_spindle):
+            return self._tool_table_cache
+
         try:
             from gmi.tools import ToolTable
             tt = ToolTable()
             tools = tt.list()
         except Exception:
-            return [_ToolEntry()] * 56
+            return getattr(self, '_tool_table_cache', [_ToolEntry()] * 56)
 
         # The REST API returns entries in mmap index order.
         # Index 0 = spindle slot, same as the original C extension.
-        return [_ToolEntry.from_dict(t) for t in tools]
+        result = [_ToolEntry.from_dict(t) for t in tools]
+        self._tool_table_cache = result
+        self._tool_table_last_spindle = current_tool_in_spindle
+        return result
+
+    def invalidate_tool_table(self):
+        """Force re-fetch of tool table on next access (after reload_tool_table)."""
+        if hasattr(self, '_tool_table_cache'):
+            del self._tool_table_cache
 
     def stop(self):
         """Stop the background WebSocket thread."""
