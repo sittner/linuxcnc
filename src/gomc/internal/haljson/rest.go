@@ -11,7 +11,8 @@ import (
 // buildRESTMeta creates an APIMeta for REST access to haljson roots.
 // Each root gets a GET endpoint (read all pins) and a POST endpoint (write pins).
 // URL pattern: GET /api/v1/<instance>/<rootPath>
-//              POST /api/v1/<instance>/<rootPath>
+//
+//	POST /api/v1/<instance>/<rootPath>
 func buildRESTMeta(name string, roots []*jsonRoot) *apiserver.APIMeta {
 	funcs := make([]apiserver.FuncMeta, 0, len(roots)*2)
 	for _, root := range roots {

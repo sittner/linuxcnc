@@ -121,10 +121,7 @@ func newHaljsonModule(ini *inifile.IniFile, logger *slog.Logger, name string, ar
 		watches = append(watches, apiserver.WatchFuncMeta{
 			Name:        r.path,
 			DefaultRate: rate,
-			Watch: func() (json.RawMessage, error) {
-				return r.buildJSON(), nil
-			},
-			Delta: true,
+			Factory:     newWatchFactory(r),
 		})
 	}
 
