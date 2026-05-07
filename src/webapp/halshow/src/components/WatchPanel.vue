@@ -24,13 +24,11 @@ function getWatchDir(name: string): string {
 function canSet(name: string): boolean {
   const item = halshowStore.state.watchValues.find(v => v.name === name);
   if (!item) return false;
-  // Can't set output pins (they're driven by a component)
-  if (item.dir === 'OUT') return false;
-  // Can't set pins that are linked to a signal (must set the signal instead)
-  if (item.linked) return false;
-  // Params with dir 'RO' can't be set
-  if (item.dir === 'RO') return false;
-  return true;
+  // Whitelist: only allow setting known-settable items
+  if (item.kind === 'pin' && (item.dir === 'IN' || item.dir === 'IO') && !item.linked) return true;
+  if (item.kind === 'param' && item.dir === 'RW') return true;
+  if (item.kind === 'signal' && !item.linked) return true;
+  return false;
 }
 
 function isBitType(name: string): boolean {

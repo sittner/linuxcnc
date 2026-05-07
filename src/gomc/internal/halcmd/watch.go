@@ -16,7 +16,7 @@ package halcmd
 typedef struct {
     void       *d_ptr;     // pointer to data in HAL shmem (pin dummysig, signal data, or param data)
     int         type_;     // hal_type_t (HAL_BIT=1, HAL_FLOAT=2, HAL_S32=3, HAL_U32=4)
-    int         dir;       // direction (pin: HAL_IN=1/HAL_OUT=2/HAL_IO=3; param: HAL_RO=5/HAL_RW=6; signal: 0)
+    int         dir;       // direction (pin: HAL_IN=16/HAL_OUT=32/HAL_IO=48; param: HAL_RO=64/HAL_RW=192; signal: 0)
     int         kind;      // 0=pin, 1=param, 2=signal
     int         linked;    // pin: 1 if linked to signal; signal: 1 if has writers
     char        owner[HAL_NAME_LEN + 1];
@@ -179,10 +179,11 @@ type WatchItem struct {
 // WatchSet is a per-subscription set of resolved watch items with shadow buffers.
 // It is NOT thread-safe — each subscription goroutine owns one instance.
 type WatchSet struct {
-	items      []WatchItem
-	names      []string // original requested names (for re-resolve)
-	first      bool     // true if first poll (send all values)
-	generation C.uint   // last seen HAL struct_generation
+	items       []WatchItem
+	names       []string // original requested names (for re-resolve)
+	first       bool     // true if first poll (send all values)
+	generation  C.uint   // last seen HAL struct_generation
+	metaChanged bool     // true after reResolve until consumed
 }
 
 // NewWatchSet resolves a list of HAL item names and returns a WatchSet ready for polling.
@@ -301,10 +302,21 @@ func (ws *WatchSet) Poll() []WatchValue {
 	return changed
 }
 
+// MetaChanged returns true once after a reResolve updated item metadata.
+// The flag is reset after this call.
+func (ws *WatchSet) MetaChanged() bool {
+	if ws.metaChanged {
+		ws.metaChanged = false
+		return true
+	}
+	return false
+}
+
 // reResolve re-resolves all items against the current HAL state.
 // Items that disappeared become dead (dPtr=nil). Items that reappeared
 // or changed (e.g. pin linked to signal) get updated pointers and metadata.
 func (ws *WatchSet) reResolve() {
+	ws.metaChanged = true
 	for i := range ws.items {
 		item := &ws.items[i]
 		cName := C.CString(item.name)
@@ -353,15 +365,15 @@ func halDirToString(dir, kind int) string {
 		return ""
 	}
 	switch dir {
-	case 1:
+	case 16:
 		return "IN"
-	case 2:
+	case 32:
 		return "OUT"
-	case 3:
+	case 48:
 		return "IO"
-	case 5:
+	case 64:
 		return "RO"
-	case 6:
+	case 192:
 		return "RW"
 	default:
 		return ""

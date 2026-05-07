@@ -99,7 +99,7 @@ func watchItemsFactory(args json.RawMessage) (apiserver.WatchFunc, error) {
 	return func() (json.RawMessage, error) {
 		changed := ws.Poll()
 
-		if first {
+		if first || ws.MetaChanged() {
 			first = false
 			// Build metadata response with initial values
 			metas := ws.Meta()

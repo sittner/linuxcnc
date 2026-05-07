@@ -24,6 +24,16 @@ export interface TreeNode {
 
 export type TabId = 'show' | 'watch' | 'cmd';
 
+export interface WatchValueItem {
+  name: string;
+  type: string;
+  dir: string;
+  kind: string;
+  value: string;
+  owner: string;
+  linked: boolean;
+}
+
 export interface CmdHistoryEntry {
   cmd: string;
   output?: string;
@@ -58,7 +68,7 @@ interface HalshowState {
 
   // Watch tab
   watchList: string[];     // names of items being watched
-  watchValues: PinInfo[];  // live values from WebSocket
+  watchValues: WatchValueItem[];  // live values from WebSocket
   watchRate: number;       // ms
 
   // Halcmd tab
@@ -384,7 +394,7 @@ export const halshowStore = {
     }
 
     // Track metadata received from first message
-    let metaMap = new Map<string, { type: string; dir: string; owner: string; linked: boolean }>();
+    let metaMap = new Map<string, { type: string; dir: string; kind: string; owner: string; linked: boolean }>();
     // Track current values
     let valueMap = new Map<string, string>();
 
@@ -392,10 +402,10 @@ export const halshowStore = {
       const msg = data as Record<string, unknown>;
 
       if (msg.meta && Array.isArray(msg.meta)) {
-        // First message: contains metadata + initial values
+        // First message (or structure change): contains metadata + initial values
         metaMap.clear();
-        for (const m of msg.meta as Array<{ name: string; type: string; dir: string; owner: string; linked: boolean }>) {
-          metaMap.set(m.name, { type: m.type, dir: m.dir, owner: m.owner, linked: m.linked });
+        for (const m of msg.meta as Array<{ name: string; type: string; dir: string; kind: string; owner: string; linked: boolean }>) {
+          metaMap.set(m.name, { type: m.type, dir: m.dir ?? '', kind: m.kind ?? '', owner: m.owner, linked: m.linked });
         }
         const values = (msg.values ?? {}) as Record<string, string>;
         for (const [name, value] of Object.entries(values)) {
@@ -417,6 +427,7 @@ export const halshowStore = {
             name: n,
             type: meta.type,
             dir: meta.dir,
+            kind: meta.kind,
             value: valueMap.get(n) ?? '—',
             owner: meta.owner,
             linked: meta.linked,
