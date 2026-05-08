@@ -21,7 +21,6 @@ extern "C" {
 #include <sys/types.h>		/* key_t */
 #include <stddef.h>		/* size_t */
 #include <errno.h>		// errno
-#include <sys/ipc.h>		// IPC_CREAT
 }
 
 RCS_SHAREDMEM::RCS_SHAREDMEM(key_t key, size_t size, int oflag, int mode)
@@ -34,11 +33,7 @@ RCS_SHAREDMEM::RCS_SHAREDMEM(key_t key, size_t size, int oflag, int mode)
 
     if (oflag & RCS_SHAREDMEM_CREATE) {
 	/* create shared memory */
-#ifdef USE_POSIX_SHAREDMEM
-	shm = rcs_shm_open(key, size, O_CREAT, mode);
-#else
-	shm = rcs_shm_open(key, size, IPC_CREAT, mode);
-#endif
+	shm = rcs_shm_open(key, size, RCS_SHAREDMEM_CREATE, mode);
 	if (shm == NULL) {
 	    create_errno = errno;
 	    rcs_print_error("can't create shared memory\n");

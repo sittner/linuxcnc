@@ -1,4 +1,4 @@
 // ipc_cleanup.go — this file is intentionally empty.
-// SysV shared memory is cleaned up in-process by halpr_rtapi_app_exit()
-// via rtapi_shmem_delete() which calls shmdt/shmctl(IPC_RMID).
+// Shared memory has been replaced by in-process heap allocation
+// (rtapi_calloc/rtapi_free for RTAPI, calloc/free for NML).
 package realtime

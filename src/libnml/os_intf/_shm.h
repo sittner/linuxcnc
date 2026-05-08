@@ -33,7 +33,6 @@ typedef struct {
     int count;
     int created;
     int key;
-    char name[64];
 } shm_t;
 
 #ifdef __cplusplus
