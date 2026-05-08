@@ -55,10 +55,10 @@ static void retain_state_destroy(retain_state_t *st) {
 static void retain_sync(void *arg, long period) {
     retain_state_t *st = (retain_state_t *)arg;
     int changed = 0;
-    int next;
+    void *next;
     hal_sig_t *sig;
     void *data_addr;
-    hal_data_t *hd = (hal_data_t *)hal_shmem_base;
+    hal_data_t *hd = hal_data;
 
     // Only act when userspace requests a read.
     if (atomic_load_explicit(&st->action, memory_order_acquire) != RETAIN_ACTION_READ) {
@@ -137,7 +137,7 @@ static int retain_init(retain_state_t *st) {
 // retain_load_vars restores signal values from a var file.
 // Returns 0 on success, -1 on error.
 static int retain_load_vars(const char *file_name) {
-    hal_data_t *hd = (hal_data_t *)hal_shmem_base;
+    hal_data_t *hd = hal_data;
     FILE *f;
     char line[1024];
     char *name, *value, *s;
@@ -239,10 +239,10 @@ static int retain_load_vars(const char *file_name) {
 // retain_save_vars saves retain-flagged signal values to a var file.
 // Uses atomic write (tmp + rename).  Returns 0 on success, -1 on error.
 static int retain_save_vars(const char *file_name) {
-    hal_data_t *hd = (hal_data_t *)hal_shmem_base;
+    hal_data_t *hd = hal_data;
     char tmp_name[256];
     FILE *f = NULL;
-    int next;
+    void *next;
     hal_sig_t *sig;
     int ret;
 

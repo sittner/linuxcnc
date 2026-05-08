@@ -39,7 +39,7 @@ static inline int get_hal_dir(hal_pin_dir_t d) { return (int)d; }
 // Returns the number of components found, or a negative errno value on error.
 // Returns -ENOSPC if the buffer is too small to hold all names.
 static int hal_shim_list_comps(char *buf, int buf_size) {
-    int next;
+    void *next;
     hal_comp_t *comp;
     int count = 0;
     int pos = 0;
@@ -357,7 +357,7 @@ static void hal_shim_rtapi_app_cleanup(void) {
 // The component identified by except_id is skipped (pass 0 to not skip any).
 // Returns 0 on success, or a negative errno value on error.
 static int hal_shim_unload_all(int except_id) {
-    int next;
+    void *next;
     hal_comp_t *comp;
     pid_t ourpid = getpid();
 
@@ -963,7 +963,7 @@ static int hal_shim_newinst(const char *type, const char *name, const char *arg)
 // Writes null-separated names into buf. Returns count or negative errno.
 static int hal_shim_list_pins(const char *pattern, char *buf, int buf_size) {
     hal_pin_t *pin;
-    int next;
+    void *next;
     int count = 0;
     int pos = 0;
     int name_len;
@@ -994,7 +994,7 @@ static int hal_shim_list_pins(const char *pattern, char *buf, int buf_size) {
 // hal_shim_list_sigs lists signal names matching pattern.
 static int hal_shim_list_sigs(const char *pattern, char *buf, int buf_size) {
     hal_sig_t *sig;
-    int next;
+    void *next;
     int count = 0;
     int pos = 0;
     int name_len;
@@ -1027,7 +1027,7 @@ static int hal_shim_list_sigs(const char *pattern, char *buf, int buf_size) {
 // This mirrors halcmd's do_list_cmd "retain" special case.
 static int hal_shim_list_retain_sigs(const char *pattern, char *buf, int buf_size) {
     hal_sig_t *sig;
-    int next;
+    void *next;
     int count = 0;
     int pos = 0;
     int name_len;
@@ -1059,7 +1059,7 @@ static int hal_shim_list_retain_sigs(const char *pattern, char *buf, int buf_siz
 // hal_shim_list_params lists parameter names matching pattern.
 static int hal_shim_list_params(const char *pattern, char *buf, int buf_size) {
     hal_param_t *param;
-    int next;
+    void *next;
     int count = 0;
     int pos = 0;
     int name_len;
@@ -1090,7 +1090,7 @@ static int hal_shim_list_params(const char *pattern, char *buf, int buf_size) {
 // hal_shim_list_functs lists function names matching pattern.
 static int hal_shim_list_functs(const char *pattern, char *buf, int buf_size) {
     hal_funct_t *funct;
-    int next;
+    void *next;
     int count = 0;
     int pos = 0;
     int name_len;
@@ -1121,7 +1121,7 @@ static int hal_shim_list_functs(const char *pattern, char *buf, int buf_size) {
 // hal_shim_list_threads lists thread names matching pattern.
 static int hal_shim_list_threads(const char *pattern, char *buf, int buf_size) {
     hal_thread_t *thread;
-    int next;
+    void *next;
     int count = 0;
     int pos = 0;
     int name_len;
@@ -1225,7 +1225,7 @@ typedef struct {
 // hal_shim_show_comps fills arr with up to max_items components matching pattern.
 // Returns the number filled, or negative errno on error.
 static int hal_shim_show_comps(const char *pattern, hal_shim_comp_info_t *arr, int max_items) {
-    int next, count = 0;
+    void *next; int count = 0;
     hal_comp_t *comp;
 
     if (hal_data == NULL) return -EINVAL;
@@ -1254,7 +1254,7 @@ static int hal_shim_show_comps(const char *pattern, hal_shim_comp_info_t *arr, i
 
 // hal_shim_show_pins fills arr with up to max_items pins matching pattern.
 static int hal_shim_show_pins(const char *pattern, hal_shim_pin_info_t *arr, int max_items) {
-    int next, count = 0;
+    void *next; int count = 0;
     hal_pin_t  *pin;
     hal_sig_t  *sig;
     hal_comp_t *comp;
@@ -1305,7 +1305,7 @@ static int hal_shim_show_pins(const char *pattern, hal_shim_pin_info_t *arr, int
 
 // hal_shim_show_params fills arr with up to max_items parameters matching pattern.
 static int hal_shim_show_params(const char *pattern, hal_shim_param_info_t *arr, int max_items) {
-    int next, count = 0;
+    void *next; int count = 0;
     hal_param_t *param;
     hal_comp_t  *comp;
 
@@ -1343,7 +1343,7 @@ static int hal_shim_show_params(const char *pattern, hal_shim_param_info_t *arr,
 
 // hal_shim_show_sigs fills arr with up to max_items signals matching pattern.
 static int hal_shim_show_sigs(const char *pattern, hal_shim_sig_info_t *arr, int max_items) {
-    int next, count = 0;
+    void *next; int count = 0;
     hal_sig_t *sig;
 
     if (hal_data == NULL) return -EINVAL;
@@ -1375,7 +1375,7 @@ static int hal_shim_show_sigs(const char *pattern, hal_shim_sig_info_t *arr, int
 
 // hal_shim_show_functs fills arr with up to max_items functions matching pattern.
 static int hal_shim_show_functs(const char *pattern, hal_shim_funct_info_t *arr, int max_items) {
-    int next, count = 0;
+    void *next; int count = 0;
     hal_funct_t *funct;
     hal_comp_t  *comp;
 
@@ -1411,7 +1411,7 @@ static int hal_shim_show_functs(const char *pattern, hal_shim_funct_info_t *arr,
 
 // hal_shim_show_threads fills arr with up to max_items threads matching pattern.
 static int hal_shim_show_threads(const char *pattern, hal_shim_thread_info_t *arr, int max_items) {
-    int next, count = 0;
+    void *next; int count = 0;
     hal_thread_t      *tptr;
     hal_list_t        *list_root, *list_entry;
     hal_funct_entry_t *fentry;
@@ -1490,7 +1490,7 @@ static int buf_write_line(char *buf, int *pos, int buf_size, const char *line) {
 static int hal_shim_save(const char *type, char *buf, int buf_size) {
     int pos   = 0;
     int count = 0;
-    int next;
+    void *next;
     char tmp[2048]; // large enough for any single halcmd line
 
     if (hal_data == NULL) return -EINVAL;

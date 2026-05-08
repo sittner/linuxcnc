@@ -298,8 +298,8 @@ func (m *halscope) WatchSamples() ([]byte, uint64, error) {
 func (m *halscope) ListThreads() ([]halscopeapi.ThreadInfo, error) {
 	var threads []halscopeapi.ThreadInfo
 	next := C.get_hal_data().thread_list_ptr
-	for next != 0 {
-		t := C.shmptr_thread(next)
+	for next != nil {
+		t := next
 		threads = append(threads, halscopeapi.ThreadInfo{
 			Name:     C.GoString(&t.name[0]),
 			PeriodNs: int64(t.period),
@@ -551,8 +551,8 @@ func (m *halscope) ListPins(pattern string, kind string) ([]string, error) {
 
 	if wantPins {
 		next := C.get_hal_data().pin_list_ptr
-		for next != 0 {
-			pin := C.shmptr_pin(next)
+		for next != nil {
+			pin := next
 			if C.fnmatch(cMatch, &pin.name[0], 0) == 0 {
 				names = append(names, C.GoString(&pin.name[0]))
 			}
@@ -561,8 +561,8 @@ func (m *halscope) ListPins(pattern string, kind string) ([]string, error) {
 	}
 	if wantSigs {
 		next := C.get_hal_data().sig_list_ptr
-		for next != 0 {
-			sig := C.shmptr_sig(next)
+		for next != nil {
+			sig := next
 			if C.fnmatch(cMatch, &sig.name[0], 0) == 0 {
 				names = append(names, C.GoString(&sig.name[0]))
 			}
@@ -571,8 +571,8 @@ func (m *halscope) ListPins(pattern string, kind string) ([]string, error) {
 	}
 	if wantParams {
 		next := C.get_hal_data().param_list_ptr
-		for next != 0 {
-			param := C.shmptr_param(next)
+		for next != nil {
+			param := next
 			if C.fnmatch(cMatch, &param.name[0], 0) == 0 {
 				names = append(names, C.GoString(&param.name[0]))
 			}
@@ -624,8 +624,8 @@ func (m *halscope) getStatus() halscopeapi.ScopeStatus {
 	// Look up thread period.
 	if threadName != "" {
 		next := C.get_hal_data().thread_list_ptr
-		for next != 0 {
-			t := C.shmptr_thread(next)
+		for next != nil {
+			t := next
 			if C.GoString(&t.name[0]) == threadName {
 				st.ThreadPeriodNs = int64(t.period)
 				break
@@ -660,9 +660,9 @@ func (m *halscope) resolveHALName(cName *C.char, halType *C.hal_type_t, dataLen 
 	pin := C.halpr_find_pin_by_name(cName)
 	if pin != nil {
 		*halType = pin._type
-		if pin.signal != 0 {
-			sig := C.shmptr_sig(pin.signal)
-			*dataAddr = C.shmptr_void(sig.data_ptr)
+		if pin.signal != nil {
+			sig := pin.signal
+			*dataAddr = unsafe.Pointer(sig.data_ptr)
 		} else {
 			*dataAddr = unsafe.Pointer(&pin.dummysig)
 		}
@@ -674,7 +674,7 @@ func (m *halscope) resolveHALName(cName *C.char, halType *C.hal_type_t, dataLen 
 	sig := C.halpr_find_sig_by_name(cName)
 	if sig != nil {
 		*halType = sig._type
-		*dataAddr = C.shmptr_void(sig.data_ptr)
+		*dataAddr = unsafe.Pointer(sig.data_ptr)
 		m.setDataLen(*halType, dataLen)
 		return 0
 	}
@@ -683,7 +683,7 @@ func (m *halscope) resolveHALName(cName *C.char, halType *C.hal_type_t, dataLen 
 	param := C.halpr_find_param_by_name(cName)
 	if param != nil {
 		*halType = param._type
-		*dataAddr = C.shmptr_void(param.data_ptr)
+		*dataAddr = unsafe.Pointer(param.data_ptr)
 		m.setDataLen(*halType, dataLen)
 		return 0
 	}

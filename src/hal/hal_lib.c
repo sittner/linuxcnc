@@ -66,7 +66,7 @@
 #include <time.h>
 #include <signal.h>
 
-char *hal_shmem_base = 0;
+static char *hal_shmem_base = 0;
 hal_data_t *hal_data = 0;
 pid_t rtapi_pid = 0;
 static int lib_module_id = -1;	/* RTAPI module ID for library module */
@@ -264,7 +264,7 @@ int hal_init_ex(const char *name, void *dl_handle, component_type_t type)
     rtapi_snprintf(comp->name, sizeof(comp->name), "%s", hal_name);
     /* insert new structure at head of list */
     comp->next_ptr = hal_data->comp_list_ptr;
-    hal_data->comp_list_ptr = SHMOFF(comp);
+    hal_data->comp_list_ptr = comp;
     /* done with list, release mutex */
     rtapi_mutex_give(&(hal_data->mutex));
     /* done */
@@ -276,7 +276,7 @@ int hal_init_ex(const char *name, void *dl_handle, component_type_t type)
 
 int hal_exit(int comp_id)
 {
-    rtapi_intptr_t *prev, next;
+    void **prev; void *next;
     hal_comp_t *comp;
     char name[HAL_NAME_LEN + 1];
 
@@ -289,7 +289,7 @@ int hal_exit(int comp_id)
     /* grab mutex before manipulating list */
     rtapi_mutex_get(&(hal_data->mutex));
     /* search component list for 'comp_id' */
-    prev = &(hal_data->comp_list_ptr);
+    prev = (void **)&(hal_data->comp_list_ptr);
     next = *prev;
     if (next == 0) {
 	/* list is empty - should never happen, but... */
@@ -298,10 +298,10 @@ int hal_exit(int comp_id)
 	    "HAL: ERROR: component %d not found\n", comp_id);
 	return -EINVAL;
     }
-    comp = SHMPTR(next);
+    comp = next;
     while (comp->comp_id != comp_id) {
 	/* not a match, try the next one */
-	prev = &(comp->next_ptr);
+	prev = (void **)&(comp->next_ptr);
 	next = *prev;
 	if (next == 0) {
 	    /* reached end of list without finding component */
@@ -310,7 +310,7 @@ int hal_exit(int comp_id)
 		"HAL: ERROR: component %d not found\n", comp_id);
 	    return -EINVAL;
 	}
-	comp = SHMPTR(next);
+	comp = next;
     }
     /* found our component, unlink it from the list */
     *prev = comp->next_ptr;
@@ -382,7 +382,7 @@ void *hal_malloc(long int size)
 }
 
 int hal_set_constructor(int comp_id, constructor make) {
-    int next;
+    void *next;
     hal_comp_t *comp;
 
     rtapi_mutex_get(&(hal_data->mutex));
@@ -397,7 +397,7 @@ int hal_set_constructor(int comp_id, constructor make) {
 	return -EINVAL;
     }
 
-    comp = SHMPTR(next);
+    comp = next;
     while (comp->comp_id != comp_id) {
 	/* not a match, try the next one */
 	next = comp->next_ptr;
@@ -408,7 +408,7 @@ int hal_set_constructor(int comp_id, constructor make) {
 		"HAL: ERROR: component %d not found\n", comp_id);
 	    return -EINVAL;
 	}
-	comp = SHMPTR(next);
+	comp = next;
     }
     
     comp->make = make;
@@ -430,7 +430,7 @@ int hal_set_unready(int comp_id) {
 }
 
 int hal_ready(int comp_id) {
-    int next;
+    void *next;
     hal_comp_t *comp;
 
     rtapi_mutex_get(&(hal_data->mutex));
@@ -445,7 +445,7 @@ int hal_ready(int comp_id) {
 	return -EINVAL;
     }
 
-    comp = SHMPTR(next);
+    comp = next;
     while (comp->comp_id != comp_id) {
 	/* not a match, try the next one */
 	next = comp->next_ptr;
@@ -456,7 +456,7 @@ int hal_ready(int comp_id) {
 		"HAL: ERROR: component %d not found\n", comp_id);
 	    return -EINVAL;
 	}
-	comp = SHMPTR(next);
+	comp = next;
     }
     if(comp->ready > 0) {
         rtapi_print_msg(RTAPI_MSG_ERR,
@@ -470,7 +470,7 @@ int hal_ready(int comp_id) {
 }
 
 int hal_unready(int comp_id) {
-    int next;
+    void *next;
     hal_comp_t *comp;
 
     rtapi_mutex_get(&(hal_data->mutex));
@@ -485,7 +485,7 @@ int hal_unready(int comp_id) {
 	return -EINVAL;
     }
 
-    comp = SHMPTR(next);
+    comp = next;
     while (comp->comp_id != comp_id) {
 	/* not a match, try the next one */
 	next = comp->next_ptr;
@@ -496,7 +496,7 @@ int hal_unready(int comp_id) {
 		"HAL: ERROR: component %d not found\n", comp_id);
 	    return -EINVAL;
 	}
-	comp = SHMPTR(next);
+	comp = next;
     }
     if(comp->ready < 1) {
         rtapi_print_msg(RTAPI_MSG_ERR,
@@ -664,7 +664,7 @@ int hal_pin_port_newf(hal_pin_dir_t dir,
 int hal_pin_new(const char *name, hal_type_t type, hal_pin_dir_t dir,
     void **data_ptr_addr, int comp_id)
 {
-    rtapi_intptr_t *prev, next;
+    void **prev; void *next;
     int cmp;
     hal_pin_t *new, *ptr;
     hal_comp_t *comp;
@@ -721,7 +721,7 @@ int hal_pin_new(const char *name, hal_type_t type, hal_pin_dir_t dir,
 	return -EINVAL;
     }
     /* validate passed in pointer - must point to HAL shmem */
-    if (! SHMCHK(data_ptr_addr)) {
+    if (! (data_ptr_addr != NULL)) {
 	/* bad pointer */
 	rtapi_mutex_give(&(hal_data->mutex));
 	rtapi_print_msg(RTAPI_MSG_ERR,
@@ -744,33 +744,33 @@ int hal_pin_new(const char *name, hal_type_t type, hal_pin_dir_t dir,
 	return -ENOMEM;
     }
     /* initialize the structure */
-    new->data_ptr_addr = SHMOFF(data_ptr_addr);
-    new->owner_ptr = SHMOFF(comp);
+    new->data_ptr_addr = data_ptr_addr;
+    new->owner_ptr = comp;
     new->type = type;
     new->dir = dir;
     new->signal = 0;
     memset(&new->dummysig, 0, sizeof(hal_data_u));
     rtapi_snprintf(new->name, sizeof(new->name), "%s", name);
     /* make 'data_ptr' point to dummy signal */
-    *data_ptr_addr = comp->shmem_base + SHMOFF(&(new->dummysig));
+    *data_ptr_addr = (void *)&(new->dummysig);
     /* search list for 'name' and insert new structure */
-    prev = &(hal_data->pin_list_ptr);
+    prev = (void **)&(hal_data->pin_list_ptr);
     next = *prev;
     while (1) {
 	if (next == 0) {
 	    /* reached end of list, insert here */
 	    new->next_ptr = next;
-	    *prev = SHMOFF(new);
+	    *prev = new;
             hal_data->struct_generation++;
 	    rtapi_mutex_give(&(hal_data->mutex));
 	    return 0;
 	}
-	ptr = SHMPTR(next);
+	ptr = next;
 	cmp = strcmp(ptr->name, new->name);
 	if (cmp > 0) {
 	    /* found the right place for it, insert here */
 	    new->next_ptr = next;
-	    *prev = SHMOFF(new);
+	    *prev = new;
             hal_data->struct_generation++;
 	    rtapi_mutex_give(&(hal_data->mutex));
 	    return 0;
@@ -784,14 +784,14 @@ int hal_pin_new(const char *name, hal_type_t type, hal_pin_dir_t dir,
 	    return -EINVAL;
 	}
 	/* didn't find it yet, look at next one */
-	prev = &(ptr->next_ptr);
+	prev = (void **)&(ptr->next_ptr);
 	next = *prev;
     }
 }
 
 int hal_pin_alias(const char *pin_name, const char *alias)
 {
-    rtapi_intptr_t *prev, next;
+    void **prev; void *next;
     int cmp;
     hal_pin_t *pin, *ptr;
     hal_oldname_t *oldname;
@@ -839,7 +839,7 @@ int hal_pin_alias(const char *pin_name, const char *alias)
     }
     free_oldname_struct(oldname);
     /* find the pin and unlink it from pin list */
-    prev = &(hal_data->pin_list_ptr);
+    prev = (void **)&(hal_data->pin_list_ptr);
     next = *prev;
     while (1) {
 	if (next == 0) {
@@ -849,14 +849,14 @@ int hal_pin_alias(const char *pin_name, const char *alias)
 		"HAL: ERROR: pin '%s' not found\n", pin_name);
 	    return -EINVAL;
 	}
-	pin = SHMPTR(next);
+	pin = next;
 	if ( strcmp(pin->name, pin_name) == 0 ) {
 	    /* found it, unlink from list */
 	    *prev = pin->next_ptr;
 	    break;
 	}
 	if (pin->oldname != 0 ) {
-	    oldname = SHMPTR(pin->oldname);
+	    oldname = pin->oldname;
 	    if (strcmp(oldname->name, pin_name) == 0) {
 		/* found it, unlink from list */
 		*prev = pin->next_ptr;
@@ -864,7 +864,7 @@ int hal_pin_alias(const char *pin_name, const char *alias)
 	    }
 	}
 	/* didn't find it yet, look at next one */
-	prev = &(pin->next_ptr);
+	prev = (void **)&(pin->next_ptr);
 	next = *prev;
     }
     if ( alias != NULL ) {
@@ -872,7 +872,7 @@ int hal_pin_alias(const char *pin_name, const char *alias)
 	if ( pin->oldname == 0 ) {
 	    /* save old name (only if not already saved) */
 	    oldname = halpr_alloc_oldname_struct();
-	    pin->oldname = SHMOFF(oldname);
+	    pin->oldname = oldname;
 	    rtapi_snprintf(oldname->name, sizeof(oldname->name), "%s", pin->name);
 	}
 	/* change pin's name to 'alias' */
@@ -881,36 +881,36 @@ int hal_pin_alias(const char *pin_name, const char *alias)
 	/* removing an alias */
 	if ( pin->oldname != 0 ) {
 	    /* restore old name (only if pin is aliased) */
-	    oldname = SHMPTR(pin->oldname);
+	    oldname = pin->oldname;
 	    rtapi_snprintf(pin->name, sizeof(pin->name), "%s", oldname->name);
 	    pin->oldname = 0;
 	    free_oldname_struct(oldname);
 	}
     }
     /* insert pin back into list in proper place */
-    prev = &(hal_data->pin_list_ptr);
+    prev = (void **)&(hal_data->pin_list_ptr);
     next = *prev;
     while (1) {
 	if (next == 0) {
 	    /* reached end of list, insert here */
 	    pin->next_ptr = next;
-	    *prev = SHMOFF(pin);
+	    *prev = pin;
             hal_data->struct_generation++;
 	    rtapi_mutex_give(&(hal_data->mutex));
 	    return 0;
 	}
-	ptr = SHMPTR(next);
+	ptr = next;
 	cmp = strcmp(ptr->name, pin->name);
 	if (cmp > 0) {
 	    /* found the right place for it, insert here */
 	    pin->next_ptr = next;
-	    *prev = SHMOFF(pin);
+	    *prev = pin;
             hal_data->struct_generation++;
 	    rtapi_mutex_give(&(hal_data->mutex));
 	    return 0;
 	}
 	/* didn't find it yet, look at next one */
-	prev = &(ptr->next_ptr);
+	prev = (void **)&(ptr->next_ptr);
 	next = *prev;
     }
 }
@@ -922,7 +922,7 @@ int hal_pin_alias(const char *pin_name, const char *alias)
 int hal_signal_new(const char *name, hal_type_t type)
 {
 
-    rtapi_intptr_t *prev, next;
+    void **prev; void *next;
     int cmp;
     hal_sig_t *new, *ptr;
     void *data_addr;
@@ -1014,36 +1014,36 @@ with the C standard.
 	break;
     }
     /* initialize the structure */
-    new->data_ptr = SHMOFF(data_addr);
+    new->data_ptr = data_addr;
     new->type = type;
     new->readers = 0;
     new->writers = 0;
     new->bidirs = 0;
     rtapi_snprintf(new->name, sizeof(new->name), "%s", name);
     /* search list for 'name' and insert new structure */
-    prev = &(hal_data->sig_list_ptr);
+    prev = (void **)&(hal_data->sig_list_ptr);
     next = *prev;
     while (1) {
 	if (next == 0) {
 	    /* reached end of list, insert here */
 	    new->next_ptr = next;
-	    *prev = SHMOFF(new);
+	    *prev = new;
             hal_data->struct_generation++;
 	    rtapi_mutex_give(&(hal_data->mutex));
 	    return 0;
 	}
-	ptr = SHMPTR(next);
+	ptr = next;
 	cmp = strcmp(ptr->name, new->name);
 	if (cmp > 0) {
 	    /* found the right place for it, insert here */
 	    new->next_ptr = next;
-	    *prev = SHMOFF(new);
+	    *prev = new;
             hal_data->struct_generation++;
 	    rtapi_mutex_give(&(hal_data->mutex));
 	    return 0;
 	}
 	/* didn't find it yet, look at next one */
-	prev = &(ptr->next_ptr);
+	prev = (void **)&(ptr->next_ptr);
 	next = *prev;
     }
 }
@@ -1051,7 +1051,7 @@ with the C standard.
 int hal_signal_delete(const char *name)
 {
     hal_sig_t *sig;
-    rtapi_intptr_t *prev, next;
+    void **prev; void *next;
 
     if (hal_data == 0) {
 	rtapi_print_msg(RTAPI_MSG_ERR,
@@ -1069,10 +1069,10 @@ int hal_signal_delete(const char *name)
     /* get mutex before accessing shared data */
     rtapi_mutex_get(&(hal_data->mutex));
     /* search for the signal */
-    prev = &(hal_data->sig_list_ptr);
+    prev = (void **)&(hal_data->sig_list_ptr);
     next = *prev;
     while (next != 0) {
-	sig = SHMPTR(next);
+	sig = next;
 	if (strcmp(sig->name, name) == 0) {
 	    /* this is the right signal, unlink from list */
 	    *prev = sig->next_ptr;
@@ -1084,7 +1084,7 @@ int hal_signal_delete(const char *name)
 	    return 0;
 	}
 	/* no match, try the next one */
-	prev = &(sig->next_ptr);
+	prev = (void **)&(sig->next_ptr);
 	next = *prev;
     }
     /* if we get here, we didn't find a match */
@@ -1145,7 +1145,7 @@ int hal_link(const char *pin_name, const char *sig_name)
 	return -EINVAL;
     }
     /* found both pin and signal, are they already connected? */
-    if (SHMPTR(pin->signal) == sig) {
+    if (pin->signal == sig) {
 	rtapi_mutex_give(&(hal_data->mutex));
 	rtapi_print_msg(RTAPI_MSG_WARN,
 	    "HAL: Warning: pin '%s' already linked to '%s'\n", pin_name, sig_name);
@@ -1154,7 +1154,7 @@ int hal_link(const char *pin_name, const char *sig_name)
     /* is the pin connected to something else? */
     if(pin->signal) {
 	rtapi_mutex_give(&(hal_data->mutex));
-	sig = SHMPTR(pin->signal);
+	sig = pin->signal;
 	rtapi_print_msg(RTAPI_MSG_ERR,
 	    "HAL: ERROR: pin '%s' is linked to '%s', cannot link to '%s'\n",
 	    pin_name, sig->name, sig_name);
@@ -1209,9 +1209,9 @@ int hal_link(const char *pin_name, const char *sig_name)
     }
     
     /* everything is OK, make the new link */
-    data_ptr_addr = SHMPTR(pin->data_ptr_addr);
-    comp = SHMPTR(pin->owner_ptr);
-    data_addr = comp->shmem_base + sig->data_ptr;
+    data_ptr_addr = pin->data_ptr_addr;
+    comp = pin->owner_ptr;
+    data_addr = sig->data_ptr;
     *data_ptr_addr = data_addr;
 
     /* if the pin is a HAL_PORT the buffer belongs to the signal, port pins not linked
@@ -1221,7 +1221,7 @@ int hal_link(const char *pin_name, const char *sig_name)
             && ( sig->writers == 0 ) && ( sig->bidirs == 0 );
     if (drive_pin_default_value_onto_signal) {
 	/* this is the first pin for this signal, copy value from pin's "dummy" field */
-	data_addr = hal_shmem_base + sig->data_ptr;
+	data_addr = sig->data_ptr;
 
         // assure proper typing on assignment, assigning a hal_data_u is
         // a surefire cause for memory corrupion as hal_data_u is larger
@@ -1261,7 +1261,7 @@ int hal_link(const char *pin_name, const char *sig_name)
 	sig->bidirs++;
     }
     /* and update the pin */
-    pin->signal = SHMOFF(sig);
+    pin->signal = sig;
     /* done, release the mutex and return */
     hal_data->struct_generation++;
     rtapi_mutex_give(&(hal_data->mutex));
@@ -1403,7 +1403,7 @@ int hal_param_s32_newf(hal_param_dir_t dir, hal_s32_t * data_addr,
 int hal_param_new(const char *name, hal_type_t type, hal_param_dir_t dir, void *data_addr,
     int comp_id)
 {
-    rtapi_intptr_t *prev, next;
+    void **prev; void *next;
     int cmp;
     hal_param_t *new, *ptr;
     hal_comp_t *comp;
@@ -1450,7 +1450,7 @@ int hal_param_new(const char *name, hal_type_t type, hal_param_dir_t dir, void *
 	return -EINVAL;
     }
     /* validate passed in pointer - must point to HAL shmem */
-    if (! SHMCHK(data_addr)) {
+    if (! (data_addr != NULL)) {
 	/* bad pointer */
 	rtapi_mutex_give(&(hal_data->mutex));
 	rtapi_print_msg(RTAPI_MSG_ERR,
@@ -1473,29 +1473,29 @@ int hal_param_new(const char *name, hal_type_t type, hal_param_dir_t dir, void *
 	return -ENOMEM;
     }
     /* initialize the structure */
-    new->owner_ptr = SHMOFF(comp);
-    new->data_ptr = SHMOFF(data_addr);
+    new->owner_ptr = comp;
+    new->data_ptr = data_addr;
     new->type = type;
     new->dir = dir;
     rtapi_snprintf(new->name, sizeof(new->name), "%s", name);
     /* search list for 'name' and insert new structure */
-    prev = &(hal_data->param_list_ptr);
+    prev = (void **)&(hal_data->param_list_ptr);
     next = *prev;
     while (1) {
 	if (next == 0) {
 	    /* reached end of list, insert here */
 	    new->next_ptr = next;
-	    *prev = SHMOFF(new);
+	    *prev = new;
             hal_data->struct_generation++;
 	    rtapi_mutex_give(&(hal_data->mutex));
 	    return 0;
 	}
-	ptr = SHMPTR(next);
+	ptr = next;
 	cmp = strcmp(ptr->name, new->name);
 	if (cmp > 0) {
 	    /* found the right place for it, insert here */
 	    new->next_ptr = next;
-	    *prev = SHMOFF(new);
+	    *prev = new;
             hal_data->struct_generation++;
 	    rtapi_mutex_give(&(hal_data->mutex));
 	    return 0;
@@ -1509,7 +1509,7 @@ int hal_param_new(const char *name, hal_type_t type, hal_param_dir_t dir, void *
 	    return -EINVAL;
 	}
 	/* didn't find it yet, look at next one */
-	prev = &(ptr->next_ptr);
+	prev = (void **)&(ptr->next_ptr);
 	next = *prev;
     }
 }
@@ -1583,7 +1583,7 @@ int hal_param_set(const char *name, hal_type_t type, void *value_addr)
 	return -EINVAL;
     }
     /* everything is OK, set the value */
-    d_ptr = SHMPTR(param->data_ptr);
+    d_ptr = param->data_ptr;
     switch (param->type) {
     case HAL_BIT:
 	if (*((int *) value_addr) == 0) {
@@ -1614,7 +1614,7 @@ int hal_param_set(const char *name, hal_type_t type, void *value_addr)
 
 int hal_param_alias(const char *param_name, const char *alias)
 {
-    rtapi_intptr_t *prev, next;
+    void **prev; void *next;
     int cmp;
     hal_param_t *param, *ptr;
     hal_oldname_t *oldname;
@@ -1662,7 +1662,7 @@ int hal_param_alias(const char *param_name, const char *alias)
     }
     free_oldname_struct(oldname);
     /* find the param and unlink it from pin list */
-    prev = &(hal_data->param_list_ptr);
+    prev = (void **)&(hal_data->param_list_ptr);
     next = *prev;
     while (1) {
 	if (next == 0) {
@@ -1672,14 +1672,14 @@ int hal_param_alias(const char *param_name, const char *alias)
 		"HAL: ERROR: param '%s' not found\n", param_name);
 	    return -EINVAL;
 	}
-	param = SHMPTR(next);
+	param = next;
 	if ( strcmp(param->name, param_name) == 0 ) {
 	    /* found it, unlink from list */
 	    *prev = param->next_ptr;
 	    break;
 	}
 	if (param->oldname != 0 ) {
-	    oldname = SHMPTR(param->oldname);
+	    oldname = param->oldname;
 	    if (strcmp(oldname->name, param_name) == 0) {
 		/* found it, unlink from list */
 		*prev = param->next_ptr;
@@ -1687,7 +1687,7 @@ int hal_param_alias(const char *param_name, const char *alias)
 	    }
 	}
 	/* didn't find it yet, look at next one */
-	prev = &(param->next_ptr);
+	prev = (void **)&(param->next_ptr);
 	next = *prev;
     }
     if ( alias != NULL ) {
@@ -1695,7 +1695,7 @@ int hal_param_alias(const char *param_name, const char *alias)
 	if ( param->oldname == 0 ) {
 	    /* save old name (only if not already saved) */
 	    oldname = halpr_alloc_oldname_struct();
-	    param->oldname = SHMOFF(oldname);
+	    param->oldname = oldname;
 	    rtapi_snprintf(oldname->name, sizeof(oldname->name), "%s", param->name);
 	}
 	/* change param's name to 'alias' */
@@ -1704,36 +1704,36 @@ int hal_param_alias(const char *param_name, const char *alias)
 	/* removing an alias */
 	if ( param->oldname != 0 ) {
 	    /* restore old name (only if param is aliased) */
-	    oldname = SHMPTR(param->oldname);
+	    oldname = param->oldname;
 	    rtapi_snprintf(param->name, sizeof(param->name), "%s", oldname->name);
 	    param->oldname = 0;
 	    free_oldname_struct(oldname);
 	}
     }
     /* insert param back into list in proper place */
-    prev = &(hal_data->param_list_ptr);
+    prev = (void **)&(hal_data->param_list_ptr);
     next = *prev;
     while (1) {
 	if (next == 0) {
 	    /* reached end of list, insert here */
 	    param->next_ptr = next;
-	    *prev = SHMOFF(param);
+	    *prev = param;
             hal_data->struct_generation++;
 	    rtapi_mutex_give(&(hal_data->mutex));
 	    return 0;
 	}
-	ptr = SHMPTR(next);
+	ptr = next;
 	cmp = strcmp(ptr->name, param->name);
 	if (cmp > 0) {
 	    /* found the right place for it, insert here */
 	    param->next_ptr = next;
-	    *prev = SHMOFF(param);
+	    *prev = param;
             hal_data->struct_generation++;
 	    rtapi_mutex_give(&(hal_data->mutex));
 	    return 0;
 	}
 	/* didn't find it yet, look at next one */
-	prev = &(ptr->next_ptr);
+	prev = (void **)&(ptr->next_ptr);
 	next = *prev;
     }
 }
@@ -1754,8 +1754,8 @@ int hal_get_pin_value_by_name(
         *connected = pin && pin->signal;
     *type = pin->type;
     if (pin->signal != 0) {
-        sig = (hal_sig_t *) SHMPTR(pin->signal);
-        *data = (hal_data_u *) SHMPTR(sig->data_ptr);
+        sig = (hal_sig_t *) pin->signal;
+        *data = (hal_data_u *) sig->data_ptr;
     } else {
         *data = (hal_data_u *) &(pin->dummysig);
     }
@@ -1772,7 +1772,7 @@ int hal_get_signal_value_by_name(
     if (has_writers != NULL)
         *has_writers = !!sig->writers;
     *type = sig->type;
-    *data = (hal_data_u *) SHMPTR(sig->data_ptr);
+    *data = (hal_data_u *) sig->data_ptr;
     return 0;
 }
 
@@ -1784,7 +1784,7 @@ int hal_get_param_value_by_name(
         return -1;
 
     *type = param->type;
-    *data = (hal_data_u *) SHMPTR(param->data_ptr);
+    *data = (hal_data_u *) param->data_ptr;
     return 0;
 }
 
@@ -1796,7 +1796,7 @@ int hal_get_param_value_by_name(
 int hal_export_funct(const char *name, void (*funct) (void *, long),
     void *arg, int uses_fp, int reentrant, int comp_id)
 {
-    rtapi_intptr_t *prev, next;
+    void **prev; void *next;
     int cmp;
     hal_funct_t *new, *fptr;
     hal_comp_t *comp;
@@ -1855,29 +1855,29 @@ int hal_export_funct(const char *name, void (*funct) (void *, long),
     }
     /* initialize the structure */
     new->uses_fp = uses_fp;
-    new->owner_ptr = SHMOFF(comp);
+    new->owner_ptr = comp;
     new->reentrant = reentrant;
     new->users = 0;
     new->arg = arg;
     new->funct = funct;
     rtapi_snprintf(new->name, sizeof(new->name), "%s", name);
     /* search list for 'name' and insert new structure */
-    prev = &(hal_data->funct_list_ptr);
+    prev = (void **)&(hal_data->funct_list_ptr);
     next = *prev;
     while (1) {
 	if (next == 0) {
 	    /* reached end of list, insert here */
 	    new->next_ptr = next;
-	    *prev = SHMOFF(new);
+	    *prev = new;
 	    /* break out of loop and init the new function */
 	    break;
 	}
-	fptr = SHMPTR(next);
+	fptr = next;
 	cmp = strcmp(fptr->name, new->name);
 	if (cmp > 0) {
 	    /* found the right place for it, insert here */
 	    new->next_ptr = next;
-	    *prev = SHMOFF(new);
+	    *prev = new;
 	    /* break out of loop and init the new function */
 	    break;
 	}
@@ -1890,7 +1890,7 @@ int hal_export_funct(const char *name, void (*funct) (void *, long),
 	    return -EINVAL;
 	}
 	/* didn't find it yet, look at next one */
-	prev = &(fptr->next_ptr);
+	prev = (void **)&(fptr->next_ptr);
 	next = *prev;
     }
     /* at this point we have a new function and can yield the mutex */
@@ -1928,7 +1928,7 @@ int hal_create_thread(const char *name, unsigned long period_nsec, int uses_fp)
 int hal_create_thread_cpu(const char *name, unsigned long period_nsec,
     int uses_fp, int cpu)
 {
-    int next, cmp, prev_priority;
+    void *next; int cmp, prev_priority;
     int retval, n;
     hal_thread_t *new, *tptr;
     long prev_period, curr_period;
@@ -1963,7 +1963,7 @@ int hal_create_thread_cpu(const char *name, unsigned long period_nsec,
     /* make sure name is unique on thread list */
     next = hal_data->thread_list_ptr;
     while (next != 0) {
-	tptr = SHMPTR(next);
+	tptr = next;
 	cmp = strcmp(tptr->name, name);
 	if (cmp == 0) {
 	    /* name already in list, can't insert */
@@ -2023,7 +2023,7 @@ int hal_create_thread_cpu(const char *name, unsigned long period_nsec,
     } else {
 	/* there are other threads, slowest (and lowest
 	   priority) is at head of list */
-	tptr = SHMPTR(hal_data->thread_list_ptr);
+	tptr = hal_data->thread_list_ptr;
 	prev_period = tptr->period;
 	prev_priority = tptr->priority;
     }
@@ -2070,7 +2070,7 @@ int hal_create_thread_cpu(const char *name, unsigned long period_nsec,
     }
     /* insert new structure at head of list */
     new->next_ptr = hal_data->thread_list_ptr;
-    hal_data->thread_list_ptr = SHMOFF(new);
+    hal_data->thread_list_ptr = new;
     /* done, release mutex */
     rtapi_mutex_give(&(hal_data->mutex));
 
@@ -2105,7 +2105,7 @@ int hal_create_thread_cpu(const char *name, unsigned long period_nsec,
 extern int hal_thread_delete(const char *name)
 {
     hal_thread_t *thread;
-    rtapi_intptr_t *prev, next;
+    void **prev; void *next;
     int comp_id_to_exit = 0;
 
     if (hal_data == 0) {
@@ -2124,10 +2124,10 @@ extern int hal_thread_delete(const char *name)
     /* get mutex before accessing shared data */
     rtapi_mutex_get(&(hal_data->mutex));
     /* search for the thread */
-    prev = &(hal_data->thread_list_ptr);
+    prev = (void **)&(hal_data->thread_list_ptr);
     next = *prev;
     while (next != 0) {
-	thread = SHMPTR(next);
+	thread = next;
 	if (strcmp(thread->name, name) == 0) {
 	    /* this is the right thread, unlink from list */
 	    comp_id_to_exit = thread->comp_id;
@@ -2149,7 +2149,7 @@ extern int hal_thread_delete(const char *name)
 	    return 0;
 	}
 	/* no match, try the next one */
-	prev = &(thread->next_ptr);
+	prev = (void **)&(thread->next_ptr);
 	next = *prev;
     }
     /* if we get here, we didn't find a match */
@@ -2280,7 +2280,7 @@ int hal_add_funct_to_thread(const char *funct_name, const char *thread_name, int
 	return -ENOMEM;
     }
     /* init struct contents */
-    funct_entry->funct_ptr = SHMOFF(funct);
+    funct_entry->funct_ptr = funct;
     funct_entry->arg = funct->arg;
     funct_entry->funct = funct->funct;
     /* add the entry to the list */
@@ -2367,7 +2367,7 @@ int hal_del_funct_from_thread(const char *funct_name, const char *thread_name)
 	    return -EINVAL;
 	}
 	funct_entry = (hal_funct_entry_t *) list_entry;
-	if (SHMPTR(funct_entry->funct_ptr) == funct) {
+	if (funct_entry->funct_ptr == funct) {
 	    /* this funct entry points to our funct, unlink */
 	    list_remove_entry(list_entry);
 	    /* and delete it */
@@ -2404,7 +2404,7 @@ int hal_start_threads(void)
 
 int hal_stop_threads(void)
 {
-    int next, retries;
+    void *next; int retries;
 
     if (hal_data == 0) {
 	rtapi_print_msg(RTAPI_MSG_ERR,
@@ -2431,7 +2431,7 @@ int hal_stop_threads(void)
 	rtapi_mutex_get(&(hal_data->mutex));
 	next = hal_data->thread_list_ptr;
 	while (next != 0) {
-	    hal_thread_t *t = SHMPTR(next);
+	    hal_thread_t *t = next;
 	    if (!t->idle) {
 		all_idle = 0;
 		break;
@@ -2462,84 +2462,59 @@ int hal_stop_threads(void)
 hal_list_t *list_prev(hal_list_t * entry)
 {
     /* this function is only needed because of memory mapping */
-    return SHMPTR(entry->prev);
+    return entry->prev;
 }
 
 hal_list_t *list_next(hal_list_t * entry)
 {
     /* this function is only needed because of memory mapping */
-    return SHMPTR(entry->next);
+    return entry->next;
 }
 
 void list_init_entry(hal_list_t * entry)
 {
-    int entry_n;
-
-    entry_n = SHMOFF(entry);
-    entry->next = entry_n;
-    entry->prev = entry_n;
+    entry->next = entry;
+    entry->prev = entry;
 }
 
 void list_add_after(hal_list_t * entry, hal_list_t * prev)
 {
-    int entry_n, prev_n, next_n;
-    hal_list_t *next;
-
-    /* messiness needed because of memory mapping */
-    entry_n = SHMOFF(entry);
-    prev_n = SHMOFF(prev);
-    next_n = prev->next;
-    next = SHMPTR(next_n);
-    /* insert the entry */
-    entry->next = next_n;
-    entry->prev = prev_n;
-    prev->next = entry_n;
-    next->prev = entry_n;
+    hal_list_t *next = prev->next;
+    entry->next = next;
+    entry->prev = prev;
+    prev->next = entry;
+    next->prev = entry;
 }
 
 void list_add_before(hal_list_t * entry, hal_list_t * next)
 {
-    int entry_n, prev_n, next_n;
-    hal_list_t *prev;
-
-    /* messiness needed because of memory mapping */
-    entry_n = SHMOFF(entry);
-    next_n = SHMOFF(next);
-    prev_n = next->prev;
-    prev = SHMPTR(prev_n);
-    /* insert the entry */
-    entry->next = next_n;
-    entry->prev = prev_n;
-    prev->next = entry_n;
-    next->prev = entry_n;
+    hal_list_t *prev = next->prev;
+    entry->next = next;
+    entry->prev = prev;
+    prev->next = entry;
+    next->prev = entry;
 }
 
 hal_list_t *list_remove_entry(hal_list_t * entry)
 {
-    int entry_n;
-    hal_list_t *prev, *next;
-
-    /* messiness needed because of memory mapping */
-    entry_n = SHMOFF(entry);
-    prev = SHMPTR(entry->prev);
-    next = SHMPTR(entry->next);
-    /* remove the entry */
-    prev->next = entry->next;
-    next->prev = entry->prev;
-    entry->next = entry_n;
-    entry->prev = entry_n;
+    hal_list_t *prev = entry->prev;
+    hal_list_t *next = entry->next;
+    prev->next = next;
+    next->prev = prev;
+    entry->next = entry;
+    entry->prev = entry;
     return next;
 }
 
 hal_comp_t *halpr_find_comp_by_name(const char *name)
 {
-    int next;
+    void *next;
     hal_comp_t *comp;
 
     /* search component list for 'name' */
     next = hal_data->comp_list_ptr;
     while (next != 0) {
-	comp = SHMPTR(next);
+	comp = next;
 	if (strcmp(comp->name, name) == 0) {
 	    /* found a match */
 	    return comp;
@@ -2553,20 +2528,20 @@ hal_comp_t *halpr_find_comp_by_name(const char *name)
 
 hal_pin_t *halpr_find_pin_by_name(const char *name)
 {
-    int next;
+    void *next;
     hal_pin_t *pin;
     hal_oldname_t *oldname;
 
     /* search pin list for 'name' */
     next = hal_data->pin_list_ptr;
     while (next != 0) {
-	pin = SHMPTR(next);
+	pin = next;
 	if (strcmp(pin->name, name) == 0) {
 	    /* found a match */
 	    return pin;
 	}
 	if (pin->oldname != 0 ) {
-	    oldname = SHMPTR(pin->oldname);
+	    oldname = pin->oldname;
 	    if (strcmp(oldname->name, name) == 0) {
 		/* found a match */
 		return pin;
@@ -2581,13 +2556,13 @@ hal_pin_t *halpr_find_pin_by_name(const char *name)
 
 hal_sig_t *halpr_find_sig_by_name(const char *name)
 {
-    int next;
+    void *next;
     hal_sig_t *sig;
 
     /* search signal list for 'name' */
     next = hal_data->sig_list_ptr;
     while (next != 0) {
-	sig = SHMPTR(next);
+	sig = next;
 	if (strcmp(sig->name, name) == 0) {
 	    /* found a match */
 	    return sig;
@@ -2601,20 +2576,20 @@ hal_sig_t *halpr_find_sig_by_name(const char *name)
 
 hal_param_t *halpr_find_param_by_name(const char *name)
 {
-    int next;
+    void *next;
     hal_param_t *param;
     hal_oldname_t *oldname;
 
     /* search parameter list for 'name' */
     next = hal_data->param_list_ptr;
     while (next != 0) {
-	param = SHMPTR(next);
+	param = next;
 	if (strcmp(param->name, name) == 0) {
 	    /* found a match */
 	    return param;
 	}
 	if (param->oldname != 0 ) {
-	    oldname = SHMPTR(param->oldname);
+	    oldname = param->oldname;
 	    if (strcmp(oldname->name, name) == 0) {
 		/* found a match */
 		return param;
@@ -2629,13 +2604,13 @@ hal_param_t *halpr_find_param_by_name(const char *name)
 
 hal_thread_t *halpr_find_thread_by_name(const char *name)
 {
-    int next;
+    void *next;
     hal_thread_t *thread;
 
     /* search thread list for 'name' */
     next = hal_data->thread_list_ptr;
     while (next != 0) {
-	thread = SHMPTR(next);
+	thread = next;
 	if (strcmp(thread->name, name) == 0) {
 	    /* found a match */
 	    return thread;
@@ -2649,13 +2624,13 @@ hal_thread_t *halpr_find_thread_by_name(const char *name)
 
 hal_funct_t *halpr_find_funct_by_name(const char *name)
 {
-    int next;
+    void *next;
     hal_funct_t *funct;
 
     /* search function list for 'name' */
     next = hal_data->funct_list_ptr;
     while (next != 0) {
-	funct = SHMPTR(next);
+	funct = next;
 	if (strcmp(funct->name, name) == 0) {
 	    /* found a match */
 	    return funct;
@@ -2669,13 +2644,13 @@ hal_funct_t *halpr_find_funct_by_name(const char *name)
 
 hal_comp_t *halpr_find_comp_by_id(int id)
 {
-    int next;
+    void *next;
     hal_comp_t *comp;
 
     /* search list for 'comp_id' */
     next = hal_data->comp_list_ptr;
     while (next != 0) {
-	comp = SHMPTR(next);
+	comp = next;
 	if (comp->comp_id == id) {
 	    /* found a match */
 	    return comp;
@@ -2689,11 +2664,11 @@ hal_comp_t *halpr_find_comp_by_id(int id)
 
 hal_pin_t *halpr_find_pin_by_owner(hal_comp_t * owner, hal_pin_t * start)
 {
-    int owner_ptr, next;
+    void *owner_ptr, *next;
     hal_pin_t *pin;
 
     /* get offset of 'owner' component */
-    owner_ptr = SHMOFF(owner);
+    owner_ptr = owner;
     /* is this the first call? */
     if (start == 0) {
 	/* yes, start at beginning of pin list */
@@ -2703,7 +2678,7 @@ hal_pin_t *halpr_find_pin_by_owner(hal_comp_t * owner, hal_pin_t * start)
 	next = start->next_ptr;
     }
     while (next != 0) {
-	pin = SHMPTR(next);
+	pin = next;
 	if (pin->owner_ptr == owner_ptr) {
 	    /* found a match */
 	    return pin;
@@ -2718,11 +2693,11 @@ hal_pin_t *halpr_find_pin_by_owner(hal_comp_t * owner, hal_pin_t * start)
 hal_param_t *halpr_find_param_by_owner(hal_comp_t * owner,
     hal_param_t * start)
 {
-    int owner_ptr, next;
+    void *owner_ptr, *next;
     hal_param_t *param;
 
     /* get offset of 'owner' component */
-    owner_ptr = SHMOFF(owner);
+    owner_ptr = owner;
     /* is this the first call? */
     if (start == 0) {
 	/* yes, start at beginning of param list */
@@ -2732,7 +2707,7 @@ hal_param_t *halpr_find_param_by_owner(hal_comp_t * owner,
 	next = start->next_ptr;
     }
     while (next != 0) {
-	param = SHMPTR(next);
+	param = next;
 	if (param->owner_ptr == owner_ptr) {
 	    /* found a match */
 	    return param;
@@ -2747,11 +2722,11 @@ hal_param_t *halpr_find_param_by_owner(hal_comp_t * owner,
 hal_funct_t *halpr_find_funct_by_owner(hal_comp_t * owner,
     hal_funct_t * start)
 {
-    int owner_ptr, next;
+    void *owner_ptr, *next;
     hal_funct_t *funct;
 
     /* get offset of 'owner' component */
-    owner_ptr = SHMOFF(owner);
+    owner_ptr = owner;
     /* is this the first call? */
     if (start == 0) {
 	/* yes, start at beginning of function list */
@@ -2761,7 +2736,7 @@ hal_funct_t *halpr_find_funct_by_owner(hal_comp_t * owner,
 	next = start->next_ptr;
     }
     while (next != 0) {
-	funct = SHMPTR(next);
+	funct = next;
 	if (funct->owner_ptr == owner_ptr) {
 	    /* found a match */
 	    return funct;
@@ -2775,11 +2750,11 @@ hal_funct_t *halpr_find_funct_by_owner(hal_comp_t * owner,
 
 hal_pin_t *halpr_find_pin_by_sig(hal_sig_t * sig, hal_pin_t * start)
 {
-    int sig_ptr, next;
+    void *sig_ptr, *next;
     hal_pin_t *pin;
 
     /* get offset of 'sig' component */
-    sig_ptr = SHMOFF(sig);
+    sig_ptr = sig;
     /* is this the first call? */
     if (start == 0) {
 	/* yes, start at beginning of pin list */
@@ -2789,7 +2764,7 @@ hal_pin_t *halpr_find_pin_by_sig(hal_sig_t * sig, hal_pin_t * start)
 	next = start->next_ptr;
     }
     while (next != 0) {
-	pin = SHMPTR(next);
+	pin = next;
 	if (pin->signal == sig_ptr) {
 	    /* found a match */
 	    return pin;
@@ -2863,7 +2838,7 @@ void halpr_rtapi_app_exit(void)
     /* must remove all threads before unloading this module */
     while (hal_data->thread_list_ptr != 0) {
 	/* point to a thread */
-	thread = SHMPTR(hal_data->thread_list_ptr);
+	thread = hal_data->thread_list_ptr;
 	/* unlink from list */
 	hal_data->thread_list_ptr = thread->next_ptr;
 	/* and delete it */
@@ -2902,7 +2877,7 @@ static void thread_task(void *arg)
 	    __sync_synchronize();
 	    /* point at first function on function list */
 	    funct_root = (hal_funct_entry_t *) & (thread->funct_list);
-	    funct_entry = SHMPTR(funct_root->links.next);
+	    funct_entry = (hal_funct_entry_t *)funct_root->links.next;
 	    /* execution time logging */
 	    start_time = rtapi_get_clocks();
 	    end_time = start_time;
@@ -2914,7 +2889,7 @@ static void thread_task(void *arg)
 		/* capture execution time */
 		end_time = rtapi_get_clocks();
 		/* point to function structure */
-		funct = SHMPTR(funct_entry->funct_ptr);
+		funct = funct_entry->funct_ptr;
 		/* update execution time data */
 		*(funct->runtime) = (hal_s32_t)(end_time - start_time);
 		if ( *(funct->runtime) > funct->maxtime) {
@@ -2924,7 +2899,7 @@ static void thread_task(void *arg)
 		    funct->maxtime_increased = 0;
 		}
 		/* point to next next entry in list */
-		funct_entry = SHMPTR(funct_entry->links.next);
+		funct_entry = (hal_funct_entry_t *)funct_entry->links.next;
 		/* prepare to measure time for next funct */
 		start_time = end_time;
 	    }
@@ -3032,7 +3007,7 @@ static void *shmalloc_up(long int size)
 	return 0;
     }
     /* memory is available, allocate it */
-    retval = SHMPTR(tmp_bot);
+    retval = ((char *)hal_data + tmp_bot);
     hal_data->shmem_bot = tmp_bot + size;
     hal_data->shmem_avail = hal_data->shmem_top - hal_data->shmem_bot;
     rtapi_print_msg(RTAPI_MSG_DBG, "smalloc_up: shmem available %d\n", hal_data->shmem_avail);
@@ -3066,7 +3041,7 @@ static void *shmalloc_dn(long int size)
 	return 0;
     }
     /* memory is available, allocate it */
-    retval = SHMPTR(tmp_top);
+    retval = ((char *)hal_data + tmp_top);
     hal_data->shmem_top = tmp_top;
     hal_data->shmem_avail = hal_data->shmem_top - hal_data->shmem_bot;
     rtapi_print_msg(RTAPI_MSG_DBG, "smalloc_dn: shmem available %d\n", hal_data->shmem_avail);
@@ -3080,7 +3055,7 @@ hal_comp_t *halpr_alloc_comp_struct(void)
     /* check the free list */
     if (hal_data->comp_free_ptr != 0) {
 	/* found a free structure, point to it */
-	p = SHMPTR(hal_data->comp_free_ptr);
+	p = hal_data->comp_free_ptr;
 	/* unlink it from the free list */
 	hal_data->comp_free_ptr = p->next_ptr;
 	p->next_ptr = 0;
@@ -3108,7 +3083,7 @@ static hal_pin_t *alloc_pin_struct(void)
     /* check the free list */
     if (hal_data->pin_free_ptr != 0) {
 	/* found a free structure, point to it */
-	p = SHMPTR(hal_data->pin_free_ptr);
+	p = hal_data->pin_free_ptr;
 	/* unlink it from the free list */
 	hal_data->pin_free_ptr = p->next_ptr;
 	p->next_ptr = 0;
@@ -3137,7 +3112,7 @@ static hal_sig_t *alloc_sig_struct(void)
     /* check the free list */
     if (hal_data->sig_free_ptr != 0) {
 	/* found a free structure, point to it */
-	p = SHMPTR(hal_data->sig_free_ptr);
+	p = hal_data->sig_free_ptr;
 	/* unlink it from the free list */
 	hal_data->sig_free_ptr = p->next_ptr;
 	p->next_ptr = 0;
@@ -3165,7 +3140,7 @@ static hal_param_t *alloc_param_struct(void)
     /* check the free list */
     if (hal_data->param_free_ptr != 0) {
 	/* found a free structure, point to it */
-	p = SHMPTR(hal_data->param_free_ptr);
+	p = hal_data->param_free_ptr;
 	/* unlink it from the free list */
 	hal_data->param_free_ptr = p->next_ptr;
 	p->next_ptr = 0;
@@ -3191,7 +3166,7 @@ static hal_oldname_t *halpr_alloc_oldname_struct(void)
     /* check the free list */
     if (hal_data->oldname_free_ptr != 0) {
 	/* found a free structure, point to it */
-	p = SHMPTR(hal_data->oldname_free_ptr);
+	p = hal_data->oldname_free_ptr;
 	/* unlink it from the free list */
 	hal_data->oldname_free_ptr = p->next_ptr;
 	p->next_ptr = 0;
@@ -3214,7 +3189,7 @@ static hal_funct_t *alloc_funct_struct(void)
     /* check the free list */
     if (hal_data->funct_free_ptr != 0) {
 	/* found a free structure, point to it */
-	p = SHMPTR(hal_data->funct_free_ptr);
+	p = hal_data->funct_free_ptr;
 	/* unlink it from the free list */
 	hal_data->funct_free_ptr = p->next_ptr;
 	p->next_ptr = 0;
@@ -3270,7 +3245,7 @@ static hal_thread_t *alloc_thread_struct(void)
     /* check the free list */
     if (hal_data->thread_free_ptr != 0) {
 	/* found a free structure, point to it */
-	p = SHMPTR(hal_data->thread_free_ptr);
+	p = hal_data->thread_free_ptr;
 	/* unlink it from the free list */
 	hal_data->thread_free_ptr = p->next_ptr;
 	p->next_ptr = 0;
@@ -3293,7 +3268,7 @@ static hal_thread_t *alloc_thread_struct(void)
 
 static void free_comp_struct(hal_comp_t * comp)
 {
-    rtapi_intptr_t *prev, next;
+    void **prev; void *next;
     hal_funct_t *funct;
     hal_pin_t *pin;
     hal_param_t *param;
@@ -3301,50 +3276,50 @@ static void free_comp_struct(hal_comp_t * comp)
     /* can't delete the component until we delete its "stuff" */
     /* need to check for functs only if a realtime component */
     /* search the function list for this component's functs */
-    prev = &(hal_data->funct_list_ptr);
+    prev = (void **)&(hal_data->funct_list_ptr);
     next = *prev;
     while (next != 0) {
-	funct = SHMPTR(next);
-	if (SHMPTR(funct->owner_ptr) == comp) {
+	funct = next;
+	if (funct->owner_ptr == comp) {
 	    /* this function belongs to our component, unlink from list */
 	    *prev = funct->next_ptr;
 	    /* and delete it */
 	    free_funct_struct(funct);
 	} else {
 	    /* no match, try the next one */
-	    prev = &(funct->next_ptr);
+	    prev = (void **)&(funct->next_ptr);
 	}
 	next = *prev;
     }
     /* search the pin list for this component's pins */
-    prev = &(hal_data->pin_list_ptr);
+    prev = (void **)&(hal_data->pin_list_ptr);
     next = *prev;
     while (next != 0) {
-	pin = SHMPTR(next);
-	if (SHMPTR(pin->owner_ptr) == comp) {
+	pin = next;
+	if (pin->owner_ptr == comp) {
 	    /* this pin belongs to our component, unlink from list */
 	    *prev = pin->next_ptr;
 	    /* and delete it */
 	    free_pin_struct(pin);
 	} else {
 	    /* no match, try the next one */
-	    prev = &(pin->next_ptr);
+	    prev = (void **)&(pin->next_ptr);
 	}
 	next = *prev;
     }
     /* search the parameter list for this component's parameters */
-    prev = &(hal_data->param_list_ptr);
+    prev = (void **)&(hal_data->param_list_ptr);
     next = *prev;
     while (next != 0) {
-	param = SHMPTR(next);
-	if (SHMPTR(param->owner_ptr) == comp) {
+	param = next;
+	if (param->owner_ptr == comp) {
 	    /* this param belongs to our component, unlink from list */
 	    *prev = param->next_ptr;
 	    /* and delete it */
 	    free_param_struct(param);
 	} else {
 	    /* no match, try the next one */
-	    prev = &(param->next_ptr);
+	    prev = (void **)&(param->next_ptr);
 	}
 	next = *prev;
     }
@@ -3358,7 +3333,7 @@ static void free_comp_struct(hal_comp_t * comp)
     comp->name[0] = '\0';
     /* add it to free list */
     comp->next_ptr = hal_data->comp_free_ptr;
-    hal_data->comp_free_ptr = SHMOFF(comp);
+    hal_data->comp_free_ptr = comp;
 }
 
 static void unlink_pin(hal_pin_t * pin)
@@ -3371,16 +3346,16 @@ static void unlink_pin(hal_pin_t * pin)
     /* is this pin linked to a signal? */
     if (pin->signal != 0) {
     /* yes, need to unlink it */
-    sig = SHMPTR(pin->signal);
+    sig = pin->signal;
     /* make pin's 'data_ptr' point to its dummy signal */
-    data_ptr_addr = SHMPTR(pin->data_ptr_addr);
-    comp = SHMPTR(pin->owner_ptr);
-    dummy_addr = comp->shmem_base + SHMOFF(&(pin->dummysig));
+    data_ptr_addr = pin->data_ptr_addr;
+    comp = pin->owner_ptr;
+    dummy_addr = (void *)&(pin->dummysig);
     *data_ptr_addr = dummy_addr;
 
     /* copy current signal value to dummy */
-    sig_data_addr = (hal_data_u *)(hal_shmem_base + sig->data_ptr);
-    dummy_addr = (hal_data_u *)(hal_shmem_base + SHMOFF(&(pin->dummysig)));
+    sig_data_addr = (hal_data_u *)(sig->data_ptr);
+    dummy_addr = (hal_data_u *)&(pin->dummysig);
 
     switch (pin->type) {
     case HAL_BIT:
@@ -3425,7 +3400,7 @@ static void free_pin_struct(hal_pin_t * pin)
 
     unlink_pin(pin);
     /* clear contents of struct */
-    if ( pin->oldname != 0 ) free_oldname_struct(SHMPTR(pin->oldname));
+    if ( pin->oldname != 0 ) free_oldname_struct(pin->oldname);
     pin->data_ptr_addr = 0;
     pin->owner_ptr = 0;
     pin->type = 0;
@@ -3435,7 +3410,7 @@ static void free_pin_struct(hal_pin_t * pin)
     pin->name[0] = '\0';
     /* add it to free list */
     pin->next_ptr = hal_data->pin_free_ptr;
-    hal_data->pin_free_ptr = SHMOFF(pin);
+    hal_data->pin_free_ptr = pin;
 }
 
 static void free_sig_struct(hal_sig_t * sig)
@@ -3459,20 +3434,20 @@ static void free_sig_struct(hal_sig_t * sig)
     sig->name[0] = '\0';
     /* add it to free list */
     sig->next_ptr = hal_data->sig_free_ptr;
-    hal_data->sig_free_ptr = SHMOFF(sig);
+    hal_data->sig_free_ptr = sig;
 }
 
 static void free_param_struct(hal_param_t * p)
 {
     /* clear contents of struct */
-    if ( p->oldname != 0 ) free_oldname_struct(SHMPTR(p->oldname));
+    if ( p->oldname != 0 ) free_oldname_struct(p->oldname);
     p->data_ptr = 0;
     p->owner_ptr = 0;
     p->type = 0;
     p->name[0] = '\0';
     /* add it to free list (params use the same struct as src vars) */
     p->next_ptr = hal_data->param_free_ptr;
-    hal_data->param_free_ptr = SHMOFF(p);
+    hal_data->param_free_ptr = p;
 }
 
 static void free_oldname_struct(hal_oldname_t * oldname)
@@ -3481,12 +3456,12 @@ static void free_oldname_struct(hal_oldname_t * oldname)
     oldname->name[0] = '\0';
     /* add it to free list */
     oldname->next_ptr = hal_data->oldname_free_ptr;
-    hal_data->oldname_free_ptr = SHMOFF(oldname);
+    hal_data->oldname_free_ptr = oldname;
 }
 
 static void free_funct_struct(hal_funct_t * funct)
 {
-    int next_thread;
+    void *next_thread;
     hal_thread_t *thread;
     hal_list_t *list_root, *list_entry;
     hal_funct_entry_t *funct_entry;
@@ -3502,7 +3477,7 @@ static void free_funct_struct(hal_funct_t * funct)
 	/* run through thread list */
 	while (next_thread != 0) {
 	    /* point to thread */
-	    thread = SHMPTR(next_thread);
+	    thread = next_thread;
 	    /* start at root of funct_entry list */
 	    list_root = &(thread->funct_list);
 	    list_entry = list_next(list_root);
@@ -3511,7 +3486,7 @@ static void free_funct_struct(hal_funct_t * funct)
 		/* point to funct entry */
 		funct_entry = (hal_funct_entry_t *) list_entry;
 		/* test it */
-		if (SHMPTR(funct_entry->funct_ptr) == funct) {
+		if (funct_entry->funct_ptr == funct) {
 		    /* this funct entry points to our funct, unlink */
 		    list_entry = list_remove_entry(list_entry);
 		    /* and delete it */
@@ -3536,7 +3511,7 @@ static void free_funct_struct(hal_funct_t * funct)
     funct->name[0] = '\0';
     /* add it to free list */
     funct->next_ptr = hal_data->funct_free_ptr;
-    hal_data->funct_free_ptr = SHMOFF(funct);
+    hal_data->funct_free_ptr = funct;
 }
 
 static void free_funct_entry_struct(hal_funct_entry_t * funct_entry)
@@ -3545,7 +3520,7 @@ static void free_funct_entry_struct(hal_funct_entry_t * funct_entry)
 
     if (funct_entry->funct_ptr > 0) {
 	/* entry points to a function, update the function struct */
-	funct = SHMPTR(funct_entry->funct_ptr);
+	funct = funct_entry->funct_ptr;
 	funct->users--;
     }
     /* clear contents of struct */
@@ -3562,7 +3537,7 @@ static void free_thread_struct(hal_thread_t * thread)
     hal_list_t *list_root, *list_entry;
 /*! \todo Another #if 0 */
 #if 0
-    rtapi_intptr_t *prev, next;
+    void **prev; void *next;
     char time[HAL_NAME_LEN + 1], tmax[HAL_NAME_LEN + 1];
     hal_param_t *param;
 #endif
@@ -3599,10 +3574,10 @@ static void free_thread_struct(hal_thread_t * thread)
     rtapi_snprintf(time, sizeof(time), "%s.time", thread->name);
     rtapi_snprintf(tmax, sizeof(tmax), "%s.tmax", thread->name);
     /* search the parameter list for those parameters */
-    prev = &(hal_data->param_list_ptr);
+    prev = (void **)&(hal_data->param_list_ptr);
     next = *prev;
     while (next != 0) {
-	param = SHMPTR(next);
+	param = next;
 	/* does this param match either name? */
 	if ((strcmp(param->name, time) == 0)
 	    || (strcmp(param->name, tmax) == 0)) {
@@ -3612,7 +3587,7 @@ static void free_thread_struct(hal_thread_t * thread)
 	    free_param_struct(param);
 	} else {
 	    /* no match, try the next one */
-	    prev = &(param->next_ptr);
+	    prev = (void **)&(param->next_ptr);
 	}
 	next = *prev;
     }
@@ -3620,7 +3595,7 @@ static void free_thread_struct(hal_thread_t * thread)
     thread->name[0] = '\0';
     /* add thread to free list */
     thread->next_ptr = hal_data->thread_free_ptr;
-    hal_data->thread_free_ptr = SHMOFF(thread);
+    hal_data->thread_free_ptr = thread;
 }
 
 static char *halpr_type_string(int type, char *buf, size_t nbuf) {
@@ -3731,7 +3706,7 @@ int hal_port_alloc(unsigned size) {
 
     new_port->size = size;
 
-    return SHMOFF(new_port);
+    return (int)((char *)new_port - (char *)hal_data);
 }
 
 
@@ -3741,7 +3716,7 @@ bool hal_port_read(hal_port_t port, char* dest, unsigned count) {
              end_bytes_to_read,   //number of bytes to read after read position and before end of buffer
              beg_bytes_to_read,   //number of bytes to read at beginning of buffer
              final_pos;           //final position after read
-    hal_port_shm_t* port_shm = SHMPTR(port);
+    hal_port_shm_t* port_shm = ((hal_port_shm_t *)((char *)hal_data + port));
     
 
     if(!port || !count) {
@@ -3774,7 +3749,7 @@ bool hal_port_peek(hal_port_t port, char* dest, unsigned count) {
              end_bytes_to_read,   //number of bytes to read after read position and before end of buffer
              beg_bytes_to_read,   //number of bytes to read at beginning of buffer
              final_pos;           //final position of read
-    hal_port_shm_t* port_shm = SHMPTR(port);
+    hal_port_shm_t* port_shm = ((hal_port_shm_t *)((char *)hal_data + port));
 
     if(!port || !count) {
         return false;
@@ -3805,7 +3780,7 @@ bool hal_port_peek_commit(hal_port_t port, unsigned count) {
              end_bytes_to_read,   //number of bytes to read after read position and before end of buffer
              beg_bytes_to_read,   //number of bytes to read at beginning of buffer
              final_pos;           //final position of read
-    hal_port_shm_t* port_shm = SHMPTR(port);
+    hal_port_shm_t* port_shm = ((hal_port_shm_t *)((char *)hal_data + port));
 
     if(!port || !count) {
         return false;
@@ -3838,7 +3813,7 @@ bool hal_port_write(hal_port_t port, const char* src, unsigned count) {
              beg_bytes_to_write,
              final_pos;
    
-    hal_port_shm_t* port_shm = SHMPTR(port);
+    hal_port_shm_t* port_shm = ((hal_port_shm_t *)((char *)hal_data + port));
  
     if(!port || !count) {
 	    return false;
@@ -3883,7 +3858,7 @@ bool hal_port_write(hal_port_t port, const char* src, unsigned count) {
 
 
 unsigned hal_port_readable(hal_port_t port) {
-    hal_port_shm_t* port_shm = SHMPTR(port);
+    hal_port_shm_t* port_shm = ((hal_port_shm_t *)((char *)hal_data + port));
 
     if(!port) {
         return 0;
@@ -3894,7 +3869,7 @@ unsigned hal_port_readable(hal_port_t port) {
 
 
 unsigned hal_port_writable(hal_port_t port) {
-    hal_port_shm_t* port_shm = SHMPTR(port);
+    hal_port_shm_t* port_shm = ((hal_port_shm_t *)((char *)hal_data + port));
              
     if(!port) {
         return 0;
@@ -3908,14 +3883,14 @@ unsigned hal_port_buffer_size(hal_port_t port) {
     if(!port) {
         return 0;
     } else {
-        return ((hal_port_shm_t*)SHMPTR(port))->size;
+        return ((hal_port_shm_t*)((hal_port_shm_t *)((char *)hal_data + port)))->size;
     }
 }
 
 
 void hal_port_clear(hal_port_t port) {
     unsigned read,write;
-    hal_port_shm_t* port_shm = SHMPTR(port);
+    hal_port_shm_t* port_shm = ((hal_port_shm_t *)((char *)hal_data + port));
 
     if(port) {
         hal_port_atomic_load(port_shm, &read, &write);
