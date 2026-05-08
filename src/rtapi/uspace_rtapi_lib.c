@@ -59,7 +59,6 @@
 #include "hal/hal_priv.h"
 
 /* Declarations for compatibility with uspace_common.h */
-static uid_t euid = 0, ruid = 0;
 
 /* Helper function for rtapi_timespec_less */
 static int rtapi_timespec_less(const struct timespec ta, const struct timespec tb) {
@@ -70,11 +69,6 @@ static int rtapi_timespec_less(const struct timespec ta, const struct timespec t
 
 /* Forward declaration of rtapi_timespec_advance */
 void rtapi_timespec_advance(struct timespec *result, const struct timespec *src, unsigned long nsec);
-
-/* No-op stubs: under capabilities (cap_sys_nice, cap_ipc_lock, cap_sys_rawio),
- * euid == ruid so the old setfsuid() toggling is unnecessary. */
-static void with_root_enter(void) {}
-static void with_root_exit(void) {}
 
 #include "rtapi/uspace_common.h"
 
@@ -403,9 +397,6 @@ static void configure_memory(void)
 
 static int harden_rt(void)
 {
-    /* Initialize euid/ruid here; used by uspace_common.h for shmem ownership. */
-    euid = geteuid();
-    ruid = getuid();
 
     /* With setcap-based privileges (cap_sys_nice, cap_ipc_lock, cap_sys_rawio)
      * we no longer need setuid or root.  Capabilities are inherited by the

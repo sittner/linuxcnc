@@ -31,23 +31,14 @@
 #include <rtapi_mutex.h>
 static int msg_level = RTAPI_MSG_ERR;	/* message printing level */
 
-#include <sys/ipc.h>		/* IPC_* */
-#include <sys/shm.h>		/* shmget() */
 /* These structs hold data associated with objects like tasks, etc. */
 /* Task handles are pointers to these structs.                      */
 
 #include "config.h"
 
-/* Provide WITH_ROOT macro for privilege escalation during shmem operations.
- * Includers must define with_root_enter()/with_root_exit() before including this file. */
-#ifndef WITH_ROOT
-#define WITH_ROOT for(int _wr = (with_root_enter(), 1); _wr; _wr = 0, with_root_exit())
-#endif
-
 typedef struct {
   int magic;			/* to check for valid handle */
   int key;			/* key to shared memory area */
-  int id;			/* OS identifier for shmem */
   int count;                    /* count of maps in this process */
   unsigned long int size;	/* size of shared memory area */
   void *mem;			/* pointer to the memory */
@@ -61,7 +52,6 @@ static rtapi_shmem_handle shmem_array[MAX_SHM] = {{0},};
 
 int rtapi_shmem_new(int key, int module_id, unsigned long int size)
 {
-  WITH_ROOT;
   rtapi_shmem_handle *shmem;
   int i;
 
@@ -81,64 +71,11 @@ int rtapi_shmem_new(int key, int module_id, unsigned long int size)
     return -ENOMEM;
   }
 
-  /* now get shared memory block from OS */
-  int shmget_retries = 5;
-shmget_again:
-  shmem->id = shmget((key_t) key, (int) size, IPC_CREAT | 0600);
-  if (shmem->id == -1) {
-      // See below for explanation of why retry against -EPERM here
-      if(shmget_retries-- && errno == -EPERM) {
-          sched_yield();
-          goto shmget_again;
-      }
-    rtapi_print_msg(RTAPI_MSG_ERR, "rtapi_shmem_new failed due to shmget(key=0x%08x): %s\n", key, strerror(errno));
-    return -errno;
-  }
-
-  struct shmid_ds stat;
-  int res = shmctl(shmem->id, IPC_STAT, &stat);
-  if(res < 0) perror("shmctl IPC_STAT");
-
-  /* When running with capabilities (cap_sys_nice, cap_ipc_lock, cap_sys_rawio)
-   * instead of setuid, the process euid is the real user.  If running as root
-   * (e.g. during testing), ensure the segment ownership is corrected so
-   * unprivileged processes can attach.
-   */
-  /* ensure the segment is owned by user, not root */
-  if(geteuid() == 0) {
-    stat.shm_perm.uid = ruid;
-    res = shmctl(shmem->id, IPC_SET, &stat);
-    if(res < 0) perror("shmctl IPC_SET");
-  }
-
-#ifndef __FreeBSD__ // FreeBSD doesn't implement SHM_LOCK
-  if(rtapi_is_realtime())
-  {
-    /* ensure the segment is locked */
-    res = shmctl(shmem->id, SHM_LOCK, NULL);
-    if(res < 0) perror("shmctl IPC_LOCK");
-
-    res = shmctl(shmem->id, IPC_STAT, &stat);
-    if(res < 0) perror("shmctl IPC_STAT");
-    if((stat.shm_perm.mode & SHM_LOCKED) != SHM_LOCKED)
-      rtapi_print_msg(RTAPI_MSG_ERR,
-          "shared memory segment not locked as requested\n");
-  }
-#endif
-
-  /* and map it into process space */
-  shmem->mem = shmat(shmem->id, 0, 0);
-  if ((ssize_t) (shmem->mem) == -1) {
-    rtapi_print_msg(RTAPI_MSG_ERR, "rtapi_shmem_new failed due to shmat()\n");
-    return -errno;
-  }
-
-  long pagesize = sysconf(_SC_PAGESIZE);
-  /* touch every page */
-  for(size_t off = 0; off < size; off += pagesize)
-  {
-      volatile char i = ((char*)shmem->mem)[off];
-      (void)i;
+  /* allocate RT-hardened memory (mlocked, page-faulted) */
+  shmem->mem = rtapi_calloc(size);
+  if (!shmem->mem) {
+    rtapi_print_msg(RTAPI_MSG_ERR, "rtapi_shmem_new failed due to rtapi_calloc(%lu)\n", size);
+    return -ENOMEM;
   }
 
   /* label as a valid shmem structure */
@@ -173,8 +110,6 @@ int rtapi_shmem_getptr(int handle, void **ptr)
 
 int rtapi_shmem_delete(int handle, int module_id)
 {
-  struct shmid_ds d;
-  int r1, r2;
   rtapi_shmem_handle *shmem;
 
   if(handle < 0 || handle >= MAX_SHM)
@@ -189,25 +124,13 @@ int rtapi_shmem_delete(int handle, int module_id)
   shmem->count --;
   if(shmem->count) return 0;
 
-  /* unmap the shared memory */
-  r1 = shmdt(shmem->mem);
-
-  /* destroy the shared memory */
-  r2 = shmctl(shmem->id, IPC_STAT, &d);
-  if (r2 != 0)
-      rtapi_print_msg(RTAPI_MSG_ERR, "shmctl(%d, IPC_STAT, ...): %s\n", shmem->id, strerror(errno));
-
-  if(r2 == 0 && d.shm_nattch == 0) {
-      r2 = shmctl(shmem->id, IPC_RMID, &d);
-      if (r2 != 0)
-	      rtapi_print_msg(RTAPI_MSG_ERR, "shmctl(%d, IPC_RMID, ...): %s\n", shmem->id, strerror(errno));
-  }
+  /* free the RT-hardened memory */
+  rtapi_free(shmem->mem);
+  shmem->mem = NULL;
 
   /* free the shmem structure */
   shmem->magic = 0;
 
-  if ((r1 != 0) || (r2 != 0))
-    return -EINVAL;
   return 0;
 }
 
