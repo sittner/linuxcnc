@@ -412,6 +412,14 @@ maintain its own state.
 
 Replaces Python Task method overrides and M100-M199 fork/exec.
 
+Task method overrides (tool change, coolant, etc.) are **synchronous** — they
+run inline in the task loop and return immediately. These are fast operations
+that set HAL pins or send NML commands.
+
+M100-M199 handlers run on a **separate thread** with an `abort_fd` for clean
+cancellation. This keeps the task loop responsive for status updates, abort
+processing, and estop handling while the M-code executes.
+
 ```c
 typedef struct {
     void *task;     // opaque task handle
@@ -420,7 +428,7 @@ typedef struct {
     // (specific accessor functions TBD based on actual usage)
 } task_ext_ctx_t;
 
-// Task method override callbacks
+// Task method override callbacks (synchronous, run in task loop)
 typedef int (*task_tool_prepare_fn)(task_ext_ctx_t *ctx,
                                      int tool, int pocket);
 typedef int (*task_tool_change_fn)(task_ext_ctx_t *ctx, int pocket);
@@ -430,10 +438,19 @@ typedef int (*task_estop_fn)(task_ext_ctx_t *ctx, int on);
 typedef int (*task_io_init_fn)(task_ext_ctx_t *ctx);
 typedef int (*task_io_halt_fn)(task_ext_ctx_t *ctx);
 
-// M100-M199 handler (replaces fork/exec)
-typedef int (*task_mcode_fn)(task_ext_ctx_t *ctx,
-                              int mcode, double p, double q,
-                              double *result);
+// M100-M199 handler context (passed to handler on its own thread)
+typedef struct {
+    int    abort_fd;    // eventfd, becomes readable on abort/estop
+    int    mcode;       // the M-code number (100-199)
+    double p;           // P argument from G-code
+    double q;           // Q argument from G-code
+    double result;      // handler writes result here (read by task)
+    void  *user;        // per-registration user data
+} task_mcode_ctx_t;
+
+// M-code handler — runs on its own thread, must poll abort_fd.
+// Returns 0 = success, -1 = error, -2 = aborted.
+typedef int (*task_mcode_fn)(task_mcode_ctx_t *ctx);
 
 typedef struct gomc_task_ext {
     void *ctx;
@@ -456,6 +473,47 @@ typedef struct gomc_task_ext {
                            void *user);
 } gomc_task_ext_t;
 ```
+
+#### M-code Execution Flow
+
+```
+1. Interpreter reads M1xx → queues internal mcode command on interp_list
+2. Task loop dequeues command, looks up registered handler for mcode N
+3. If no handler registered → error "M1xx: no handler registered"
+4. Task creates eventfd (abort_fd), populates task_mcode_ctx_t
+5. Task spawns thread calling handler(ctx)
+6. Task enters WAITING_FOR_MCODE_HANDLER state
+7. Each task loop cycle:
+   a. Process NML commands (including abort/estop)
+   b. Update and publish status
+   c. Check handler thread (pthread_tryjoin_np / non-blocking)
+   d. If abort requested: write to abort_fd, wait with timeout, force-cancel
+8. Handler finishes → task reads ctx->result, sets execState = DONE
+```
+
+#### M-code Handler Example (cmod)
+
+```c
+// Wait for a pneumatic clamp sensor, respecting abort
+int clamp_mcode(task_mcode_ctx_t *ctx) {
+    // Activate clamp via HAL pin
+    hal_pin_set_bit("clamp.activate", 1);
+
+    // Poll sensor, checking abort_fd
+    struct pollfd pfd = { .fd = ctx->abort_fd, .events = POLLIN };
+    while (!hal_pin_get_bit("clamp.clamped")) {
+        if (poll(&pfd, 1, 100) > 0) {   // 100ms poll timeout
+            hal_pin_set_bit("clamp.activate", 0);  // cleanup
+            return -2;  // aborted
+        }
+    }
+    ctx->result = 0;
+    return 0;
+}
+```
+
+On the Go/gomod side, the abort_fd maps to a `context.Context` cancellation
+or a channel read, providing idiomatic Go abort handling.
 
 ### POSTTASK\_HALFILE
 
@@ -558,10 +616,12 @@ Custom remap prologs/epilogs can be written as gomods.
 2. Replace `TaskWrap` (Boost.Python) with C callback dispatch in
    `taskclass.cc` — each Task virtual method checks for registered handler,
    falls through to default C++ if none.
-3. Replace `emcSystemCmd()` fork/exec with registered mcode handler dispatch.
+3. Replace `emcSystemCmd()` fork/exec with threaded mcode handler dispatch.
 4. Remove `EMC_SYSTEM_CMD` NML message type.
-5. Remove `WAITING_FOR_SYSTEM_CMD` task exec state (handlers are synchronous
-   or use a completion callback).
+5. Replace `WAITING_FOR_SYSTEM_CMD` with `WAITING_FOR_MCODE_HANDLER` task
+   exec state — polls handler thread completion each cycle.
+6. Implement abort path: on abort/estop, write to handler's `abort_fd`,
+   wait with timeout, then force-cancel thread.
 6. Remove `user_defined_fmt[]` / `user_defined_function_dirindex[]` from
    `emctask.cc`.
 7. Remove `taskmodule.cc` (Boost.Python bindings).
@@ -572,9 +632,10 @@ Custom remap prologs/epilogs can be written as gomods.
 **Validation:** M1xx codes work via registered gomods.
 Default tool change (iocontrol-based) works without Python.
 
-### Phase 5: Multi-Instance Interpreter
+### Phase 5: Multi-Instance Interpreter + Server-Side Preview
 
-**Goal:** Enable multiple concurrent Interp instances.
+**Goal:** Enable multiple concurrent Interp instances. Primary driver:
+server-side G-code preview that runs concurrently with execution.
 
 1. Move remaining file-scoped statics into `_setup`:
    - `nurbs_order`, `nurbs_control_points` → `_setup`
@@ -583,8 +644,22 @@ Default tool change (iocontrol-based) works without Python.
 3. Each `interp_canon_t` instance has its own CanonConfig, interp\_list,
    and status reference.
 4. Tool table access goes through canon getters (already done in Phase 1).
-5. Test: create two Interp instances — one for execution, one for preview.
-   They must not interfere.
+5. Implement **preview canon** (`preview_canon_t`): a `interp_canon_t`
+   implementation that records geometry as JSON (line segments, arcs,
+   rapid/feed classification, tool changes, coordinate system). No NML,
+   no HAL, no interp\_list — pure data recording.
+6. Preview Interp instance runs with `interp_ext = NULL`. Extensions are
+   skipped entirely — remapped codes that have `ngc=` subs still execute
+   (normal NGC sub call, correct geometry), but prolog/epilog/body
+   extension callbacks are not invoked. This is correct because preview
+   doesn't need side effects, only geometry.
+7. gomc-server exposes preview via REST/WebSocket endpoint. Client sends
+   file path (or G-code text), server creates preview Interp + preview
+   canon, runs interpretation, streams JSON geometry to client. Client
+   is a pure renderer — no G-code parsing needed.
+8. Test: create two Interp instances — one for execution, one for preview.
+   They must not interfere. Preview must produce identical geometry to
+   execution canon for the same program (modulo side-effect-only codes).
 
 ### Phase 6: Cleanup
 
@@ -628,32 +703,27 @@ Default tool change (iocontrol-based) works without Python.
 - `src/emc/sai/saicanon.cc` — implement its own interp\_canon\_t
 - `src/emc/rs274ngc/gcodemodule.cc` — implement its own interp\_canon\_t
 
-## Open Questions
+## Resolved Questions
 
-1. **M-code handler sync model**: Should registered M-code handlers be
-   synchronous (block the task loop) or support async completion? Current
-   fork/exec is async with polling. Synchronous is simpler but blocks the
-   servo cycle if the handler is slow. Could add an optional completion
-   callback for handlers that need async.
+1. ~~**stdglue scope**~~: **Resolved.** stdglue is a replaceable cmod.
+   The `interp_ext_ctx_t` accessor API exposes what conceptually makes
+   sense for any remap handler — not just what today's stdglue.py uses.
+   Design for the general case: tool state, pocket selection, coordinate
+   systems, motion mode, etc. Accessors are read-only so there's no risk
+   in exposing more than currently needed. A future replacement handler
+   shouldn't be limited by a too-narrow API.
 
-2. **stdglue scope**: The reference stdglue handlers access interpreter
-   internals heavily (selected\_pocket, current\_tool, toolchange\_flag).
-   How much of this goes into `interp_ext_ctx_t` accessor functions vs
-   being handled inside the interpreter itself? The less state exposed,
-   the cleaner the API — but stdglue needs enough to work.
+2. ~~**G-code preview multi-instance**~~: **Resolved.** Preview runs
+   server-side with a recording canon that emits JSON geometry. Extensions
+   (`interp_ext`) are NULL for preview — NGC sub bodies still execute for
+   correct geometry, but extension callbacks are skipped. Client is a
+   pure renderer receiving geometry via REST/WS. See Phase 5.
 
-3. **G-code preview multi-instance**: Preview needs a "dummy" canon that
-   records geometry without sending motion commands. This is already how
-   gcodemodule works. With interp\_canon\_t, it naturally becomes a
-   separate table implementation. But does preview need extension callbacks
-   too (for remapped codes)?
-
-4. **NGC sub bodies with remap**: NGC subroutine bodies (`ngc=prepare`)
-   work today without Python. They should continue working unchanged.
+3. ~~**NGC sub bodies with remap**~~: **Not a question.** NGC sub bodies
+   (`ngc=prepare`) work today without Python and continue unchanged.
    The prolog sets named params (#\<tool\>, #\<pocket\>), the NGC sub
    reads them. This path never touches Python and needs no migration.
 
-5. **Inline `(ext, ...)` vs O-word**: Are inline extension calls redundant
-   with registered O-word handlers? `(ext, foo args)` is essentially
-   `O<foo> call [args]` embedded in a comment. Could simplify to just
-   O-word registration and drop inline extension support entirely.
+4. ~~**Inline `(ext, ...)` vs O-word**~~: **Resolved.** Drop inline
+   extension support entirely. O-word registration covers the same
+   functionality. No `(ext, ...)` comment syntax.
