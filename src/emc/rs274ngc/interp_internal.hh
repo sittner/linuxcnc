@@ -31,7 +31,7 @@
 #include "interp_fwd.hh"
 #include "interp_base.hh"
 #include "tooldata.hh"
-
+#include "canon_interface.hh"
 
 #define _(s) gettext(s)
 
@@ -646,6 +646,8 @@ struct setup
 {
   setup();
   ~setup();
+
+  CanonInterface canon;          // per-instance canon callback table
 
   double AA_axis_offset;        // A-axis g92 offset
   double AA_current;            // current A-axis position

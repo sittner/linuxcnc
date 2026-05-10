@@ -65,10 +65,10 @@ void qc_reset(void) {
     endpoint_valid = 0;
 }
 
-void enqueue_SET_FEED_RATE(double feed) {
+void enqueue_SET_FEED_RATE(setup_pointer settings, double feed) {
     if(qc().empty()) {
         if(debug_qc) printf("immediate set feed rate %f\n", feed);
-        SET_FEED_RATE(feed);
+        settings->canon.set_feed_rate(feed);
         return;
     }
     queued_canon q;
@@ -78,10 +78,10 @@ void enqueue_SET_FEED_RATE(double feed) {
     qc().push_back(q);
 }
 
-void enqueue_DWELL(double time) {
+void enqueue_DWELL(setup_pointer settings, double time) {
     if(qc().empty()) {
         if(debug_qc) printf("immediate dwell %f\n", time);
-        DWELL(time);
+        settings->canon.dwell(time);
         return;
     }
     queued_canon q;
@@ -91,10 +91,10 @@ void enqueue_DWELL(double time) {
     qc().push_back(q);
 }
 
-void enqueue_SET_FEED_MODE(int spindle, int mode) {
+void enqueue_SET_FEED_MODE(setup_pointer settings, int spindle, int mode) {
     if(qc().empty()) {
         if(debug_qc) printf("immediate set feed mode %d\n", mode);
-        SET_FEED_MODE(spindle, mode);
+        settings->canon.set_feed_mode(spindle, mode);
         return;
     }
     queued_canon q;
@@ -105,10 +105,10 @@ void enqueue_SET_FEED_MODE(int spindle, int mode) {
     qc().push_back(q);
 }
 
-void enqueue_MIST_ON(void) {
+void enqueue_MIST_ON(setup_pointer settings) {
     if(qc().empty()) {
         if(debug_qc) printf("immediate mist on\n");
-        MIST_ON();
+        settings->canon.mist_on();
         return;
     }
     queued_canon q;
@@ -117,10 +117,10 @@ void enqueue_MIST_ON(void) {
     qc().push_back(q);
 }
 
-void enqueue_MIST_OFF(void) {
+void enqueue_MIST_OFF(setup_pointer settings) {
     if(qc().empty()) {
         if(debug_qc) printf("immediate mist off\n");
-        MIST_OFF();
+        settings->canon.mist_off();
         return;
     }
     queued_canon q;
@@ -129,10 +129,10 @@ void enqueue_MIST_OFF(void) {
     qc().push_back(q);
 }
 
-void enqueue_FLOOD_ON(void) {
+void enqueue_FLOOD_ON(setup_pointer settings) {
     if(qc().empty()) {
         if(debug_qc) printf("immediate flood on\n");
-        FLOOD_ON();
+        settings->canon.flood_on();
         return;
     }
     queued_canon q;
@@ -141,10 +141,10 @@ void enqueue_FLOOD_ON(void) {
     qc().push_back(q);
 }
 
-void enqueue_FLOOD_OFF(void) {
+void enqueue_FLOOD_OFF(setup_pointer settings) {
     if(qc().empty()) {
         if(debug_qc) printf("immediate flood on\n");
-        FLOOD_OFF();
+        settings->canon.flood_off();
         return;
     }
     queued_canon q;
@@ -153,10 +153,10 @@ void enqueue_FLOOD_OFF(void) {
     qc().push_back(q);
 }
 
-void enqueue_START_SPINDLE_CLOCKWISE(int spindle) {
+void enqueue_START_SPINDLE_CLOCKWISE(setup_pointer settings, int spindle) {
     if(qc().empty()) {
         if(debug_qc) printf("immediate spindle clockwise\n");
-        START_SPINDLE_CLOCKWISE(spindle);
+        settings->canon.start_spindle_clockwise(spindle);
         return;
     }
     queued_canon q;
@@ -166,10 +166,10 @@ void enqueue_START_SPINDLE_CLOCKWISE(int spindle) {
     qc().push_back(q);
 }
 
-void enqueue_START_SPINDLE_COUNTERCLOCKWISE(int spindle) {
+void enqueue_START_SPINDLE_COUNTERCLOCKWISE(setup_pointer settings, int spindle) {
     if(qc().empty()) {
         if(debug_qc) printf("immediate spindle counterclockwise\n");
-        START_SPINDLE_COUNTERCLOCKWISE(spindle);
+        settings->canon.start_spindle_counterclockwise(spindle);
         return;
     }
     queued_canon q;
@@ -179,10 +179,10 @@ void enqueue_START_SPINDLE_COUNTERCLOCKWISE(int spindle) {
     qc().push_back(q);
 }
 
-void enqueue_STOP_SPINDLE_TURNING(int spindle) {
+void enqueue_STOP_SPINDLE_TURNING(setup_pointer settings, int spindle) {
     if(qc().empty()) {
         if(debug_qc) printf("immediate spindle stop\n");
-        STOP_SPINDLE_TURNING(spindle);
+        settings->canon.stop_spindle_turning(spindle);
         return;
     }
     queued_canon q;
@@ -192,10 +192,10 @@ void enqueue_STOP_SPINDLE_TURNING(int spindle) {
     qc().push_back(q);
 }
 
-void enqueue_ORIENT_SPINDLE(int spindle, double orientation, int mode) {
+void enqueue_ORIENT_SPINDLE(setup_pointer settings, int spindle, double orientation, int mode) {
     if(qc().empty()) {
         if(debug_qc) printf("immediate spindle orient\n");
-        ORIENT_SPINDLE(spindle, orientation, mode);
+        settings->canon.orient_spindle(spindle, orientation, mode);
         return;
     }
     queued_canon q;
@@ -207,10 +207,10 @@ void enqueue_ORIENT_SPINDLE(int spindle, double orientation, int mode) {
     qc().push_back(q);
 }
 
-void enqueue_WAIT_ORIENT_SPINDLE_COMPLETE(int spindle, double timeout) {
+void enqueue_WAIT_ORIENT_SPINDLE_COMPLETE(setup_pointer settings, int spindle, double timeout) {
     if(qc().empty()) {
         if(debug_qc) printf("immediate wait spindle orient complete\n");
-        WAIT_SPINDLE_ORIENT_COMPLETE(spindle, timeout);
+        settings->canon.wait_spindle_orient_complete(spindle, timeout);
         return;
     }
     queued_canon q;
@@ -221,10 +221,10 @@ void enqueue_WAIT_ORIENT_SPINDLE_COMPLETE(int spindle, double timeout) {
     qc().push_back(q);
 }
 
-void enqueue_SET_SPINDLE_MODE(int spindle, double mode) {
+void enqueue_SET_SPINDLE_MODE(setup_pointer settings, int spindle, double mode) {
     if(qc().empty()) {
         if(debug_qc) printf("immediate spindle mode %f\n", mode);
-        SET_SPINDLE_MODE(spindle, mode);
+        settings->canon.set_spindle_mode(spindle, mode);
         return;
     }
     queued_canon q;
@@ -235,10 +235,10 @@ void enqueue_SET_SPINDLE_MODE(int spindle, double mode) {
     qc().push_back(q);
 }
 
-void enqueue_SET_SPINDLE_SPEED(int spindle, double speed) {
+void enqueue_SET_SPINDLE_SPEED(setup_pointer settings, int spindle, double speed) {
     if(qc().empty()) {
         if(debug_qc) printf("immediate set spindle speed %f\n", speed);
-        SET_SPINDLE_SPEED(spindle, speed);
+        settings->canon.set_spindle_speed(spindle, speed);
         return;
     }
     queued_canon q;
@@ -249,10 +249,10 @@ void enqueue_SET_SPINDLE_SPEED(int spindle, double speed) {
     qc().push_back(q);
 }
 
-void enqueue_COMMENT(const char *c) {
+void enqueue_COMMENT(setup_pointer settings, const char *c) {
     if(qc().empty()) {
         if(debug_qc) printf("immediate comment \"%s\"\n", c);
-        COMMENT(c);
+        settings->canon.comment(c);
         return;
     }
     queued_canon q;
@@ -369,7 +369,7 @@ void enqueue_ARC_FEED(setup_pointer settings, int l,
     qc().push_back(q);
 }
 
-void enqueue_M_USER_COMMAND (int index, double p_number, double q_number) {
+void enqueue_M_USER_COMMAND(setup_pointer settings, int index, double p_number, double q_number) {
     if(qc().empty()) {
         if(debug_qc) printf("immediate M_USER_COMMAND index=%d p=%f q=%f\n",
                            index,p_number,q_number);
@@ -386,7 +386,7 @@ void enqueue_M_USER_COMMAND (int index, double p_number, double q_number) {
     qc().push_back(q);
 }
 
-void enqueue_START_CHANGE (void) {
+void enqueue_START_CHANGE(setup_pointer settings) {
     queued_canon q;
     q.type = QSTART_CHANGE;
     if(debug_qc) printf("enqueue START_CHANGE\n");
@@ -455,7 +455,7 @@ void dequeue_canons(setup_pointer settings) {
         switch(q.type) {
         case QARC_FEED:
             if(debug_qc) printf("issuing arc feed lineno %d\n", q.data.arc_feed.line_number);
-            ARC_FEED(q.data.arc_feed.line_number, 
+            settings->canon.arc_feed(q.data.arc_feed.line_number, 
                      latheorigin_z(settings, q.data.arc_feed.end1), 
                      latheorigin_x(settings, q.data.arc_feed.end2), 
                      latheorigin_z(settings, q.data.arc_feed.center1),
@@ -467,7 +467,7 @@ void dequeue_canons(setup_pointer settings) {
             break;
         case QSTRAIGHT_FEED:
             if(debug_qc) printf("issuing straight feed lineno %d\n", q.data.straight_feed.line_number);
-            STRAIGHT_FEED(q.data.straight_feed.line_number, 
+            settings->canon.straight_feed(q.data.straight_feed.line_number, 
                           latheorigin_x(settings, q.data.straight_feed.x), 
                           q.data.straight_feed.y, 
                           latheorigin_z(settings, q.data.straight_feed.z),
@@ -476,7 +476,7 @@ void dequeue_canons(setup_pointer settings) {
             break;
         case QSTRAIGHT_TRAVERSE:
             if(debug_qc) printf("issuing straight traverse lineno %d\n", q.data.straight_traverse.line_number);
-            STRAIGHT_TRAVERSE(q.data.straight_traverse.line_number, 
+            settings->canon.straight_traverse(q.data.straight_traverse.line_number, 
                               latheorigin_x(settings, q.data.straight_traverse.x),
                               q.data.straight_traverse.y,
                               latheorigin_z(settings, q.data.straight_traverse.z),
@@ -485,58 +485,58 @@ void dequeue_canons(setup_pointer settings) {
             break;
         case QSET_FEED_RATE:
             if(debug_qc) printf("issuing set feed rate\n");
-            SET_FEED_RATE(q.data.set_feed_rate.feed);
+            settings->canon.set_feed_rate(q.data.set_feed_rate.feed);
             break;
         case QDWELL:
             if(debug_qc) printf("issuing dwell\n");
-            DWELL(q.data.dwell.time);
+            settings->canon.dwell(q.data.dwell.time);
             break;
         case QSET_FEED_MODE:
             if(debug_qc) printf("issuing set feed mode\n");
-            SET_FEED_MODE(q.data.set_feed_mode.spindle,
+            settings->canon.set_feed_mode(q.data.set_feed_mode.spindle,
             			  q.data.set_feed_mode.mode);
             break;
         case QMIST_ON:
             if(debug_qc) printf("issuing mist on\n");
-            MIST_ON();
+            settings->canon.mist_on();
             break;
         case QMIST_OFF:
             if(debug_qc) printf("issuing mist off\n");
-            MIST_OFF();
+            settings->canon.mist_off();
             break;
         case QFLOOD_ON:
             if(debug_qc) printf("issuing flood on\n");
-            FLOOD_ON();
+            settings->canon.flood_on();
             break;
         case QFLOOD_OFF:
             if(debug_qc) printf("issuing flood off\n");
-            FLOOD_OFF();
+            settings->canon.flood_off();
             break;
         case QSTART_SPINDLE_CLOCKWISE:
             if(debug_qc) printf("issuing spindle clockwise\n");
-            START_SPINDLE_CLOCKWISE(q.data.set_spindle_speed.spindle);
+            settings->canon.start_spindle_clockwise(q.data.set_spindle_speed.spindle);
             break;
         case QSTART_SPINDLE_COUNTERCLOCKWISE:
             if(debug_qc) printf("issuing spindle counterclockwise\n");
-            START_SPINDLE_COUNTERCLOCKWISE(q.data.set_spindle_speed.spindle);
+            settings->canon.start_spindle_counterclockwise(q.data.set_spindle_speed.spindle);
             break;
         case QSTOP_SPINDLE_TURNING:
             if(debug_qc) printf("issuing stop spindle\n");
-            STOP_SPINDLE_TURNING(q.data.set_spindle_speed.spindle);
+            settings->canon.stop_spindle_turning(q.data.set_spindle_speed.spindle);
             break;
         case QSET_SPINDLE_MODE:
             if(debug_qc) printf("issuing set spindle mode\n");
-            SET_SPINDLE_MODE(q.data.set_spindle_speed.spindle,
+            settings->canon.set_spindle_mode(q.data.set_spindle_speed.spindle,
             				 q.data.set_spindle_mode.mode);
             break;
         case QSET_SPINDLE_SPEED:
             if(debug_qc) printf("issuing set spindle speed\n");
-            SET_SPINDLE_SPEED(q.data.set_spindle_speed.spindle,
+            settings->canon.set_spindle_speed(q.data.set_spindle_speed.spindle,
             				  q.data.set_spindle_speed.speed);
             break;
         case QCOMMENT:
             if(debug_qc) printf("issuing comment\n");
-            COMMENT(q.data.comment.comment);
+            settings->canon.comment(q.data.comment.comment);
             free(q.data.comment.comment);
             break;
         case QM_USER_COMMAND:
@@ -549,18 +549,18 @@ void dequeue_canons(setup_pointer settings) {
             break;
 	case QSTART_CHANGE:
             if(debug_qc) printf("issuing start_change\n");
-            START_CHANGE();
+            settings->canon.start_change();
             free(q.data.comment.comment);
             break;
         case QORIENT_SPINDLE:
             if(debug_qc) printf("issuing orient spindle\n");
-            ORIENT_SPINDLE(q.data.set_spindle_speed.spindle,
+            settings->canon.orient_spindle(q.data.set_spindle_speed.spindle,
             			   q.data.orient_spindle.orientation,
             			   q.data.orient_spindle.mode);
             break;
 	case QWAIT_ORIENT_SPINDLE_COMPLETE:
             if(debug_qc) printf("issuing wait orient spindle complete\n");
-            WAIT_SPINDLE_ORIENT_COMPLETE(q.data.wait_orient_spindle_complete.spindle,
+            settings->canon.wait_spindle_orient_complete(q.data.wait_orient_spindle_complete.spindle,
             							 q.data.wait_orient_spindle_complete.timeout);
             break;
         }

@@ -46,6 +46,9 @@ public:
  int init();
  void set_loop_on_main_m99(bool state);
 
+// set the canon callback table for this interpreter instance
+ void set_canon_callbacks(const canon_callbacks_t *callbacks) override;
+
 // load a tool table
  int load_tool_table();
 

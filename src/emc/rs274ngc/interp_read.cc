@@ -3157,7 +3157,7 @@ int Interp::read_text(
     rtapi_strlcpy(line, raw_line, LINELEN);
     CHP(close_and_downcase(line));
     if ((line[0] == '%') && (line[1] == 0) && (_setup.percent_flag)) {
-        FINISH();
+        _setup.canon.finish();
         return INTERP_ENDFILE;
     }
   } else {
@@ -3169,7 +3169,7 @@ int Interp::read_text(
 
   _setup.parameter_occurrence = 0;      /* initialize parameter buffer */
 
-  if ((line[0] == 0) || ((line[0] == '/') && (GET_BLOCK_DELETE())))
+  if ((line[0] == 0) || ((line[0] == '/') && (_setup.canon.get_block_delete())))
     *length = 0;
   else
     *length = strlen(line);

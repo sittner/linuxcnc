@@ -631,6 +631,33 @@ func (g *dispatchCGen) emitParamGoToC(cVar, goVar string, p ast.Param) {
 			g.printf("\t\t\tC.free(unsafe.Pointer(%sSlice[i]))\n", cVar)
 			g.printf("\t\t}\n")
 			g.printf("\t}()\n")
+		} else if t.Elem != nil && t.Elem.Kind == ast.TypeNamed {
+			// []Struct → C array of struct_t + length
+			elemCType := cTypeForAPICgo(g.api.Name, *t.Elem)
+			converter := toLowerCamelRaw(t.Elem.Name) + "GoToC"
+			g.printf("\t%sLen := C.size_t(len(%s))\n", cVar, goVar)
+			g.printf("\tvar %s *%s\n", cVar, elemCType)
+			g.printf("\tif len(%s) > 0 {\n", goVar)
+			g.printf("\t\t%s = (*%s)(C.malloc(C.size_t(len(%s)) * C.size_t(unsafe.Sizeof(%s{}))))\n", cVar, elemCType, goVar, elemCType)
+			g.printf("\t\t_freeList = append(_freeList, unsafe.Pointer(%s))\n", cVar)
+			g.printf("\t\t%sSlice := unsafe.Slice(%s, len(%s))\n", cVar, cVar, goVar)
+			g.printf("\t\tfor i, v := range %s {\n", goVar)
+			g.printf("\t\t\t%sSlice[i] = %s(v, &_freeList)\n", cVar, converter)
+			g.printf("\t\t}\n")
+			g.printf("\t}\n")
+		} else if t.Elem != nil {
+			// []primitive → C array + length
+			elemCType := cTypeForAPICgo(g.api.Name, *t.Elem)
+			g.printf("\t%sLen := C.size_t(len(%s))\n", cVar, goVar)
+			g.printf("\tvar %s *%s\n", cVar, elemCType)
+			g.printf("\tif len(%s) > 0 {\n", goVar)
+			g.printf("\t\t%s = (*%s)(C.malloc(C.size_t(len(%s)) * C.size_t(unsafe.Sizeof(%s(0)))))\n", cVar, elemCType, goVar, elemCType)
+			g.printf("\t\t_freeList = append(_freeList, unsafe.Pointer(%s))\n", cVar)
+			g.printf("\t\t%sSlice := unsafe.Slice(%s, len(%s))\n", cVar, cVar, goVar)
+			g.printf("\t\tfor i, v := range %s {\n", goVar)
+			g.printf("\t\t\t%sSlice[i] = %s(v)\n", cVar, elemCType)
+			g.printf("\t\t}\n")
+			g.printf("\t}\n")
 		}
 	}
 }

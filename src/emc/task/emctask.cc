@@ -34,6 +34,7 @@
 #include "python_plugin.hh"
 #include "taskclass.hh"
 #include "motion.h"
+#include "emccanon_table.hh"
 
 #define USER_DEFINED_FUNCTION_MAX_DIRS 5
 #define MAX_M_DIRS (USER_DEFINED_FUNCTION_MAX_DIRS+1)
@@ -451,7 +452,10 @@ int emcTaskPlanInit()
     }
 
     Interp *i = dynamic_cast<Interp*>(pinterp);
-    if(i) _is = &i->_setup; // FIXME
+    if(i) {
+        _is = &i->_setup; // FIXME
+        i->set_canon_callbacks(emccanon_get_callbacks());
+    }
     else  _is = 0;
     interp.ini_load(emc_inifile);
     waitFlag = 0;

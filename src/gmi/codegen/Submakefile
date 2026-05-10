@@ -84,6 +84,21 @@ $(GMI_MOT_GEN)/mot_cgo.go: $(GMI_MOT_GEN)/mot_api.h
 
 TARGETS += $(GMI_MOT_GEN)/mot_api.h
 
+# --- canon API (canon callback table for interpreter) ---
+
+GMI_CANON_IDL := gmi/idl/canon.gmi
+GMI_CANON_GEN := gomc/generated/gmi/canon
+
+$(GMI_CANON_GEN)/canon_api.h: $(GMI_CANON_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI canon API from $(GMI_CANON_IDL)"
+	@mkdir -p $(GMI_CANON_GEN)
+	$(Q)$(GMICOMPILE) --server-c $(GMI_CANON_IDL) -o $(GMI_CANON_GEN)/canon_api.h
+	$(Q)$(GMICOMPILE_BIN) add-gmi generated/gmi/canon
+
+$(GMI_CANON_GEN)/canon_cgo.go: $(GMI_CANON_GEN)/canon_api.h
+
+TARGETS += $(GMI_CANON_GEN)/canon_api.h
+
 # --- manualtoolchange API ---
 
 GMI_MTC_IDL := gmi/idl/manualtoolchange.gmi

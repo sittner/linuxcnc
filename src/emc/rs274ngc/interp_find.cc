@@ -169,7 +169,7 @@ int Interp::find_ends(block_pointer block,       //!< pointer to a block of RS27
 
     if (block->g_modes[GM_MODAL_0] == G_53) {      /* distance mode is absolute in this case */
 #ifdef DEBUG_EMC
-        COMMENT("interpreter: offsets temporarily suspended");
+        _setup.canon.comment("interpreter: offsets temporarily suspended");
 #endif
         CHKS((block->radius_flag || block->theta_flag), _("Cannot use polar coordinates with G53"));
 

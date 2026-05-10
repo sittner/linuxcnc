@@ -55,6 +55,18 @@ eliminating global state and introducing a canon callback table.
 
 ## Architecture
 
+### Implementation via GMI
+
+All inter-module APIs (`interp_canon_t`, `interp_ext_t`, `task_ext_t`) are
+defined as GMI interfaces. The GMI code generator produces:
+- C struct definitions (callback tables)
+- Go wrapper types with idiomatic method signatures
+- Marshalling code for cgo boundary crossing
+- Version-tagged structs for ABI compatibility
+
+This ensures consistent interface evolution and eliminates hand-written
+cgo boilerplate.
+
 ### Two Separate Extension APIs
 
 The interpreter and task have different lifecycles and scopes. Separate APIs

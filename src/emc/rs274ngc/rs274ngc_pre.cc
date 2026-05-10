@@ -346,7 +346,7 @@ int Interp::_execute(const char *command)
       }
       _setup.mdi_interrupt = false;
       if (MDImode) {
-	  FINISH();
+	  _setup.canon.finish();
           _setup.offset_map.clear();
       }
       return INTERP_OK;
@@ -765,7 +765,7 @@ int Interp::exit()
 {
   char file_name[LINELEN];
 
-  GET_EXTERNAL_PARAMETER_FILE_NAME(file_name, (LINELEN - 1));
+  _setup.canon.get_external_parameter_file_name(file_name, (LINELEN - 1));
   save_parameters(((file_name[0] ==
                              0) ?
                             RS274NGC_PARAMETER_FILE_NAME_DEFAULT :
@@ -818,9 +818,14 @@ Called By: external programs
 Currently we are running only in CANON_XYZ feed_reference mode.  There
 is no command regarding feed_reference in the rs274 language (we
 should try to get one added). The initialization routine, therefore,
-always calls SET_FEED_REFERENCE(CANON_XYZ).
+always calls _setup.canon.set_feed_reference(CANON_XYZ).
 
 */
+
+void Interp::set_canon_callbacks(const canon_callbacks_t *callbacks)
+{
+  _setup.canon = CanonInterface(callbacks);
+}
 
 int Interp::init()
 {
@@ -830,7 +835,7 @@ int Interp::init()
   char *iniFileName;
   IniFile::ErrorCode r;
 
-  INIT_CANON();
+  _setup.canon.init_canon();
 
   iniFileName = getenv("INI_FILE_NAME");
 
@@ -1075,9 +1080,9 @@ int Interp::init()
       }
   }
 
-  _setup.length_units = GET_EXTERNAL_LENGTH_UNIT_TYPE();
-  USE_LENGTH_UNITS(_setup.length_units);
-  GET_EXTERNAL_PARAMETER_FILE_NAME(filename, LINELEN);
+  _setup.length_units = _setup.canon.get_external_length_unit_type();
+  _setup.canon.use_length_units(_setup.length_units);
+  _setup.canon.get_external_parameter_file_name(filename, LINELEN);
   if (filename[0] == 0)
     rtapi_strxcpy(filename, RS274NGC_PARAMETER_FILE_NAME_DEFAULT);
   CHP(restore_parameters(filename));
@@ -1099,7 +1104,7 @@ int Interp::init()
   _setup.v_origin_offset = USER_TO_PROGRAM_LEN(pars[k + 8]);
   _setup.w_origin_offset = USER_TO_PROGRAM_LEN(pars[k + 9]);
 
-  SET_G5X_OFFSET(_setup.origin_index,
+  _setup.canon.set_g5x_offset(_setup.origin_index,
                  _setup.origin_offset_x ,
                  _setup.origin_offset_y ,
                  _setup.origin_offset_z ,
@@ -1141,7 +1146,7 @@ int Interp::init()
       _setup.w_axis_offset = 0.0;
   }
 
-  SET_G92_OFFSET(_setup.axis_offset_x ,
+  _setup.canon.set_g92_offset(_setup.axis_offset_x ,
                  _setup.axis_offset_y ,
                  _setup.axis_offset_z ,
                  _setup.AA_axis_offset,
@@ -1152,8 +1157,8 @@ int Interp::init()
                  _setup.w_axis_offset);
 
   _setup.rotation_xy = pars[k+10];
-  SET_XY_ROTATION(pars[k+10]);
-  SET_FEED_REFERENCE(CANON_XYZ);
+  _setup.canon.set_xy_rotation(pars[k+10]);
+  _setup.canon.set_feed_reference(CANON_XYZ);
 //_setup.active_g_codes initialized below
 //_setup.active_m_codes initialized below
 //_setup.active_settings initialized below
@@ -1225,7 +1230,7 @@ int Interp::init()
 
   memcpy(_readers, default_readers, sizeof(default_readers));
 
-  long axis_mask = GET_EXTERNAL_AXIS_MASK();
+  long axis_mask = _setup.canon.get_external_axis_mask();
   if(!(axis_mask & AXIS_MASK_X)) _readers[(int)'x'] = 0;
   if(!(axis_mask & AXIS_MASK_Y)) _readers[(int)'y'] = 0;
   if(!(axis_mask & AXIS_MASK_Z)) _readers[(int)'z'] = 0;
@@ -1332,7 +1337,7 @@ int Interp::load_tool_table()
   int n;
 
   for (n = 0; n < CANON_POCKETS_MAX; n++) {
-    _setup.tool_table[n] = GET_EXTERNAL_TOOL_TABLE(n);
+    _setup.tool_table[n] = _setup.canon.get_external_tool_table(n);
   }
   set_tool_parameters();
   return INTERP_OK;
@@ -1440,40 +1445,40 @@ int Interp::read_inputs(setup_pointer settings)
     // logDebug("read_inputs probe=%d input=%d toolchange=%d",
     // 	     settings->probe_flag, settings->toolchange_flag, settings->input_flag);
     if (settings->probe_flag) {
-	CHKS((GET_EXTERNAL_QUEUE_EMPTY() == 0),
+	CHKS((_setup.canon.get_external_queue_empty() == 0),
 	     NCE_QUEUE_IS_NOT_EMPTY_AFTER_PROBING);
 	set_probe_data(&_setup);
 	settings->probe_flag = false;
     }
     if (settings->toolchange_flag) {
-	CHKS((GET_EXTERNAL_QUEUE_EMPTY() == 0),
+	CHKS((_setup.canon.get_external_queue_empty() == 0),
 	     _("Queue is not empty after tool change"));
 	refresh_actual_position(&_setup);
 	load_tool_table();
 	settings->toolchange_flag = false;
     }
     // always track toolchanger-fault and toolchanger-reason codes
-    settings->parameters[5600] = GET_EXTERNAL_TC_FAULT();
-    settings->parameters[5601] = GET_EXTERNAL_TC_REASON();
+    settings->parameters[5600] = _setup.canon.get_external_tc_fault();
+    settings->parameters[5601] = _setup.canon.get_external_tc_reason();
 
     if (settings->input_flag) {
-	CHKS((GET_EXTERNAL_QUEUE_EMPTY() == 0),
+	CHKS((_setup.canon.get_external_queue_empty() == 0),
 	     NCE_QUEUE_IS_NOT_EMPTY_AFTER_INPUT);
 	if (settings->input_digital) { // we are checking for a digital input
 	    settings->parameters[5399] =
-		GET_EXTERNAL_DIGITAL_INPUT(settings->input_index,
+		_setup.canon.get_external_digital_input(settings->input_index,
 					   (settings->parameters[5399] != 0.0));
 	} else { // checking for analog input
 	    settings->parameters[5399] =
-		GET_EXTERNAL_ANALOG_INPUT(settings->input_index, settings->parameters[5399]);
+		_setup.canon.get_external_analog_input(settings->input_index, settings->parameters[5399]);
 	}
 	settings->input_flag = false;
     }
 
     if (settings->user_defined_flag) {
-	CHKS((GET_EXTERNAL_QUEUE_EMPTY() == 0),
+	CHKS((_setup.canon.get_external_queue_empty() == 0),
 	     _("Queue is not empty after user defined function"));
-	settings->parameters[5399] = GET_USER_DEFINED_RESULT();
+	settings->parameters[5399] = _setup.canon.get_user_defined_result();
 	settings->user_defined_flag = false;
     }
     return INTERP_OK;
@@ -1522,39 +1527,39 @@ int Interp::_read(const char *command)  //!< may be NULL or a string to read
 
 #if 0
   if (_setup.probe_flag) {
-    CHKS((GET_EXTERNAL_QUEUE_EMPTY() == 0),
+    CHKS((_setup.canon.get_external_queue_empty() == 0),
         NCE_QUEUE_IS_NOT_EMPTY_AFTER_PROBING);
     set_probe_data(&_setup);
     _setup.probe_flag = false;
   }
   if (_setup.toolchange_flag) {
-    CHKS((GET_EXTERNAL_QUEUE_EMPTY() == 0),
+    CHKS((_setup.canon.get_external_queue_empty() == 0),
          _("Queue is not empty after tool change"));
     refresh_actual_position(&_setup);
     load_tool_table();
     _setup.toolchange_flag = false;
   }
   // always track toolchanger-fault and toolchanger-reason codes
-  _setup.parameters[5600] = GET_EXTERNAL_TC_FAULT();
-  _setup.parameters[5601] = GET_EXTERNAL_TC_REASON();
+  _setup.parameters[5600] = _setup.canon.get_external_tc_fault();
+  _setup.parameters[5601] = _setup.canon.get_external_tc_reason();
 
   if (_setup.input_flag) {
-    CHKS((GET_EXTERNAL_QUEUE_EMPTY() == 0),
+    CHKS((_setup.canon.get_external_queue_empty() == 0),
         NCE_QUEUE_IS_NOT_EMPTY_AFTER_INPUT);
     if (_setup.input_digital) { // we are checking for a digital input
 	_setup.parameters[5399] =
-	    GET_EXTERNAL_DIGITAL_INPUT(_setup.input_index,
+	    _setup.canon.get_external_digital_input(_setup.input_index,
 				      (_setup.parameters[5399] != 0.0));
     } else { // checking for analog input
 	_setup.parameters[5399] =
-	    GET_EXTERNAL_ANALOG_INPUT(_setup.input_index, _setup.parameters[5399]);
+	    _setup.canon.get_external_analog_input(_setup.input_index, _setup.parameters[5399]);
     }
     _setup.input_flag = false;
   }
   if (_setup.user_defined_flag) {
-    CHKS((GET_EXTERNAL_QUEUE_EMPTY() == 0),
+    CHKS((_setup.canon.get_external_queue_empty() == 0),
          _("Queue is not empty after user defined function"));
-    _setup.parameters[5399] = GET_USER_DEFINED_RESULT();
+    _setup.parameters[5399] = _setup.canon.get_user_defined_result();
     _setup.user_defined_flag = false;
   }
 #endif
@@ -1792,7 +1797,7 @@ int Interp::reset()
     _setup.line_length = 0;
     
     // drop any queued points in canon
-    ON_RESET();
+    _setup.canon.on_reset();
     
     unwind_call(INTERP_OK, __FILE__,__LINE__,__FUNCTION__);
     return INTERP_OK;
@@ -2025,43 +2030,43 @@ int Interp::synch()
 {
 
   char file_name[LINELEN];
-  _setup.current_x  = GET_EXTERNAL_POSITION_X();
-  _setup.current_y  = GET_EXTERNAL_POSITION_Y();
-  _setup.current_z  = GET_EXTERNAL_POSITION_Z();
-  _setup.control_mode = GET_EXTERNAL_MOTION_CONTROL_MODE();
-  _setup.tolerance = GET_EXTERNAL_MOTION_CONTROL_TOLERANCE();
-  _setup.naivecam_tolerance = GET_EXTERNAL_MOTION_CONTROL_NAIVECAM_TOLERANCE();
-  _setup.AA_current = GET_EXTERNAL_POSITION_A();
-  _setup.BB_current = GET_EXTERNAL_POSITION_B();
-  _setup.CC_current = GET_EXTERNAL_POSITION_C();
-  _setup.u_current  = GET_EXTERNAL_POSITION_U();
-  _setup.v_current  = GET_EXTERNAL_POSITION_V();
-  _setup.w_current  = GET_EXTERNAL_POSITION_W();
+  _setup.current_x  = _setup.canon.get_external_position_x();
+  _setup.current_y  = _setup.canon.get_external_position_y();
+  _setup.current_z  = _setup.canon.get_external_position_z();
+  _setup.control_mode = _setup.canon.get_external_motion_control_mode();
+  _setup.tolerance = _setup.canon.get_external_motion_control_tolerance();
+  _setup.naivecam_tolerance = _setup.canon.get_external_motion_control_naivecam_tolerance();
+  _setup.AA_current = _setup.canon.get_external_position_a();
+  _setup.BB_current = _setup.canon.get_external_position_b();
+  _setup.CC_current = _setup.canon.get_external_position_c();
+  _setup.u_current  = _setup.canon.get_external_position_u();
+  _setup.v_current  = _setup.canon.get_external_position_v();
+  _setup.w_current  = _setup.canon.get_external_position_w();
 
-  _setup.control_mode = GET_EXTERNAL_MOTION_CONTROL_MODE();
+  _setup.control_mode = _setup.canon.get_external_motion_control_mode();
   /* misnomer: _setup.current_pocket,selected_pocket
   ** These variables are actually indexes to sequential tool
   ** data structs (not real pockets).
   ** Future renaming will affect current usage in python remaps.
   */
-  _setup.current_pocket = GET_EXTERNAL_TOOL_SLOT();
-  _setup.selected_pocket = GET_EXTERNAL_SELECTED_TOOL_SLOT();
-  _setup.feed_rate = GET_EXTERNAL_FEED_RATE();
-  _setup.flood = GET_EXTERNAL_FLOOD();
-  _setup.length_units = GET_EXTERNAL_LENGTH_UNIT_TYPE();
-  _setup.mist = GET_EXTERNAL_MIST();
-  _setup.plane = GET_EXTERNAL_PLANE();
-  _setup.traverse_rate = GET_EXTERNAL_TRAVERSE_RATE();
-  _setup.feed_override = GET_EXTERNAL_FEED_OVERRIDE_ENABLE();
-  _setup.adaptive_feed = GET_EXTERNAL_ADAPTIVE_FEED_ENABLE();
-  _setup.feed_hold = GET_EXTERNAL_FEED_HOLD_ENABLE();
+  _setup.current_pocket = _setup.canon.get_external_tool_slot();
+  _setup.selected_pocket = _setup.canon.get_external_selected_tool_slot();
+  _setup.feed_rate = _setup.canon.get_external_feed_rate();
+  _setup.flood = _setup.canon.get_external_flood();
+  _setup.length_units = _setup.canon.get_external_length_unit_type();
+  _setup.mist = _setup.canon.get_external_mist();
+  _setup.plane = _setup.canon.get_external_plane();
+  _setup.traverse_rate = _setup.canon.get_external_traverse_rate();
+  _setup.feed_override = _setup.canon.get_external_feed_override_enable();
+  _setup.adaptive_feed = _setup.canon.get_external_adaptive_feed_enable();
+  _setup.feed_hold = _setup.canon.get_external_feed_hold_enable();
   for (int s = 0; s < EMCMOT_MAX_SPINDLES; s++){
-	  _setup.speed[s] = GET_EXTERNAL_SPEED(s);
-	  _setup.spindle_turning[s] = GET_EXTERNAL_SPINDLE(s);
-	  _setup.speed_override[s] = GET_EXTERNAL_SPINDLE_OVERRIDE_ENABLE(s);
+	  _setup.speed[s] = _setup.canon.get_external_speed(s);
+	  _setup.spindle_turning[s] = _setup.canon.get_external_spindle(s);
+	  _setup.speed_override[s] = _setup.canon.get_external_spindle_override_enable(s);
 	  _setup.spindle_mode[s] = CONSTANT_RPM;
   }
-  GET_EXTERNAL_PARAMETER_FILE_NAME(file_name, (LINELEN - 1));
+  _setup.canon.get_external_parameter_file_name(file_name, (LINELEN - 1));
   save_parameters(((file_name[0] ==
                              0) ?
                             RS274NGC_PARAMETER_FILE_NAME_DEFAULT :
@@ -2517,7 +2522,7 @@ int Interp::ini_load(const char *filename)
       // not found, leave RS274NGC_PARAMETER_FILE alone
         logDebug("did not find PARAMETER_FILE");
     }
-    SET_PARAMETER_FILE_NAME(parameter_file_name);
+    _setup.canon.set_parameter_file_name(parameter_file_name);
 
     // close it
     inifile.Close();

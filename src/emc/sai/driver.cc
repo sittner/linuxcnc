@@ -40,6 +40,8 @@
 #include <saicanon.hh>
 #include "tooldata.hh"
 
+extern const canon_callbacks_t *saicanon_get_callbacks(void);
+
 InterpBase *pinterp;
 #define interp_new (*pinterp)
 const char *prompt = "READ => ";
@@ -621,6 +623,7 @@ usage:
     pinterp = interp_from_shlib(interp.c_str());
   }
   if(!pinterp) pinterp = new Interp;
+  pinterp->set_canon_callbacks(saicanon_get_callbacks());
 
   for(; !go_flag ;)
     {

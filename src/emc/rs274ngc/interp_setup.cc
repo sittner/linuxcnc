@@ -26,6 +26,7 @@
 
 #pragma GCC diagnostic error "-Wmissing-field-initializers"
 setup::setup() :
+    canon(),
     AA_axis_offset(0.0),
     AA_current(0.0),
     AA_origin_offset(0.0),

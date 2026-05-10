@@ -18,6 +18,7 @@ MILLTASK_GOMC_SRCS := \
 	emc/motion/emcmotglb.c \
 	emc/task/emctask.cc \
 	emc/task/emccanon.cc \
+	emc/task/emccanon_table.cc \
 	emc/task/emctaskmain_gomc.cc \
 	emc/motion/usrmotintf.cc \
 	emc/motion/emcmotutil.c \
@@ -36,6 +37,9 @@ MILLTASK_GOMC_SRCS := \
 USERSRCS += $(MILLTASK_GOMC_SRCS)
 
 $(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): EXTRAFLAGS += -fPIC
+
+# canon_api.h is transitively included via interp_internal.hh → canon_interface.hh
+$(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/canon/canon_api.h
 
 ../cmod/milltask.so: $(call TOOBJS, $(MILLTASK_GOMC_SRCS)) \
                      ../lib/librs274.so.0 ../lib/liblinuxcnc.a \
