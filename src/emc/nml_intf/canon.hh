@@ -748,11 +748,4 @@ extern int USER_DEFINED_FUNCTION_ADD(USER_DEFINED_FUNCTION_TYPE func,
 extern USER_DEFINED_FUNCTION_TYPE
     USER_DEFINED_FUNCTION[USER_DEFINED_FUNCTION_NUM];
 
-// queue a call to a task-time Python plugin method
-// call is expected to be a tuple of (method,pickled posargs,pickled kwargs)
-extern void PLUGIN_CALL(int len, const char *call);
-
-// same for IoTask context
-extern void IO_PLUGIN_CALL(int len, const char *call);
-
 #endif				/* ifndef CANON_HH */

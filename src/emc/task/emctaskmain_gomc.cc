@@ -1617,11 +1617,6 @@ static int emcTaskCheckPreconditions(NMLmsg * cmd)
 	return EMC_TASK_EXEC_WAITING_FOR_MOTION;
 	break;
 
-    case EMC_EXEC_PLUGIN_CALL_TYPE:
-    case EMC_IO_PLUGIN_CALL_TYPE:
-	return EMC_TASK_EXEC_DONE;
-	break;
-
 
     default:
 	// unrecognized command
@@ -2397,14 +2392,6 @@ static int emcTaskIssueCommand(NMLmsg * cmd)
 	retval = 0;
 	break;
 
-    case EMC_EXEC_PLUGIN_CALL_TYPE:
-	retval =  emcPluginCall( (EMC_EXEC_PLUGIN_CALL *) cmd);
-	break;
-
-    case EMC_IO_PLUGIN_CALL_TYPE:
-	retval =  emcIoPluginCall( (EMC_IO_PLUGIN_CALL *) cmd);
-	break;
-
      default:
 	// unrecognized command
 	if (emc_debug & EMC_DEBUG_TASK_ISSUE) {
@@ -2516,11 +2503,6 @@ static int emcTaskCheckPostconditions(NMLmsg * cmd)
     case EMC_MOTION_SET_AOUT_TYPE:
     case EMC_MOTION_SET_DOUT_TYPE:
     case EMC_MOTION_ADAPTIVE_TYPE:
-	return EMC_TASK_EXEC_DONE;
-	break;
-
-    case EMC_EXEC_PLUGIN_CALL_TYPE:
-    case EMC_IO_PLUGIN_CALL_TYPE:
 	return EMC_TASK_EXEC_DONE;
 	break;
 
@@ -2912,10 +2894,6 @@ static int emctask_startup()
 
 #define RETRY_TIME 10.0		// seconds to wait for subsystems to come up
 #define RETRY_INTERVAL 1.0	// seconds between wait tries for a subsystem
-
-    // moved up so it can be exposed in taskmodule at init time
-    // // get our status data structure
-    // emcStatus = new EMC_STAT;
 
     // get the NML command buffer
     if (!(emc_debug & EMC_DEBUG_NML)) {
@@ -3562,17 +3540,9 @@ extern "C" int New(const cmod_env_t *env, const char *name,
     tool_mmap_user();
 #endif //}
 
-    // instantiate task methods (Python plugin, remap etc.)
+    // read IO config from INI (iocontrol presence, etc.)
     emcTaskOnce(emc_inifile);
     rtapi_strxcpy(emcStatus->task.ini_filename, emc_inifile);
-    if (task_methods == NULL) {
-	rcs_print_error("can't initialize Task methods\n");
-	delete m;
-	return -1;
-    }
-
-    // NOTE: emcRunHalFiles() is NOT called here — the launcher already
-    // executes all HAL files before loading cmod plugins.
 
     // Create the interpreter early so we can register the interp_ext API.
     // interp.init() and startup gcode execution are deferred to Start()

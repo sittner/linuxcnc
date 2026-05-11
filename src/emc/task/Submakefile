@@ -11,8 +11,6 @@ $(call TOOBJSDEPS, $(EMCSVRLIB_SRCS)): EXTRAFLAGS += -fPIC
 	@$(CXX) -shared -o $@ $^ $(LDFLAGS)
 TARGETS += ../cmod/emcsvr.so
 
-$(call TOOBJSDEPS, emc/task/taskmodule.cc): EXTRAFLAGS += $(SILENCE_BOOST_INTERNAL_DIAGNOSTICS_FLAGS)
-
 # milltask.so — cmod plugin variant (uses gomc API, no liblinuxcnchal)
 MILLTASK_GOMC_SRCS := \
 	emc/motion/emcmotglb.c \
@@ -24,7 +22,6 @@ MILLTASK_GOMC_SRCS := \
 	emc/task/taskintf_gomc.cc \
 	emc/motion/dbuf.c \
 	emc/motion/stashf.c \
-	emc/task/taskmodule.cc \
 	emc/task/taskclass.cc \
 	emc/task/backtrace.cc \
 	emc/task/inihal_gomc.cc \
@@ -43,11 +40,11 @@ $(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/canon/canon_api.h
 ../cmod/milltask.so: $(call TOOBJS, $(MILLTASK_GOMC_SRCS)) \
                      ../lib/librs274.so.0 ../lib/liblinuxcnc.a \
                      ../lib/libnml.so.0 ../lib/liblinuxcncini.so.0 \
-                     ../lib/libposemath.so.0 ../lib/libpyplugin.so.0 \
+                     ../lib/libposemath.so.0 \
                      ../lib/libtooldata.so.0
 	$(ECHO) Linking $(notdir $@)
 	@mkdir -p ../cmod
-	@$(CXX) -shared -o $@ $^ $(LDFLAGS) $(PYTHON_EXTRA_LDFLAGS) $(BOOST_PYTHON_LIB) $(PYTHON_LIBS) $(PYTHON_EXTRA_LIBS)
+	@$(CXX) -shared -o $@ $^ $(LDFLAGS)
 TARGETS += ../cmod/milltask.so
 
 # stdglue.so — standard remap prolog/epilog handlers
