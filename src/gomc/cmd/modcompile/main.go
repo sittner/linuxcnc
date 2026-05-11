@@ -516,6 +516,7 @@ func buildServer() {
 			"-X '%s.EMC2ImageDir=%s' "+
 			"-X '%s.EMC2TclLibDir=%s' "+
 			"-X '%s.HalibDir=%s' "+
+			"-X '%s.EMC2WebAppDir=%s' "+
 			"-X '%s.EMC2Version=%s' "+
 			"-X '%s.RunInPlace=%s' "+
 			"-X '%s.DefaultNmlFile=%s' "+
@@ -536,6 +537,7 @@ func buildServer() {
 		pkg, config.EMC2ImageDir,
 		pkg, config.EMC2TclLibDir,
 		pkg, config.HalibDir,
+		pkg, config.EMC2WebAppDir,
 		pkg, config.EMC2Version,
 		pkg, config.RunInPlace,
 		pkg, config.DefaultNmlFile,
