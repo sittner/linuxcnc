@@ -74,6 +74,7 @@ fpu_control_t __fpu_control = _FPU_IEEE & ~(_FPU_MASK_IM | _FPU_MASK_ZM | _FPU_M
 #include "emc_nml.hh"
 #include "canon.hh"		// CANON_TOOL_TABLE stuff
 #include "interpl.hh"		// NML_INTERP_LIST, interp_list
+#include "emccanon_table.hh"	// emccanon_get_callbacks()
 #include "emcglb.h"		// EMC_INIFILE,NMLFILE, EMC_TASK_CYCLE_TIME
 #include "interp_return.hh"	// public interpreter return values
 #include "interp_internal.hh"	// interpreter private definitions
@@ -609,7 +610,8 @@ interpret_again:
 				emcTaskPlanLevel() == 0) {
 			    
 				//update the position with our current position, as the other positions are only skipped through
-				CANON_UPDATE_END_POINT(emcStatus->motion.traj.actualPosition.tran.x,
+				emccanon_get_callbacks()->update_end_point(NULL,
+						       emcStatus->motion.traj.actualPosition.tran.x,
 						       emcStatus->motion.traj.actualPosition.tran.y,
 						       emcStatus->motion.traj.actualPosition.tran.z,
 						       emcStatus->motion.traj.actualPosition.a,
@@ -1003,7 +1005,7 @@ static int emcTaskPlan(void)
 		break;
 
 	    case EMC_TASK_PLAN_RUN_TYPE:
-                if (GET_EXTERNAL_OFFSET_APPLIED()) {
+                if (emccanon_get_callbacks()->get_external_offset_applied(NULL)) {
                     // err here, fewer err reports
 		    retval = -1;
 		}
@@ -2330,7 +2332,7 @@ static int emcTaskIssueCommand(NMLmsg * cmd)
 	break;
 
     case EMC_TASK_PLAN_OPTIONAL_STOP_TYPE:
-	if (GET_OPTIONAL_PROGRAM_STOP() == ON) {
+	if (emccanon_get_callbacks()->get_optional_program_stop(NULL) == ON) {
 	    emcTrajPause();
 	    if (emcStatus->task.interpState != EMC_TASK_INTERP_PAUSED) {
 		interpResumeState = emcStatus->task.interpState;

@@ -32,6 +32,7 @@
 
 #include "config.h"
 #include <stdio.h>
+#include <stdint.h>
 #include <stdarg.h>
 #include <math.h>
 #include <string.h>		// strncpy()
@@ -45,6 +46,28 @@
 #include <rtapi_string.h>
 #include "modal_state.hh"
 #include "tooldata.hh"
+
+// Generated canon callback table
+#define CANON_API_CGO
+#include "gomc/generated/gmi/canon/canon_api.h"
+#include "emccanon_table.hh"
+
+/* Forward declarations of static canon functions (needed for internal cross-calls) */
+static void SET_SPINDLE_SPEED(void *ctx, int32_t s, double r);
+static void STOP_SPEED_FEED_SYNCH(void *ctx);
+static void START_SPEED_FEED_SYNCH(void *ctx, int32_t spindle, double feed_per_revolution, int32_t velocity_mode);
+static void ARC_FEED(void *ctx, int32_t line_number, double first_end, double second_end,
+    double first_axis, double second_axis, int32_t rotation, double axis_end_point,
+    double a, double b, double c, double u, double v, double w);
+static void STRAIGHT_FEED(void *ctx, int32_t line_number, double x, double y, double z,
+    double a, double b, double c, double u, double v, double w);
+static void CANON_ERROR(const char *fmt, ...) __attribute__((format(printf,1,2)));
+static void MESSAGE(void *ctx, const char *s);
+static int32_t GET_EXTERNAL_OFFSET_APPLIED(void *ctx);
+static void GET_EXTERNAL_OFFSETS(void *ctx, double offsets[9]);
+static void SELECT_PLANE(void *ctx, int32_t in_plane);
+static void SET_NAIVECAM_TOLERANCE(void *ctx, double tolerance);
+static void SET_MOTION_CONTROL_MODE(void *ctx, int32_t mode, double tolerance);
 
 //#define EMCCANON_DEBUG
 
@@ -74,9 +97,10 @@ static int debug_velacc = 0;
 
 static StateTag _tag;
 
-void UPDATE_TAG(StateTag tag) {
-    canon_debug("--Got UPDATE_TAG: %d--\n",tag.fields[GM_FIELD_LINE_NUMBER]);
-    _tag = tag;
+static void UPDATE_TAG(void */*ctx*/, uint64_t tag_ptr) {
+    StateTag *tag = (StateTag *)(uintptr_t)tag_ptr;
+    canon_debug("--Got UPDATE_TAG: %d--\n",tag->fields[GM_FIELD_LINE_NUMBER]);
+    _tag = *tag;
 }
 
 #ifndef MIN
@@ -103,13 +127,17 @@ void UPDATE_TAG(StateTag tag) {
 #define MAX9(a,b,c,d,e,f,g,h,i) (MAX3((MAX3(a,b,c)),(MAX3(d,e,f)),(MAX3(g,h,i))))
 #endif
 
+/* Forward declarations for functions used in macros below */
+static double GET_EXTERNAL_LENGTH_UNITS(void *ctx);
+static double GET_EXTERNAL_ANGLE_UNITS(void *ctx);
+
 /* macros for converting internal (mm/deg) units to external units */
-#define TO_EXT_LEN(mm) ((mm) * GET_EXTERNAL_LENGTH_UNITS())
-#define TO_EXT_ANG(deg) ((deg) * GET_EXTERNAL_ANGLE_UNITS())
+#define TO_EXT_LEN(mm) ((mm) * GET_EXTERNAL_LENGTH_UNITS(NULL))
+#define TO_EXT_ANG(deg) ((deg) * GET_EXTERNAL_ANGLE_UNITS(NULL))
 
 /* macros for converting external units to internal (mm/deg) units */
-#define FROM_EXT_LEN(ext) ((ext) / GET_EXTERNAL_LENGTH_UNITS())
-#define FROM_EXT_ANG(ext) ((ext) / GET_EXTERNAL_ANGLE_UNITS())
+#define FROM_EXT_LEN(ext) ((ext) / GET_EXTERNAL_LENGTH_UNITS(NULL))
+#define FROM_EXT_ANG(ext) ((ext) / GET_EXTERNAL_ANGLE_UNITS(NULL))
 
 /* macros for converting internal (mm/deg) units to program units */
 #define TO_PROG_LEN(mm) ((mm) / (canon.lengthUnits == CANON_UNITS_INCHES ? 25.4 : canon.lengthUnits == CANON_UNITS_CM ? 10.0 : 1.0))
@@ -410,7 +438,7 @@ static void canonUpdateEndPoint(const CANON_POSITION & pos)
 
 /* External call to update the canon end point.
    Called by emctask during skipping of lines (run-from-line) */
-void CANON_UPDATE_END_POINT(double x, double y, double z, 
+static void CANON_UPDATE_END_POINT(void */*ctx*/, double x, double y, double z, 
 			    double a, double b, double c, 
 			    double u, double v, double w)
 {
@@ -446,7 +474,7 @@ static void send_g5x_msg(int index) {
 
     for (int s = 0; s < emcStatus->motion.traj.spindles; s++){
         if(canon.spindle[s].css_maximum) {
-            SET_SPINDLE_SPEED(s, canon.spindle[s].speed);
+            SET_SPINDLE_SPEED(NULL, s, canon.spindle[s].speed);
         }
     }
     interp_list.append(set_g5x_msg);
@@ -463,13 +491,13 @@ static void send_g92_msg(void) {
 
     for (int s = 0; s < emcStatus->motion.traj.spindles; s++){
         if(canon.spindle[s].css_maximum) {
-            SET_SPINDLE_SPEED(s, canon.spindle[s].speed);
+            SET_SPINDLE_SPEED(NULL, s, canon.spindle[s].speed);
         }
     }
     interp_list.append(set_g92_msg);
 }
 
-void SET_XY_ROTATION(double t) {
+static void SET_XY_ROTATION(void */*ctx*/, double t) {
     EMC_TRAJ_SET_ROTATION sr;
     sr.rotation = t;
     interp_list.append(sr);
@@ -477,7 +505,7 @@ void SET_XY_ROTATION(double t) {
     canon.xy_rotation = t;
 }
 
-void SET_G5X_OFFSET(int index,
+static void SET_G5X_OFFSET(void */*ctx*/, int32_t index,
                     double x, double y, double z,
                     double a, double b, double c,
                     double u, double v, double w)
@@ -490,7 +518,7 @@ void SET_G5X_OFFSET(int index,
     send_g5x_msg(index);
 }
 
-void SET_G92_OFFSET(double x, double y, double z,
+static void SET_G92_OFFSET(void */*ctx*/, double x, double y, double z,
                     double a, double b, double c,
                     double u, double v, double w) {
     /* convert to mm units */
@@ -502,31 +530,31 @@ void SET_G92_OFFSET(double x, double y, double z,
     send_g92_msg();
 }
 
-void USE_LENGTH_UNITS(CANON_UNITS in_unit)
+static void USE_LENGTH_UNITS(void */*ctx*/, int32_t in_unit)
 {
-    canon.lengthUnits = in_unit;
+    canon.lengthUnits = (CANON_UNITS)in_unit;
 
-    emcStatus->task.programUnits = in_unit;
+    emcStatus->task.programUnits = (CANON_UNITS)in_unit;
 }
 
 /* Free Space Motion */
-void SET_TRAVERSE_RATE(double rate)
+static void SET_TRAVERSE_RATE(void */*ctx*/, double rate)
 {
     // nothing need be done here
 }
 
-void SET_FEED_MODE(int spindle, int mode) {
+static void SET_FEED_MODE(void */*ctx*/, int32_t spindle, int32_t mode) {
     flush_segments();
     canon.feed_mode = mode;
     canon.spindle_num = spindle;
-    if(canon.feed_mode == 0) STOP_SPEED_FEED_SYNCH();
+    if(canon.feed_mode == 0) STOP_SPEED_FEED_SYNCH(NULL);
 }
 
-void SET_FEED_RATE(double rate)
+static void SET_FEED_RATE(void */*ctx*/, double rate)
 {
 
     if(canon.feed_mode) {
-	START_SPEED_FEED_SYNCH(canon.spindle_num, rate, 1);
+	START_SPEED_FEED_SYNCH(NULL, canon.spindle_num, rate, 1);
 	canon.linearFeedRate = rate;
     } else {
 	/* convert from /min to /sec */
@@ -546,7 +574,7 @@ void SET_FEED_RATE(double rate)
     }
 }
 
-void SET_FEED_REFERENCE(CANON_FEED_REFERENCE reference)
+static void SET_FEED_REFERENCE(void */*ctx*/, int32_t reference)
 {
     // nothing need be done here
 }
@@ -1026,16 +1054,16 @@ see_segment(int line_number,
     }
 }
 
-void FINISH() {
+static void FINISH(void */*ctx*/) {
     flush_segments();
 }
 
-void ON_RESET() {
+static void ON_RESET(void */*ctx*/) {
     drop_segments();
 }
 
 
-void STRAIGHT_TRAVERSE(int line_number,
+static void STRAIGHT_TRAVERSE(void */*ctx*/, int32_t line_number,
                        double x, double y, double z,
 		       double a, double b, double c,
                        double u, double v, double w)
@@ -1068,7 +1096,7 @@ void STRAIGHT_TRAVERSE(int line_number,
 
     int old_feed_mode = canon.feed_mode;
     if(canon.feed_mode)
-	STOP_SPEED_FEED_SYNCH();
+	STOP_SPEED_FEED_SYNCH(NULL);
 
     if(vel && acc)  {
         interp_list.set_line_number(line_number);
@@ -1076,12 +1104,12 @@ void STRAIGHT_TRAVERSE(int line_number,
     }
 
     if(old_feed_mode)
-	START_SPEED_FEED_SYNCH(canon.spindle_num, canon.linearFeedRate, 1);
+	START_SPEED_FEED_SYNCH(NULL, canon.spindle_num, canon.linearFeedRate, 1);
 
     canonUpdateEndPoint(x, y, z, a, b, c, u, v, w);
 }
 
-void STRAIGHT_FEED(int line_number,
+static void STRAIGHT_FEED(void */*ctx*/, int32_t line_number,
                    double x, double y, double z, 
                    double a, double b, double c,
                    double u, double v, double w)
@@ -1095,7 +1123,7 @@ void STRAIGHT_FEED(int line_number,
 }
 
 
-void RIGID_TAP(int line_number, double x, double y, double z, double scale)
+static void RIGID_TAP(void */*ctx*/, int32_t line_number, double x, double y, double z, double scale)
 {
     double ini_maxvel,acc;
     EMC_TRAJ_RIGID_TAP rigidTapMsg;
@@ -1138,11 +1166,11 @@ void RIGID_TAP(int line_number, double x, double y, double z, double scale)
   uses a probe message instead of a linear move message.
 */
 
-void STRAIGHT_PROBE(int line_number,
+static void STRAIGHT_PROBE(void */*ctx*/, int32_t line_number,
                     double x, double y, double z, 
                     double a, double b, double c,
                     double u, double v, double w,
-                    unsigned char probe_type)
+                    uint8_t probe_type)
 {
     double ini_maxvel, vel, acc;
     EMC_TRAJ_PROBE probeMsg;
@@ -1190,13 +1218,13 @@ void STRAIGHT_PROBE(int line_number,
 
 /* Machining Attributes */
 
-void SET_MOTION_CONTROL_MODE(CANON_MOTION_MODE mode, double tolerance)
+static void SET_MOTION_CONTROL_MODE(void */*ctx*/, int32_t mode, double tolerance)
 {
     EMC_TRAJ_SET_TERM_COND setTermCondMsg;
 
     flush_segments();
 
-    canon.motionMode = mode;
+    canon.motionMode = (CANON_MOTION_MODE)mode;
     canon.motionTolerance =  FROM_PROG_LEN(tolerance);
 
     switch (mode) {
@@ -1217,34 +1245,34 @@ void SET_MOTION_CONTROL_MODE(CANON_MOTION_MODE mode, double tolerance)
     interp_list.append(setTermCondMsg);
 }
 
-void SET_NAIVECAM_TOLERANCE(double tolerance)
+static void SET_NAIVECAM_TOLERANCE(void */*ctx*/, double tolerance)
 {
     canon.naivecamTolerance =  FROM_PROG_LEN(tolerance);
 }
 
-void SELECT_PLANE(CANON_PLANE in_plane)
+static void SELECT_PLANE(void */*ctx*/, int32_t in_plane)
 {
-    canon.activePlane = in_plane;
+    canon.activePlane = (CANON_PLANE)in_plane;
 }
 
-void SET_CUTTER_RADIUS_COMPENSATION(double radius)
-{
-    // nothing need be done here
-}
-
-void START_CUTTER_RADIUS_COMPENSATION(int side)
+static void SET_CUTTER_RADIUS_COMPENSATION(void */*ctx*/, double radius)
 {
     // nothing need be done here
 }
 
-void STOP_CUTTER_RADIUS_COMPENSATION()
+static void START_CUTTER_RADIUS_COMPENSATION(void */*ctx*/, int32_t side)
+{
+    // nothing need be done here
+}
+
+static void STOP_CUTTER_RADIUS_COMPENSATION(void */*ctx*/)
 {
     // nothing need be done here
 }
 
 
 
-void START_SPEED_FEED_SYNCH(int spindle, double feed_per_revolution, bool velocity_mode)
+static void START_SPEED_FEED_SYNCH(void */*ctx*/, int32_t spindle, double feed_per_revolution, int32_t velocity_mode)
 {
     flush_segments();
     EMC_TRAJ_SET_SPINDLESYNC spindlesyncMsg;
@@ -1255,7 +1283,7 @@ void START_SPEED_FEED_SYNCH(int spindle, double feed_per_revolution, bool veloci
     canon.spindle[spindle].synched = 1;
 }
 
-void STOP_SPEED_FEED_SYNCH()
+static void STOP_SPEED_FEED_SYNCH(void */*ctx*/)
 {
     flush_segments();
     EMC_TRAJ_SET_SPINDLESYNC spindlesyncMsg;
@@ -1314,10 +1342,10 @@ arc(int lineno, double x0, double y0, double x1, double y1, double dx, double dy
         double r = -(x*x+y*y)/den;
         double i = dy*r, j = -dx*r;
         double cx = x0+i, cy=y0+j;
-        ARC_FEED(lineno, x1, y1, cx, cy, r<0 ? 1 : -1,
+        ARC_FEED(NULL, lineno, x1, y1, cx, cy, r<0 ? 1 : -1,
                  p.z, p.a, p.b, p.c, p.u, p.v, p.w);
     } else { 
-        STRAIGHT_FEED(lineno, x1, y1, p.z, p.a, p.b, p.c, p.u, p.v, p.w);
+        STRAIGHT_FEED(NULL, lineno, x1, y1, p.z, p.a, p.b, p.c, p.u, p.v, p.w);
     }
 }
 
@@ -1359,9 +1387,16 @@ biarc(int lineno, double p0x, double p0y, double tsx, double tsy,
 
 /* Canon calls */
 
-void NURBS_FEED(int lineno, std::vector<CONTROL_POINT> nurbs_control_points, unsigned int k) {
+static void NURBS_FEED(void */*ctx*/, int32_t lineno, const canon_control_point_t *control_points, size_t npts, uint32_t k) {
     flush_segments();
 
+    // Convert C array to C++ vector for existing implementation
+    std::vector<CONTROL_POINT> nurbs_control_points(npts);
+    for (size_t i = 0; i < npts; i++) {
+        nurbs_control_points[i].X = control_points[i].x;
+        nurbs_control_points[i].Y = control_points[i].y;
+        nurbs_control_points[i].W = control_points[i].w;
+    }
     unsigned int n = nurbs_control_points.size() - 1;
     double umax = n - k + 2;
     unsigned int div = nurbs_control_points.size()*4;
@@ -1479,9 +1514,9 @@ static double axis_acc_time(const CANON_POSITION & start, const CANON_POSITION &
 }
 #endif
 
-void ARC_FEED(int line_number,
+static void ARC_FEED(void */*ctx*/, int32_t line_number,
               double first_end, double second_end,
-	      double first_axis, double second_axis, int rotation,
+	      double first_axis, double second_axis, int32_t rotation,
 	      double axis_end_point, 
               double a, double b, double c,
               double u, double v, double w)
@@ -1846,7 +1881,7 @@ void ARC_FEED(int line_number,
 }
 
 
-void DWELL(double seconds)
+static void DWELL(void */*ctx*/, double seconds)
 {
     EMC_TRAJ_DELAY delayMsg;
 
@@ -1858,16 +1893,16 @@ void DWELL(double seconds)
 }
 
 /* Spindle Functions */
-void SPINDLE_RETRACT_TRAVERSE()
+static void SPINDLE_RETRACT_TRAVERSE()
 {
     /*! \todo FIXME-- unimplemented */
 }
 
-void SET_SPINDLE_MODE(int spindle, double css_max) {
+static void SET_SPINDLE_MODE(void */*ctx*/, int32_t spindle, double css_max) {
    canon.spindle[spindle].css_maximum = fabs(css_max);
 }
 
-void START_SPINDLE_CLOCKWISE(int s, int wait_for_atspeed)
+static void START_SPINDLE_CLOCKWISE(void */*ctx*/, int32_t s, int32_t wait_for_atspeed)
 {
     EMC_SPINDLE_ON emc_spindle_on_msg;
 
@@ -1891,7 +1926,7 @@ void START_SPINDLE_CLOCKWISE(int s, int wait_for_atspeed)
     interp_list.append(emc_spindle_on_msg);
 }
 
-void START_SPINDLE_COUNTERCLOCKWISE(int s, int wait_for_atspeed)
+static void START_SPINDLE_COUNTERCLOCKWISE(void */*ctx*/, int32_t s, int32_t wait_for_atspeed)
 {
     EMC_SPINDLE_ON emc_spindle_on_msg;
 
@@ -1915,7 +1950,7 @@ void START_SPINDLE_COUNTERCLOCKWISE(int s, int wait_for_atspeed)
     interp_list.append(emc_spindle_on_msg);
 }
 
-void SET_SPINDLE_SPEED(int s, double r)
+static void SET_SPINDLE_SPEED(void */*ctx*/, int32_t s, double r)
 {
     // speed is in RPMs everywhere
 
@@ -1942,7 +1977,7 @@ void SET_SPINDLE_SPEED(int s, double r)
     interp_list.append(emc_spindle_speed_msg);
 }
 
-void STOP_SPINDLE_TURNING(int s)
+static void STOP_SPINDLE_TURNING(void */*ctx*/, int32_t s)
 {
     EMC_SPINDLE_OFF emc_spindle_off_msg;
 
@@ -1953,12 +1988,12 @@ void STOP_SPINDLE_TURNING(int s)
     canon.spindle[s].dir = 0;
 }
 
-void SPINDLE_RETRACT()
+static void SPINDLE_RETRACT()
 {
     /*! \todo FIXME-- unimplemented */
 }
 
-void ORIENT_SPINDLE(int s, double orientation, int mode)
+static void ORIENT_SPINDLE(void */*ctx*/, int32_t s, double orientation, int32_t mode)
 {
     EMC_SPINDLE_ORIENT o;
 
@@ -1969,7 +2004,7 @@ void ORIENT_SPINDLE(int s, double orientation, int mode)
     interp_list.append(o);
 }
 
-void WAIT_SPINDLE_ORIENT_COMPLETE(int s, double timeout)
+static void WAIT_SPINDLE_ORIENT_COMPLETE(void */*ctx*/, int32_t s, double timeout)
 {
     EMC_SPINDLE_WAIT_ORIENT_COMPLETE o;
 
@@ -1979,17 +2014,17 @@ void WAIT_SPINDLE_ORIENT_COMPLETE(int s, double timeout)
     interp_list.append(o);
 }
 
-void USE_SPINDLE_FORCE(void)
+static void USE_SPINDLE_FORCE(void)
 {
     /*! \todo FIXME-- unimplemented */
 }
 
-void LOCK_SPINDLE_Z(void)
+static void LOCK_SPINDLE_Z(void)
 {
     /*! \todo FIXME-- unimplemented */
 }
 
-void USE_NO_SPINDLE_FORCE(void)
+static void USE_NO_SPINDLE_FORCE(void)
 {
     /*! \todo FIXME-- unimplemented */
 }
@@ -1997,13 +2032,17 @@ void USE_NO_SPINDLE_FORCE(void)
 /* Tool Functions */
 
 /* this is called with distances in external (machine) units */
-void SET_TOOL_TABLE_ENTRY(int pocket, int toolno, EmcPose offset, double diameter,
-                          double frontangle, double backangle, int orientation) {
+static void SET_TOOL_TABLE_ENTRY(void */*ctx*/, int32_t pocket, int32_t toolno,
+    double ox, double oy, double oz, double oa, double ob, double oc,
+    double ou, double ov, double ow,
+    double diameter, double frontangle, double backangle, int32_t orientation) {
     EMC_TOOL_SET_OFFSET o;
     flush_segments();
     o.pocket = pocket;
     o.toolno = toolno;
-    o.offset = offset;
+    o.offset.tran.x = ox; o.offset.tran.y = oy; o.offset.tran.z = oz;
+    o.offset.a = oa; o.offset.b = ob; o.offset.c = oc;
+    o.offset.u = ou; o.offset.v = ov; o.offset.w = ow;
     o.diameter = diameter;
     o.frontangle = frontangle;
     o.backangle = backangle;
@@ -2015,22 +2054,24 @@ void SET_TOOL_TABLE_ENTRY(int pocket, int toolno, EmcPose offset, double diamete
   EMC has no tool length offset. To implement it, we save it here,
   and apply it when necessary
   */
-void USE_TOOL_LENGTH_OFFSET(EmcPose offset)
+static void USE_TOOL_LENGTH_OFFSET(void */*ctx*/,
+    double x, double y, double z, double a, double b, double c,
+    double u, double v, double w)
 {
     EMC_TRAJ_SET_OFFSET set_offset_msg;
 
     flush_segments();
 
     /* convert to mm units for internal canonical use */
-    canon.toolOffset.tran.x = FROM_PROG_LEN(offset.tran.x);
-    canon.toolOffset.tran.y = FROM_PROG_LEN(offset.tran.y);
-    canon.toolOffset.tran.z = FROM_PROG_LEN(offset.tran.z);
-    canon.toolOffset.a = FROM_PROG_ANG(offset.a);
-    canon.toolOffset.b = FROM_PROG_ANG(offset.b);
-    canon.toolOffset.c = FROM_PROG_ANG(offset.c);
-    canon.toolOffset.u = FROM_PROG_LEN(offset.u);
-    canon.toolOffset.v = FROM_PROG_LEN(offset.v);
-    canon.toolOffset.w = FROM_PROG_LEN(offset.w);
+    canon.toolOffset.tran.x = FROM_PROG_LEN(x);
+    canon.toolOffset.tran.y = FROM_PROG_LEN(y);
+    canon.toolOffset.tran.z = FROM_PROG_LEN(z);
+    canon.toolOffset.a = FROM_PROG_ANG(a);
+    canon.toolOffset.b = FROM_PROG_ANG(b);
+    canon.toolOffset.c = FROM_PROG_ANG(c);
+    canon.toolOffset.u = FROM_PROG_LEN(u);
+    canon.toolOffset.v = FROM_PROG_LEN(v);
+    canon.toolOffset.w = FROM_PROG_LEN(w);
 
     /* append it to interp list so it gets updated at the right time, not at
        read-ahead time */
@@ -2046,14 +2087,14 @@ void USE_TOOL_LENGTH_OFFSET(EmcPose offset)
 
     for (int s = 0; s < emcStatus->motion.traj.spindles; s++){
         if(canon.spindle[s].css_maximum) {
-            SET_SPINDLE_SPEED(s, canon.spindle[s].speed);
+            SET_SPINDLE_SPEED(NULL, s, canon.spindle[s].speed);
         }
     }
     interp_list.append(set_offset_msg);
 }
 
 /* issued at very start of an M6 command. Notification. */
-void START_CHANGE()
+static void START_CHANGE(void */*ctx*/)
 {
     EMC_TOOL_START_CHANGE emc_start_change_msg;
 
@@ -2063,7 +2104,7 @@ void START_CHANGE()
 }
 
 /* CHANGE_TOOL results from M6 */
-void CHANGE_TOOL(int slot)
+static void CHANGE_TOOL(void */*ctx*/, int32_t slot)
 {
     EMC_TRAJ_LINEAR_MOVE linearMoveMsg;
     linearMoveMsg.feed_mode = canon.feed_mode;
@@ -2119,13 +2160,13 @@ void CHANGE_TOOL(int slot)
 
 	int old_feed_mode = canon.feed_mode;
 	if(canon.feed_mode)
-	    STOP_SPEED_FEED_SYNCH();
+	    STOP_SPEED_FEED_SYNCH(NULL);
 
     if(vel && acc)
         tag_and_send(linearMoveMsg, _tag);
 
     if(old_feed_mode)
-        START_SPEED_FEED_SYNCH(canon.spindle_num, canon.linearFeedRate, 1);
+        START_SPEED_FEED_SYNCH(NULL, canon.spindle_num, canon.linearFeedRate, 1);
 
     canonUpdateEndPoint(x, y, z, a, b, c, u, v, w);
     }
@@ -2136,7 +2177,7 @@ void CHANGE_TOOL(int slot)
 }
 
 /* SELECT_TOOL results from Tn */
-void SELECT_TOOL(int tool)
+static void SELECT_TOOL(void */*ctx*/, int32_t tool)
 {
     EMC_TOOL_PREPARE prep_for_tool_msg;
 
@@ -2146,7 +2187,7 @@ void SELECT_TOOL(int tool)
 }
 
 /* CHANGE_TOOL_NUMBER results from M61 */
-void CHANGE_TOOL_NUMBER(int pocket_number)
+static void CHANGE_TOOL_NUMBER(void */*ctx*/, int32_t pocket_number)
 {
     EMC_TOOL_SET_NUMBER emc_tool_set_number_msg;
     
@@ -2155,7 +2196,7 @@ void CHANGE_TOOL_NUMBER(int pocket_number)
     interp_list.append(emc_tool_set_number_msg);
 }
 
-void RELOAD_TOOLDATA(void)
+static void RELOAD_TOOLDATA(void */*ctx*/)
 {
     EMC_TOOL_LOAD_TOOL_TABLE load_tool_table_msg;
     interp_list.append(load_tool_table_msg);
@@ -2163,7 +2204,7 @@ void RELOAD_TOOLDATA(void)
 
 /* Misc Functions */
 
-void CLAMP_AXIS(CANON_AXIS axis)
+static void CLAMP_AXIS(void */*ctx*/, int32_t axis)
 {
     /*! \todo FIXME-- unimplemented */
 }
@@ -2207,7 +2248,7 @@ static char *addString(char *dst, const char *src, int maxlen)
 
 static FILE *probefile = NULL;
 
-void COMMENT(const char *comment)
+static void COMMENT(void */*ctx*/, const char *comment)
 {
     // nothing need be done here, but you can play tricks with hot comments
 
@@ -2245,7 +2286,7 @@ void COMMENT(const char *comment)
 	    // pop up a warning message
 	    setString(msg, "can't open probe file ", LINELEN);
 	    addString(msg, probefilename, LINELEN);
-	    MESSAGE(msg);
+	    MESSAGE(NULL, msg);
 	    probefile = NULL;
 	}
 	return;
@@ -2263,7 +2304,7 @@ void COMMENT(const char *comment)
 }
 
 // refers to feed rate
-void DISABLE_FEED_OVERRIDE()
+static void DISABLE_FEED_OVERRIDE(void */*ctx*/)
 {
     EMC_TRAJ_SET_FO_ENABLE set_fo_enable_msg;
     flush_segments();
@@ -2272,7 +2313,7 @@ void DISABLE_FEED_OVERRIDE()
     interp_list.append(set_fo_enable_msg);
 }
 
-void ENABLE_FEED_OVERRIDE()
+static void ENABLE_FEED_OVERRIDE(void */*ctx*/)
 {
     EMC_TRAJ_SET_FO_ENABLE set_fo_enable_msg;
     flush_segments();
@@ -2283,7 +2324,7 @@ void ENABLE_FEED_OVERRIDE()
 
 
 //refers to adaptive feed override (HAL input, useful for EDM for example)
-void DISABLE_ADAPTIVE_FEED()
+static void DISABLE_ADAPTIVE_FEED(void */*ctx*/)
 {
     EMC_MOTION_ADAPTIVE emcmotAdaptiveMsg;
     flush_segments();
@@ -2292,7 +2333,7 @@ void DISABLE_ADAPTIVE_FEED()
     interp_list.append(emcmotAdaptiveMsg);
 }
 
-void ENABLE_ADAPTIVE_FEED()
+static void ENABLE_ADAPTIVE_FEED(void */*ctx*/)
 {
     EMC_MOTION_ADAPTIVE emcmotAdaptiveMsg;
     flush_segments();
@@ -2302,7 +2343,7 @@ void ENABLE_ADAPTIVE_FEED()
 }
 
 //refers to spindle speed
-void DISABLE_SPEED_OVERRIDE(int spindle)
+static void DISABLE_SPEED_OVERRIDE(void */*ctx*/, int32_t spindle)
 {
     EMC_TRAJ_SET_SO_ENABLE set_so_enable_msg;
     flush_segments();
@@ -2313,7 +2354,7 @@ void DISABLE_SPEED_OVERRIDE(int spindle)
 }
 
 
-void ENABLE_SPEED_OVERRIDE(int spindle)
+static void ENABLE_SPEED_OVERRIDE(void */*ctx*/, int32_t spindle)
 {
     EMC_TRAJ_SET_SO_ENABLE set_so_enable_msg;
     flush_segments();
@@ -2323,7 +2364,7 @@ void ENABLE_SPEED_OVERRIDE(int spindle)
     interp_list.append(set_so_enable_msg);
 }
 
-void ENABLE_FEED_HOLD()
+static void ENABLE_FEED_HOLD(void */*ctx*/)
 {
     EMC_TRAJ_SET_FH_ENABLE set_feed_hold_msg;
     flush_segments();
@@ -2332,7 +2373,7 @@ void ENABLE_FEED_HOLD()
     interp_list.append(set_feed_hold_msg);
 }
 
-void DISABLE_FEED_HOLD()
+static void DISABLE_FEED_HOLD(void */*ctx*/)
 {
     EMC_TRAJ_SET_FH_ENABLE set_feed_hold_msg;
     flush_segments();
@@ -2341,7 +2382,7 @@ void DISABLE_FEED_HOLD()
     interp_list.append(set_feed_hold_msg);
 }
 
-void FLOOD_OFF()
+static void FLOOD_OFF(void */*ctx*/)
 {
     EMC_COOLANT_FLOOD_OFF flood_off_msg;
 
@@ -2350,7 +2391,7 @@ void FLOOD_OFF()
     interp_list.append(flood_off_msg);
 }
 
-void FLOOD_ON()
+static void FLOOD_ON(void */*ctx*/)
 {
     EMC_COOLANT_FLOOD_ON flood_on_msg;
 
@@ -2359,7 +2400,7 @@ void FLOOD_ON()
     interp_list.append(flood_on_msg);
 }
 
-void MESSAGE(char *s)
+static void MESSAGE(void */*ctx*/, const char *s)
 {
     EMC_OPERATOR_DISPLAY operator_display_msg;
 
@@ -2372,33 +2413,33 @@ void MESSAGE(char *s)
 
 static FILE *logfile = NULL;
 
-void LOG(char *s) {
+static void LOG(void */*ctx*/, const char *s) {
     flush_segments();
     if(logfile) { fprintf(logfile, "%s\n", s); fflush(logfile); }
     fprintf(stderr, "LOG(%s)\n", s);
 
 }
 
-void LOGOPEN(char *name) {
+static void LOGOPEN(void */*ctx*/, const char *name) {
     if(logfile) fclose(logfile);
     logfile = fopen(name, "wt");
-    fprintf(stderr, "LOGOPEN(%s) -> %p\n", name, logfile);
+    fprintf(stderr, "LOGOPEN(%s) -> %p\n", name, (void*)logfile);
 }
 
-void LOGAPPEND(char *name) {
+static void LOGAPPEND(void */*ctx*/, const char *name) {
     if(logfile) fclose(logfile);
     logfile = fopen(name, "at");
-    fprintf(stderr, "LOGAPPEND(%s) -> %p\n", name, logfile);
+    fprintf(stderr, "LOGAPPEND(%s) -> %p\n", name, (void*)logfile);
 }
 
 
-void LOGCLOSE() {
+static void LOGCLOSE(void */*ctx*/) {
     if(logfile) fclose(logfile);
     logfile = NULL;
     fprintf(stderr, "LOGCLOSE()\n");
 }
 
-void MIST_OFF()
+static void MIST_OFF(void */*ctx*/)
 {
     EMC_COOLANT_MIST_OFF mist_off_msg;
 
@@ -2407,7 +2448,7 @@ void MIST_OFF()
     interp_list.append(mist_off_msg);
 }
 
-void MIST_ON()
+static void MIST_ON(void */*ctx*/)
 {
     EMC_COOLANT_MIST_ON mist_on_msg;
 
@@ -2416,31 +2457,31 @@ void MIST_ON()
     interp_list.append(mist_on_msg);
 }
 
-void PALLET_SHUTTLE()
+static void PALLET_SHUTTLE(void */*ctx*/)
 {
     /*! \todo FIXME-- unimplemented */
 }
 
-void TURN_PROBE_OFF()
+static void TURN_PROBE_OFF(void */*ctx*/)
 {
     // don't do anything-- this is called when the probing is done
 }
 
-void TURN_PROBE_ON()
+static void TURN_PROBE_ON(void */*ctx*/)
 {
     EMC_TRAJ_CLEAR_PROBE_TRIPPED_FLAG clearMsg;
 
     interp_list.append(clearMsg);
 }
 
-void UNCLAMP_AXIS(CANON_AXIS axis)
+static void UNCLAMP_AXIS(void */*ctx*/, int32_t axis)
 {
     /*! \todo FIXME-- unimplemented */
 }
 
 /* Program Functions */
 
-void PROGRAM_STOP()
+static void PROGRAM_STOP(void */*ctx*/)
 {
     /* 
        implement this as a pause. A resume will cause motion to proceed. */
@@ -2451,28 +2492,28 @@ void PROGRAM_STOP()
     interp_list.append(pauseMsg);
 }
 
-void SET_BLOCK_DELETE(bool state)
+static void SET_BLOCK_DELETE(void */*ctx*/, int32_t state)
 {
     canon.block_delete = state; //state == ON, means we don't interpret lines starting with "/"
 }
 
-bool GET_BLOCK_DELETE()
+static int32_t GET_BLOCK_DELETE(void */*ctx*/)
 {
     return canon.block_delete; //state == ON, means we  don't interpret lines starting with "/"
 }
 
 
-void SET_OPTIONAL_PROGRAM_STOP(bool state)
+static void SET_OPTIONAL_PROGRAM_STOP(void */*ctx*/, int32_t state)
 {
     canon.optional_program_stop = state; //state == ON, means we stop
 }
 
-bool GET_OPTIONAL_PROGRAM_STOP()
+static int32_t GET_OPTIONAL_PROGRAM_STOP(void */*ctx*/)
 {
     return canon.optional_program_stop; //state == ON, means we stop
 }
 
-void OPTIONAL_PROGRAM_STOP()
+static void OPTIONAL_PROGRAM_STOP(void */*ctx*/)
 {
     EMC_TASK_PLAN_OPTIONAL_STOP stopMsg;
 
@@ -2481,7 +2522,7 @@ void OPTIONAL_PROGRAM_STOP()
     interp_list.append(stopMsg);
 }
 
-void PROGRAM_END()
+static void PROGRAM_END(void */*ctx*/)
 {
     flush_segments();
 
@@ -2490,47 +2531,47 @@ void PROGRAM_END()
     interp_list.append(endMsg);
 }
 
-double GET_EXTERNAL_TOOL_LENGTH_XOFFSET()
+static double GET_EXTERNAL_TOOL_LENGTH_XOFFSET(void */*ctx*/)
 {
     return TO_PROG_LEN(canon.toolOffset.tran.x);
 }
 
-double GET_EXTERNAL_TOOL_LENGTH_YOFFSET()
+static double GET_EXTERNAL_TOOL_LENGTH_YOFFSET(void */*ctx*/)
 {
     return TO_PROG_LEN(canon.toolOffset.tran.y);
 }
 
-double GET_EXTERNAL_TOOL_LENGTH_ZOFFSET()
+static double GET_EXTERNAL_TOOL_LENGTH_ZOFFSET(void */*ctx*/)
 {
     return TO_PROG_LEN(canon.toolOffset.tran.z);
 }
 
-double GET_EXTERNAL_TOOL_LENGTH_AOFFSET()
+static double GET_EXTERNAL_TOOL_LENGTH_AOFFSET(void */*ctx*/)
 {
     return TO_PROG_ANG(canon.toolOffset.a);
 }
 
-double GET_EXTERNAL_TOOL_LENGTH_BOFFSET()
+static double GET_EXTERNAL_TOOL_LENGTH_BOFFSET(void */*ctx*/)
 {
     return TO_PROG_ANG(canon.toolOffset.b);
 }
 
-double GET_EXTERNAL_TOOL_LENGTH_COFFSET()
+static double GET_EXTERNAL_TOOL_LENGTH_COFFSET(void */*ctx*/)
 {
     return TO_PROG_ANG(canon.toolOffset.c);
 }
 
-double GET_EXTERNAL_TOOL_LENGTH_UOFFSET()
+static double GET_EXTERNAL_TOOL_LENGTH_UOFFSET(void */*ctx*/)
 {
     return TO_PROG_LEN(canon.toolOffset.u);
 }
 
-double GET_EXTERNAL_TOOL_LENGTH_VOFFSET()
+static double GET_EXTERNAL_TOOL_LENGTH_VOFFSET(void */*ctx*/)
 {
     return TO_PROG_LEN(canon.toolOffset.v);
 }
 
-double GET_EXTERNAL_TOOL_LENGTH_WOFFSET()
+static double GET_EXTERNAL_TOOL_LENGTH_WOFFSET(void */*ctx*/)
 {
     return TO_PROG_LEN(canon.toolOffset.w);
 }
@@ -2539,7 +2580,7 @@ double GET_EXTERNAL_TOOL_LENGTH_WOFFSET()
   INIT_CANON()
   Initialize canonical local variables to defaults
   */
-void INIT_CANON()
+static void INIT_CANON(void */*ctx*/)
 {
     double units;
 
@@ -2567,9 +2608,9 @@ void INIT_CANON()
     canon.g92Offset.u = 0.0;
     canon.g92Offset.v = 0.0;
     canon.g92Offset.w = 0.0;
-    SELECT_PLANE(CANON_PLANE_XY);
+    SELECT_PLANE(NULL, (int32_t)CANON_PLANE_XY);
     canonUpdateEndPoint(0, 0, 0, 0, 0, 0, 0, 0, 0);
-    SET_NAIVECAM_TOLERANCE(0);
+    SET_NAIVECAM_TOLERANCE(NULL, 0);
     for (int s = 0; s < EMCMOT_MAX_SPINDLES; s++) {
         canon.spindle[s].speed = 0.0;
         canon.spindle[s].synched = 0;
@@ -2588,7 +2629,7 @@ void INIT_CANON()
        iniTraj(). This is a floating point number, in user units per mm. We
        can compare this against known values and set the symbolic values
        accordingly. If it doesn't match, we have an error. */
-    units = GET_EXTERNAL_LENGTH_UNITS();
+    units = GET_EXTERNAL_LENGTH_UNITS(NULL);
     if (fabs(units - 1.0 / 25.4) < 1.0e-3) {
 	canon.lengthUnits = CANON_UNITS_INCHES;
     } else if (fabs(units - 1.0) < 1.0e-3) {
@@ -2600,14 +2641,14 @@ void INIT_CANON()
     }
     /* Set blending tolerance default depending on units machine is based on*/
     if (canon.lengthUnits == CANON_UNITS_INCHES) {
-        SET_MOTION_CONTROL_MODE(CANON_CONTINUOUS, .001);
+        SET_MOTION_CONTROL_MODE(NULL, (int32_t)CANON_CONTINUOUS, .001);
     } else {
-        SET_MOTION_CONTROL_MODE(CANON_CONTINUOUS,  .001 * MM_PER_INCH);
+        SET_MOTION_CONTROL_MODE(NULL, (int32_t)CANON_CONTINUOUS, .001 * MM_PER_INCH);
     }
 }
 
 /* Sends error message */
-void CANON_ERROR(const char *fmt, ...)
+static void CANON_ERROR(const char *fmt, ...)
 {
     va_list ap;
     EMC_OPERATOR_ERROR operator_error_msg;
@@ -2626,6 +2667,10 @@ void CANON_ERROR(const char *fmt, ...)
     interp_list.append(operator_error_msg);
 }
 
+static void CANON_ERROR_CB(void */*ctx*/, const char *msg) {
+    CANON_ERROR("%s", msg);
+}
+
 /*
   GET_EXTERNAL_TOOL_TABLE(int pocket)
 
@@ -2635,7 +2680,9 @@ void CANON_ERROR(const char *fmt, ...)
   Tool table is always in machine units.
 
   */
-CANON_TOOL_TABLE GET_EXTERNAL_TOOL_TABLE(int idx)
+static int32_t GET_EXTERNAL_TOOL_TABLE(void */*ctx*/, int32_t idx,
+    int32_t *toolno, double offset[9], double *diameter,
+    double *frontangle, double *backangle, int32_t *orientation)
 {
     CANON_TOOL_TABLE tdata;
 
@@ -2652,7 +2699,21 @@ CANON_TOOL_TABLE GET_EXTERNAL_TOOL_TABLE(int idx)
             fprintf(stderr,"UNEXPECTED idx %s %d\n",__FILE__,__LINE__);
         }
     }
-    return tdata;
+    *toolno = tdata.toolno;
+    offset[0] = tdata.offset.tran.x;
+    offset[1] = tdata.offset.tran.y;
+    offset[2] = tdata.offset.tran.z;
+    offset[3] = tdata.offset.a;
+    offset[4] = tdata.offset.b;
+    offset[5] = tdata.offset.c;
+    offset[6] = tdata.offset.u;
+    offset[7] = tdata.offset.v;
+    offset[8] = tdata.offset.w;
+    *diameter = tdata.diameter;
+    *frontangle = tdata.frontangle;
+    *backangle = tdata.backangle;
+    *orientation = tdata.orientation;
+    return 0;
 }
 
 CANON_POSITION GET_EXTERNAL_POSITION()
@@ -2664,17 +2725,18 @@ CANON_POSITION GET_EXTERNAL_POSITION()
 
     pos = emcStatus->motion.traj.position;
 
-    if (GET_EXTERNAL_OFFSET_APPLIED() ) {
-        EmcPose eoffset = GET_EXTERNAL_OFFSETS();
-        pos.tran.x -= eoffset.tran.x;
-        pos.tran.y -= eoffset.tran.y;
-        pos.tran.z -= eoffset.tran.z;
-        pos.a      -= eoffset.a;
-        pos.b      -= eoffset.b;
-        pos.c      -= eoffset.c;
-        pos.u      -= eoffset.u;
-        pos.v      -= eoffset.v;
-        pos.w      -= eoffset.w;
+    if (GET_EXTERNAL_OFFSET_APPLIED(NULL) ) {
+        double offsets[9];
+        GET_EXTERNAL_OFFSETS(NULL, offsets);
+        pos.tran.x -= offsets[0];
+        pos.tran.y -= offsets[1];
+        pos.tran.z -= offsets[2];
+        pos.a      -= offsets[3];
+        pos.b      -= offsets[4];
+        pos.c      -= offsets[5];
+        pos.u      -= offsets[6];
+        pos.v      -= offsets[7];
+        pos.w      -= offsets[8];
     }
 
     // first update internal record of last position
@@ -2729,19 +2791,19 @@ CANON_POSITION GET_EXTERNAL_PROBE_POSITION()
     return position;
 }
 
-int GET_EXTERNAL_PROBE_TRIPPED_VALUE()
+static int32_t GET_EXTERNAL_PROBE_TRIPPED_VALUE(void */*ctx*/)
 {
     return emcStatus->motion.traj.probe_tripped;
 }
 
-double GET_EXTERNAL_PROBE_VALUE()
+static double GET_EXTERNAL_PROBE_VALUE(void */*ctx*/)
 {
     // only for analog non-contact probe, so force a 0
     return 0.0;
 }
 
 // feed rate wanted is in program units per minute
-double GET_EXTERNAL_FEED_RATE()
+static double GET_EXTERNAL_FEED_RATE(void */*ctx*/)
 {
     double feed;
 
@@ -2761,7 +2823,7 @@ double GET_EXTERNAL_FEED_RATE()
 }
 
 // traverse rate wanted is in program units per minute
-double GET_EXTERNAL_TRAVERSE_RATE()
+static double GET_EXTERNAL_TRAVERSE_RATE(void */*ctx*/)
 {
     double traverse;
 
@@ -2775,7 +2837,7 @@ double GET_EXTERNAL_TRAVERSE_RATE()
     return traverse;
 }
 
-double GET_EXTERNAL_LENGTH_UNITS(void)
+static double GET_EXTERNAL_LENGTH_UNITS(void */*ctx*/)
 {
     double u;
 
@@ -2789,7 +2851,7 @@ double GET_EXTERNAL_LENGTH_UNITS(void)
     }
 }
 
-double GET_EXTERNAL_ANGLE_UNITS(void)
+static double GET_EXTERNAL_ANGLE_UNITS(void */*ctx*/)
 {
     double u;
 
@@ -2803,23 +2865,23 @@ double GET_EXTERNAL_ANGLE_UNITS(void)
     }
 }
 
-int GET_EXTERNAL_MIST()
+static int32_t GET_EXTERNAL_MIST(void */*ctx*/)
 {
     return emcStatus->io.coolant.mist;
 }
 
-int GET_EXTERNAL_FLOOD()
+static int32_t GET_EXTERNAL_FLOOD(void */*ctx*/)
 {
     return emcStatus->io.coolant.flood;
 }
 
-double GET_EXTERNAL_SPEED(int spindle)
+static double GET_EXTERNAL_SPEED(void */*ctx*/, int32_t spindle)
 {
     // speed is in RPMs everywhere
     return canon.spindle[spindle].speed;
 }
 
-CANON_DIRECTION GET_EXTERNAL_SPINDLE(int spindle)
+static int32_t GET_EXTERNAL_SPINDLE(void */*ctx*/, int32_t spindle)
 {
     if (emcStatus->motion.spindle[spindle].speed == 0) {
 	return CANON_STOPPED;
@@ -2834,176 +2896,178 @@ CANON_DIRECTION GET_EXTERNAL_SPINDLE(int spindle)
 
 static char _parameter_file_name[LINELEN];
 
-void SET_PARAMETER_FILE_NAME(const char *name)
+static void SET_PARAMETER_FILE_NAME(void */*ctx*/, const char *name)
 {
   strncpy(_parameter_file_name, name, PARAMETER_FILE_NAME_LENGTH);
 }
 
-void GET_EXTERNAL_PARAMETER_FILE_NAME(char *file_name,	/* string: to copy
-							   file name into */
-				      int max_size)
-{				/* maximum number of characters to copy */
-    // Paranoid checks
+static void GET_EXTERNAL_PARAMETER_FILE_NAME_internal(char *file_name, int max_size)
+{
     if (0 == file_name)
 	return;
-
     if (max_size < 0)
 	return;
-
     if (strlen(_parameter_file_name) < ((size_t) max_size))
 	strcpy(file_name, _parameter_file_name);
     else
 	file_name[0] = 0;
 }
 
-double GET_EXTERNAL_POSITION_X(void)
+static void GET_EXTERNAL_PARAMETER_FILE_NAME(void */*ctx*/, const char **buf)
+{
+    static char filename[256];
+    GET_EXTERNAL_PARAMETER_FILE_NAME_internal(filename, sizeof(filename));
+    *buf = filename;
+}
+
+static double GET_EXTERNAL_POSITION_X(void */*ctx*/)
 {
     CANON_POSITION position;
     position = GET_EXTERNAL_POSITION();
     return position.x;
 }
 
-double GET_EXTERNAL_POSITION_Y(void)
+static double GET_EXTERNAL_POSITION_Y(void */*ctx*/)
 {
     CANON_POSITION position;
     position = GET_EXTERNAL_POSITION();
     return position.y;
 }
 
-double GET_EXTERNAL_POSITION_Z(void)
+static double GET_EXTERNAL_POSITION_Z(void */*ctx*/)
 {
     CANON_POSITION position;
     position = GET_EXTERNAL_POSITION();
     return position.z;
 }
 
-double GET_EXTERNAL_POSITION_A(void)
+static double GET_EXTERNAL_POSITION_A(void */*ctx*/)
 {
     CANON_POSITION position;
     position = GET_EXTERNAL_POSITION();
     return position.a;
 }
 
-double GET_EXTERNAL_POSITION_B(void)
+static double GET_EXTERNAL_POSITION_B(void */*ctx*/)
 {
     CANON_POSITION position;
     position = GET_EXTERNAL_POSITION();
     return position.b;
 }
 
-double GET_EXTERNAL_POSITION_C(void)
+static double GET_EXTERNAL_POSITION_C(void */*ctx*/)
 {
     CANON_POSITION position;
     position = GET_EXTERNAL_POSITION();
     return position.c;
 }
 
-double GET_EXTERNAL_POSITION_U(void)
+static double GET_EXTERNAL_POSITION_U(void */*ctx*/)
 {
     CANON_POSITION position;
     position = GET_EXTERNAL_POSITION();
     return position.u;
 }
 
-double GET_EXTERNAL_POSITION_V(void)
+static double GET_EXTERNAL_POSITION_V(void */*ctx*/)
 {
     CANON_POSITION position;
     position = GET_EXTERNAL_POSITION();
     return position.v;
 }
 
-double GET_EXTERNAL_POSITION_W(void)
+static double GET_EXTERNAL_POSITION_W(void */*ctx*/)
 {
     CANON_POSITION position;
     position = GET_EXTERNAL_POSITION();
     return position.w;
 }
 
-double GET_EXTERNAL_PROBE_POSITION_X(void)
+static double GET_EXTERNAL_PROBE_POSITION_X(void */*ctx*/)
 {
     CANON_POSITION position;
     position = GET_EXTERNAL_PROBE_POSITION();
     return position.x;
 }
 
-double GET_EXTERNAL_PROBE_POSITION_Y(void)
+static double GET_EXTERNAL_PROBE_POSITION_Y(void */*ctx*/)
 {
     CANON_POSITION position;
     position = GET_EXTERNAL_PROBE_POSITION();
     return position.y;
 }
 
-double GET_EXTERNAL_PROBE_POSITION_Z(void)
+static double GET_EXTERNAL_PROBE_POSITION_Z(void */*ctx*/)
 {
     CANON_POSITION position;
     position = GET_EXTERNAL_PROBE_POSITION();
     return position.z;
 }
 
-double GET_EXTERNAL_PROBE_POSITION_A(void)
+static double GET_EXTERNAL_PROBE_POSITION_A(void */*ctx*/)
 {
     CANON_POSITION position;
     position = GET_EXTERNAL_PROBE_POSITION();
     return position.a;
 }
 
-double GET_EXTERNAL_PROBE_POSITION_B(void)
+static double GET_EXTERNAL_PROBE_POSITION_B(void */*ctx*/)
 {
     CANON_POSITION position;
     position = GET_EXTERNAL_PROBE_POSITION();
     return position.b;
 }
 
-double GET_EXTERNAL_PROBE_POSITION_C(void)
+static double GET_EXTERNAL_PROBE_POSITION_C(void */*ctx*/)
 {
     CANON_POSITION position;
     position = GET_EXTERNAL_PROBE_POSITION();
     return position.c;
 }
 
-double GET_EXTERNAL_PROBE_POSITION_U(void)
+static double GET_EXTERNAL_PROBE_POSITION_U(void */*ctx*/)
 {
     CANON_POSITION position;
     position = GET_EXTERNAL_PROBE_POSITION();
     return position.u;
 }
 
-double GET_EXTERNAL_PROBE_POSITION_V(void)
+static double GET_EXTERNAL_PROBE_POSITION_V(void */*ctx*/)
 {
     CANON_POSITION position;
     position = GET_EXTERNAL_PROBE_POSITION();
     return position.v;
 }
 
-double GET_EXTERNAL_PROBE_POSITION_W(void)
+static double GET_EXTERNAL_PROBE_POSITION_W(void */*ctx*/)
 {
     CANON_POSITION position;
     position = GET_EXTERNAL_PROBE_POSITION();
     return position.w;
 }
 
-CANON_MOTION_MODE GET_EXTERNAL_MOTION_CONTROL_MODE()
+static int32_t GET_EXTERNAL_MOTION_CONTROL_MODE(void */*ctx*/)
 {
-    return canon.motionMode;
+    return (int32_t)canon.motionMode;
 }
 
-double GET_EXTERNAL_MOTION_CONTROL_TOLERANCE()
+static double GET_EXTERNAL_MOTION_CONTROL_TOLERANCE(void */*ctx*/)
 {
     return TO_PROG_LEN(canon.motionTolerance);
 }
 
-double GET_EXTERNAL_MOTION_CONTROL_NAIVECAM_TOLERANCE()
+static double GET_EXTERNAL_MOTION_CONTROL_NAIVECAM_TOLERANCE(void */*ctx*/)
 {
     return TO_PROG_LEN(canon.naivecamTolerance);
 }
 
 
-CANON_UNITS GET_EXTERNAL_LENGTH_UNIT_TYPE()
+static int32_t GET_EXTERNAL_LENGTH_UNIT_TYPE(void */*ctx*/)
 {
-    return canon.lengthUnits;
+    return (int32_t)canon.lengthUnits;
 }
 
-int GET_EXTERNAL_QUEUE_EMPTY(void)
+static int32_t GET_EXTERNAL_QUEUE_EMPTY(void */*ctx*/)
 {
     flush_segments();
 
@@ -3014,7 +3078,7 @@ int GET_EXTERNAL_QUEUE_EMPTY(void)
 // pocket that the current tool was loaded from.  Returns 0 if there is no
 // tool in the spindle.
 
-int GET_EXTERNAL_TOOL_SLOT()
+static int32_t GET_EXTERNAL_TOOL_SLOT(void */*ctx*/)
 {
     int toolno = emcStatus->io.tool.toolInSpindle;
 
@@ -3025,60 +3089,63 @@ int GET_EXTERNAL_TOOL_SLOT()
 // ready to perform a tool change, return the currently prepped pocket
 // number.  If the tool changer is idle (because no Txxx command has been
 // run, or because an M6 tool change has completed), return -1.
-int GET_EXTERNAL_SELECTED_TOOL_SLOT()
+static int32_t GET_EXTERNAL_SELECTED_TOOL_SLOT(void */*ctx*/)
 {
     return emcStatus->io.tool.pocketPrepped; //idx
 }
 
-int GET_EXTERNAL_TC_FAULT()
+static int32_t GET_EXTERNAL_TC_FAULT(void */*ctx*/)
 {
     return emcStatus->io.fault;
 }
 
-int GET_EXTERNAL_TC_REASON()
+static int32_t GET_EXTERNAL_TC_REASON(void */*ctx*/)
 {
     return emcStatus->io.reason;
 }
 
-int GET_EXTERNAL_FEED_OVERRIDE_ENABLE()
+static int32_t GET_EXTERNAL_FEED_OVERRIDE_ENABLE(void */*ctx*/)
 {
     return emcStatus->motion.traj.feed_override_enabled;
 }
 
-int GET_EXTERNAL_SPINDLE_OVERRIDE_ENABLE(int spindle)
+static int32_t GET_EXTERNAL_SPINDLE_OVERRIDE_ENABLE(void */*ctx*/, int32_t spindle)
 {
     return emcStatus->motion.spindle[spindle].spindle_override_enabled;
 }
 
-int GET_EXTERNAL_ADAPTIVE_FEED_ENABLE()
+static int32_t GET_EXTERNAL_ADAPTIVE_FEED_ENABLE(void */*ctx*/)
 {
     return emcStatus->motion.traj.adaptive_feed_enabled;
 }
 
-int GET_EXTERNAL_FEED_HOLD_ENABLE()
+static int32_t GET_EXTERNAL_FEED_HOLD_ENABLE(void */*ctx*/)
 {
     return emcStatus->motion.traj.feed_hold_enabled;
 }
 
-int GET_EXTERNAL_AXIS_MASK() {
+static int32_t GET_EXTERNAL_AXIS_MASK(void */*ctx*/) {
     return emcStatus->motion.traj.axis_mask;
 }
 
-int GET_EXTERNAL_OFFSET_APPLIED(void) {
+static int32_t GET_EXTERNAL_OFFSET_APPLIED(void */*ctx*/) {
     return emcGetExternalOffsetApplied();
 }
 
-EmcPose GET_EXTERNAL_OFFSETS() {
-    return emcGetExternalOffsets();
+static void GET_EXTERNAL_OFFSETS(void */*ctx*/, double offsets[9]) {
+    EmcPose o = emcGetExternalOffsets();
+    offsets[0] = o.tran.x; offsets[1] = o.tran.y; offsets[2] = o.tran.z;
+    offsets[3] = o.a; offsets[4] = o.b; offsets[5] = o.c;
+    offsets[6] = o.u; offsets[7] = o.v; offsets[8] = o.w;
 }
 
-CANON_PLANE GET_EXTERNAL_PLANE()
+static int32_t GET_EXTERNAL_PLANE(void */*ctx*/)
 {
-    return canon.activePlane;
+    return (int32_t)canon.activePlane;
 }
 
 /* returns current value of the digital input selected by index.*/
-int GET_EXTERNAL_DIGITAL_INPUT(int index, int def)
+static int32_t GET_EXTERNAL_DIGITAL_INPUT(void */*ctx*/, int32_t index, int32_t def)
 {
     if ((index < 0) || (index >= EMCMOT_MAX_DIO))
 	return -1;
@@ -3092,7 +3159,7 @@ int GET_EXTERNAL_DIGITAL_INPUT(int index, int def)
     return (emcStatus->motion.synch_di[index] != 0) ? 1 : 0;
 }
 
-double GET_EXTERNAL_ANALOG_INPUT(int index, double def)
+static double GET_EXTERNAL_ANALOG_INPUT(void */*ctx*/, int32_t index, double def)
 {
 /* returns current value of the analog input selected by index.*/
 #ifdef INPUT_DEBUG
@@ -3122,7 +3189,7 @@ int USER_DEFINED_FUNCTION_ADD(USER_DEFINED_FUNCTION_TYPE func, int num)
     return 0;
 }
 
-double GET_USER_DEFINED_RESULT()
+static double GET_USER_DEFINED_RESULT(void */*ctx*/)
 {
   return emcStatus->task.user_defined_result;
 }
@@ -3139,7 +3206,7 @@ double GET_USER_DEFINED_RESULT()
   (the TP doesn't implement a queue of these), 
   use SET_AUX_OUTPUT_BIT instead, that allows to set the value right away
 */
-void SET_MOTION_OUTPUT_BIT(int index)
+static void SET_MOTION_OUTPUT_BIT(void */*ctx*/, int32_t index)
 {
   EMC_MOTION_SET_DOUT dout_msg;
 
@@ -3167,7 +3234,7 @@ void SET_MOTION_OUTPUT_BIT(int index)
   (the TP doesn't implement a queue of these), 
   use CLEAR_AUX_OUTPUT_BIT instead, that allows to set the value right away
 */
-void CLEAR_MOTION_OUTPUT_BIT(int index)
+static void CLEAR_MOTION_OUTPUT_BIT(void */*ctx*/, int32_t index)
 {
   EMC_MOTION_SET_DOUT dout_msg;
 
@@ -3192,7 +3259,7 @@ void CLEAR_MOTION_OUTPUT_BIT(int index)
   (this behaviour can be changed if needed)
   you can use any number of these, as the effect is immediate  
 */
-void SET_AUX_OUTPUT_BIT(int index)
+static void SET_AUX_OUTPUT_BIT(void */*ctx*/, int32_t index)
 {
 
   EMC_MOTION_SET_DOUT dout_msg;
@@ -3218,7 +3285,7 @@ void SET_AUX_OUTPUT_BIT(int index)
   (this behaviour can be changed if needed)
   you can use any number of these, as the effect is immediate  
 */
-void CLEAR_AUX_OUTPUT_BIT(int index)
+static void CLEAR_AUX_OUTPUT_BIT(void */*ctx*/, int32_t index)
 {
   EMC_MOTION_SET_DOUT dout_msg;
 
@@ -3239,7 +3306,7 @@ void CLEAR_AUX_OUTPUT_BIT(int index)
   sets a AIO value, not used by the RS274 Interp,
   not fully implemented in the motion controller either
 */
-void SET_MOTION_OUTPUT_VALUE(int index, double value)
+static void SET_MOTION_OUTPUT_VALUE(void */*ctx*/, int32_t index, double value)
 {
   EMC_MOTION_SET_AOUT aout_msg;
 
@@ -3260,7 +3327,7 @@ void SET_MOTION_OUTPUT_VALUE(int index, double value)
   sets a AIO value, not used by the RS274 Interp,
   not fully implemented in the motion controller either
 */
-void SET_AUX_OUTPUT_VALUE(int index, double value)
+static void SET_AUX_OUTPUT_VALUE(void */*ctx*/, int32_t index, double value)
 {
   EMC_MOTION_SET_AOUT aout_msg;
 
@@ -3281,10 +3348,7 @@ void SET_AUX_OUTPUT_VALUE(int index, double value)
    index changed to the needed state (specified by wait_type).
    Return value: either wait_type if timeout didn't occur, or -1 otherwise. */
 
-int WAIT(int index, /* index of the motion exported input */
-         int input_type, /*DIGITAL_INPUT or ANALOG_INPUT */
-	 int wait_type,  /* 0 - immediate, 1 - rise, 2 - fall, 3 - be high, 4 - be low */
-	 double timeout) /* time to wait [in seconds], if the input didn't change the value -1 is returned */
+static int32_t WAIT(void */*ctx*/, int32_t index, int32_t input_type, int32_t wait_type, double timeout)
 {
   if (input_type == DIGITAL_INPUT) {
     if ((index < 0) || (index >= EMCMOT_MAX_DIO))
@@ -3307,7 +3371,7 @@ int WAIT(int index, /* index of the motion exported input */
  return 0;
 }
 
-int UNLOCK_ROTARY(int line_number, int joint_num) {
+static int32_t UNLOCK_ROTARY(void */*ctx*/, int32_t line_number, int32_t joint_num) {
     EMC_TRAJ_LINEAR_MOVE m;
     // first, set up a zero length move to interrupt blending and get to final position
     m.type = EMC_MOTION_TYPE_TRAVERSE;
@@ -3321,19 +3385,19 @@ int UNLOCK_ROTARY(int line_number, int joint_num) {
     // issue it
     int old_feed_mode = canon.feed_mode;
     if(canon.feed_mode)
-	STOP_SPEED_FEED_SYNCH();
+	STOP_SPEED_FEED_SYNCH(NULL);
     interp_list.set_line_number(line_number);
     interp_list.append(m);
     // no need to update endpoint
     if(old_feed_mode)
-	START_SPEED_FEED_SYNCH(canon.spindle_num, canon.linearFeedRate, 1);
+	START_SPEED_FEED_SYNCH(NULL, canon.spindle_num, canon.linearFeedRate, 1);
 
     // now, the next move is the real indexing move, so be ready
     canon.rotary_unlock_for_traverse = joint_num;
     return 0;
 }
 
-int LOCK_ROTARY(int line_number, int joint_num) {
+static int32_t LOCK_ROTARY(void */*ctx*/, int32_t line_number, int32_t joint_num) {
     canon.rotary_unlock_for_traverse = -1;
     return 0;
 }
@@ -3372,4 +3436,156 @@ void IO_PLUGIN_CALL(int len, const char *call)
     printf("canon: IO_PLUGIN_CALL(arglen=%d)\n",len);
 
     interp_list.append(call_msg);
+}
+
+// ---- Callback table (populated directly from static functions above) ----
+
+static const canon_callbacks_t emccanon_table = {
+    .init_canon = INIT_CANON,
+    .set_g5x_offset = SET_G5X_OFFSET,
+    .set_g92_offset = SET_G92_OFFSET,
+    .set_xy_rotation = SET_XY_ROTATION,
+    .update_end_point = CANON_UPDATE_END_POINT,
+    .use_length_units = USE_LENGTH_UNITS,
+    .select_plane = SELECT_PLANE,
+    .set_traverse_rate = SET_TRAVERSE_RATE,
+    .straight_traverse = STRAIGHT_TRAVERSE,
+    .set_feed_rate = SET_FEED_RATE,
+    .set_feed_reference = SET_FEED_REFERENCE,
+    .set_feed_mode = SET_FEED_MODE,
+    .set_motion_control_mode = SET_MOTION_CONTROL_MODE,
+    .set_naivecam_tolerance = SET_NAIVECAM_TOLERANCE,
+    .set_cutter_radius_compensation = SET_CUTTER_RADIUS_COMPENSATION,
+    .start_cutter_radius_compensation = START_CUTTER_RADIUS_COMPENSATION,
+    .stop_cutter_radius_compensation = STOP_CUTTER_RADIUS_COMPENSATION,
+    .start_speed_feed_synch = START_SPEED_FEED_SYNCH,
+    .stop_speed_feed_synch = STOP_SPEED_FEED_SYNCH,
+    .arc_feed = ARC_FEED,
+    .straight_feed = STRAIGHT_FEED,
+    .nurbs_feed = NURBS_FEED,
+    .rigid_tap = RIGID_TAP,
+    .straight_probe = STRAIGHT_PROBE,
+    .stop = NULL,  // STOP not implemented in emccanon
+    .dwell = DWELL,
+    .finish = FINISH,
+    .set_spindle_mode = SET_SPINDLE_MODE,
+    .start_spindle_clockwise = START_SPINDLE_CLOCKWISE,
+    .start_spindle_counterclockwise = START_SPINDLE_COUNTERCLOCKWISE,
+    .set_spindle_speed = SET_SPINDLE_SPEED,
+    .stop_spindle_turning = STOP_SPINDLE_TURNING,
+    .orient_spindle = ORIENT_SPINDLE,
+    .wait_spindle_orient_complete = WAIT_SPINDLE_ORIENT_COMPLETE,
+    .select_tool = SELECT_TOOL,
+    .start_change = START_CHANGE,
+    .change_tool = CHANGE_TOOL,
+    .change_tool_number = CHANGE_TOOL_NUMBER,
+    .reload_tooldata = RELOAD_TOOLDATA,
+    .set_tool_table_entry = SET_TOOL_TABLE_ENTRY,
+    .use_tool_length_offset = USE_TOOL_LENGTH_OFFSET,
+    .flood_on = FLOOD_ON,
+    .flood_off = FLOOD_OFF,
+    .mist_on = MIST_ON,
+    .mist_off = MIST_OFF,
+    .enable_feed_override = ENABLE_FEED_OVERRIDE,
+    .disable_feed_override = DISABLE_FEED_OVERRIDE,
+    .enable_speed_override = ENABLE_SPEED_OVERRIDE,
+    .disable_speed_override = DISABLE_SPEED_OVERRIDE,
+    .enable_feed_hold = ENABLE_FEED_HOLD,
+    .disable_feed_hold = DISABLE_FEED_HOLD,
+    .enable_adaptive_feed = ENABLE_ADAPTIVE_FEED,
+    .disable_adaptive_feed = DISABLE_ADAPTIVE_FEED,
+    .set_motion_output_bit = SET_MOTION_OUTPUT_BIT,
+    .clear_motion_output_bit = CLEAR_MOTION_OUTPUT_BIT,
+    .set_aux_output_bit = SET_AUX_OUTPUT_BIT,
+    .clear_aux_output_bit = CLEAR_AUX_OUTPUT_BIT,
+    .set_motion_output_value = SET_MOTION_OUTPUT_VALUE,
+    .set_aux_output_value = SET_AUX_OUTPUT_VALUE,
+    .wait_input = WAIT,
+    .clamp_axis = CLAMP_AXIS,
+    .unclamp_axis = UNCLAMP_AXIS,
+    .lock_rotary = LOCK_ROTARY,
+    .unlock_rotary = UNLOCK_ROTARY,
+    .program_stop = PROGRAM_STOP,
+    .optional_program_stop = OPTIONAL_PROGRAM_STOP,
+    .program_end = PROGRAM_END,
+    .pallet_shuttle = PALLET_SHUTTLE,
+    .comment = COMMENT,
+    .message = MESSAGE,
+    .log_msg = LOG,
+    .logopen = LOGOPEN,
+    .logappend = LOGAPPEND,
+    .logclose = LOGCLOSE,
+    .canon_error = CANON_ERROR_CB,
+    .turn_probe_on = TURN_PROBE_ON,
+    .turn_probe_off = TURN_PROBE_OFF,
+    .set_block_delete = SET_BLOCK_DELETE,
+    .get_block_delete = GET_BLOCK_DELETE,
+    .set_optional_program_stop = SET_OPTIONAL_PROGRAM_STOP,
+    .get_optional_program_stop = GET_OPTIONAL_PROGRAM_STOP,
+    .update_tag = UPDATE_TAG,
+    .set_parameter_file_name = SET_PARAMETER_FILE_NAME,
+    .on_reset = ON_RESET,
+    .get_user_defined_result = GET_USER_DEFINED_RESULT,
+    .get_external_feed_rate = GET_EXTERNAL_FEED_RATE,
+    .get_external_traverse_rate = GET_EXTERNAL_TRAVERSE_RATE,
+    .get_external_length_unit_type = GET_EXTERNAL_LENGTH_UNIT_TYPE,
+    .get_external_length_units = GET_EXTERNAL_LENGTH_UNITS,
+    .get_external_angle_units = GET_EXTERNAL_ANGLE_UNITS,
+    .get_external_motion_control_mode = GET_EXTERNAL_MOTION_CONTROL_MODE,
+    .get_external_motion_control_tolerance = GET_EXTERNAL_MOTION_CONTROL_TOLERANCE,
+    .get_external_motion_control_naivecam_tolerance = GET_EXTERNAL_MOTION_CONTROL_NAIVECAM_TOLERANCE,
+    .get_external_flood = GET_EXTERNAL_FLOOD,
+    .get_external_mist = GET_EXTERNAL_MIST,
+    .get_external_position_x = GET_EXTERNAL_POSITION_X,
+    .get_external_position_y = GET_EXTERNAL_POSITION_Y,
+    .get_external_position_z = GET_EXTERNAL_POSITION_Z,
+    .get_external_position_a = GET_EXTERNAL_POSITION_A,
+    .get_external_position_b = GET_EXTERNAL_POSITION_B,
+    .get_external_position_c = GET_EXTERNAL_POSITION_C,
+    .get_external_position_u = GET_EXTERNAL_POSITION_U,
+    .get_external_position_v = GET_EXTERNAL_POSITION_V,
+    .get_external_position_w = GET_EXTERNAL_POSITION_W,
+    .get_external_probe_position_x = GET_EXTERNAL_PROBE_POSITION_X,
+    .get_external_probe_position_y = GET_EXTERNAL_PROBE_POSITION_Y,
+    .get_external_probe_position_z = GET_EXTERNAL_PROBE_POSITION_Z,
+    .get_external_probe_position_a = GET_EXTERNAL_PROBE_POSITION_A,
+    .get_external_probe_position_b = GET_EXTERNAL_PROBE_POSITION_B,
+    .get_external_probe_position_c = GET_EXTERNAL_PROBE_POSITION_C,
+    .get_external_probe_position_u = GET_EXTERNAL_PROBE_POSITION_U,
+    .get_external_probe_position_v = GET_EXTERNAL_PROBE_POSITION_V,
+    .get_external_probe_position_w = GET_EXTERNAL_PROBE_POSITION_W,
+    .get_external_probe_value = GET_EXTERNAL_PROBE_VALUE,
+    .get_external_probe_tripped_value = GET_EXTERNAL_PROBE_TRIPPED_VALUE,
+    .get_external_speed = GET_EXTERNAL_SPEED,
+    .get_external_spindle = GET_EXTERNAL_SPINDLE,
+    .get_external_tool_length_xoffset = GET_EXTERNAL_TOOL_LENGTH_XOFFSET,
+    .get_external_tool_length_yoffset = GET_EXTERNAL_TOOL_LENGTH_YOFFSET,
+    .get_external_tool_length_zoffset = GET_EXTERNAL_TOOL_LENGTH_ZOFFSET,
+    .get_external_tool_length_aoffset = GET_EXTERNAL_TOOL_LENGTH_AOFFSET,
+    .get_external_tool_length_boffset = GET_EXTERNAL_TOOL_LENGTH_BOFFSET,
+    .get_external_tool_length_coffset = GET_EXTERNAL_TOOL_LENGTH_COFFSET,
+    .get_external_tool_length_uoffset = GET_EXTERNAL_TOOL_LENGTH_UOFFSET,
+    .get_external_tool_length_voffset = GET_EXTERNAL_TOOL_LENGTH_VOFFSET,
+    .get_external_tool_length_woffset = GET_EXTERNAL_TOOL_LENGTH_WOFFSET,
+    .get_external_tool_slot = GET_EXTERNAL_TOOL_SLOT,
+    .get_external_selected_tool_slot = GET_EXTERNAL_SELECTED_TOOL_SLOT,
+    .get_external_tool_table = GET_EXTERNAL_TOOL_TABLE,
+    .get_external_tc_fault = GET_EXTERNAL_TC_FAULT,
+    .get_external_tc_reason = GET_EXTERNAL_TC_REASON,
+    .get_external_queue_empty = GET_EXTERNAL_QUEUE_EMPTY,
+    .get_external_axis_mask = GET_EXTERNAL_AXIS_MASK,
+    .get_external_digital_input = GET_EXTERNAL_DIGITAL_INPUT,
+    .get_external_analog_input = GET_EXTERNAL_ANALOG_INPUT,
+    .get_external_feed_override_enable = GET_EXTERNAL_FEED_OVERRIDE_ENABLE,
+    .get_external_spindle_override_enable = GET_EXTERNAL_SPINDLE_OVERRIDE_ENABLE,
+    .get_external_adaptive_feed_enable = GET_EXTERNAL_ADAPTIVE_FEED_ENABLE,
+    .get_external_feed_hold_enable = GET_EXTERNAL_FEED_HOLD_ENABLE,
+    .get_external_plane = GET_EXTERNAL_PLANE,
+    .get_external_parameter_file_name = GET_EXTERNAL_PARAMETER_FILE_NAME,
+    .get_external_offset_applied = GET_EXTERNAL_OFFSET_APPLIED,
+    .get_external_offsets = GET_EXTERNAL_OFFSETS,
+};
+
+const canon_callbacks_t *emccanon_get_callbacks(void) {
+    return &emccanon_table;
 }

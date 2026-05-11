@@ -252,7 +252,7 @@ int interpret_from_file( /* ARGUMENTS                  */
   int status=0;
   char line[LINELEN];
 
-  SET_BLOCK_DELETE(block_delete);
+  saicanon_get_callbacks()->set_block_delete(NULL, block_delete);
 
   for(; ;)
     {
@@ -561,7 +561,7 @@ int main (int argc, char ** argv)
   block_delete = OFF;
   print_stack = OFF;
   tool_flag = 0;
-  SET_PARAMETER_FILE_NAME(default_name);
+  saicanon_get_callbacks()->set_parameter_file_name(NULL, default_name);
   _outfile = stdout; /* may be reset below */
   go_flag = 0;
 
@@ -583,7 +583,7 @@ int main (int argc, char ** argv)
       switch(c) {
           case 'p': interp = optarg; break;
           case 't': read_tool_file(optarg); tool_flag=1; break;
-          case 'v': SET_PARAMETER_FILE_NAME(optarg); break;
+          case 'v': saicanon_get_callbacks()->set_parameter_file_name(NULL, optarg); break;
           case 'b': block_delete = (block_delete == OFF) ? ON : OFF; break;
           case 's': print_stack = (print_stack == OFF) ? ON : OFF; break;
           case 'n': do_next = atoi(optarg); break;

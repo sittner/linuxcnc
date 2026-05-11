@@ -18,7 +18,6 @@ MILLTASK_GOMC_SRCS := \
 	emc/motion/emcmotglb.c \
 	emc/task/emctask.cc \
 	emc/task/emccanon.cc \
-	emc/task/emccanon_table.cc \
 	emc/task/emctaskmain_gomc.cc \
 	emc/motion/usrmotintf.cc \
 	emc/motion/emcmotutil.c \

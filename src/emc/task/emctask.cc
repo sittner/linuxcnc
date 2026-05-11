@@ -100,9 +100,9 @@ static void user_defined_add_m_code(int num, double arg1, double arg2)
     char fmt[EMC_SYSTEM_CMD_LEN];
     EMC_SYSTEM_CMD system_cmd;
 
-    //we call FINISH() to flush any linked motions before the M1xx call, 
+    //we call finish() to flush any linked motions before the M1xx call, 
     //otherwise they would mix badly
-    FINISH();
+    emccanon_get_callbacks()->finish(NULL);
     rtapi_strxcpy(fmt, user_defined_fmt[user_defined_function_dirindex[num]]);
     rtapi_strxcat(fmt, " %f %f");
     snprintf(system_cmd.string, sizeof(system_cmd.string), fmt, num, arg1, arg2);
@@ -512,13 +512,13 @@ int emcTaskPlanClearWait()
 
 int emcTaskPlanSetOptionalStop(bool state)
 {
-    SET_OPTIONAL_PROGRAM_STOP(state);
+    emccanon_get_callbacks()->set_optional_program_stop(NULL, state ? 1 : 0);
     return 0;
 }
 
 int emcTaskPlanSetBlockDelete(bool state)
 {
-    SET_BLOCK_DELETE(state);
+    emccanon_get_callbacks()->set_block_delete(NULL, state ? 1 : 0);
     return 0;
 }
 
@@ -605,7 +605,7 @@ int emcTaskPlanExecute(const char *command)
 	print_interp_error(retval);
     }
     if(command != 0) {
-	FINISH();
+	emccanon_get_callbacks()->finish(NULL);
     }
 
     if (emc_debug & EMC_DEBUG_INTERP) {
@@ -622,7 +622,7 @@ int emcTaskPlanExecute(const char *command, int line_number)
 	print_interp_error(retval);
     }
     if(command != 0) { // this means MDI
-	FINISH();
+	emccanon_get_callbacks()->finish(NULL);
     }
 
     if (emc_debug & EMC_DEBUG_INTERP) {
@@ -733,10 +733,10 @@ int emcTaskUpdate(EMC_TASK_STAT * stat)
     }
 
     //update state of optional stop
-    stat->optional_stop_state = GET_OPTIONAL_PROGRAM_STOP();
+    stat->optional_stop_state = emccanon_get_callbacks()->get_optional_program_stop(NULL);
     
     //update state of block delete
-    stat->block_delete_state = GET_BLOCK_DELETE();
+    stat->block_delete_state = emccanon_get_callbacks()->get_block_delete(NULL);
     
     stat->heartbeat++;
 
