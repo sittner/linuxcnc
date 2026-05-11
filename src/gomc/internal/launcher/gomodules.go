@@ -19,29 +19,31 @@ type goModule struct {
 	name string
 }
 
-// loadGoModule looks up a compiled-in Go module by name in the gomc registry,
-// calls its factory, and appends the module to l.goModules.
+// loadGoModule looks up a compiled-in Go module by registryName in the gomc
+// registry, calls its factory with instanceName, and appends the module to
+// l.goModules. instanceName is the alias from the HAL file (or the module
+// name if no alias was given).
 //
 // The factory is expected to create and fully initialize the module (including
 // HAL component/pin creation) before returning.
-func (l *Launcher) loadGoModule(name string, args []string) error {
-	factory := gomc.GetFactory(name)
+func (l *Launcher) loadGoModule(registryName string, instanceName string, args []string) error {
+	factory := gomc.GetFactory(registryName)
 	if factory == nil {
-		return fmt.Errorf("Go module %q not found in registry", name)
+		return fmt.Errorf("Go module %q not found in registry", registryName)
 	}
 
-	l.logger.Info("loading Go module", "name", name)
+	l.logger.Info("loading Go module", "registry", registryName, "instance", instanceName)
 
-	mod, err := factory(l.ini, l.logger, name, args)
+	mod, err := factory(l.ini, l.logger, instanceName, args)
 	if err != nil {
-		return fmt.Errorf("load Go module %q: %w", name, err)
+		return fmt.Errorf("load Go module %q (instance %q): %w", registryName, instanceName, err)
 	}
 
 	l.goModules = append(l.goModules, &goModule{
 		mod:  mod,
-		name: name,
+		name: instanceName,
 	})
-	l.logger.Info("Go module loaded and initialized", "name", name)
+	l.logger.Info("Go module loaded and initialized", "registry", registryName, "instance", instanceName)
 
 	return nil
 }

@@ -356,7 +356,7 @@ func (l *Launcher) Run() (runErr error) {
 		if cModuleExists(cmodPath) {
 			return l.loadCPlugin(cmodPath, name, args)
 		}
-		return l.loadGoModule(path, args)
+		return l.loadGoModule(path, name, args)
 	}); err != nil {
 		if !l.opts.ContinueOnError {
 			return fmt.Errorf("plugin module loading failed: %w", err)
@@ -399,7 +399,7 @@ func (l *Launcher) Run() (runErr error) {
 
 		// Auto-load the NML↔GMI gateway — required for all displays to
 		// communicate with the task controller via the GMI API.
-		if err := l.loadGoModule("emcgateway", nil); err != nil {
+		if err := l.loadGoModule("emcgateway", "emcgateway", nil); err != nil {
 			return fmt.Errorf("loading emcgateway: %w", err)
 		}
 	}

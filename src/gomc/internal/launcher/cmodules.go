@@ -366,7 +366,7 @@ func (l *Launcher) runtimeLoadModule(module string, args []string) error {
 	path := resolveCModulePath(module)
 	if !cModuleExists(path) {
 		// Try as a Go module
-		return l.loadGoModule(module, args)
+		return l.loadGoModule(module, module, args)
 	}
 
 	// Use the module basename (without .so) as the instance name.
