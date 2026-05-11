@@ -582,6 +582,7 @@ typedef parameter_map::iterator parameter_map_iterator;
 // pycontext is kept as an empty struct to avoid modifying all
 // context_struct users. Python support has been removed.
 struct pycontext {
+    int last_status;  // last ext handler return status (for handler_returned)
 };
 
 struct context_struct {

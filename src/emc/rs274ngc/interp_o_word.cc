@@ -275,9 +275,17 @@ int Interp::execute_call(setup_pointer settings,
 	break;
 
     case CT_PYTHON_OWORD_SUB:
-	ERS("O<%s> call: Python O-word subs have been removed - "
-	    "register a cmod/gomod handler instead", current_frame->subName);
-	return INTERP_ERROR;
+	status = pycall(settings, current_frame, OWORD_MODULE,
+			current_frame->subName, PY_OWORDCALL);
+	if (status == INTERP_ERROR) {
+	    ERS("O<%s> call: handler not registered - "
+		"register a cmod/gomod handler", current_frame->subName);
+	    return INTERP_ERROR;
+	}
+	CHP(status);
+	// successful oword call returns directly (no NGC sub to run)
+	settings->call_level--;
+	return status;
 
     case CT_REMAP:
 	block_pointer cblock = &CONTROLLING_BLOCK(*settings);
@@ -574,9 +582,10 @@ int Interp::control_back_to( block_pointer block, // pointer to block
 int Interp::handler_returned( setup_pointer settings,  context_pointer active_frame, 
 			      const char *name, bool osub)
 {
-    // Python support removed — pycall() always returns INTERP_ERROR before
-    // we get here. This is kept as a no-op for compilation compatibility
-    // until Phase 3 adds ext dispatch.
+    // With ext dispatch, pycall() stores its mapped status in the frame.
+    // Return it so callers' switch(status = handler_returned(...)) works.
+    if (active_frame)
+        return active_frame->pystuff.last_status;
     return INTERP_OK;
 }
  

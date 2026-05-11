@@ -19,6 +19,10 @@
 #include "rs274ngc.hh"
 #include "interp_internal.hh"
 #include "interp_return.hh"
+#include "interp_ext.h"
+
+struct InterpExtRegistry;  // opaque, defined in interp_ext.cc
+void interp_ext_registry_destroy(InterpExtRegistry *reg);
 
 class Interp : public InterpBase {
 
@@ -728,6 +732,19 @@ int read_inputs(setup_pointer settings);
  };
 
  InterpReturn check_g74_g84_spindle(GCodes motion, CANON_DIRECTION dir);
+
+ // Extension handler registry (per-instance)
+ InterpExtRegistry *ext_registry;
+
+ int ext_register_oword(const char *name, interp_oword_fn fn, void *user);
+ int ext_register_remap_prolog(const char *name, interp_remap_prolog_fn fn, void *user);
+ int ext_register_remap_epilog(const char *name, interp_remap_epilog_fn fn, void *user);
+ bool ext_has_oword(const char *name);
+ bool ext_has_remap_handler(const char *name);
+ int ext_call_oword(const char *name, const double *args, int n_args,
+                    double *retval, int phase);
+ int ext_call_remap_prolog(const char *name, int phase);
+ int ext_call_remap_epilog(const char *name, int phase);
 };
 
 #endif

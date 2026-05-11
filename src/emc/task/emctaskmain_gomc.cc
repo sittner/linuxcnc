@@ -90,11 +90,15 @@ fpu_control_t __fpu_control = _FPU_IEEE & ~(_FPU_MASK_IM | _FPU_MASK_ZM | _FPU_M
 #include "gomc/pkg/cmodule/gomc_ini.h"
 #include "gomc/pkg/cmodule/gomc_hal.h"
 #include "gomc/pkg/cmodule/gomc_log.h"
+#include "interp_ext_api.h"
 
 // from taskintf_gomc.cc
 extern void taskintf_gomc_init(const gomc_ini_t *ini,
                               const gomc_hal_t *hal,
                               const gomc_log_t *log);
+
+// Set in New(), used by emctask_startup() to register the interp_ext API.
+static const gomc_api_t *gomc_api_ptr;
 
 static emcmot_config_t emcmotConfig;
 
@@ -3112,6 +3116,21 @@ static int emctask_startup()
 	return -1;
     }
 
+    // Register the interp_ext API so consumer cmods can register handlers.
+    // pinterp is valid after emcTaskPlanInit() succeeds.
+    if (gomc_api_ptr) {
+        static interp_ext_api_t interp_ext_table = {
+            .ctx = NULL,  // filled below
+            .register_oword = interp_ext_register_oword,
+            .register_remap_prolog = interp_ext_register_remap_prolog,
+            .register_remap_epilog = interp_ext_register_remap_epilog,
+        };
+        extern InterpBase *pinterp;
+        interp_ext_table.ctx = pinterp;
+        interp_ext_api_register(gomc_api_ptr, "milltask",
+                                &interp_ext_table);
+    }
+
     if (done ) {
 	emctask_shutdown();
 	exit(1);
@@ -3525,6 +3544,7 @@ extern "C" int New(const cmod_env_t *env, const char *name,
     m->env = env;
     m->thread_started = 0;
     the_module = m;
+    gomc_api_ptr = env->api;
 
     bindtextdomain("linuxcnc", EMC2_PO_DIR);
     setlocale(LC_MESSAGES,"");

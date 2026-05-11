@@ -98,11 +98,11 @@ without any task dependency.
 │  │ - remap prolog/epilog│                               │
 │  │ - remap body         │                               │
 │  │ - oword handler      │                               │
-│  │ - inline ext handler │                               │
 │  └──────────────────────┘                               │
 │                                                         │
-│  cmod/gomod register handlers via gomc_interp_ext_t     │
-│  and gomc_task_ext_t in cmod_env_t                      │
+│  Registration lives in librs274.so (per Interp instance)│
+│  milltask exposes GMI pass-through (gomc_interp_ext_t)  │
+│  so external cmods/gomods can register handlers         │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -330,7 +330,11 @@ line segments and call `straight_feed`). They do NOT go in the canon table.
 
 ### interp\_ext\_t — Interpreter Extension API
 
-Registered by cmod/gomod. The interpreter dispatches to these instead of Python.
+Registered by cmod/gomod via the milltask GMI pass-through. The interpreter
+dispatches to these instead of Python. The registration map and dispatch logic
+live in **librs274.so** (per Interp instance). milltask exposes the registration
+functions as a GMI interface (`gomc_interp_ext_t`) so external cmods/gomods
+can call them.
 
 ```c
 // Words parsed from a G-code block, passed to extension callbacks
@@ -358,11 +362,14 @@ typedef struct {
     // Error reporting
     void (*set_error)(void *interp, const char *msg);
 
-    // Canon access (same table the interpreter uses)
-    const interp_canon_t *canon;
+    // Canon access (same interface the interpreter uses)
+    const struct CanonInterface *canon;
 
     // Resume phase counter (0 = first call, 1+ = after INTERP_EXECUTE_FINISH)
     int phase;
+
+    // Per-registration user data (passed back from register call)
+    void *user;
 } interp_ext_ctx_t;
 
 // Return values (match existing INTERP_OK/ERROR/EXECUTE_FINISH)
@@ -370,7 +377,7 @@ typedef struct {
 #define INTERP_EXT_ERROR          -1
 #define INTERP_EXT_EXECUTE_FINISH  3  // pause, flush motion, call again
 
-// --- Per-type registration functions ---
+// --- Handler callback typedefs ---
 
 // O-word sub: O<name> call [#1] [#2] ...
 typedef int (*interp_oword_fn)(interp_ext_ctx_t *ctx,
@@ -390,14 +397,33 @@ typedef int (*interp_remap_body_fn)(interp_ext_ctx_t *ctx,
 typedef int (*interp_remap_epilog_fn)(interp_ext_ctx_t *ctx,
                                        double return_value,
                                        int value_returned);
-
-// Inline extension: (ext, name args) in G-code comments
-typedef int (*interp_inline_fn)(interp_ext_ctx_t *ctx,
-                                 const char *args);
 ```
 
-Registration is done through a GMI interface, not direct function calls.
-The cmod/gomod registers handlers by name:
+#### Registration — Two Layers
+
+**Layer 1: librs274.so (C++ methods + C-linkage wrappers)**
+
+The Interp class holds a per-instance `std::unordered_map<std::string, handler_entry>`
+and provides registration methods. C-linkage wrappers are exported for use by
+milltask (which links librs274.so):
+
+```c
+// C-linkage API exported from librs274.so
+// (InterpBase* is the opaque handle milltask already has)
+int interp_ext_register_oword(void *interp, const char *name,
+                               interp_oword_fn fn, void *user);
+int interp_ext_register_remap_prolog(void *interp, const char *name,
+                                      interp_remap_prolog_fn fn, void *user);
+int interp_ext_register_remap_body(void *interp, const char *name,
+                                    interp_remap_body_fn fn, void *user);
+int interp_ext_register_remap_epilog(void *interp, const char *name,
+                                      interp_remap_epilog_fn fn, void *user);
+```
+
+**Layer 2: milltask GMI pass-through (gomc_interp_ext_t)**
+
+milltask exposes these as a GMI interface. The `ctx` captures the Interp
+pointer; each function simply forwards to the librs274 C API:
 
 ```c
 typedef struct gomc_interp_ext {
@@ -411,14 +437,11 @@ typedef struct gomc_interp_ext {
                                 interp_remap_body_fn fn, void *user);
     int (*register_remap_epilog)(void *ctx, const char *name,
                                   interp_remap_epilog_fn fn, void *user);
-    int (*register_inline)(void *ctx, const char *name,
-                            interp_inline_fn fn, void *user);
 } gomc_interp_ext_t;
 ```
 
 The `void *user` is stored alongside the function pointer and passed back
-through `interp_ext_ctx_t` (or a separate field) so the cmod/gomod can
-maintain its own state.
+through `interp_ext_ctx_t.user` so the cmod/gomod can maintain its own state.
 
 ### task\_ext\_t — Task Extension API
 
@@ -604,21 +627,80 @@ Configs with `REMAP py=` fail with clear error (expected).
 
 ### Phase 3: Interpreter Extension API
 
-**Goal:** Implement `interp_ext_t` / `gomc_interp_ext_t` so cmod/gomod can
-register remap prologs/epilogs, oword handlers, and inline extensions.
+**Goal:** Implement extension handler registration so cmod/gomod can
+register remap prologs/epilogs and oword handlers.
 
-1. Define `interp_ext_t` header.
-2. Implement registration storage in Interp (a name→function-pointer map).
-3. Wire `pycall()` replacement to look up registered handlers.
-4. Implement the `interp_ext_ctx_t` population (params, tool queries, canon).
-5. Implement `phase` counter for yield/resume (INTERP\_EXECUTE\_FINISH).
-6. Add `gomc_interp_ext_t` to `cmod_env_t`.
-7. Implement Go-side registration wrappers.
+#### Architecture
+
+The registration API lives in **librs274.so** as part of the Interp class.
+This is natural because:
+- The Interp owns the dispatch (it replaces pycall)
+- The registry is per-instance (multi-instance ready)
+- Non-milltask consumers (gcode.so/SAI) get an empty registry — handlers
+  are never registered there, dispatch returns error, which is correct
+  (preview doesn't need prolog/epilog side effects)
+
+**milltask.so** (the only consumer that creates an Interp AND loads cmods)
+exposes a GMI pass-through interface (`gomc_interp_ext_t`) so that external
+cmods/gomods can register handlers. This is a thin wrapper: milltask captures
+the Interp pointer and forwards registration calls to librs274.
+
+```
+┌───────────────────────────────────────────────────────────┐
+│ librs274.so                                               │
+│                                                           │
+│  Interp class                                             │
+│    ├─ ext_registry (name → handler_entry map)             │
+│    ├─ register_oword(name, fn, user)                      │
+│    ├─ register_remap_prolog(name, fn, user)               │
+│    ├─ register_remap_body(name, fn, user)                 │
+│    ├─ register_remap_epilog(name, fn, user)               │
+│    └─ dispatch: pycall() stub → registry lookup → call    │
+└────────────────────────────────────────────▲──────────────┘
+                                             │ links
+┌────────────────────────────────────────────┴──────────────┐
+│ milltask.so (cmod in gomc-server)                          │
+│                                                           │
+│  Owns the Interp instance                                 │
+│  Exposes GMI pass-through: gomc_interp_ext_t              │
+│    register_oword(ctx, name, fn, user) →                  │
+│        interp->register_oword(name, fn, user)             │
+└────────────────────────────────────────────▲──────────────┘
+                                             │ GMI (cmod_env_t)
+┌────────────────────────────────────────────┴──────────────┐
+│ External cmod/gomod (e.g. stdglue.so)                      │
+│                                                           │
+│  Calls env->interp_ext->register_remap_prolog(ctx, ...)   │
+└───────────────────────────────────────────────────────────┘
+```
+
+#### Implementation Steps
+
+1. Define `interp_ext.h` header in `src/emc/rs274ngc/`:
+   - Handler callback typedefs (`interp_oword_fn`, `interp_remap_prolog_fn`, etc.)
+   - `interp_ext_ctx_t` struct (context passed to handlers at call time)
+   - Return value constants (`INTERP_EXT_OK`, `INTERP_EXT_ERROR`,
+     `INTERP_EXT_EXECUTE_FINISH`)
+2. Add registration methods to Interp class (C++ side, per-instance map).
+3. Add C-linkage wrapper functions exported from librs274.so for use by
+   milltask (takes `InterpBase*` + args, casts and calls C++ methods).
+4. Wire dispatch: replace the `pycall()` error stub with registry lookup.
+   If handler found → populate `interp_ext_ctx_t` → call handler.
+   If not found → return error "handler 'X' not registered".
+5. Implement `interp_ext_ctx_t` population:
+   - `get_param` / `set_param` → read/write interpreter parameters
+   - `find_tool_pocket` → tool table query
+   - `set_error` → set interpreter error message
+   - `canon` → pointer to the instance's canon interface
+   - `phase` counter for EXECUTE\_FINISH yield/resume
+6. Define `gomc_interp_ext.gmi` — the GMI interface file for the
+   pass-through registration API exposed by milltask.
+7. Implement the pass-through in milltask (thin: capture Interp*, forward).
 8. Port `stdglue.py` (prepare\_prolog, change\_prolog, change\_epilog) to a
-   reference `stdglue` cmod.
+   reference `stdglue` cmod that registers via the GMI API.
 
 **Validation:** Remap configs using stdglue functions work with the cmod.
-Custom remap prologs/epilogs can be written as gomods.
+Custom remap prologs/epilogs can be written as cmods/gomods.
 
 ### Phase 4: Task Extension API + M-code Registration
 
@@ -684,36 +766,57 @@ server-side G-code preview that runs concurrently with execution.
 
 ## Files Modified/Removed
 
-### Removed
+### Phase 2 — Done
+
+**Removed from librs274.so build** (files still exist for Phase 4 milltask):
+- `src/emc/rs274ngc/interpmodule.cc` — removed from LIBRS274SRCS
+- `src/emc/rs274ngc/canonmodule.cc` — removed from LIBRS274SRCS
+- `src/emc/rs274ngc/pyparamclass.cc` — removed from LIBRS274SRCS
+- `src/emc/rs274ngc/pyemctypes.cc` — removed from LIBRS274SRCS
+- `src/emc/rs274ngc/pyinterp1.cc` — removed from LIBRS274SRCS
+- `src/emc/rs274ngc/pyblock.cc` — removed from LIBRS274SRCS
+- `src/emc/rs274ngc/pyarrays.cc` — removed from LIBRS274SRCS
+
+**Rewritten (stubs):**
+- `src/emc/rs274ngc/interp_python.cc` — error stubs for pycall/py\_execute/etc.
+
+**Modified:**
+- `src/emc/rs274ngc/interp_internal.hh` — removed PYUSABLE, python\_plugin extern, pythis, hollowed pycontext
+- `src/emc/rs274ngc/rs274ngc_pre.cc` — removed Python init/exit/configure
+- `src/emc/rs274ngc/interp_o_word.cc` — CT\_PYTHON\_OWORD\_SUB → error, removed pystuff access
+- `src/emc/rs274ngc/interp_remap.cc` — python= → error, prolog/epilog accepted, removed pydict
+- `src/emc/rs274ngc/interp_namedparams.cc` — PA\_PYTHON → error
+- `src/emc/rs274ngc/interp_setup.cc` — removed pythis init/destructor
+- `src/emc/rs274ngc/gcodemodule.cc` — removed PyInit\_interpreter/emccanon from builtin\_modules
+- `src/emc/rs274ngc/Submakefile` — removed py\*.cc, Boost/Python link deps
+- `src/emc/task/taskclass.cc` — removed PyInit\_interpreter/emccanon from builtin\_modules
+- `src/emc/task/emctask.cc` — removed python\_plugin.hh include
+
+### Phase 3 — Planned
+
+**New:**
+- `src/emc/rs274ngc/interp_ext.h` — extension API types and handler typedefs
+- `src/emc/rs274ngc/interp_ext.cc` — registration map + dispatch (replaces pycall stubs)
+- `src/gmi/interp_ext.gmi` — GMI definition for gomc\_interp\_ext\_t
+- `cmod/stdglue/` — reference remap handler cmod
+
+**Modified:**
+- `src/emc/rs274ngc/interp_python.cc` → renamed/replaced by `interp_ext.cc`
+- `src/emc/rs274ngc/interp_o_word.cc` — dispatch via ext registry
+- `src/emc/task/emctaskmain_gomc.cc` — expose gomc\_interp\_ext\_t pass-through
+- `src/emc/rs274ngc/Submakefile` — replace interp\_python.cc with interp\_ext.cc
+
+### Phase 4+ — Planned
+
+**To remove (when milltask Python is stripped):**
 - `src/emc/pythonplugin/python_plugin.cc`
 - `src/emc/pythonplugin/python_plugin.hh`
-- `src/emc/rs274ngc/interpmodule.cc`
-- `src/emc/rs274ngc/canonmodule.cc`
 - `src/emc/task/taskmodule.cc`
-- `src/emc/rs274ngc/interp_python.cc` (rewritten as `interp_ext.cc`)
 
-### New
-- `src/emc/nml_intf/interp_canon.h` — canon callback table struct
-- `src/emc/task/emccanon_table.cc` — table implementation wrapping existing canon
-- `src/emc/rs274ngc/interp_ext.h` — extension API types
-- `src/emc/rs274ngc/interp_ext.cc` — extension dispatch (replaces interp\_python.cc)
+**New:**
 - `src/emc/task/task_ext.h` — task extension API types
 - `src/emc/task/task_ext.cc` — task extension dispatch
-- `src/gomc/pkg/cmodule/gomc_interp_ext.h` — cmod header for interp extensions
-- `src/gomc/pkg/cmodule/gomc_task_ext.h` — cmod header for task extensions
-- `cmod/stdglue.so` — reference remap handlers (port of stdglue.py)
-
-### Modified (major)
-- `src/emc/rs274ngc/rs274ngc_pre.cc` — remove Python init, add canon table
-- `src/emc/rs274ngc/rs274ngc_interp.hh` — add `interp_canon_t*`, `interp_ext_t*` members
-- `src/emc/rs274ngc/interp_convert.cc` — replace canon calls, move NURBS statics
-- `src/emc/rs274ngc/interp_o_word.cc` — replace pycall with ext dispatch
-- `src/emc/task/emccanon.cc` — wrap in table factory
-- `src/emc/task/emctask.cc` — remove user\_defined\_function file scanning
-- `src/emc/task/emctaskmain_gomc.cc` — remove EMC\_SYSTEM\_CMD, Python refs
-- `src/emc/task/taskclass.cc` — replace TaskWrap with task\_ext dispatch
-- `src/emc/sai/saicanon.cc` — implement its own interp\_canon\_t
-- `src/emc/rs274ngc/gcodemodule.cc` — implement its own interp\_canon\_t
+- `src/gmi/task_ext.gmi` — GMI definition for gomc\_task\_ext\_t
 
 ## Resolved Questions
 

@@ -9,6 +9,7 @@ LIBRS274SRCS := $(addprefix emc/rs274ngc/, \
 	interp_queue.cc \
 	interp_cycles.cc \
 	interp_execute.cc \
+	interp_ext.cc \
 	interp_find.cc \
 	interp_internal.cc \
 	interp_inverse.cc \

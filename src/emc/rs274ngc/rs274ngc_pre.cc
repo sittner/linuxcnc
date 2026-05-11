@@ -117,7 +117,8 @@ static char savedError[LINELEN+1];
 
 Interp::Interp()
     : log_file(stderr),
-    _setup{}
+    _setup{},
+    ext_registry(nullptr)
 {
     _setup.init_once = 1;  
     init_named_parameters();
@@ -129,6 +130,7 @@ InterpBase *makeInterp()
 }
 
 Interp::~Interp() {
+    interp_ext_registry_destroy(ext_registry);
     if(log_file) {
         if(log_file != stderr)
             fclose(log_file);
