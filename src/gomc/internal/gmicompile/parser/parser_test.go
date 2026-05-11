@@ -250,18 +250,21 @@ func forward(joints: []f64, world: Pose byref, flags: u64 byref) -> i32
 	}
 }
 
-func TestParsePtrIsUnknownType(t *testing.T) {
+func TestParsePtrIsPrimitive(t *testing.T) {
 	src := `@api test
 @version 1
 
-func bad(handle: ptr) -> i32
+func ok(handle: ptr) -> i32
 `
-	api, _ := Parse("test.gmi", src)
+	api, errors := Parse("test.gmi", src)
+	if len(errors) > 0 {
+		t.Fatalf("Parse errors: %v", errors)
+	}
 
-	// "ptr" is not a primitive — it should be parsed as TypeNamed (unknown type)
+	// "ptr" is a primitive type — maps to void* in C
 	p := api.Funcs[0].Params[0]
-	if p.Type.Kind != ast.TypeNamed {
-		t.Errorf("ptr should be TypeNamed (unknown), got Kind=%v", p.Type.Kind)
+	if p.Type.Kind != ast.TypePrimitive {
+		t.Errorf("ptr should be TypePrimitive, got Kind=%v", p.Type.Kind)
 	}
 	if p.Type.Name != "ptr" {
 		t.Errorf("Name = %q, want %q", p.Type.Name, "ptr")
@@ -321,5 +324,95 @@ func forward(joints: [MAX_JOINTS]f64, world: Pose byref, fflags: u64, iflags: u6
 	// iflags: u64 byref
 	if !fn.Params[3].ByRef {
 		t.Error("Params[3].ByRef = false, want true")
+	}
+}
+
+func TestParseCallback(t *testing.T) {
+	src := `@api mcode_handler
+@version 1
+
+type McodeCall {
+    abort_fd: i32
+    mcode: i32
+    p_number: f64
+    q_number: f64
+}
+
+callback handler(call: McodeCall, user_data: ptr) -> i32
+
+func register_handler(mcode: i32, fn: handler, user_data: ptr) -> i32
+`
+	api, errors := Parse("test.gmi", src)
+	if len(errors) > 0 {
+		t.Fatalf("Parse errors: %v", errors)
+	}
+
+	// Callback declaration
+	if len(api.Callbacks) != 1 {
+		t.Fatalf("len(Callbacks) = %d, want 1", len(api.Callbacks))
+	}
+	cb := api.Callbacks[0]
+	if cb.Name != "handler" {
+		t.Errorf("Callback.Name = %q, want %q", cb.Name, "handler")
+	}
+	if len(cb.Params) != 2 {
+		t.Fatalf("len(Callback.Params) = %d, want 2", len(cb.Params))
+	}
+	// call: McodeCall — should be TypeNamed (it's a struct)
+	if cb.Params[0].Type.Kind != ast.TypeNamed {
+		t.Errorf("cb.Params[0].Type.Kind = %v, want TypeNamed", cb.Params[0].Type.Kind)
+	}
+	// user_data: ptr — should be TypePrimitive
+	if cb.Params[1].Type.Kind != ast.TypePrimitive || cb.Params[1].Type.Name != "ptr" {
+		t.Errorf("cb.Params[1].Type = %v, want TypePrimitive ptr", cb.Params[1].Type)
+	}
+	// Return type
+	if cb.Return == nil || cb.Return.Name != "i32" {
+		t.Errorf("cb.Return = %v, want i32", cb.Return)
+	}
+
+	// Function using callback type
+	fn := api.Funcs[0]
+	if fn.Params[1].Type.Kind != ast.TypeCallback {
+		t.Errorf("fn.Params[1].Type.Kind = %v, want TypeCallback", fn.Params[1].Type.Kind)
+	}
+	if fn.Params[1].Type.Name != "handler" {
+		t.Errorf("fn.Params[1].Type.Name = %q, want %q", fn.Params[1].Type.Name, "handler")
+	}
+}
+
+func TestParseImport(t *testing.T) {
+	src := `@api interp_ext
+@version 1
+@rest_export false
+@import interp_ctx
+
+callback oword_fn(ctx: interp_ctx ptr, name: string) -> i32
+
+func register_oword(name: string, fn: oword_fn, user: ptr) -> i32
+`
+	api, errors := Parse("test.gmi", src)
+	if len(errors) > 0 {
+		t.Fatalf("Parse errors: %v", errors)
+	}
+
+	// Import
+	if len(api.Imports) != 1 {
+		t.Fatalf("len(Imports) = %d, want 1", len(api.Imports))
+	}
+	if api.Imports[0].Name != "interp_ctx" {
+		t.Errorf("Import.Name = %q, want %q", api.Imports[0].Name, "interp_ctx")
+	}
+
+	// Callback using imported type
+	cb := api.Callbacks[0]
+	if cb.Params[0].Type.Kind != ast.TypeImport {
+		t.Errorf("cb.Params[0].Type.Kind = %v, want TypeImport", cb.Params[0].Type.Kind)
+	}
+	if cb.Params[0].Type.Name != "interp_ctx" {
+		t.Errorf("cb.Params[0].Type.Name = %q, want %q", cb.Params[0].Type.Name, "interp_ctx")
+	}
+	if !cb.Params[0].IsPtr {
+		t.Error("cb.Params[0].IsPtr = false, want true")
 	}
 }

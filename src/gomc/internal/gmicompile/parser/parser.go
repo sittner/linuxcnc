@@ -9,19 +9,23 @@ import (
 
 // Parser parses GMI source into an AST.
 type Parser struct {
-	scanner *Scanner
-	cur     Token
-	file    string
-	errors  []string
-	consts  map[string]int // named constants for array size resolution
+	scanner   *Scanner
+	cur       Token
+	file      string
+	errors    []string
+	consts    map[string]int  // named constants for array size resolution
+	callbacks map[string]bool // declared callback names for type resolution
+	imports   map[string]bool // imported API names for type resolution
 }
 
 // Parse parses a GMI file and returns the AST and any errors.
 func Parse(filename, src string) (*ast.API, []string) {
 	p := &Parser{
-		scanner: NewScanner(src),
-		file:    filename,
-		consts:  make(map[string]int),
+		scanner:   NewScanner(src),
+		file:      filename,
+		consts:    make(map[string]int),
+		callbacks: make(map[string]bool),
+		imports:   make(map[string]bool),
 	}
 	p.advance()
 	api := p.parseAPI()
@@ -83,6 +87,12 @@ func (p *Parser) parseAPI() *ast.API {
 				pendingAnns = nil
 			}
 			api.Types = append(api.Types, p.parseType())
+		case p.cur.Type == CALLBACK:
+			if len(pendingAnns) > 0 {
+				p.errorf("annotations before callback are not supported")
+				pendingAnns = nil
+			}
+			api.Callbacks = append(api.Callbacks, p.parseCallback())
 		case p.cur.Type == FUNC:
 			fn := p.parseFunc(pendingAnns)
 			pendingAnns = nil
@@ -110,7 +120,7 @@ type annotation struct {
 // isAPIDirective returns true for top-level API directives.
 func isAPIDirective(name string) bool {
 	switch name {
-	case "api", "version", "prefix", "rest_export":
+	case "api", "version", "prefix", "rest_export", "import":
 		return true
 	}
 	return false
@@ -167,6 +177,9 @@ func (p *Parser) applyAPIDirective(api *ast.API, ann annotation) {
 		api.Prefix = ann.value
 	case "rest_export":
 		api.RestExport = ann.value == "true"
+	case "import":
+		p.imports[ann.value] = true
+		api.Imports = append(api.Imports, ast.Import{Name: ann.value, Pos: ann.pos})
 	}
 }
 
@@ -211,6 +224,49 @@ func (p *Parser) parseType() ast.Type {
 	}
 	p.expect(RBRACE)
 	return typ
+}
+
+func (p *Parser) parseCallback() ast.Callback {
+	pos := p.pos()
+	p.advance() // skip "callback"
+	name := p.cur.Text
+	p.advance()
+
+	cb := ast.Callback{Name: name, Pos: pos}
+	p.callbacks[name] = true
+
+	// Parameters
+	p.expect(LPAREN)
+	for p.cur.Type != RPAREN && p.cur.Type != EOF {
+		ppos := p.pos()
+		pname := p.cur.Text
+		p.advance()
+		p.expect(COLON)
+		ptype := p.parseTypeRef()
+		byref := false
+		isPtr := false
+		if p.cur.Type == IDENT && p.cur.Text == "byref" {
+			byref = true
+			p.advance()
+		} else if p.cur.Type == IDENT && p.cur.Text == "ptr" {
+			isPtr = true
+			p.advance()
+		}
+		cb.Params = append(cb.Params, ast.Param{Name: pname, Type: ptype, ByRef: byref, IsPtr: isPtr, Pos: ppos})
+		if p.cur.Type == COMMA {
+			p.advance()
+		}
+	}
+	p.expect(RPAREN)
+
+	// Return type
+	if p.cur.Type == ARROW {
+		p.advance()
+		ret := p.parseTypeRef()
+		cb.Return = &ret
+	}
+
+	return cb
 }
 
 func (p *Parser) parseFunc(anns []annotation) ast.Func {
@@ -320,6 +376,10 @@ func (p *Parser) parseTypeRef() ast.TypeRef {
 	kind := ast.TypeNamed
 	if ast.Primitives[name] {
 		kind = ast.TypePrimitive
+	} else if p.callbacks[name] {
+		kind = ast.TypeCallback
+	} else if p.imports[name] {
+		kind = ast.TypeImport
 	}
 	return ast.TypeRef{Kind: kind, Name: name, Nullable: nullable}
 }

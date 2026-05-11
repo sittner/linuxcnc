@@ -70,7 +70,7 @@ maps = {
                 linuxcnc.EXEC_WAITING_FOR_IO: 'io',
                 linuxcnc.EXEC_WAITING_FOR_MOTION_AND_IO: 'motion and io',
                 linuxcnc.EXEC_WAITING_FOR_DELAY: 'delay',
-                linuxcnc.EXEC_WAITING_FOR_SYSTEM_CMD: 'system command',
+                linuxcnc.EXEC_WAITING_FOR_MCODE_HANDLER: 'M-code handler',
                 linuxcnc.EXEC_WAITING_FOR_SPINDLE_ORIENTED: 'spindle orient'},
 'motion_mode':{linuxcnc.TRAJ_MODE_FREE: 'free', linuxcnc.TRAJ_MODE_COORD: 'coord',
                 linuxcnc.TRAJ_MODE_TELEOP: 'teleop'},

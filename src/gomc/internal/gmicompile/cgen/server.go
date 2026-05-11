@@ -27,6 +27,7 @@ func (g *serverGen) generate() error {
 	g.emitConstants()
 	g.emitEnums()
 	g.emitTypes()
+	g.emitCallbackDecls()
 	g.emitCallbackTypedefs()
 	g.emitCallbacksStruct()
 	g.emitRegistration()
@@ -57,6 +58,12 @@ func (g *serverGen) emitIncludes() {
 	g.printf("#include <stdint.h>\n")
 	g.printf("#include <stdbool.h>\n")
 	g.printf("#include <stddef.h>\n")
+
+	// Emit includes for imported APIs.
+	for _, imp := range g.api.Imports {
+		g.printf("#include \"%s_api.h\"\n", imp.Name)
+	}
+
 	g.printf("\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n")
 }
 
@@ -139,6 +146,10 @@ func (g *serverGen) toCType(t ast.TypeRef) string {
 		return primitiveToCType(t.Name)
 	case ast.TypeNamed:
 		return fmt.Sprintf("%s_%s_t", g.api.Name, toSnakeCase(t.Name))
+	case ast.TypeCallback:
+		return g.callbackCType(t.Name)
+	case ast.TypeImport:
+		return fmt.Sprintf("%s_callbacks_t", t.Name)
 	case ast.TypeSlice:
 		// Slice becomes pointer + length
 		elemType := g.toCType(*t.Elem)
@@ -183,8 +194,52 @@ func primitiveToCType(name string) string {
 		return "double"
 	case "string":
 		return "const char *"
+	case "ptr":
+		return "void *"
 	}
 	return "int"
+}
+
+// isCallback returns true if name matches a declared callback type.
+func (g *serverGen) isCallback(name string) bool {
+	for _, cb := range g.api.Callbacks {
+		if cb.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// callbackCType returns the C typedef name for a callback.
+func (g *serverGen) callbackCType(name string) string {
+	return fmt.Sprintf("%s_%s_cb", g.api.Name, toSnakeCase(name))
+}
+
+func (g *serverGen) emitCallbackDecls() {
+	if len(g.api.Callbacks) == 0 {
+		return
+	}
+	g.printf("// --- Callback Types ---\n\n")
+	for _, cb := range g.api.Callbacks {
+		retCType := "void"
+		if cb.Return != nil {
+			retCType = g.toCType(*cb.Return)
+		}
+		cbName := g.callbackCType(cb.Name)
+		g.printf("typedef %s (*%s)(\n", retCType, cbName)
+		var params []string
+		for _, p := range cb.Params {
+			params = append(params, g.paramDecl(p))
+		}
+		for i, p := range params {
+			comma := ","
+			if i == len(params)-1 {
+				comma = ""
+			}
+			g.printf("    %s%s\n", p, comma)
+		}
+		g.printf(");\n\n")
+	}
 }
 
 func (g *serverGen) emitCallbackTypedefs() {
@@ -263,10 +318,24 @@ func (g *serverGen) paramDecl(p ast.Param) string {
 	switch p.Type.Kind {
 	case ast.TypePrimitive:
 		cType := primitiveToCType(p.Type.Name)
+		if p.Type.Name == "ptr" {
+			// ptr is void* — no pointer-to-pointer with byref, just void*
+			return fmt.Sprintf("void *%s", name)
+		}
 		if p.ByRef {
 			return fmt.Sprintf("%s *%s", cType, name)
 		}
 		return fmt.Sprintf("%s %s", cType, name)
+
+	case ast.TypeCallback:
+		return fmt.Sprintf("%s %s", g.callbackCType(p.Type.Name), name)
+
+	case ast.TypeImport:
+		cType := g.toCType(p.Type)
+		if p.IsPtr || p.ByRef {
+			return fmt.Sprintf("%s *%s", cType, name)
+		}
+		return fmt.Sprintf("const %s *%s", cType, name)
 
 	case ast.TypeNamed:
 		cType := g.toCType(p.Type)

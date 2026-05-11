@@ -52,10 +52,7 @@
 #include <stdlib.h>		// exit()
 #include <signal.h>		// signal(), SIGINT
 #include <float.h>		// DBL_MAX
-#include <sys/types.h>		// pid_t
-#include <unistd.h>		// fork()
-#include <sys/wait.h>		// waitpid(), WNOHANG, WIFEXITED
-#include <ctype.h>		// isspace()
+#include <unistd.h>		// close(), read(), write()
 #include <libintl.h>
 #include <locale.h>
 #include "usrmotintf.h"
@@ -91,6 +88,12 @@ fpu_control_t __fpu_control = _FPU_IEEE & ~(_FPU_MASK_IM | _FPU_MASK_ZM | _FPU_M
 #include "gomc/pkg/cmodule/gomc_hal.h"
 #include "gomc/pkg/cmodule/gomc_log.h"
 #include "interp_ext_api.h"
+#include "interp_ext.h"
+#include "mcode_handler_api.h"
+
+#include <pthread.h>
+#include <sys/eventfd.h>
+#include <poll.h>
 
 // from taskintf_gomc.cc
 extern void taskintf_gomc_init(const gomc_ini_t *ini,
@@ -99,6 +102,188 @@ extern void taskintf_gomc_init(const gomc_ini_t *ini,
 
 // Set in New(), used by emctask_startup() to register the interp_ext API.
 static const gomc_api_t *gomc_api_ptr;
+
+// --- M-code handler registry and worker thread ---
+
+#define MCODE_HANDLER_NUM 100  // M100-M199
+
+struct mcode_handler_entry {
+    mcode_handler_handler_cb fn;
+    void *user_data;
+};
+
+static struct mcode_handler_entry mcode_handlers[MCODE_HANDLER_NUM];
+
+// Worker thread state
+static pthread_t mcode_worker_thread;
+static pthread_mutex_t mcode_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t mcode_cond = PTHREAD_COND_INITIALIZER;
+static int mcode_abort_fd = -1;     // eventfd, written to on abort
+static volatile int mcode_worker_running = 0;
+
+// Current job (protected by mcode_mutex)
+static volatile int mcode_job_pending = 0;
+static volatile int mcode_job_done = 0;
+static volatile int mcode_job_result = 0;
+static mcode_handler_mcode_call_t mcode_current_call;
+
+static void *mcode_worker_func(void *arg)
+{
+    (void)arg;
+    pthread_mutex_lock(&mcode_mutex);
+    while (mcode_worker_running) {
+        while (!mcode_job_pending && mcode_worker_running)
+            pthread_cond_wait(&mcode_cond, &mcode_mutex);
+
+        if (!mcode_worker_running)
+            break;
+
+        // Copy job data under lock
+        mcode_handler_mcode_call_t call = mcode_current_call;
+        int idx = call.mcode - 100;
+        mcode_handler_handler_cb fn = mcode_handlers[idx].fn;
+        void *ud = mcode_handlers[idx].user_data;
+        mcode_job_pending = 0;
+        pthread_mutex_unlock(&mcode_mutex);
+
+        // Execute handler (blocking, may take arbitrarily long)
+        int result = fn(&call, ud);
+
+        pthread_mutex_lock(&mcode_mutex);
+        mcode_job_result = result;
+        mcode_job_done = 1;
+    }
+    pthread_mutex_unlock(&mcode_mutex);
+    return NULL;
+}
+
+static int mcode_worker_start(void)
+{
+    mcode_abort_fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+    if (mcode_abort_fd < 0) {
+        rcs_print_error("mcode_handler: can't create eventfd: %s\n",
+                        strerror(errno));
+        return -1;
+    }
+    mcode_worker_running = 1;
+    if (pthread_create(&mcode_worker_thread, NULL, mcode_worker_func, NULL) != 0) {
+        rcs_print_error("mcode_handler: can't create worker thread: %s\n",
+                        strerror(errno));
+        close(mcode_abort_fd);
+        mcode_abort_fd = -1;
+        mcode_worker_running = 0;
+        return -1;
+    }
+    return 0;
+}
+
+static void mcode_worker_stop(void)
+{
+    if (!mcode_worker_running)
+        return;
+
+    pthread_mutex_lock(&mcode_mutex);
+    mcode_worker_running = 0;
+    pthread_cond_signal(&mcode_cond);
+    pthread_mutex_unlock(&mcode_mutex);
+
+    pthread_join(mcode_worker_thread, NULL);
+
+    if (mcode_abort_fd >= 0) {
+        close(mcode_abort_fd);
+        mcode_abort_fd = -1;
+    }
+}
+
+// Signal abort to the running handler
+static void mcode_signal_abort(void)
+{
+    if (mcode_abort_fd >= 0) {
+        uint64_t val = 1;
+        if (write(mcode_abort_fd, &val, sizeof(val)) < 0) { /* ignore */ }
+    }
+}
+
+// Reset abort_fd after handler completes or is aborted
+static void mcode_reset_abort(void)
+{
+    if (mcode_abort_fd >= 0) {
+        uint64_t val;
+        if (read(mcode_abort_fd, &val, sizeof(val)) < 0) { /* ignore */ }
+    }
+}
+
+// Submit an M-code to the worker thread. Returns 0 if submitted.
+static int mcode_submit(int mcode, double p, double q)
+{
+    pthread_mutex_lock(&mcode_mutex);
+    mcode_reset_abort();
+    mcode_current_call.abort_fd = mcode_abort_fd;
+    mcode_current_call.mcode = mcode;
+    mcode_current_call.p_number = p;
+    mcode_current_call.q_number = q;
+    mcode_job_done = 0;
+    mcode_job_result = 0;
+    mcode_job_pending = 1;
+    pthread_cond_signal(&mcode_cond);
+    pthread_mutex_unlock(&mcode_mutex);
+    return 0;
+}
+
+// Check if the handler has completed. Returns 1 if done, result in *result_out.
+static int mcode_check_done(int *result_out)
+{
+    pthread_mutex_lock(&mcode_mutex);
+    int done = mcode_job_done;
+    if (done) {
+        *result_out = mcode_job_result;
+        mcode_job_done = 0;
+    }
+    pthread_mutex_unlock(&mcode_mutex);
+    return done;
+}
+
+// Check if the worker thread is currently processing a handler.
+static int mcode_worker_busy(void)
+{
+    pthread_mutex_lock(&mcode_mutex);
+    int busy = mcode_job_pending && !mcode_job_done;
+    pthread_mutex_unlock(&mcode_mutex);
+    return busy;
+}
+
+// API callback: register a handler for a specific M-code
+static int mcode_api_register_handler(void *ctx, int mcode,
+                                      mcode_handler_handler_cb fn, void *user_data)
+{
+    (void)ctx;
+    if (mcode < 100 || mcode > 199) {
+        rcs_print_error("mcode_handler: invalid mcode %d (must be 100-199)\n", mcode);
+        return -1;
+    }
+    int idx = mcode - 100;
+    if (mcode_handlers[idx].fn != NULL) {
+        rcs_print_error("mcode_handler: M%d already has a registered handler\n", mcode);
+        return -1;
+    }
+    mcode_handlers[idx].fn = fn;
+    mcode_handlers[idx].user_data = user_data;
+
+    // Register the interpreter callback so it accepts this M-code.
+    USER_DEFINED_FUNCTION_ADD(user_defined_add_m_code, idx);
+
+    if (emc_debug & EMC_DEBUG_CONFIG) {
+        rcs_print("mcode_handler: registered handler for M%d\n", mcode);
+    }
+    return 0;
+}
+
+// Check if a handler is registered for a given M-code (100-199)
+static int mcode_has_handler(int mcode)
+{
+    if (mcode < 100 || mcode > 199) return 0;
+    return mcode_handlers[mcode - 100].fn != NULL;
+}
 
 static emcmot_config_t emcmotConfig;
 
@@ -285,90 +470,21 @@ int emcOperatorDisplay(int id, const char *fmt, ...)
     return emcErrorBuffer->write(display_msg);
 }
 
-/*
-  handling of EMC_SYSTEM_CMD
- */
-
-/* convert string to arg/argv set */
-
-static int argvize(const char *src, char *dst, char *argv[], int len)
+// Dispatch an M-code command to the registered handler.
+// Returns 0 on success, -1 if no handler is registered.
+static int emcMcodeDispatch(const EMC_MCODE_CMD *cmd)
 {
-    char *bufptr;
-    int argvix;
-    char inquote;
-    char looking;
-
-    snprintf(dst, len, "%s", src);
-    bufptr = dst;
-    inquote = 0;
-    argvix = 0;
-    looking = 1;
-
-    while (0 != *bufptr) {
-	if (*bufptr == '"') {
-	    *bufptr = 0;
-	    if (inquote) {
-		inquote = 0;
-		looking = 1;
-	    } else {
-		inquote = 1;
-	    }
-	} else if (isspace(*bufptr) && !inquote) {
-	    looking = 1;
-	    *bufptr = 0;
-	} else if (looking) {
-	    looking = 0;
-	    argv[argvix] = bufptr;
-	    argvix++;
-	}
-	bufptr++;
+    int mcode = cmd->mcode;
+    if (mcode < 100 || mcode > 199 || !mcode_has_handler(mcode)) {
+        rcs_print_error("emcMcodeDispatch: no handler registered for M%d\n", mcode);
+        return -1;
     }
-
-    argv[argvix] = 0;		// null-terminate the argv list
-
-    return argvix;
-}
-
-static pid_t emcSystemCmdPid = 0;
-
-int emcSystemCmd(char *s)
-{
-    char buffer[EMC_SYSTEM_CMD_LEN];
-    char *argv[EMC_SYSTEM_CMD_LEN / 2 + 1];
-
-    if (0 != emcSystemCmdPid) {
-	// something's already running, and we can only handle one
-	if (emc_debug & EMC_DEBUG_TASK_ISSUE) {
-	    rcs_print
-		("emcSystemCmd: abandoning process %d, running ``%s''\n",
-		 emcSystemCmdPid, s);
-	}
-    }
-
     emcStatus->task.user_defined_result = 0.0;
-    emcSystemCmdPid = fork();
-
-    if (-1 == emcSystemCmdPid) {
-	// we're still the parent, with no child created
-	if (emc_debug & EMC_DEBUG_TASK_ISSUE) {
-	    rcs_print("system command ``%s'' can't be executed\n", s);
-	}
-	return -1;
+    if (emc_debug & EMC_DEBUG_TASK_ISSUE) {
+        rcs_print("emcMcodeDispatch: M%d P=%.4f Q=%.4f\n",
+                   mcode, cmd->p_number, cmd->q_number);
     }
-
-    if (0 == emcSystemCmdPid) {
-	// we're the child
-	// convert string to argc/argv
-	argvize(s, buffer, argv, EMC_SYSTEM_CMD_LEN);
-	execvp(argv[0], argv);
-	// if we get here, we didn't exec
-	if (emc_debug & EMC_DEBUG_TASK_ISSUE) {
-	    rcs_print("emcSystemCmd: can't execute ``%s''\n", s);
-	}
-	exit(-1);
-    }
-    // else we're the parent
-    return 0;
+    return mcode_submit(mcode, cmd->p_number, cmd->q_number);
 }
 
 // shorthand typecasting ptrs
@@ -1518,7 +1634,7 @@ static int emcTaskCheckPreconditions(NMLmsg * cmd)
     case EMC_OPERATOR_ERROR_TYPE:
     case EMC_OPERATOR_TEXT_TYPE:
     case EMC_OPERATOR_DISPLAY_TYPE:
-    case EMC_SYSTEM_CMD_TYPE:
+    case EMC_MCODE_CMD_TYPE:
     case EMC_TRAJ_PROBE_TYPE:	// prevent blending of this
     case EMC_TRAJ_RIGID_TAP_TYPE: //and this
     case EMC_TRAJ_CLEAR_PROBE_TRIPPED_FLAG_TYPE:	// and this
@@ -1677,8 +1793,8 @@ static int emcTaskIssueCommand(NMLmsg * cmd)
 				    display);
 	break;
 
-    case EMC_SYSTEM_CMD_TYPE:
-	retval = emcSystemCmd(((EMC_SYSTEM_CMD *) cmd)->string);
+    case EMC_MCODE_CMD_TYPE:
+	retval = emcMcodeDispatch((EMC_MCODE_CMD *) cmd);
 	break;
 
 	// joint commands
@@ -2437,8 +2553,8 @@ static int emcTaskCheckPostconditions(NMLmsg * cmd)
 	return EMC_TASK_EXEC_DONE;
 	break;
 
-    case EMC_SYSTEM_CMD_TYPE:
-	return EMC_TASK_EXEC_WAITING_FOR_SYSTEM_CMD;
+    case EMC_MCODE_CMD_TYPE:
+	return EMC_TASK_EXEC_WAITING_FOR_MCODE_HANDLER;
 	break;
 
     case EMC_TRAJ_LINEAR_MOVE_TYPE:
@@ -2541,33 +2657,30 @@ if (stepping) {                                                            \
 static int emcTaskExecute(void)
 {
     int retval = 0;
-    int status;			// status of child from EMC_SYSTEM_CMD
-    pid_t pid;			// pid returned from waitpid()
     double end;
 
 #define TERM_RETRY_TIME 5.0
 #define TERM_RETRY_INTERVAL 0.02
 
-    // first check for an abandoned system command and abort it
-    if (emcSystemCmdPid != 0 &&
+    // first check for an abandoned M-code handler and abort it
+    if (mcode_worker_busy() &&
 	emcStatus->task.execState !=
-	EMC_TASK_EXEC_WAITING_FOR_SYSTEM_CMD) {
+	EMC_TASK_EXEC_WAITING_FOR_MCODE_HANDLER) {
 	if (emc_debug & EMC_DEBUG_TASK_ISSUE) {
-	    rcs_print("emcSystemCmd: abandoning process %d\n",
-		      emcSystemCmdPid);
+	    rcs_print("mcode_handler: aborting active handler\n");
 	}
-	kill(emcSystemCmdPid, SIGINT);
+	mcode_signal_abort();
 	end = TERM_RETRY_TIME;
-	while (waitpid(emcSystemCmdPid, &status, WNOHANG) == 0) {
+	int result;
+	while (!mcode_check_done(&result)) {
 	    esleep(TERM_RETRY_INTERVAL);
 	    end -= TERM_RETRY_INTERVAL;
 	    if (end <= 0.0) {
-		kill(emcSystemCmdPid, SIGKILL);
-		waitpid(emcSystemCmdPid, &status, 0);
+		rcs_print_error("mcode_handler: handler did not respond to abort within %.1fs\n",
+				TERM_RETRY_TIME);
 		break;
 	    }
 	}
-	emcSystemCmdPid = 0;
     }
 
     switch (emcStatus->task.execState) {
@@ -2802,76 +2915,24 @@ static int emcTaskExecute(void)
 	}
 	break;
 
-    case EMC_TASK_EXEC_WAITING_FOR_SYSTEM_CMD:
+    case EMC_TASK_EXEC_WAITING_FOR_MCODE_HANDLER:
 	STEPPING_CHECK();
-
-	// if we got here without a system command pending, say we're done
-	if (0 == emcSystemCmdPid) {
-	    emcStatus->task.execState = EMC_TASK_EXEC_DONE;
-	    break;
-	}
-	// check the status of the system command
-	pid = waitpid(emcSystemCmdPid, &status, WNOHANG);
-
-	if (0 == pid) {
-	    // child is still executing
-	    break;
-	}
-
-	if (-1 == pid) {
-	    // execution error
-	    if (emc_debug & EMC_DEBUG_TASK_ISSUE) {
-		rcs_print("emcSystemCmd: error waiting for %d\n",
-			  emcSystemCmdPid);
-	    }
-	    emcSystemCmdPid = 0;
-	    emcStatus->task.execState = EMC_TASK_EXEC_ERROR;
-	    break;
-	}
-
-	if (emcSystemCmdPid != pid) {
-	    // somehow some other child finished, which is a coding error
-	    if (emc_debug & EMC_DEBUG_TASK_ISSUE) {
-		rcs_print
-		    ("emcSystemCmd: error waiting for system command %d, we got %d\n",
-		     emcSystemCmdPid, pid);
-	    }
-	    emcSystemCmdPid = 0;
-	    emcStatus->task.execState = EMC_TASK_EXEC_ERROR;
-	    break;
-	}
-	// else child has finished
-	if (WIFEXITED(status)) {
-	    if (0 == WEXITSTATUS(status) || (WEXITSTATUS(status) >= 32 && WEXITSTATUS(status) < 64)) {
-		// child exited normally
-		emcStatus->task.user_defined_result = (double)WEXITSTATUS(status);
-		emcSystemCmdPid = 0;
-		emcStatus->task.execState = EMC_TASK_EXEC_DONE;
-		emcTaskEager = 1;
-	    } else {
-		// child exited with non-zero status
-		if (emc_debug & EMC_DEBUG_TASK_ISSUE) {
-		    rcs_print
-			("emcSystemCmd: system command %d exited abnormally with value %d\n",
-			 emcSystemCmdPid, WEXITSTATUS(status));
+	{
+	    int handler_result;
+	    if (mcode_check_done(&handler_result)) {
+		if (handler_result == 0 ||
+		    (handler_result >= 32 && handler_result < 64)) {
+		    emcStatus->task.user_defined_result = (double)handler_result;
+		    emcStatus->task.execState = EMC_TASK_EXEC_DONE;
+		    emcTaskEager = 1;
+		} else {
+		    if (emc_debug & EMC_DEBUG_TASK_ISSUE) {
+			rcs_print("mcode_handler: handler returned error %d\n",
+				  handler_result);
+		    }
+		    emcStatus->task.execState = EMC_TASK_EXEC_ERROR;
 		}
-		emcSystemCmdPid = 0;
-		emcStatus->task.execState = EMC_TASK_EXEC_ERROR;
 	    }
-	} else if (WIFSIGNALED(status)) {
-	    // child exited with an uncaught signal
-	    if (emc_debug & EMC_DEBUG_TASK_ISSUE) {
-		rcs_print("system command %d terminated with signal %d\n",
-			  emcSystemCmdPid, WTERMSIG(status));
-	    }
-	    emcSystemCmdPid = 0;
-	    emcStatus->task.execState = EMC_TASK_EXEC_ERROR;
-	} else if (WIFSTOPPED(status)) {
-	    // child is currently being traced, so keep waiting
-	} else {
-	    // some other status, we'll call this an error
-	    emcSystemCmdPid = 0;
-	    emcStatus->task.execState = EMC_TASK_EXEC_ERROR;
 	}
 	break;
 
@@ -3495,6 +3556,7 @@ static void milltask_stop(cmod_t *self)
 
 static void milltask_destroy(cmod_t *self)
 {
+    mcode_worker_stop();
     milltask_module *m = (milltask_module *)self->priv;
     delete m;
     the_module = NULL;
@@ -3557,7 +3619,7 @@ extern "C" int New(const cmod_env_t *env, const char *name,
     // in their Start() phase (all New() calls complete before any Start()).
     if (gomc_api_ptr) {
         extern InterpBase *pinterp;
-        static interp_ext_api_t interp_ext_table = {
+        static interp_ext_callbacks_t interp_ext_table = {
             .ctx = pinterp,
             .register_oword = interp_ext_register_oword,
             .register_remap_prolog = interp_ext_register_remap_prolog,
@@ -3565,6 +3627,21 @@ extern "C" int New(const cmod_env_t *env, const char *name,
         };
         interp_ext_api_register(gomc_api_ptr, "milltask",
                                 &interp_ext_table);
+
+        // Register the mcode_handler API
+        static mcode_handler_callbacks_t mcode_api_table = {
+            .ctx = NULL,
+            .register_handler = mcode_api_register_handler,
+        };
+        mcode_handler_api_register(gomc_api_ptr, "milltask",
+                                   &mcode_api_table);
+    }
+
+    // Start the M-code handler worker thread
+    if (mcode_worker_start() != 0) {
+        rcs_print_error("can't start mcode handler worker thread\n");
+        delete m;
+        return -1;
     }
 
     // wire up cmod vtable

@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "gomc/pkg/cmodule/gomc_env.h"
-#include "interp_ext.h"
+
 #include "interp_ext_api.h"
 
 /* TOLERANCE_EQUAL from the interpreter (used for float comparisons) */
@@ -28,54 +28,54 @@
  * REMAP=T prolog=prepare_prolog ngc=prepare epilog=prepare_epilog
  * ================================================================ */
 
-static int prepare_prolog(interp_ext_ctx_t *ctx, const char *name)
+static int prepare_prolog(interp_ctx_callbacks_t *ctx, const char *name)
 {
-    if (!ctx->block_t_flag(ctx->interp)) {
-        ctx->set_error(ctx->interp, "T requires a tool number");
+    if (!ctx->block_t_flag(ctx->ctx)) {
+        ctx->set_error(ctx->ctx, "T requires a tool number");
         return INTERP_EXT_ERROR;
     }
-    int tool = ctx->block_t_number(ctx->interp);
+    int tool = ctx->block_t_number(ctx->ctx);
     int pocket;
     if (tool) {
-        pocket = ctx->find_tool_pocket(ctx->interp, tool);
+        pocket = ctx->find_tool_pocket(ctx->ctx, tool);
         if (pocket < 0) {
             char msg[80];
             snprintf(msg, sizeof(msg), "T%d: pocket not found", tool);
-            ctx->set_error(ctx->interp, msg);
+            ctx->set_error(ctx->ctx, msg);
             return INTERP_EXT_ERROR;
         }
     } else {
         pocket = -1; /* T0 = tool unload */
     }
-    ctx->set_param(ctx->interp, "tool", (double)tool);
-    ctx->set_param(ctx->interp, "pocket", (double)pocket);
+    ctx->set_param(ctx->ctx, "tool", (double)tool);
+    ctx->set_param(ctx->ctx, "pocket", (double)pocket);
     return INTERP_EXT_OK;
 }
 
-static int prepare_epilog(interp_ext_ctx_t *ctx, const char *name)
+static int prepare_epilog(interp_ctx_callbacks_t *ctx, const char *name)
 {
-    if (!ctx->get_value_returned(ctx->interp)) {
-        ctx->set_error(ctx->interp,
+    if (!ctx->get_value_returned(ctx->ctx)) {
+        ctx->set_error(ctx->ctx,
             "T: remap procedure did not return a value");
         return INTERP_EXT_ERROR;
     }
-    if (ctx->block_builtin_used(ctx->interp))
+    if (ctx->block_builtin_used(ctx->ctx))
         return INTERP_EXT_OK;
 
-    double rv = ctx->get_return_value(ctx->interp);
+    double rv = ctx->get_return_value(ctx->ctx);
     if (rv > 0.0) {
-        int tool = (int)ctx->get_param(ctx->interp, "tool");
-        int pocket = (int)ctx->get_param(ctx->interp, "pocket");
-        ctx->set_selected_tool(ctx->interp, tool);
-        ctx->set_selected_pocket(ctx->interp, pocket);
-        ctx->canon_select_tool(ctx->interp, tool);
+        int tool = (int)ctx->get_param(ctx->ctx, "tool");
+        int pocket = (int)ctx->get_param(ctx->ctx, "pocket");
+        ctx->set_selected_tool(ctx->ctx, tool);
+        ctx->set_selected_pocket(ctx->ctx, pocket);
+        ctx->canon_select_tool(ctx->ctx, tool);
         return INTERP_EXT_OK;
     } else {
         char msg[80];
         snprintf(msg, sizeof(msg),
                  "T%d: aborted (return code %.1f)",
-                 (int)ctx->get_param(ctx->interp, "tool"), rv);
-        ctx->set_error(ctx->interp, msg);
+                 (int)ctx->get_param(ctx->ctx, "tool"), rv);
+        ctx->set_error(ctx->ctx, msg);
         return INTERP_EXT_ERROR;
     }
 }
@@ -85,75 +85,75 @@ static int prepare_epilog(interp_ext_ctx_t *ctx, const char *name)
  * REMAP=M6 modalgroup=6 prolog=change_prolog ngc=change epilog=change_epilog
  * ================================================================ */
 
-static int change_prolog(interp_ext_ctx_t *ctx, const char *name)
+static int change_prolog(interp_ctx_callbacks_t *ctx, const char *name)
 {
     /* iocontrol-v2 fault check */
-    double p5600 = ctx->get_param(ctx->interp, "5600");
+    double p5600 = ctx->get_param(ctx->ctx, "5600");
     if (p5600 > 0.0) {
-        double p5601 = ctx->get_param(ctx->interp, "5601");
+        double p5601 = ctx->get_param(ctx->ctx, "5601");
         if (p5601 < 0.0) {
             char msg[80];
             snprintf(msg, sizeof(msg),
                      "Toolchanger hard fault %d", (int)p5601);
-            ctx->set_error(ctx->interp, msg);
+            ctx->set_error(ctx->ctx, msg);
             return INTERP_EXT_ERROR;
         }
     }
 
-    if (ctx->get_selected_pocket(ctx->interp) < 0) {
-        ctx->set_error(ctx->interp, "M6: no tool prepared");
+    if (ctx->get_selected_pocket(ctx->ctx) < 0) {
+        ctx->set_error(ctx->ctx, "M6: no tool prepared");
         return INTERP_EXT_ERROR;
     }
-    if (ctx->get_cutter_comp_side(ctx->interp)) {
-        ctx->set_error(ctx->interp,
+    if (ctx->get_cutter_comp_side(ctx->ctx)) {
+        ctx->set_error(ctx->ctx,
             "Cannot change tools with cutter radius compensation on");
         return INTERP_EXT_ERROR;
     }
-    ctx->set_param(ctx->interp, "tool_in_spindle",
-                   (double)ctx->get_current_tool(ctx->interp));
-    ctx->set_param(ctx->interp, "selected_tool",
-                   (double)ctx->get_selected_tool(ctx->interp));
-    ctx->set_param(ctx->interp, "current_pocket",
-                   (double)ctx->get_current_pocket(ctx->interp));
-    ctx->set_param(ctx->interp, "selected_pocket",
-                   (double)ctx->get_selected_pocket(ctx->interp));
+    ctx->set_param(ctx->ctx, "tool_in_spindle",
+                   (double)ctx->get_current_tool(ctx->ctx));
+    ctx->set_param(ctx->ctx, "selected_tool",
+                   (double)ctx->get_selected_tool(ctx->ctx));
+    ctx->set_param(ctx->ctx, "current_pocket",
+                   (double)ctx->get_current_pocket(ctx->ctx));
+    ctx->set_param(ctx->ctx, "selected_pocket",
+                   (double)ctx->get_selected_pocket(ctx->ctx));
     return INTERP_EXT_OK;
 }
 
-static int change_epilog(interp_ext_ctx_t *ctx, const char *name)
+static int change_epilog(interp_ctx_callbacks_t *ctx, const char *name)
 {
     /* Phase 0: first call after NGC body returns */
-    if (ctx->phase == 0) {
-        if (!ctx->get_value_returned(ctx->interp)) {
-            ctx->set_error(ctx->interp,
+    if (ctx->get_phase(ctx->ctx) == 0) {
+        if (!ctx->get_value_returned(ctx->ctx)) {
+            ctx->set_error(ctx->ctx,
                 "M6: remap procedure did not return a value");
             return INTERP_EXT_ERROR;
         }
         /* iocontrol-v2 fault check */
-        double p5600 = ctx->get_param(ctx->interp, "5600");
+        double p5600 = ctx->get_param(ctx->ctx, "5600");
         if (p5600 > 0.0) {
-            double p5601 = ctx->get_param(ctx->interp, "5601");
+            double p5601 = ctx->get_param(ctx->ctx, "5601");
             if (p5601 < 0.0) {
                 char msg[80];
                 snprintf(msg, sizeof(msg),
                          "Toolchanger hard fault %d", (int)p5601);
-                ctx->set_error(ctx->interp, msg);
+                ctx->set_error(ctx->ctx, msg);
                 return INTERP_EXT_ERROR;
             }
         }
-        if (ctx->block_builtin_used(ctx->interp))
+        if (ctx->block_builtin_used(ctx->ctx))
             return INTERP_EXT_OK;
 
-        double rv = ctx->get_return_value(ctx->interp);
+        double rv = ctx->get_return_value(ctx->ctx);
         if (rv > 0.0) {
-            int pocket = (int)ctx->get_param(ctx->interp, "selected_pocket");
-            ctx->set_selected_pocket(ctx->interp, pocket);
-            ctx->canon_change_tool(ctx->interp, pocket);
-            ctx->set_current_pocket(ctx->interp, pocket);
-            ctx->set_selected_pocket(ctx->interp, -1);
-            ctx->set_selected_tool(ctx->interp, -1);
-            ctx->call_set_tool_parameters(ctx->interp);
-            ctx->set_toolchange_flag(ctx->interp, 1);
+            int pocket = (int)ctx->get_param(ctx->ctx, "selected_pocket");
+            ctx->set_selected_pocket(ctx->ctx, pocket);
+            ctx->canon_change_tool(ctx->ctx, pocket);
+            ctx->set_current_pocket(ctx->ctx, pocket);
+            ctx->set_selected_pocket(ctx->ctx, -1);
+            ctx->set_selected_tool(ctx->ctx, -1);
+            ctx->call_set_tool_parameters(ctx->ctx);
+            ctx->set_toolchange_flag(ctx->ctx, 1);
             return INTERP_EXT_EXECUTE_FINISH; /* pause, flush motion */
         } else {
             /* yield to print messages, then error */
@@ -162,12 +162,12 @@ static int change_epilog(interp_ext_ctx_t *ctx, const char *name)
     }
 
     /* Phase 1: after EXECUTE_FINISH */
-    double rv = ctx->get_return_value(ctx->interp);
+    double rv = ctx->get_return_value(ctx->ctx);
     if (rv <= 0.0) {
         char msg[80];
         snprintf(msg, sizeof(msg),
                  "M6 aborted (return code %.1f)", rv);
-        ctx->set_error(ctx->interp, msg);
+        ctx->set_error(ctx->ctx, msg);
         return INTERP_EXT_ERROR;
     }
     return INTERP_EXT_OK;
@@ -178,55 +178,55 @@ static int change_epilog(interp_ext_ctx_t *ctx, const char *name)
  * REMAP=M61 modalgroup=6 prolog=settool_prolog ngc=settool epilog=settool_epilog
  * ================================================================ */
 
-static int settool_prolog(interp_ext_ctx_t *ctx, const char *name)
+static int settool_prolog(interp_ctx_callbacks_t *ctx, const char *name)
 {
-    if (!ctx->block_q_flag(ctx->interp)) {
-        ctx->set_error(ctx->interp, "M61 requires a Q parameter");
+    if (!ctx->block_q_flag(ctx->ctx)) {
+        ctx->set_error(ctx->ctx, "M61 requires a Q parameter");
         return INTERP_EXT_ERROR;
     }
-    int tool = (int)ctx->block_q_number(ctx->interp);
+    int tool = (int)ctx->block_q_number(ctx->ctx);
     if (tool < 0) {
-        ctx->set_error(ctx->interp, "M61: Q value < 0");
+        ctx->set_error(ctx->ctx, "M61: Q value < 0");
         return INTERP_EXT_ERROR;
     }
-    int pocket = ctx->find_tool_pocket(ctx->interp, tool);
+    int pocket = ctx->find_tool_pocket(ctx->ctx, tool);
     if (pocket < 0) {
         char msg[80];
         snprintf(msg, sizeof(msg),
                  "M61 failed: requested tool %d not in table", tool);
-        ctx->set_error(ctx->interp, msg);
+        ctx->set_error(ctx->ctx, msg);
         return INTERP_EXT_ERROR;
     }
-    ctx->set_param(ctx->interp, "tool", (double)tool);
-    ctx->set_param(ctx->interp, "pocket", (double)pocket);
+    ctx->set_param(ctx->ctx, "tool", (double)tool);
+    ctx->set_param(ctx->ctx, "pocket", (double)pocket);
     return INTERP_EXT_OK;
 }
 
-static int settool_epilog(interp_ext_ctx_t *ctx, const char *name)
+static int settool_epilog(interp_ctx_callbacks_t *ctx, const char *name)
 {
-    if (!ctx->get_value_returned(ctx->interp)) {
-        ctx->set_error(ctx->interp,
+    if (!ctx->get_value_returned(ctx->ctx)) {
+        ctx->set_error(ctx->ctx,
             "M61: remap procedure did not return a value");
         return INTERP_EXT_ERROR;
     }
-    if (ctx->block_builtin_used(ctx->interp))
+    if (ctx->block_builtin_used(ctx->ctx))
         return INTERP_EXT_OK;
 
-    double rv = ctx->get_return_value(ctx->interp);
+    double rv = ctx->get_return_value(ctx->ctx);
     if (rv > 0.0) {
-        int tool = (int)ctx->get_param(ctx->interp, "tool");
-        int pocket = (int)ctx->get_param(ctx->interp, "pocket");
-        ctx->set_current_tool(ctx->interp, tool);
-        ctx->set_current_pocket(ctx->interp, pocket);
-        ctx->canon_change_tool_number(ctx->interp, pocket);
-        ctx->set_toolchange_flag(ctx->interp, 1);
-        ctx->call_set_tool_parameters(ctx->interp);
+        int tool = (int)ctx->get_param(ctx->ctx, "tool");
+        int pocket = (int)ctx->get_param(ctx->ctx, "pocket");
+        ctx->set_current_tool(ctx->ctx, tool);
+        ctx->set_current_pocket(ctx->ctx, pocket);
+        ctx->canon_change_tool_number(ctx->ctx, pocket);
+        ctx->set_toolchange_flag(ctx->ctx, 1);
+        ctx->call_set_tool_parameters(ctx->ctx);
         return INTERP_EXT_OK;
     } else {
         char msg[80];
         snprintf(msg, sizeof(msg),
                  "M61 aborted (return code %.1f)", rv);
-        ctx->set_error(ctx->interp, msg);
+        ctx->set_error(ctx->ctx, msg);
         return INTERP_EXT_ERROR;
     }
 }
@@ -236,36 +236,36 @@ static int settool_epilog(interp_ext_ctx_t *ctx, const char *name)
  * REMAP=S prolog=setspeed_prolog ngc=setspeed epilog=setspeed_epilog
  * ================================================================ */
 
-static int setspeed_prolog(interp_ext_ctx_t *ctx, const char *name)
+static int setspeed_prolog(interp_ctx_callbacks_t *ctx, const char *name)
 {
-    if (!ctx->block_s_flag(ctx->interp)) {
-        ctx->set_error(ctx->interp, "S requires a value");
+    if (!ctx->block_s_flag(ctx->ctx)) {
+        ctx->set_error(ctx->ctx, "S requires a value");
         return INTERP_EXT_ERROR;
     }
-    ctx->set_param(ctx->interp, "speed",
-                   ctx->block_s_number(ctx->interp));
+    ctx->set_param(ctx->ctx, "speed",
+                   ctx->block_s_number(ctx->ctx));
     return INTERP_EXT_OK;
 }
 
-static int setspeed_epilog(interp_ext_ctx_t *ctx, const char *name)
+static int setspeed_epilog(interp_ctx_callbacks_t *ctx, const char *name)
 {
-    if (!ctx->get_value_returned(ctx->interp)) {
-        ctx->set_error(ctx->interp,
+    if (!ctx->get_value_returned(ctx->ctx)) {
+        ctx->set_error(ctx->ctx,
             "S: remap procedure did not return a value");
         return INTERP_EXT_ERROR;
     }
-    double rv = ctx->get_return_value(ctx->interp);
+    double rv = ctx->get_return_value(ctx->ctx);
     if (rv < -TOLERANCE_EQUAL) {
         char msg[80];
         snprintf(msg, sizeof(msg),
                  "S: remap procedure returned %f", rv);
-        ctx->set_error(ctx->interp, msg);
+        ctx->set_error(ctx->ctx, msg);
         return INTERP_EXT_ERROR;
     }
-    if (!ctx->block_builtin_used(ctx->interp)) {
-        double speed = ctx->get_param(ctx->interp, "speed");
-        ctx->set_speed_value(ctx->interp, 0, speed);
-        ctx->canon_enqueue_set_spindle_speed(ctx->interp, 0, speed);
+    if (!ctx->block_builtin_used(ctx->ctx)) {
+        double speed = ctx->get_param(ctx->ctx, "speed");
+        ctx->set_speed_value(ctx->ctx, 0, speed);
+        ctx->canon_enqueue_set_spindle_speed(ctx->ctx, 0, speed);
     }
     return INTERP_EXT_OK;
 }
@@ -275,28 +275,28 @@ static int setspeed_epilog(interp_ext_ctx_t *ctx, const char *name)
  * REMAP=F prolog=setfeed_prolog ngc=setfeed epilog=setfeed_epilog
  * ================================================================ */
 
-static int setfeed_prolog(interp_ext_ctx_t *ctx, const char *name)
+static int setfeed_prolog(interp_ctx_callbacks_t *ctx, const char *name)
 {
-    if (!ctx->block_f_flag(ctx->interp)) {
-        ctx->set_error(ctx->interp, "F requires a value");
+    if (!ctx->block_f_flag(ctx->ctx)) {
+        ctx->set_error(ctx->ctx, "F requires a value");
         return INTERP_EXT_ERROR;
     }
-    ctx->set_param(ctx->interp, "feed",
-                   ctx->block_f_number(ctx->interp));
+    ctx->set_param(ctx->ctx, "feed",
+                   ctx->block_f_number(ctx->ctx));
     return INTERP_EXT_OK;
 }
 
-static int setfeed_epilog(interp_ext_ctx_t *ctx, const char *name)
+static int setfeed_epilog(interp_ctx_callbacks_t *ctx, const char *name)
 {
-    if (!ctx->get_value_returned(ctx->interp)) {
-        ctx->set_error(ctx->interp,
+    if (!ctx->get_value_returned(ctx->ctx)) {
+        ctx->set_error(ctx->ctx,
             "F: remap procedure did not return a value");
         return INTERP_EXT_ERROR;
     }
-    if (!ctx->block_builtin_used(ctx->interp)) {
-        double feed = ctx->get_param(ctx->interp, "feed");
-        ctx->set_feed_rate_value(ctx->interp, feed);
-        ctx->canon_enqueue_set_feed_rate(ctx->interp, feed);
+    if (!ctx->block_builtin_used(ctx->ctx)) {
+        double feed = ctx->get_param(ctx->ctx, "feed");
+        ctx->set_feed_rate_value(ctx->ctx, feed);
+        ctx->canon_enqueue_set_feed_rate(ctx->ctx, feed);
     }
     return INTERP_EXT_OK;
 }
@@ -307,11 +307,11 @@ static int setfeed_epilog(interp_ext_ctx_t *ctx, const char *name)
  * REMAP=G84.3 modalgroup=1 argspec=xyzqp prolog=cycle_prolog ngc=g843 epilog=cycle_epilog
  * ================================================================ */
 
-static int cycle_epilog(interp_ext_ctx_t *ctx, const char *name)
+static int cycle_epilog(interp_ctx_callbacks_t *ctx, const char *name)
 {
     /* Retain the current motion mode so next line keeps it */
-    int motion = ctx->block_motion_code(ctx->interp);
-    ctx->set_motion_mode(ctx->interp, motion);
+    int motion = ctx->block_motion_code(ctx->ctx);
+    ctx->set_motion_mode(ctx->ctx, motion);
     return INTERP_EXT_OK;
 }
 
@@ -333,7 +333,7 @@ static int stdglue_start(cmod_t *self)
         fprintf(stderr, "stdglue: no API registry available\n");
         return -1;
     }
-    const interp_ext_api_t *ext = interp_ext_api_get(m->env->api, "milltask");
+    const interp_ext_callbacks_t *ext = interp_ext_api_get(m->env->api, "milltask");
     if (!ext) {
         fprintf(stderr, "stdglue: interp_ext API not found "
                 "(milltask must be started first)\n");

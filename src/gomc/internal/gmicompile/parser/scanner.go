@@ -22,6 +22,7 @@ const (
 	TYPE
 	FUNC
 	CONST
+	CALLBACK
 
 	// Punctuation
 	LBRACE   // {
@@ -213,6 +214,8 @@ func (s *Scanner) keyword(text string) TokenType {
 		return FUNC
 	case "const":
 		return CONST
+	case "callback":
+		return CALLBACK
 	}
 	return IDENT
 }

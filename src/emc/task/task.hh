@@ -22,6 +22,9 @@ extern int steppingWait;
 extern int emcTaskQueueCommand(NMLmsg *cmd);
 extern int emcTaskOnce(const char *inifile);
 
+// USER_DEFINED_FUNCTION callback for M100-M199 — creates EMC_MCODE_CMD.
+extern void user_defined_add_m_code(int num, double arg1, double arg2);
+
 // Returns 0 if all joints are homed, 1 if any joints are un-homed.
 int all_homed(void);
 bool jogging_is_active(void);

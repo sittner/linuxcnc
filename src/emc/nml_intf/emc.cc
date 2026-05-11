@@ -216,8 +216,8 @@ int emcFormat(NMLTYPE type, void *buffer, CMS * cms)
     case EMC_OPERATOR_TEXT_TYPE:
 	((EMC_OPERATOR_TEXT *) buffer)->update(cms);
 	break;
-    case EMC_SYSTEM_CMD_TYPE:
-	((EMC_SYSTEM_CMD *) buffer)->update(cms);
+    case EMC_MCODE_CMD_TYPE:
+	((EMC_MCODE_CMD *) buffer)->update(cms);
 	break;
     case EMC_SET_DEBUG_TYPE:
 	((EMC_SET_DEBUG *) buffer)->update(cms);
@@ -593,8 +593,8 @@ const char *emc_symbol_lookup(uint32_t type)
 	return "EMC_OPERATOR_ERROR";
     case EMC_OPERATOR_TEXT_TYPE:
 	return "EMC_OPERATOR_TEXT";
-    case EMC_SYSTEM_CMD_TYPE:
-	return "EMC_SYSTEM_CMD";
+    case EMC_MCODE_CMD_TYPE:
+	return "EMC_MCODE_CMD";
     case EMC_SET_DEBUG_TYPE:
 	return "EMC_SET_DEBUG";
     case EMC_SPINDLE_BRAKE_ENGAGE_TYPE:
@@ -869,13 +869,13 @@ void EMC_OPERATOR_DISPLAY::update(CMS * cms)
 }
 
 /*
-*	NML/CMS Update function for EMC_SYSTEM_CMD
-*	Manually stuck in here by FMP
-*	on 27-Apr-2005 at the EMC Codefest
+*	NML/CMS Update function for EMC_MCODE_CMD
 */
-void EMC_SYSTEM_CMD::update(CMS * cms)
+void EMC_MCODE_CMD::update(CMS * cms)
 {
-    cms->update(string, 256);
+    cms->update(mcode);
+    cms->update(p_number);
+    cms->update(q_number);
 }
 
 /*

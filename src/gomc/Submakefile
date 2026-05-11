@@ -57,7 +57,8 @@ GOMC_SRC_BASE := $(filter-out $(IMPORTS_GENERATED),$(wildcard gomc/*.go) \
     $(wildcard gomc/cmd/*/*.go) \
     $(wildcard gomc/pkg/*/*.go) \
     $(wildcard gomc/internal/*/*.go) \
-    $(wildcard gomc/internal/*/*/*.go)) \
+    $(wildcard gomc/internal/*/*/*.go) \
+    $(wildcard gomc/internal/*/*/*/*.go)) \
     gomc/go.mod.in \
     gomc/go.mod
 

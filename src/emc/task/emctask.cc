@@ -35,10 +35,6 @@
 #include "motion.h"
 #include "emccanon_table.hh"
 
-#define USER_DEFINED_FUNCTION_MAX_DIRS 5
-#define MAX_M_DIRS (USER_DEFINED_FUNCTION_MAX_DIRS+1)
-//note:the +1 is for the PROGRAM_PREFIX or default directory==nc_files
-
 /* flag for how we want to interpret traj coord mode, as mdi or auto */
 static int mdiOrAuto = EMC_TASK_MODE_AUTO;
 
@@ -84,125 +80,25 @@ static void print_interp_error(int retval)
     }
 }
 
-/*
-  format string for user-defined programs, e.g., "programs/M1%02d" means
-  user-defined programs are in the programs/ directory and are named
-  M1XX, where XX is a two-digit string.
-*/
-static char user_defined_fmt[MAX_M_DIRS][EMC_SYSTEM_CMD_LEN]; // ex: "dirname/M1%02d"
-
-// index to directory for each user defined function:
-static int user_defined_function_dirindex[USER_DEFINED_FUNCTION_NUM];
-
-static void user_defined_add_m_code(int num, double arg1, double arg2)
+// USER_DEFINED_FUNCTION callback — creates an EMC_MCODE_CMD and appends
+// it to the interpreter queue. num is 0-99, corresponding to M100-M199.
+void user_defined_add_m_code(int num, double arg1, double arg2)
 {
-    // num      is the m_code number, typically 00-99 corresponding to M100-M199
-    char fmt[EMC_SYSTEM_CMD_LEN];
-    EMC_SYSTEM_CMD system_cmd;
+    EMC_MCODE_CMD mcode_cmd;
 
-    //we call finish() to flush any linked motions before the M1xx call, 
-    //otherwise they would mix badly
+    // flush any linked motions before the M1xx call
     emccanon_get_callbacks()->finish(NULL);
-    rtapi_strxcpy(fmt, user_defined_fmt[user_defined_function_dirindex[num]]);
-    rtapi_strxcat(fmt, " %f %f");
-    snprintf(system_cmd.string, sizeof(system_cmd.string), fmt, num, arg1, arg2);
-    interp_list.append(system_cmd);
+    mcode_cmd.mcode = num + 100;
+    mcode_cmd.p_number = arg1;
+    mcode_cmd.q_number = arg2;
+    interp_list.append(mcode_cmd);
 }
 
 int emcTaskInit()
 {
-    char mdir[MAX_M_DIRS][PATH_MAX];
-    int num,dct,dmax;
-    char path[EMC_SYSTEM_CMD_LEN];
-    struct stat buf;
-    IniFile inifile;
-    const char *inistring;
-
-    inifile.Open(emc_inifile);
-
-    // Identify user_defined_function directories
-    if (NULL != (inistring = inifile.Find("PROGRAM_PREFIX", "DISPLAY"))) {
-        if (strlen(inistring) >= sizeof(mdir[0])) {
-            rcs_print("[DISPLAY]PROGRAM_PREFIX too long (max len %zu)\n", sizeof(mdir[0]));
-            return -1;
-        }
-        strncpy(mdir[0], inistring, sizeof(mdir[0]));
-    } else {
-        // default dir if no PROGRAM_PREFIX
-        rtapi_strlcpy(mdir[0], "nc_files", sizeof(mdir[0]));
-    }
-    dmax = 1; //one directory mdir[0],  USER_M_PATH specifies additional dirs
-
-    // user can specify a list of directories for user defined functions
-    // with a colon (:) separated list
-    if (NULL != (inistring = inifile.Find("USER_M_PATH", "RS274NGC"))) {
-        char* nextdir;
-        char tmpdirs[PATH_MAX];
-
-        for (dct=1; dct < MAX_M_DIRS; dct++) mdir[dct][0] = 0;
-
-        if (strlen(inistring) >= sizeof(tmpdirs)) {
-            rcs_print("[RS274NGC]USER_M_PATH too long (max len %zu)\n", sizeof(tmpdirs));
-            return -1;
-        }
-        strncpy(tmpdirs, inistring, sizeof(tmpdirs));
-
-        nextdir = strtok(tmpdirs,":");  // first token
-        dct = 1;
-        while (dct < MAX_M_DIRS) {
-            if (nextdir == NULL) break; // no more tokens
-            if (strlen(nextdir) >= sizeof(mdir[dct])) {
-                rcs_print("[RS274NGC]USER_M_PATH component (%s) too long (max len %zu)\n",
-                          nextdir, sizeof(mdir[dct]));
-                return -1;
-            }
-            strncpy(mdir[dct], nextdir, sizeof(mdir[dct]));
-            nextdir = strtok(NULL,":");
-            dct++;
-        }
-        dmax=dct;
-    }
-    inifile.Close();
-
-    /* check for programs named programs/M100 .. programs/M199 and add
-       any to the user defined functions list */
-    for (num = 0; num < USER_DEFINED_FUNCTION_NUM; num++) {
-	for (dct=0; dct < dmax; dct++) {
-            char expanddir[LINELEN];
-	    if (!mdir[dct][0]) continue;
-            if (inifile.TildeExpansion(mdir[dct],expanddir,sizeof(expanddir))) {
-		rcs_print("emcTaskInit: TildeExpansion failed for %s, ignoring\n",
-			 mdir[dct]);
-            }
-	    size_t ret = snprintf(path, sizeof(path), "%s/M1%02d",expanddir,num);
-	    if (ret < sizeof(path) && 0 == stat(path, &buf)) {
-	        if (buf.st_mode & S_IXUSR) {
-		    // set the user_defined_fmt string with dirname
-		    // note the %%02d means 2 digits after the M code
-		    // and we need two % to get the literal %
-		    ret = snprintf(user_defined_fmt[dct], sizeof(user_defined_fmt[dct]),
-			     "%s/M1%%02d", expanddir); // update global
-		    if(ret >= sizeof(user_defined_fmt[0])){
-			return -EMSGSIZE; // name truncated
-		    } else {
-		    USER_DEFINED_FUNCTION_ADD(user_defined_add_m_code,num);
-		    if (emc_debug & EMC_DEBUG_CONFIG) {
-		        rcs_print("emcTaskInit: adding user-defined function %s\n",
-			     path);
-		    }
-	            user_defined_function_dirindex[num] = dct;
-	            break; // use first occurrence found for num
-		    }
-	        } else {
-		    if (emc_debug & EMC_DEBUG_CONFIG) {
-		        rcs_print("emcTaskInit: user-defined function %s found, but not executable, so ignoring\n",
-			     path);
-		    }
-	        }
-	    }
-	}
-    }
-
+    // No script scanning — M100-M199 handlers are registered by cmods
+    // via mcode_handler_api. The USER_DEFINED_FUNCTION slots are populated
+    // when handlers register (in mcode_api_register_handler).
     return 0;
 }
 

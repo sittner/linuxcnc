@@ -89,20 +89,22 @@ class EMC_OPERATOR_DISPLAY:public RCS_CMD_MSG {
     char display[LINELEN];
 };
 
-#define EMC_SYSTEM_CMD_LEN 256
 /*
-  execute a system command
+  M100-M199 user-defined M-code command, dispatched to registered handlers.
 */
-class EMC_SYSTEM_CMD:public RCS_CMD_MSG {
+class EMC_MCODE_CMD:public RCS_CMD_MSG {
   public:
-    EMC_SYSTEM_CMD():RCS_CMD_MSG(EMC_SYSTEM_CMD_TYPE,
-				 sizeof(EMC_SYSTEM_CMD)) {
+    EMC_MCODE_CMD():RCS_CMD_MSG(EMC_MCODE_CMD_TYPE,
+				 sizeof(EMC_MCODE_CMD)),
+				 mcode(0), p_number(0.0), q_number(0.0) {
     };
 
     // For internal NML/CMS use only.
     void update(CMS * cms);
 
-    char string[EMC_SYSTEM_CMD_LEN];
+    int mcode;        // 100-199
+    double p_number;
+    double q_number;
 };
 
 class EMC_NULL:public RCS_CMD_MSG {

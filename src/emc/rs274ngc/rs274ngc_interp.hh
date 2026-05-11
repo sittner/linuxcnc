@@ -736,9 +736,9 @@ int read_inputs(setup_pointer settings);
  // Extension handler registry (per-instance)
  InterpExtRegistry *ext_registry;
 
- int ext_register_oword(const char *name, interp_oword_fn fn, void *user);
- int ext_register_remap_prolog(const char *name, interp_remap_prolog_fn fn, void *user);
- int ext_register_remap_epilog(const char *name, interp_remap_epilog_fn fn, void *user);
+ int ext_register_oword(const char *name, interp_ext_oword_fn_cb fn, void *user);
+ int ext_register_remap_prolog(const char *name, interp_ext_remap_prolog_fn_cb fn, void *user);
+ int ext_register_remap_epilog(const char *name, interp_ext_remap_epilog_fn_cb fn, void *user);
  bool ext_has_oword(const char *name);
  bool ext_has_remap_handler(const char *name);
  int ext_call_oword(const char *name, const double *args, int n_args,

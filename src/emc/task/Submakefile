@@ -32,10 +32,15 @@ MILLTASK_GOMC_SRCS := \
 
 USERSRCS += $(MILLTASK_GOMC_SRCS)
 
-$(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): EXTRAFLAGS += -fPIC
+$(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): EXTRAFLAGS += -fPIC \
+    -Igomc/generated/gmi/mcode_handler -Igomc/generated/gmi/interp_ext -Igomc/generated/gmi/interp_ctx \
+    -Igomc/pkg/cmodule
 
-# canon_api.h is transitively included via interp_internal.hh → canon_interface.hh
+# Generated GMI headers needed by milltask sources (bootstrap deps)
 $(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/canon/canon_api.h
+$(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/mcode_handler/mcode_handler_api.h
+$(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/interp_ext/interp_ext_api.h
+$(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/interp_ctx/interp_ctx_api.h
 
 ../cmod/milltask.so: $(call TOOBJS, $(MILLTASK_GOMC_SRCS)) \
                      ../lib/librs274.so.0 ../lib/liblinuxcnc.a \
@@ -51,10 +56,30 @@ TARGETS += ../cmod/milltask.so
 STDGLUE_SRCS := emc/task/stdglue.c
 USERSRCS += $(STDGLUE_SRCS)
 
-$(call TOOBJSDEPS, $(STDGLUE_SRCS)): EXTRAFLAGS += -fPIC
+$(call TOOBJSDEPS, $(STDGLUE_SRCS)): EXTRAFLAGS += -fPIC \
+    -Igomc/generated/gmi/interp_ext -Igomc/generated/gmi/interp_ctx \
+    -Igomc/pkg/cmodule
+
+$(call TOOBJSDEPS, $(STDGLUE_SRCS)): gomc/generated/gmi/interp_ext/interp_ext_api.h
+$(call TOOBJSDEPS, $(STDGLUE_SRCS)): gomc/generated/gmi/interp_ctx/interp_ctx_api.h
 
 ../cmod/stdglue.so: $(call TOOBJS, $(STDGLUE_SRCS))
 	$(ECHO) Linking $(notdir $@)
 	@mkdir -p ../cmod
 	@$(CC) -shared -o $@ $^ $(LDFLAGS)
 TARGETS += ../cmod/stdglue.so
+
+# test_mcode_handler.so — test cmod for M-code handler API
+TEST_MCODE_SRCS := emc/task/test_mcode_handler.c
+USERSRCS += $(TEST_MCODE_SRCS)
+
+$(call TOOBJSDEPS, $(TEST_MCODE_SRCS)): EXTRAFLAGS += -fPIC \
+    -Igomc/generated/gmi/mcode_handler -Igomc/pkg/cmodule
+
+$(call TOOBJSDEPS, $(TEST_MCODE_SRCS)): gomc/generated/gmi/mcode_handler/mcode_handler_api.h
+
+../cmod/test_mcode_handler.so: $(call TOOBJS, $(TEST_MCODE_SRCS))
+	$(ECHO) Linking $(notdir $@)
+	@mkdir -p ../cmod
+	@$(CC) -shared -o $@ $^ $(LDFLAGS)
+TARGETS += ../cmod/test_mcode_handler.so

@@ -42,10 +42,23 @@ type API struct {
 	RestExport bool   // Whether to expose via REST from @rest_export directive
 	Pos        Pos    // Position of @api directive
 
-	Consts []Const
-	Enums  []Enum
-	Types  []Type
-	Funcs  []Func
+	Consts    []Const
+	Enums     []Enum
+	Types     []Type
+	Callbacks []Callback
+	Imports   []Import
+	Funcs     []Func
+}
+
+// ---------------------------------------------------------------------------
+// Import — imported API reference
+// ---------------------------------------------------------------------------
+
+// Import represents a reference to another GMI API (@import directive).
+// The imported API's callbacks struct type becomes available as a type name.
+type Import struct {
+	Name string // API name (e.g. "interp_ctx")
+	Pos  Pos
 }
 
 // ---------------------------------------------------------------------------
@@ -103,10 +116,12 @@ type Field struct {
 type TypeKind int
 
 const (
-	TypePrimitive TypeKind = iota // bool, i32, u32, i64, u64, f64, string
+	TypePrimitive TypeKind = iota // bool, i32, u32, i64, u64, f64, ptr, string
 	TypeNamed                     // user-defined type or enum
 	TypeArray                     // [N]T fixed-size array (N can be const name or integer)
 	TypeSlice                     // []T dynamic slice
+	TypeCallback                  // callback type reference (named callback declaration)
+	TypeImport                    // imported API type reference (@import)
 )
 
 // TypeRef represents a reference to a type.
@@ -122,7 +137,7 @@ type TypeRef struct {
 func (t TypeRef) String() string {
 	base := ""
 	switch t.Kind {
-	case TypePrimitive, TypeNamed:
+	case TypePrimitive, TypeNamed, TypeCallback, TypeImport:
 		base = t.Name
 	case TypeArray:
 		if t.ArrayLenName != "" {
@@ -156,6 +171,7 @@ const (
 	PrimF32    = "f32"
 	PrimF64    = "f64"
 	PrimString = "string"
+	PrimPtr    = "ptr"
 )
 
 // Primitives is the set of valid primitive type names.
@@ -170,6 +186,21 @@ var Primitives = map[string]bool{
 	PrimF32:    true,
 	PrimF64:    true,
 	PrimString: true,
+	PrimPtr:    true,
+}
+
+// ---------------------------------------------------------------------------
+// Callback — named function-pointer type
+// ---------------------------------------------------------------------------
+
+// Callback represents a named function-pointer type declaration.
+// In C this generates a typedef: typedef rettype (*api_name_cb)(...);
+// Used when a function parameter needs to pass a function pointer.
+type Callback struct {
+	Name   string
+	Pos    Pos
+	Params []Param
+	Return *TypeRef // nil if no return type
 }
 
 // ---------------------------------------------------------------------------

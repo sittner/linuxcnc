@@ -362,6 +362,51 @@ $(GMI_TOOLS_TS): $(GMI_TOOLS_IDL) $(GMICOMPILE_BIN)
 
 TARGETS += $(GMI_TOOLS_TS)
 
+# --- mcode_handler API (M100-M199 handler registration) ---
+
+GMI_MCODE_HANDLER_IDL := gmi/idl/mcode_handler.gmi
+GMI_MCODE_HANDLER_GEN := gomc/generated/gmi/mcode_handler
+
+$(GMI_MCODE_HANDLER_GEN)/mcode_handler_api.h: $(GMI_MCODE_HANDLER_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI mcode_handler API from $(GMI_MCODE_HANDLER_IDL)"
+	@mkdir -p $(GMI_MCODE_HANDLER_GEN)
+	$(Q)$(GMICOMPILE) --server-c $(GMI_MCODE_HANDLER_IDL) -o $(GMI_MCODE_HANDLER_GEN)/mcode_handler_api.h
+	$(Q)$(GMICOMPILE_BIN) add-gmi generated/gmi/mcode_handler
+
+$(GMI_MCODE_HANDLER_GEN)/mcode_handler_cgo.go: $(GMI_MCODE_HANDLER_GEN)/mcode_handler_api.h
+
+TARGETS += $(GMI_MCODE_HANDLER_GEN)/mcode_handler_api.h
+
+# --- interp_ctx API (interpreter context callback table) ---
+
+GMI_INTERP_CTX_IDL := gmi/idl/interp_ctx.gmi
+GMI_INTERP_CTX_GEN := gomc/generated/gmi/interp_ctx
+
+$(GMI_INTERP_CTX_GEN)/interp_ctx_api.h: $(GMI_INTERP_CTX_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI interp_ctx API from $(GMI_INTERP_CTX_IDL)"
+	@mkdir -p $(GMI_INTERP_CTX_GEN)
+	$(Q)$(GMICOMPILE) --server-c $(GMI_INTERP_CTX_IDL) -o $(GMI_INTERP_CTX_GEN)/interp_ctx_api.h
+	$(Q)$(GMICOMPILE_BIN) add-gmi generated/gmi/interp_ctx
+
+$(GMI_INTERP_CTX_GEN)/interp_ctx_cgo.go: $(GMI_INTERP_CTX_GEN)/interp_ctx_api.h
+
+TARGETS += $(GMI_INTERP_CTX_GEN)/interp_ctx_api.h
+
+# --- interp_ext API (interpreter extension registration) ---
+
+GMI_INTERP_EXT_IDL := gmi/idl/interp_ext.gmi
+GMI_INTERP_EXT_GEN := gomc/generated/gmi/interp_ext
+
+$(GMI_INTERP_EXT_GEN)/interp_ext_api.h: $(GMI_INTERP_EXT_IDL) $(GMI_INTERP_CTX_GEN)/interp_ctx_api.h $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI interp_ext API from $(GMI_INTERP_EXT_IDL)"
+	@mkdir -p $(GMI_INTERP_EXT_GEN)
+	$(Q)$(GMICOMPILE) --server-c $(GMI_INTERP_EXT_IDL) -o $(GMI_INTERP_EXT_GEN)/interp_ext_api.h
+	$(Q)$(GMICOMPILE_BIN) add-gmi generated/gmi/interp_ext
+
+$(GMI_INTERP_EXT_GEN)/interp_ext_cgo.go: $(GMI_INTERP_EXT_GEN)/interp_ext_api.h
+
+TARGETS += $(GMI_INTERP_EXT_GEN)/interp_ext_api.h
+
 clean: gmi-codegen-clean
 .PHONY: gmi-codegen-clean
 gmi-codegen-clean:

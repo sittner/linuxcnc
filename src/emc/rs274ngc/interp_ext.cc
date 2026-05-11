@@ -15,17 +15,17 @@
 // --- Registry data structure (opaque to header consumers) ---
 
 struct OwordEntry {
-    interp_oword_fn fn;
+    interp_ext_oword_fn_cb fn;
     void *user;
 };
 
 struct RemapPrologEntry {
-    interp_remap_prolog_fn fn;
+    interp_ext_remap_prolog_fn_cb fn;
     void *user;
 };
 
 struct RemapEpilogEntry {
-    interp_remap_epilog_fn fn;
+    interp_ext_remap_epilog_fn_cb fn;
     void *user;
 };
 
@@ -131,9 +131,19 @@ static void ctx_canon_enqueue_set_feed_rate(void *interp, double rate) {
 #undef RBLOCK
 #undef IP
 
-static void fill_ctx(interp_ext_ctx_t *ctx, Interp *ip, void *user, int phase)
+// Per-call state for get_phase/get_user (interpreter is single-threaded)
+static int current_phase;
+static void *current_user;
+
+static int32_t ctx_get_phase(void *interp) { return current_phase; }
+static void *ctx_get_user(void *interp) { return current_user; }
+
+static void fill_ctx(interp_ctx_callbacks_t *ctx, Interp *ip, void *user, int phase)
 {
-    ctx->interp = ip;
+    ctx->ctx = ip;
+
+    current_phase = phase;
+    current_user = user;
 
     // Named parameters
     ctx->get_param = ctx_get_param;
@@ -185,27 +195,27 @@ static void fill_ctx(interp_ext_ctx_t *ctx, Interp *ip, void *user, int phase)
     ctx->canon_enqueue_set_spindle_speed = ctx_canon_enqueue_set_spindle_speed;
     ctx->canon_enqueue_set_feed_rate = ctx_canon_enqueue_set_feed_rate;
 
-    ctx->phase = phase;
-    ctx->user = user;
+    ctx->get_phase = ctx_get_phase;
+    ctx->get_user = ctx_get_user;
 }
 
 // --- Interp C++ registration methods ---
 
-int Interp::ext_register_oword(const char *name, interp_oword_fn fn, void *user)
+int Interp::ext_register_oword(const char *name, interp_ext_oword_fn_cb fn, void *user)
 {
     if (!ext_registry) ext_registry = new InterpExtRegistry;
     ext_registry->owords[name] = {fn, user};
     return 0;
 }
 
-int Interp::ext_register_remap_prolog(const char *name, interp_remap_prolog_fn fn, void *user)
+int Interp::ext_register_remap_prolog(const char *name, interp_ext_remap_prolog_fn_cb fn, void *user)
 {
     if (!ext_registry) ext_registry = new InterpExtRegistry;
     ext_registry->prologs[name] = {fn, user};
     return 0;
 }
 
-int Interp::ext_register_remap_epilog(const char *name, interp_remap_epilog_fn fn, void *user)
+int Interp::ext_register_remap_epilog(const char *name, interp_ext_remap_epilog_fn_cb fn, void *user)
 {
     if (!ext_registry) ext_registry = new InterpExtRegistry;
     ext_registry->epilogs[name] = {fn, user};
@@ -232,7 +242,7 @@ int Interp::ext_call_oword(const char *name, const double *args, int n_args,
     auto it = ext_registry->owords.find(name);
     if (it == ext_registry->owords.end()) return INTERP_EXT_ERROR;
 
-    interp_ext_ctx_t ctx;
+    interp_ctx_callbacks_t ctx;
     fill_ctx(&ctx, this, it->second.user, phase);
     return it->second.fn(&ctx, name, args, n_args, retval);
 }
@@ -243,7 +253,7 @@ int Interp::ext_call_remap_prolog(const char *name, int phase)
     auto it = ext_registry->prologs.find(name);
     if (it == ext_registry->prologs.end()) return INTERP_EXT_ERROR;
 
-    interp_ext_ctx_t ctx;
+    interp_ctx_callbacks_t ctx;
     fill_ctx(&ctx, this, it->second.user, phase);
     return it->second.fn(&ctx, name);
 }
@@ -254,7 +264,7 @@ int Interp::ext_call_remap_epilog(const char *name, int phase)
     auto it = ext_registry->epilogs.find(name);
     if (it == ext_registry->epilogs.end()) return INTERP_EXT_ERROR;
 
-    interp_ext_ctx_t ctx;
+    interp_ctx_callbacks_t ctx;
     fill_ctx(&ctx, this, it->second.user, phase);
     return it->second.fn(&ctx, name);
 }
@@ -264,19 +274,19 @@ int Interp::ext_call_remap_epilog(const char *name, int phase)
 extern "C" {
 
 int interp_ext_register_oword(void *interp, const char *name,
-                              interp_oword_fn fn, void *user)
+                              interp_ext_oword_fn_cb fn, void *user)
 {
     return static_cast<Interp*>(interp)->ext_register_oword(name, fn, user);
 }
 
 int interp_ext_register_remap_prolog(void *interp, const char *name,
-                                     interp_remap_prolog_fn fn, void *user)
+                                     interp_ext_remap_prolog_fn_cb fn, void *user)
 {
     return static_cast<Interp*>(interp)->ext_register_remap_prolog(name, fn, user);
 }
 
 int interp_ext_register_remap_epilog(void *interp, const char *name,
-                                     interp_remap_epilog_fn fn, void *user)
+                                     interp_ext_remap_epilog_fn_cb fn, void *user)
 {
     return static_cast<Interp*>(interp)->ext_register_remap_epilog(name, fn, user);
 }
