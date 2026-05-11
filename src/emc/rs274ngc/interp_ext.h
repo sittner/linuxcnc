@@ -23,15 +23,59 @@ extern "C" {
 typedef struct interp_ext_ctx {
     void *interp;           /* opaque interpreter handle */
 
-    /* Read/write interpreter named parameters (#<name>) and numbered (#1..#5399) */
+    /* --- Named parameters --- */
     double (*get_param)(void *interp, const char *name);
     int    (*set_param)(void *interp, const char *name, double val);
 
-    /* Tool table lookup: returns pocket for tool number, or -1 */
+    /* --- Tool table --- */
     int (*find_tool_pocket)(void *interp, int tool_number);
 
-    /* Set interpreter error message (printf-style) */
+    /* --- Error reporting --- */
     void (*set_error)(void *interp, const char *msg);
+
+    /* --- Current remap block word access --- */
+    int    (*block_t_flag)(void *interp);
+    int    (*block_t_number)(void *interp);
+    int    (*block_s_flag)(void *interp);
+    double (*block_s_number)(void *interp);
+    int    (*block_f_flag)(void *interp);
+    double (*block_f_number)(void *interp);
+    int    (*block_q_flag)(void *interp);
+    double (*block_q_number)(void *interp);
+    int    (*block_builtin_used)(void *interp);
+    int    (*block_motion_code)(void *interp);   /* g_modes[1] */
+
+    /* --- Setup state read --- */
+    int    (*get_selected_tool)(void *interp);
+    int    (*get_selected_pocket)(void *interp);
+    int    (*get_current_tool)(void *interp);
+    int    (*get_current_pocket)(void *interp);
+    int    (*get_cutter_comp_side)(void *interp);
+    int    (*get_value_returned)(void *interp);
+    double (*get_return_value)(void *interp);
+    double (*get_feed_rate)(void *interp);
+    int    (*get_feed_mode)(void *interp);
+    double (*get_speed)(void *interp, int spindle);
+    int    (*get_motion_mode)(void *interp);
+    int    (*get_plane)(void *interp);
+
+    /* --- Setup state write --- */
+    void (*set_selected_tool)(void *interp, int tool);
+    void (*set_selected_pocket)(void *interp, int pocket);
+    void (*set_current_tool)(void *interp, int tool);
+    void (*set_current_pocket)(void *interp, int pocket);
+    void (*set_speed_value)(void *interp, int spindle, double speed);
+    void (*set_feed_rate_value)(void *interp, double feed);
+    void (*set_motion_mode)(void *interp, int mode);
+    void (*set_toolchange_flag)(void *interp, int flag);
+    void (*call_set_tool_parameters)(void *interp);
+
+    /* --- Canon calls (go through the interpreter's canon interface) --- */
+    void (*canon_select_tool)(void *interp, int tool);
+    void (*canon_change_tool)(void *interp, int pocket);
+    void (*canon_change_tool_number)(void *interp, int pocket);
+    void (*canon_enqueue_set_spindle_speed)(void *interp, int spindle, double speed);
+    void (*canon_enqueue_set_feed_rate)(void *interp, double rate);
 
     /* Resume phase counter (0 = first call, incremented after each EXECUTE_FINISH) */
     int phase;

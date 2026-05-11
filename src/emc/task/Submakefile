@@ -49,3 +49,15 @@ $(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/canon/canon_api.h
 	@mkdir -p ../cmod
 	@$(CXX) -shared -o $@ $^ $(LDFLAGS) $(PYTHON_EXTRA_LDFLAGS) $(BOOST_PYTHON_LIB) $(PYTHON_LIBS) $(PYTHON_EXTRA_LIBS)
 TARGETS += ../cmod/milltask.so
+
+# stdglue.so — standard remap prolog/epilog handlers
+STDGLUE_SRCS := emc/task/stdglue.c
+USERSRCS += $(STDGLUE_SRCS)
+
+$(call TOOBJSDEPS, $(STDGLUE_SRCS)): EXTRAFLAGS += -fPIC
+
+../cmod/stdglue.so: $(call TOOBJS, $(STDGLUE_SRCS))
+	$(ECHO) Linking $(notdir $@)
+	@mkdir -p ../cmod
+	@$(CC) -shared -o $@ $^ $(LDFLAGS)
+TARGETS += ../cmod/stdglue.so

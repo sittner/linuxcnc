@@ -3116,21 +3116,6 @@ static int emctask_startup()
 	return -1;
     }
 
-    // Register the interp_ext API so consumer cmods can register handlers.
-    // pinterp is valid after emcTaskPlanInit() succeeds.
-    if (gomc_api_ptr) {
-        static interp_ext_api_t interp_ext_table = {
-            .ctx = NULL,  // filled below
-            .register_oword = interp_ext_register_oword,
-            .register_remap_prolog = interp_ext_register_remap_prolog,
-            .register_remap_epilog = interp_ext_register_remap_epilog,
-        };
-        extern InterpBase *pinterp;
-        interp_ext_table.ctx = pinterp;
-        interp_ext_api_register(gomc_api_ptr, "milltask",
-                                &interp_ext_table);
-    }
-
     if (done ) {
 	emctask_shutdown();
 	exit(1);
@@ -3588,6 +3573,29 @@ extern "C" int New(const cmod_env_t *env, const char *name,
 
     // NOTE: emcRunHalFiles() is NOT called here — the launcher already
     // executes all HAL files before loading cmod plugins.
+
+    // Create the interpreter early so we can register the interp_ext API.
+    // interp.init() and startup gcode execution are deferred to Start()
+    // (emcTaskPlanInit) where NML/motion are available.
+    if (0 != emcTaskPlanCreate()) {
+	rcs_print_error("can't create interpreter\n");
+	delete m;
+	return -1;
+    }
+
+    // Register the interp_ext API so consumer cmods can register handlers
+    // in their Start() phase (all New() calls complete before any Start()).
+    if (gomc_api_ptr) {
+        extern InterpBase *pinterp;
+        static interp_ext_api_t interp_ext_table = {
+            .ctx = pinterp,
+            .register_oword = interp_ext_register_oword,
+            .register_remap_prolog = interp_ext_register_remap_prolog,
+            .register_remap_epilog = interp_ext_register_remap_epilog,
+        };
+        interp_ext_api_register(gomc_api_ptr, "milltask",
+                                &interp_ext_table);
+    }
 
     // wire up cmod vtable
     m->base.Start   = milltask_start;

@@ -766,6 +766,23 @@ server-side G-code preview that runs concurrently with execution.
 
 ## Files Modified/Removed
 
+### Phase 1 — Done
+
+**New:**
+- `src/gmi/idl/canon.gmi` — GMI interface definition for canon callback table
+- `src/gomc/generated/gmi/canon/canon_api.h` — generated `canon_callbacks_t` struct
+- `src/emc/rs274ngc/canon_interface.hh` — C++ wrapper class hiding ctx plumbing, type conversions
+- `src/emc/task/emccanon_table.cc` — milltask canon table implementation (populates `canon_callbacks_t`)
+- `src/emc/task/emccanon_table.hh` — `emccanon_get_callbacks()` declaration
+
+**Modified:**
+- `src/emc/rs274ngc/interp_base.hh` — added `set_canon_callbacks()` pure virtual, `canon_callbacks_t` forward decl
+- `src/emc/rs274ngc/rs274ngc_interp.hh` — added `set_canon_callbacks()` override, CanonInterface member
+- `src/emc/rs274ngc/rs274ngc_pre.cc` — `set_canon_callbacks()` implementation
+- `src/emc/rs274ngc/gcodemodule.cc` — own `gcodemodule_canon_table` for preview/gcode module
+- `src/emc/sai/saicanon.cc` — own `saicanon_table` for standalone interpreter
+- `src/emc/task/emctask.cc` — calls `set_canon_callbacks(emccanon_get_callbacks())`
+
 ### Phase 2 — Done
 
 **Removed from librs274.so build** (files still exist for Phase 4 milltask):
@@ -792,19 +809,33 @@ server-side G-code preview that runs concurrently with execution.
 - `src/emc/task/taskclass.cc` — removed PyInit\_interpreter/emccanon from builtin\_modules
 - `src/emc/task/emctask.cc` — removed python\_plugin.hh include
 
-### Phase 3 — Planned
+### Phase 3 — Done
 
 **New:**
-- `src/emc/rs274ngc/interp_ext.h` — extension API types and handler typedefs
-- `src/emc/rs274ngc/interp_ext.cc` — registration map + dispatch (replaces pycall stubs)
-- `src/gmi/interp_ext.gmi` — GMI definition for gomc\_interp\_ext\_t
-- `cmod/stdglue/` — reference remap handler cmod
+- `src/emc/rs274ngc/interp_ext.h` — extension API types, handler typedefs, C-linkage registration wrappers
+- `src/emc/rs274ngc/interp_ext.cc` — InterpExtRegistry (per-instance map), ctx accessor implementations, C-linkage exports
+- `src/emc/rs274ngc/interp_ext_api.h` — hand-written API header for consumer cmods (gomc API registry pattern, not .gmi-generated)
+- `src/emc/task/stdglue.c` — reference remap handler cmod (plain C), replaces Python stdglue.py
+- `configs/sim/axis/remap/stdglue-cmod/` — test config for stdglue.so
 
 **Modified:**
-- `src/emc/rs274ngc/interp_python.cc` → renamed/replaced by `interp_ext.cc`
-- `src/emc/rs274ngc/interp_o_word.cc` — dispatch via ext registry
-- `src/emc/task/emctaskmain_gomc.cc` — expose gomc\_interp\_ext\_t pass-through
-- `src/emc/rs274ngc/Submakefile` — replace interp\_python.cc with interp\_ext.cc
+- `src/emc/rs274ngc/interp_python.cc` — rewritten: pycall() dispatches to ext registry, maps return codes
+- `src/emc/rs274ngc/interp_o_word.cc` — CT_PYTHON_OWORD_SUB dispatches via ext registry; handler_returned() returns pycall status
+- `src/emc/rs274ngc/interp_internal.hh` — added `int last_status` to pycontext (handler_returned pass-through)
+- `src/emc/rs274ngc/rs274ngc_interp.hh` — added ext_registry pointer + ext dispatch methods
+- `src/emc/rs274ngc/rs274ngc_pre.cc` — ext_registry init in ctor, destroy in dtor
+- `src/emc/rs274ngc/Submakefile` — added interp_ext.cc to LIBRS274SRCS
+- `src/emc/task/emctaskmain_gomc.cc` — milltask New() calls emcTaskPlanCreate() + registers interp_ext_api
+- `src/emc/task/emctask.cc` — split emcTaskPlanInit() into emcTaskPlanCreate() (Interp construction) + emcTaskPlanInit() (init + startup gcode)
+- `src/emc/task/task.hh` — added emcTaskPlanCreate() declaration
+- `src/emc/task/Submakefile` — added stdglue.so build rules
+
+**Design decisions:**
+- interp_ext_api is hand-written (not .gmi-generated) since it's a simple 4-field struct
+- interp_ext_ctx_t has ~35 accessor function pointers for block words, setup state, and canon calls
+- milltask registers API in New() (not Start()) — Interp creation split out so no implicit ordering dependencies
+- stdglue.so looks up API in Start() — clean lifecycle: register in New(), lookup in Start()
+- ctx_set_param() calls add_named_param() before store_named_param() (matching Python ParamClass.setitem behavior)
 
 ### Phase 4+ — Planned
 

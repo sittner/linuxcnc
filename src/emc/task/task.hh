@@ -35,6 +35,7 @@ int emcTaskStateRestore();
 int emcTaskAbort();
 int emcTaskSetMode(int mode);
 int emcTaskSetState(int state);
+int emcTaskPlanCreate();
 int emcTaskPlanInit();
 int emcTaskPlanSetWait();
 int emcTaskPlanIsWait();

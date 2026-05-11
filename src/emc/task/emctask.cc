@@ -430,7 +430,7 @@ static int determineState()
 
 static int waitFlag = 0;
 
-int emcTaskPlanInit()
+int emcTaskPlanCreate()
 {
     if(!pinterp) {
 	IniFile inifile;
@@ -457,6 +457,16 @@ int emcTaskPlanInit()
     }
     else  _is = 0;
     interp.ini_load(emc_inifile);
+    return 0;
+}
+
+int emcTaskPlanInit()
+{
+    if(!pinterp) {
+        if (emcTaskPlanCreate() != 0)
+            return -1;
+    }
+
     waitFlag = 0;
 
     int retval = interp.init();
