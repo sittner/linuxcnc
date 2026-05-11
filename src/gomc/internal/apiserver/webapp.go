@@ -15,12 +15,14 @@ import (
 // file are served index.html so client-side routing works.
 func (s *Server) AddWebApps(webappDir string) {
 	if webappDir == "" {
+		s.logger.Warn("webapp directory not configured (EMC2WebAppDir is empty)")
 		return
 	}
 
 	entries, err := os.ReadDir(webappDir)
 	if err != nil {
-		return // directory doesn't exist yet — not an error
+		s.logger.Warn("cannot read webapp directory", "dir", webappDir, "error", err)
+		return
 	}
 
 	var apps []string
@@ -51,6 +53,11 @@ func (s *Server) AddWebApps(webappDir string) {
 		})
 
 		apps = append(apps, name)
+		s.logger.Info("registered webapp", "name", name, "prefix", prefix, "dir", appDir)
+	}
+
+	if len(apps) == 0 {
+		s.logger.Warn("no webapp subdirectories found", "dir", webappDir)
 	}
 
 	// Root handler: list available apps as simple HTML links.

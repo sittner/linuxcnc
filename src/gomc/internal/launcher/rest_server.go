@@ -57,7 +57,10 @@ func (l *Launcher) startAPIServer() {
 
 	// Serve web applications from share/gomc/webapp/<app>/
 	if config.EMC2WebAppDir != "" {
+		l.logger.Info("configuring web apps", "dir", config.EMC2WebAppDir)
 		l.apiServer.AddWebApps(config.EMC2WebAppDir)
+	} else {
+		l.logger.Warn("EMC2WebAppDir not set, web apps disabled")
 	}
 
 	go func() {
