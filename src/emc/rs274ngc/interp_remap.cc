@@ -13,12 +13,6 @@
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
-#define BOOST_PYTHON_MAX_ARITY 4
-#include "python_plugin.hh"
-#include "interp_python.hh"
-#include <boost/python/list.hpp>
-namespace bp = boost::python;
-
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -73,7 +67,6 @@ int Interp::convert_remapped_code(block_pointer block,
     char key[2];
     int status;
     block_pointer cblock;
-    bp::list plist;
     char cmd[LINELEN];
 
     if (number == -1)
@@ -189,15 +182,11 @@ int Interp::add_parameters(setup_pointer settings,
     char msg[LINELEN], tail[LINELEN];
     bool errored = false;
     remap_pointer rptr = cblock->executing_remap;
-    context_pointer active_frame = &settings->sub_context[settings->call_level];
 
     if (!rptr) {
 	ERS("BUG: add_parameters: remap_frame: executing_remap == NULL ");
     }
     code = rptr->name;
-
-    // if any Python handlers are present, create a kwargs dict
-    bool pydict = rptr->remap_py || rptr->prolog_func || rptr->epilog_func;
 
     std::fill(missing, std::end(missing), 0);
     std::fill(optional, std::end(optional), 0);
@@ -216,20 +205,10 @@ int Interp::add_parameters(setup_pointer settings,
     }
     block = &CONTROLLING_BLOCK((*settings));
 
-    logNP("add_parameters code=%s argspec=%s call_level=%d r=%s o=%s pydict=%d\n",
-	    code,argspec,settings->call_level,required,optional,pydict);
+    logNP("add_parameters code=%s argspec=%s call_level=%d r=%s o=%s\n",
+	    code,argspec,settings->call_level,required,optional);
 
 #define STORE(name,value)						\
-    if (pydict) {							\
-	try {								\
-	    active_frame->pystuff.impl->kwargs[name] = value;		\
-        }								\
-        catch (const bp::error_already_set&) {					\
-	    PyErr_Print();						\
-	    PyErr_Clear();						\
-	    ERS("add_parameters: can\'t add '%s' to args",name);		\
-	}								\
-    }									\
     if (posarglist) {							\
 	char actual[LINELEN];						\
 	snprintf(actual, sizeof(actual),"[%.4lf]", value);		\
@@ -419,25 +398,11 @@ int Interp::parse_remap(const char *inistring, int lineno)
 	    continue;
 	}
 	if (!strncasecmp(kw,"prolog",kwlen)) {
-	    if (PYUSABLE) {
-		r.prolog_func = strstore(arg);
-	    } else {
-		Error("Python plugin required for prolog=, but not available: %d:REMAP = %s",
-		      lineno,inistring);
-		errored = true;
-		continue;
-	    }
+	    r.prolog_func = strstore(arg);
 	    continue;
 	}
 	if (!strncasecmp(kw,"epilog",kwlen)) {
-	    if (PYUSABLE) {
-		r.epilog_func = strstore(arg);
-	    } else {
-		Error("Python plugin required for epilog=, but not available: %d:REMAP = %s",
-		      lineno,inistring);
-		errored = true;
-		continue;
-	    }
+	    r.epilog_func = strstore(arg);
 	    continue;
 	}
 	if (!strncasecmp(kw,"ngc",kwlen)) {
@@ -459,25 +424,9 @@ int Interp::parse_remap(const char *inistring, int lineno)
 	    continue;
 	}
 	if (!strncasecmp(kw,"python",kwlen)) {
-	    if (r.remap_ngc ) {
-		Error("can\'t remap to an ngc file and a Python function: -  %d:REMAP = %s",
-		      lineno,inistring);
-		errored = true;
-		continue;
-	    }
-	    if (!PYUSABLE) {
-		Error("iNTERP_REMAP: Python plugin required for python=, but not available:\nREMAP INI line:%d = %s\n",
-		      lineno,inistring);
-		errored = true;
-		continue;
-	    }
-	    if (!is_pycallable(&_setup, REMAP_MODULE, arg)) {
-		Error("'%s' is not a Python callable function - %d:REMAP = %s",
-		      arg,lineno,inistring);
-		errored = true;
-		continue;
-	    }
-	    r.remap_py = strstore(arg);
+	    Error("python= remaps have been removed. Use ngc= with prolog/epilog cmod handlers: %d:REMAP = %s",
+		  lineno,inistring);
+	    errored = true;
 	    continue;
 	}
 	Error("unrecognized option '%*s' in  %d:REMAP = %s",
@@ -508,7 +457,7 @@ int Interp::parse_remap(const char *inistring, int lineno)
 	}					\
     } while(0)
 
-    switch (towlower(*code)) {
+    switch (tolower(*code)) {
 
     case 't':
     case 's':
@@ -571,12 +520,6 @@ int Interp::parse_remap(const char *inistring, int lineno)
 	break;
 
     default:
-	// make sure the python plugin is in a usable state if needed
-	if ((r.prolog_func || r.remap_py || r.epilog_func) &&
-	    (!PYUSABLE))  {
-	    fprintf(stderr, "fatal: REMAP requires the Python plugin, which did not initialize\n");
-	    break;
-	}
 	Log("REMAP BUG=%s %d:REMAP = %s",
 	    code,lineno,inistring);
     }

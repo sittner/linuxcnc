@@ -24,14 +24,6 @@
 #define _GNU_SOURCE
 #endif
 
-#define BOOST_PYTHON_MAX_ARITY 4
-#include "python_plugin.hh"
-#include <boost/python/dict.hpp>
-#include <boost/python/extract.hpp>
-#include <boost/python/list.hpp>
-#include <boost/python/tuple.hpp>
-namespace bp = boost::python;
-
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -358,42 +350,8 @@ int Interp::find_named_param(
 	  CHP(lookup_named_param(nameBuf, pv->value, value));
 	  *status = 1;
       } else if (pv->attr & PA_PYTHON) {
-	  bp::object retval, tupleargs, kwargs;
-	  bp::list plist;
-
-	  plist.append(*_setup.pythis); // self
-	  tupleargs = bp::tuple(plist);
-	  kwargs = bp::dict();
-
-	  python_plugin->call(NAMEDPARAMS_MODULE, nameBuf, tupleargs, kwargs, retval);
-	  CHKS(python_plugin->plugin_status() == PLUGIN_EXCEPTION,
-	       "named param - pycall(%s):\n%s", nameBuf,
-	       python_plugin->last_exception().c_str());
-	  CHKS(retval.ptr() == Py_None, "Python namedparams.%s returns no value", nameBuf);
-      if (PyUnicode_Check(retval.ptr())) {
-	      // returning a string sets the interpreter error message and aborts
-	      *status = 0;
-	      char *msg = bp::extract<char *>(retval);
-	      ERS("%s", msg);
-	  }
-      if (PyLong_Check(retval.ptr())) { // widen
-	      *value = (double) bp::extract<int>(retval);
-	      *status = 1;
-	      return INTERP_OK;
-	  }
-	  if (PyFloat_Check(retval.ptr())) {
-	      *value =  bp::extract<double>(retval);
-	      *status = 1;
-	      return INTERP_OK;
-	  }
-	  // ok, that callable returned something botched.
-	  *status = 0;
-	  PyObject *res_str = PyObject_Str(retval.ptr());
-	  Py_XDECREF(res_str);
-	  ERS("Python call %s.%s returned '%s' - expected double, int or string, got %s",
-	      NAMEDPARAMS_MODULE, nameBuf,
-          PyUnicode_AsUTF8(res_str),
-	      retval.ptr()->ob_type->tp_name);
+	  ERS("Python named parameter '#<%s>' not available - "
+	      "Python support has been removed", nameBuf);
       } else {
 	  *value = pv->value;
 	  *status = 1;

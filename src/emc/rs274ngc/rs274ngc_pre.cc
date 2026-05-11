@@ -65,14 +65,6 @@ suppression can produce more concise output. Future versions might
 include an option for suppressing superfluous commands.
 
 ****************************************************************************/
-#define BOOST_PYTHON_MAX_ARITY 4
-#include "python_plugin.hh"
-#include <boost/python/dict.hpp>
-#include <boost/python/extract.hpp>
-#include <boost/python/import.hpp>
-#include <boost/python/list.hpp>
-#include <boost/python/scope.hpp>
-#include <boost/python/tuple.hpp>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -106,8 +98,6 @@ include an option for suppressing superfluous commands.
 #include <interp_parameter_def.hh>
 using namespace interp_param_global;
 
-namespace bp = boost::python;
-
 extern char * _rs274ngc_errors[];
 
 const char *Interp::interp_status(int status) {
@@ -122,7 +112,6 @@ const char *Interp::interp_status(int status) {
     return statustext;
 }
 
-extern struct _inittab builtin_modules[];
 int trace;
 static char savedError[LINELEN+1];
 
@@ -131,46 +120,7 @@ Interp::Interp()
     _setup{}
 {
     _setup.init_once = 1;  
-  init_named_parameters();  // need this before Python init.
- 
-  if (!PythonPlugin::instantiate(builtin_modules)) {  // factory
-    Error("Interp ctor: can\'t instantiate Python plugin");
-    return;
-  }
-
-// KLUDGE just to get unit tests to stop complaining about python modules we won't use anyway
-#ifndef UNIT_TEST
-  try {
-    // this import will register the C++->Python converter for Interp
-    bp::object interp_module = bp::import("interpreter");
-
-    // use a boost::cref to avoid per-call instantiation of the
-    // Interp Python wrapper (used for the 'self' parameter in handlers)
-    // since interp.init() may be called repeatedly this would create a new
-    // wrapper instance on every init(), abandoning the old one and all user attributes
-    // tacked onto it, so make sure this is done exactly once
-    _setup.pythis = new bp::object(boost::cref(*this));
-
-    // alias to 'interpreter.this' for the sake of ';py, .... ' comments
-    // besides 'this', eventually use proper instance names to handle
-	// several instances
-    bp::scope(interp_module).attr("this") =  *_setup.pythis;
-
-    // make "this" visible without importing interpreter explicitly
-    bp::object retval;
-    python_plugin->run_string("from interpreter import this", retval, false);
-  }
-  catch (const bp::error_already_set&) {
-    std::string exception_msg;
-    if (PyErr_Occurred()) {
-      exception_msg = handle_pyerror();
-    } else
-      exception_msg = "unknown exception";
-    bp::handle_exception();
-    PyErr_Clear();
-    Error("PYTHON: exception during 'this' export:\n%s\n",exception_msg.c_str());
-  }
-#endif
+    init_named_parameters();
 }
 
 InterpBase *makeInterp()
@@ -772,25 +722,6 @@ int Interp::exit()
                             file_name), _setup.parameters);
   reset();
 
-  // interpreter shutdown Python hook
-  if (python_plugin->is_callable(NULL, DELETE_FUNC)) {
-
-      bp::object retval, tupleargs, kwargs;
-      bp::list plist;
-
-      plist.append(*_setup.pythis); // self
-      tupleargs = bp::tuple(plist);
-      kwargs = bp::dict();
-
-      python_plugin->call(NULL, DELETE_FUNC, tupleargs, kwargs, retval);
-      if (python_plugin->plugin_status() == PLUGIN_EXCEPTION) {
-	  ERM("pycall(%s):\n%s", INIT_FUNC,
-	      python_plugin->last_exception().c_str());
-	  // this likely wont make it to the UI's any more so bark on stderr
-	  fprintf(stderr, "%s\n",savedError);
-      }
-  }
-
   return INTERP_OK;
 }
 
@@ -1018,14 +949,6 @@ int Interp::init()
 	      _setup.on_abort_command = NULL;
           }
 
-	  // initialize the Python plugin singleton
-          if (NULL != (inistring = inifile.Find("TOPLEVEL", "PYTHON"))) {
-	      int status = python_plugin->configure(iniFileName,"PYTHON");
-	      if (status != PLUGIN_OK) {
-		  Error("Python plugin configure() failed, status = %d", status);
-	      }
-	  }
- 
 	  int n = 1;
 	  int lineno = -1;
 	  _setup.g_remapped.clear();
@@ -1250,53 +1173,6 @@ int Interp::init()
   init_tool_parameters();
   // Synch rest of settings to external world
 
-  // call __init__(self) once in toplevel module if defined
-  // once fully set up and sync()ed
-  if ((iniFileName != NULL) && _setup.init_once && PYUSABLE ) {
-
-      // initialize any python global predefined named parameters
-      // walk the namedparams module for callables and add their names as predefs
-      try {
-	  bp::object npmod =  python_plugin->main_namespace[NAMEDPARAMS_MODULE];
-	  bp::dict predef_dict = bp::extract<bp::dict>(npmod.attr("__dict__"));
-	  bp::list keys = (bp::list) predef_dict.keys();
-	  for (int i = 0; i < bp::len(keys); i++)  {
-	      std::string key = bp::extract<std::string>(keys[i]);
-	      bp::object value = predef_dict[key];
-	      if (PyCallable_Check(value.ptr())) {
-		  CHP(init_python_predef_parameter(key.c_str()));
-	      }
-	  }
-      }
-      catch (const bp::error_already_set&) {
-	  std::string exception_msg;
-	  bool unexpected = false;
-	  // KeyError is ok - this means the namedparams module doesn't exist
-	  if (!PyErr_ExceptionMatches(PyExc_KeyError)) {
-	      // something else, strange
-	      exception_msg = handle_pyerror();
-	      unexpected = true;
-	  }
-	  bp::handle_exception();
-	  PyErr_Clear();
-	  CHKS(unexpected, "exception adding Python predefined named parameter: %s", exception_msg.c_str());
-      }
-
-      if (python_plugin->is_callable(NULL, INIT_FUNC)) {
-
-	  bp::object retval, tupleargs, kwargs;
-	  bp::list plist;
-
-	  plist.append(*_setup.pythis); // self
-	  tupleargs = bp::tuple(plist);
-	  kwargs = bp::dict();
-
-	  python_plugin->call(NULL, INIT_FUNC, tupleargs, kwargs, retval);
-	  CHKS(python_plugin->plugin_status() == PLUGIN_EXCEPTION,
-	       "pycall(%s):\n%s", INIT_FUNC,
-	       python_plugin->last_exception().c_str());
-      }
-  }
   _setup.init_once = 0;
 
   return INTERP_OK;

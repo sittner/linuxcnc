@@ -17,12 +17,8 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
-#ifndef BOOST_PYTHON_MAX_ARITY
-#define BOOST_PYTHON_MAX_ARITY 4
-#endif
 #include <string.h>
 #include "rs274ngc_interp.hh"
-#include <boost/python/object.hpp>
 
 #pragma GCC diagnostic error "-Wmissing-field-initializers"
 setup::setup() :
@@ -178,7 +174,6 @@ setup::setup() :
     disable_fanuc_style_sub(false),
     loop_on_main_m99(false),
     disable_g92_persistence(0),
-    pythis(),
     on_abort_command(NULL),
     init_once(CANON_STOPPED)
 {
@@ -186,8 +181,6 @@ setup::setup() :
 }
 
 setup::~setup() {
-    assert(!pythis || Py_IsInitialized());
-    if(pythis) delete pythis;
 }
 
 block_struct::block_struct ()

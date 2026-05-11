@@ -31,7 +31,6 @@
 #include "inifile.hh"
 #include "rcs_print.hh"
 #include "task.hh"		// emcTaskCommand etc
-#include "python_plugin.hh"
 #include "taskclass.hh"
 #include "motion.h"
 #include "emccanon_table.hh"

@@ -33,13 +33,8 @@ int _task = 0; // control preview behaviour when remapping
 
 char _parameter_file_name[LINELEN];
 
-extern "C" PyObject* PyInit_emctask(void);
-extern "C" PyObject* PyInit_interpreter(void);
-extern "C" PyObject* PyInit_emccanon(void);
 extern "C" struct _inittab builtin_modules[];
 struct _inittab builtin_modules[] = {
-    { "interpreter", PyInit_interpreter },
-    { "emccanon", PyInit_emccanon },
     { NULL, NULL }
 };
 
