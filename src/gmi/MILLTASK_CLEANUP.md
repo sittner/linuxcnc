@@ -812,9 +812,8 @@ server-side G-code preview that runs concurrently with execution.
 ### Phase 3 — Done
 
 **New:**
-- `src/emc/rs274ngc/interp_ext.h` — extension API types, handler typedefs, C-linkage registration wrappers
+- `src/emc/rs274ngc/interp_ext.h` — thin wrapper with _API_CGO guards around generated interp_ext_api.h + C-linkage declarations
 - `src/emc/rs274ngc/interp_ext.cc` — InterpExtRegistry (per-instance map), ctx accessor implementations, C-linkage exports
-- `src/emc/rs274ngc/interp_ext_api.h` — hand-written API header for consumer cmods (gomc API registry pattern, not .gmi-generated)
 - `src/emc/task/stdglue.c` — reference remap handler cmod (plain C), replaces Python stdglue.py
 - `configs/sim/axis/remap/stdglue-cmod/` — test config for stdglue.so
 
@@ -831,23 +830,60 @@ server-side G-code preview that runs concurrently with execution.
 - `src/emc/task/Submakefile` — added stdglue.so build rules
 
 **Design decisions:**
-- interp_ext_api is hand-written (not .gmi-generated) since it's a simple 4-field struct
+- interp_ext_api is now GMI-generated (was hand-written, migrated in Phase 4b)
 - interp_ext_ctx_t has ~35 accessor function pointers for block words, setup state, and canon calls
 - milltask registers API in New() (not Start()) — Interp creation split out so no implicit ordering dependencies
 - stdglue.so looks up API in Start() — clean lifecycle: register in New(), lookup in Start()
 - ctx_set_param() calls add_named_param() before store_named_param() (matching Python ParamClass.setitem behavior)
 
-### Phase 4+ — Planned
+### Phase 4a: M-code Handler Registration — Done
 
-**To remove (when milltask Python is stripped):**
+**New:**
+- `src/gmi/idl/mcode_handler.gmi` — GMI interface for M-code handler registration
+- `src/gomc/generated/gmi/mcode_handler/mcode_handler_api.h` — generated mcode_handler_callbacks_t
+- `src/emc/task/test_mcode_handler.c` — test harness for mcode handler cmod
+
+**Modified:**
+- `src/emc/task/emctaskmain_gomc.cc` — registers mcode_handler_api, dispatches M1xx via registered handlers
+
+### Phase 4b: GMI Migration of interp_ext + interp_ctx — Done
+
+**New GMI IDL features:**
+- `ptr` primitive type (void* in C)
+- `callback name(params) -> rettype` declaration (function pointer typedefs)
+- `@import api_name` directive (cross-API header dependency)
+
+**New:**
+- `src/gmi/idl/interp_ctx.gmi` — ~30 accessor functions for interpreter context
+- `src/gmi/idl/interp_ext.gmi` — @import interp_ctx, 3 callback types, 3 registration functions
+
+**Deleted:**
+- `src/emc/task/mcode_handler_api.h` — replaced by generated mcode_handler_api.h
+- `src/emc/rs274ngc/interp_ext_api.h` — replaced by generated interp_ext_api.h
+
+**Modified:**
+- `src/emc/rs274ngc/interp_ext.h` — thin wrapper with _API_CGO guards around generated header
+- `src/emc/rs274ngc/interp_ext.cc` — renamed types (interp_ext_oword_fn_cb, etc.), ctx→get_phase()/get_user() accessors
+- `src/emc/rs274ngc/rs274ngc_interp.hh` — updated callback type names
+- `src/emc/task/stdglue.c` — renamed types, ctx->get_phase(ctx->ctx), ctx->ctx
+- `src/emc/task/emctaskmain_gomc.cc` — renamed types
+- `src/emc/rs274ngc/Submakefile` — -I paths for generated headers (librs274, gcodemodule)
+- `src/emc/task/Submakefile` — -Igomc/pkg/cmodule for gomc_api.h
+- `src/emc/sai/Submakefile` — -I paths for generated headers
+- `src/gmi/codegen/Submakefile` — codegen rules for mcode_handler, interp_ctx, interp_ext
+
+### Phase 4 remaining
+
+**Dead files to delete (already excluded from build):**
 - `src/emc/pythonplugin/python_plugin.cc`
 - `src/emc/pythonplugin/python_plugin.hh`
 - `src/emc/task/taskmodule.cc`
 
-**New:**
-- `src/emc/task/task_ext.h` — task extension API types
-- `src/emc/task/task_ext.cc` — task extension dispatch
-- `src/gmi/task_ext.gmi` — GMI definition for gomc\_task\_ext\_t
+All functional items complete:
+- M100-M199 threaded handler dispatch with abort_fd — done (emctaskmain_gomc.cc)
+- fork/exec replaced — no fork/execvp/waitpid remain
+- WAITING_FOR_MCODE_HANDLER state — implemented
+- Task extension API (tool_prepare, coolant, etc.) — not needed as separate API; standard HAL/iocontrol path suffices
 
 ## Resolved Questions
 
