@@ -3,7 +3,11 @@ package emcgateway
 /*
 #include <stdlib.h>
 #include "tool_shim.h"
-#include "nml_shim.h"
+#include "emccmd_api.h"
+
+static int32_t call_emccmd_load_tool_table(emccmd_load_tool_table_fn _fn_ptr, void *ctx) {
+    return _fn_ptr(ctx);
+}
 */
 import "C"
 
@@ -18,6 +22,7 @@ import (
 // toolsImpl implements toolsapi.ToolsCallbacks via the tool_shim C interface.
 type toolsImpl struct {
 	toolTableFile string
+	emccmd        unsafe.Pointer // *C.emccmd_callbacks_t, fetched lazily from registry
 }
 
 func init() {
@@ -164,7 +169,15 @@ func (t *toolsImpl) DeleteTool(toolno int32) (*toolsapi.CmdResult, error) {
 }
 
 func (t *toolsImpl) ReloadTools() (*toolsapi.CmdResult, error) {
-	rc := C.nml_shim_load_tool_table()
+	if t.emccmd == nil {
+		ptr, err := apiserver.DefaultRegistry().GetAPI("emccmd", "emccmd", 1)
+		if err != nil {
+			return nil, fmt.Errorf("emccmd API not available: %v", err)
+		}
+		t.emccmd = ptr
+	}
+	cb := (*C.emccmd_callbacks_t)(t.emccmd)
+	rc := C.call_emccmd_load_tool_table(cb.load_tool_table, cb.ctx)
 	if rc != 0 {
 		return nil, fmt.Errorf("failed to reload tool table")
 	}

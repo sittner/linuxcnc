@@ -2,7 +2,10 @@
  * nml_shim.cc — extern "C" wrappers around the NML C++ API.
  *
  * Provides a flat C interface for the emcgateway gomod to access
- * NML stat/command/error channels via cgo.
+ * NML stat and error channels via cgo.
+ *
+ * Command functions have been removed — commands now go through the
+ * emccmd GMI API (emccmd_handlers.cc / emccmd_slot).
  */
 
 #include "nml_shim.h"
@@ -15,16 +18,11 @@
 #include "emc.hh"
 #include "nml_oi.hh"
 #include "emcglb.h"
-#include "timer.hh"
 #include "linuxcnc.h"
 
 /* NML channels */
 static RCS_STAT_CHANNEL *stat_channel = nullptr;
-static RCS_CMD_CHANNEL  *cmd_channel  = nullptr;
 static NML              *err_channel  = nullptr;
-
-/* Command serial tracking for wait_complete */
-static int cmd_serial = 0;
 
 /* Forward declarations for NML format function */
 extern int emcFormat(NMLTYPE type, void *buf, CMS *cms);
@@ -44,18 +42,6 @@ static void pose_to_pos(const EmcPose *src, nml_position_t *dst)
     dst->w = src->w;
 }
 
-/* ─── Helper: send command and track serial ─── */
-
-static int send_cmd(RCS_CMD_MSG *msg)
-{
-    if (!cmd_channel || !cmd_channel->valid())
-        return -1;
-    if (cmd_channel->write(msg))
-        return -1;
-    cmd_serial = msg->serial_number;
-    return 0;
-}
-
 /* ─── Lifecycle ─── */
 
 extern "C" int nml_shim_init(const char *nml_file)
@@ -72,12 +58,6 @@ extern "C" int nml_shim_init(const char *nml_file)
         return -1;
     }
 
-    cmd_channel = new RCS_CMD_CHANNEL(emcFormat, "emcCommand", "xemc", emc_nmlfile);
-    if (!cmd_channel || !cmd_channel->valid()) {
-        fprintf(stderr, "nml_shim: failed to open command channel\n");
-        return -1;
-    }
-
     err_channel = new NML(emcFormat, "emcError", "xemc", emc_nmlfile);
     if (!err_channel || !err_channel->valid()) {
         fprintf(stderr, "nml_shim: failed to open error channel\n");
@@ -90,7 +70,6 @@ extern "C" int nml_shim_init(const char *nml_file)
 extern "C" void nml_shim_shutdown(void)
 {
     delete stat_channel; stat_channel = nullptr;
-    delete cmd_channel;  cmd_channel  = nullptr;
     delete err_channel;  err_channel  = nullptr;
 }
 
@@ -227,313 +206,6 @@ extern "C" int nml_shim_poll_stat(nml_stat_t *out)
     out->debug               = st->debug;
 
     return 0;
-}
-
-/* ─── Commands ─── */
-
-extern "C" int nml_shim_set_state(int state)
-{
-    EMC_TASK_SET_STATE msg;
-    msg.state = static_cast<enum EMC_TASK_STATE_ENUM>(state);
-    return send_cmd(&msg);
-}
-
-extern "C" int nml_shim_set_mode(int mode)
-{
-    EMC_TASK_SET_MODE msg;
-    msg.mode = static_cast<enum EMC_TASK_MODE_ENUM>(mode);
-    return send_cmd(&msg);
-}
-
-extern "C" int nml_shim_auto_cmd(int cmd, int line)
-{
-    switch (cmd) {
-    case 0: { /* RUN */
-        EMC_TASK_PLAN_RUN msg;
-        msg.line = line;
-        return send_cmd(&msg);
-    }
-    case 1: { /* PAUSE */
-        EMC_TASK_PLAN_PAUSE msg;
-        return send_cmd(&msg);
-    }
-    case 2: { /* RESUME */
-        EMC_TASK_PLAN_RESUME msg;
-        return send_cmd(&msg);
-    }
-    case 3: { /* STEP */
-        EMC_TASK_PLAN_STEP msg;
-        return send_cmd(&msg);
-    }
-    case 4: { /* REVERSE */
-        EMC_TASK_PLAN_REVERSE msg;
-        return send_cmd(&msg);
-    }
-    case 5: { /* FORWARD */
-        EMC_TASK_PLAN_FORWARD msg;
-        return send_cmd(&msg);
-    }
-    default:
-        return -1;
-    }
-}
-
-extern "C" int nml_shim_mdi(const char *command)
-{
-    EMC_TASK_PLAN_EXECUTE msg;
-    strncpy(msg.command, command, sizeof(msg.command) - 1);
-    msg.command[sizeof(msg.command) - 1] = '\0';
-    return send_cmd(&msg);
-}
-
-extern "C" int nml_shim_jog(int jog_type, int jjogmode, int axis_or_joint,
-                             double velocity, double distance)
-{
-    switch (jog_type) {
-    case 0: /* STOP */
-        return nml_shim_jog_stop(jjogmode, axis_or_joint);
-    case 1: { /* CONTINUOUS */
-        EMC_JOG_CONT msg;
-        msg.joint_or_axis = axis_or_joint;
-        msg.vel = velocity;
-        msg.jjogmode = jjogmode;
-        return send_cmd(&msg);
-    }
-    case 2: { /* INCREMENT */
-        EMC_JOG_INCR msg;
-        msg.joint_or_axis = axis_or_joint;
-        msg.vel = velocity;
-        msg.incr = distance;
-        msg.jjogmode = jjogmode;
-        return send_cmd(&msg);
-    }
-    default:
-        return -1;
-    }
-}
-
-extern "C" int nml_shim_jog_stop(int jjogmode, int axis_or_joint)
-{
-    EMC_JOG_STOP msg;
-    msg.joint_or_axis = axis_or_joint;
-    msg.jjogmode = jjogmode;
-    return send_cmd(&msg);
-}
-
-extern "C" int nml_shim_spindle(int cmd, double speed, int spindle_num, int wait)
-{
-    switch (cmd) {
-    case 1: { /* FORWARD */
-        EMC_SPINDLE_ON msg;
-        msg.speed = speed;
-        msg.spindle = spindle_num;
-        msg.wait_for_spindle_at_speed = wait;
-        return send_cmd(&msg);
-    }
-    case -1: { /* REVERSE */
-        EMC_SPINDLE_ON msg;
-        msg.speed = -speed;
-        msg.spindle = spindle_num;
-        msg.wait_for_spindle_at_speed = wait;
-        return send_cmd(&msg);
-    }
-    case 0: { /* OFF */
-        EMC_SPINDLE_OFF msg;
-        msg.spindle = spindle_num;
-        return send_cmd(&msg);
-    }
-    case 10: { /* INCREASE */
-        EMC_SPINDLE_INCREASE msg;
-        msg.spindle = spindle_num;
-        return send_cmd(&msg);
-    }
-    case 11: { /* DECREASE */
-        EMC_SPINDLE_DECREASE msg;
-        msg.spindle = spindle_num;
-        return send_cmd(&msg);
-    }
-    case 12: { /* CONSTANT */
-        EMC_SPINDLE_CONSTANT msg;
-        msg.spindle = spindle_num;
-        return send_cmd(&msg);
-    }
-    default:
-        return -1;
-    }
-}
-
-extern "C" int nml_shim_home(int joint)
-{
-    EMC_JOINT_HOME msg;
-    msg.joint = joint;
-    return send_cmd(&msg);
-}
-
-extern "C" int nml_shim_unhome(int joint)
-{
-    EMC_JOINT_UNHOME msg;
-    msg.joint = joint;
-    return send_cmd(&msg);
-}
-
-extern "C" int nml_shim_override_limits(void)
-{
-    EMC_JOINT_OVERRIDE_LIMITS msg;
-    msg.joint = 0;
-    return send_cmd(&msg);
-}
-
-extern "C" int nml_shim_teleop_enable(int enable)
-{
-    EMC_TRAJ_SET_TELEOP_ENABLE msg;
-    msg.enable = enable;
-    return send_cmd(&msg);
-}
-
-extern "C" int nml_shim_set_feed_override(double rate)
-{
-    EMC_TRAJ_SET_SCALE msg;
-    msg.scale = rate;
-    return send_cmd(&msg);
-}
-
-extern "C" int nml_shim_set_spindle_override(double rate, int spindle_num)
-{
-    EMC_TRAJ_SET_SPINDLE_SCALE msg;
-    msg.scale = rate;
-    msg.spindle = spindle_num;
-    return send_cmd(&msg);
-}
-
-extern "C" int nml_shim_set_rapid_override(double rate)
-{
-    EMC_TRAJ_SET_RAPID_SCALE msg;
-    msg.scale = rate;
-    return send_cmd(&msg);
-}
-
-extern "C" int nml_shim_set_max_velocity(double velocity)
-{
-    EMC_TRAJ_SET_MAX_VELOCITY msg;
-    msg.velocity = velocity;
-    return send_cmd(&msg);
-}
-
-extern "C" int nml_shim_flood(int on)
-{
-    if (on) {
-        EMC_COOLANT_FLOOD_ON msg;
-        return send_cmd(&msg);
-    } else {
-        EMC_COOLANT_FLOOD_OFF msg;
-        return send_cmd(&msg);
-    }
-}
-
-extern "C" int nml_shim_mist(int on)
-{
-    if (on) {
-        EMC_COOLANT_MIST_ON msg;
-        return send_cmd(&msg);
-    } else {
-        EMC_COOLANT_MIST_OFF msg;
-        return send_cmd(&msg);
-    }
-}
-
-extern "C" int nml_shim_brake(int on, int spindle_num)
-{
-    if (on) {
-        EMC_SPINDLE_BRAKE_ENGAGE msg;
-        msg.spindle = spindle_num;
-        return send_cmd(&msg);
-    } else {
-        EMC_SPINDLE_BRAKE_RELEASE msg;
-        msg.spindle = spindle_num;
-        return send_cmd(&msg);
-    }
-}
-
-extern "C" int nml_shim_abort(void)
-{
-    EMC_TASK_ABORT msg;
-    return send_cmd(&msg);
-}
-
-extern "C" int nml_shim_task_plan_synch(void)
-{
-    EMC_TASK_PLAN_SYNCH msg;
-    return send_cmd(&msg);
-}
-
-extern "C" int nml_shim_set_debug(int debug)
-{
-    EMC_SET_DEBUG msg;
-    msg.debug = debug;
-    return send_cmd(&msg);
-}
-
-extern "C" int nml_shim_set_optional_stop(int on)
-{
-    EMC_TASK_PLAN_SET_OPTIONAL_STOP msg;
-    msg.state = on;
-    return send_cmd(&msg);
-}
-
-extern "C" int nml_shim_set_block_delete(int on)
-{
-    EMC_TASK_PLAN_SET_BLOCK_DELETE msg;
-    msg.state = on;
-    return send_cmd(&msg);
-}
-
-extern "C" int nml_shim_load_tool_table(void)
-{
-    EMC_TOOL_LOAD_TOOL_TABLE msg;
-    msg.file[0] = '\0';
-    return send_cmd(&msg);
-}
-
-extern "C" int nml_shim_program_open(const char *file)
-{
-    /* Close first, then open (matches emcmodule.cc pattern) */
-    EMC_TASK_PLAN_CLOSE close_msg;
-    int rc = send_cmd(&close_msg);
-    if (rc)
-        return rc;
-
-    EMC_TASK_PLAN_OPEN open_msg;
-    strncpy(open_msg.file, file, sizeof(open_msg.file) - 1);
-    open_msg.file[sizeof(open_msg.file) - 1] = '\0';
-    return send_cmd(&open_msg);
-}
-
-extern "C" int nml_shim_wait_complete(double timeout)
-{
-    if (!stat_channel || !stat_channel->valid())
-        return -1;
-
-    double elapsed = 0.0;
-    const double poll_interval = 0.01; /* 10ms */
-
-    while (timeout < 0 || elapsed < timeout) {
-        NMLTYPE type = stat_channel->peek();
-        if (type == EMC_STAT_TYPE) {
-            EMC_STAT *st = static_cast<EMC_STAT *>(stat_channel->get_address());
-            if (st) {
-                int serial_diff = st->echo_serial_number - cmd_serial;
-                if (serial_diff > 0)
-                    return NML_SHIM_RCS_DONE;
-                if (serial_diff == 0 &&
-                    (st->status == RCS_DONE || st->status == RCS_ERROR))
-                    return st->status;
-            }
-        }
-        esleep(poll_interval);
-        elapsed += poll_interval;
-    }
-
-    return -1; /* timeout */
 }
 
 /* ─── Errors ─── */

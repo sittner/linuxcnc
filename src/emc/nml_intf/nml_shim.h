@@ -1,11 +1,14 @@
 /*
- * nml_shim.h — C interface to the NML stat/command/error channels.
+ * nml_shim.h — C interface to the NML stat and error channels.
  *
  * This header provides extern "C" wrappers around the C++ NML API,
  * callable from Go via cgo. The implementation is in nml_shim.cc.
  *
- * Used by the emcgateway gomod to read machine status, send commands,
- * and poll error messages without exposing C++ to cgo.
+ * Used by the emcgateway gomod to read machine status and poll error
+ * messages without exposing C++ to cgo.
+ *
+ * Command functions have been removed — commands now go through the
+ * emccmd GMI API (emccmd_handlers.cc / emccmd_slot).
  */
 
 #ifndef NML_SHIM_H
@@ -23,11 +26,6 @@ extern "C" {
 #define NML_SHIM_ACTIVE_M_CODES 10
 #define NML_SHIM_ACTIVE_SETTINGS 5
 #define NML_SHIM_LINELEN 256  /* LINELEN(255) + NUL */
-
-/* RCS status codes (from rcs.hh) */
-#define NML_SHIM_RCS_DONE  1
-#define NML_SHIM_RCS_EXEC  2
-#define NML_SHIM_RCS_ERROR 3
 
 /* ─── Types ─── */
 
@@ -169,108 +167,6 @@ void nml_shim_shutdown(void);
  * Returns 0 on success, -1 if no new data or channel invalid.
  */
 int nml_shim_poll_stat(nml_stat_t *out);
-
-/* ─── Commands ─── */
-
-/*
- * Send a state command (EMC_TASK_SET_STATE).
- * state: STATE_ESTOP(1), ESTOP_RESET(2), OFF(3), ON(4)
- */
-int nml_shim_set_state(int state);
-
-/*
- * Send a mode command (EMC_TASK_SET_MODE).
- * mode: MANUAL(1), AUTO(2), MDI(3)
- */
-int nml_shim_set_mode(int mode);
-
-/*
- * Send an auto command (run/pause/resume/step/reverse/forward).
- * cmd: RUN(0), PAUSE(1), RESUME(2), STEP(3), REVERSE(4), FORWARD(5)
- * line: starting line for RUN, ignored for others
- */
-int nml_shim_auto_cmd(int cmd, int line);
-
-/*
- * Send an MDI command string.
- */
-int nml_shim_mdi(const char *command);
-
-/*
- * Send a jog command.
- * jog_type: STOP(0), CONTINUOUS(1), INCREMENT(2)
- */
-int nml_shim_jog(int jog_type, int jjogmode, int axis_or_joint,
-                 double velocity, double distance);
-
-/* Send a jog stop. */
-int nml_shim_jog_stop(int jjogmode, int axis_or_joint);
-
-/*
- * Send a spindle command.
- * cmd: OFF(0), FORWARD(1), REVERSE(-1), INCREASE(10), DECREASE(11), CONSTANT(12)
- */
-int nml_shim_spindle(int cmd, double speed, int spindle_num, int wait);
-
-/* Home a joint (-1 = all). */
-int nml_shim_home(int joint);
-
-/* Unhome a joint (-1 = all). */
-int nml_shim_unhome(int joint);
-
-/* Override soft limits. */
-int nml_shim_override_limits(void);
-
-/* Enable/disable teleop mode. */
-int nml_shim_teleop_enable(int enable);
-
-/* Set feed override (0.0 - 1.0+). */
-int nml_shim_set_feed_override(double rate);
-
-/* Set spindle speed override. */
-int nml_shim_set_spindle_override(double rate, int spindle_num);
-
-/* Set rapid override. */
-int nml_shim_set_rapid_override(double rate);
-
-/* Set maximum velocity. */
-int nml_shim_set_max_velocity(double velocity);
-
-/* Flood coolant on/off. */
-int nml_shim_flood(int on);
-
-/* Mist coolant on/off. */
-int nml_shim_mist(int on);
-
-/* Spindle brake engage(1)/release(0). */
-int nml_shim_brake(int on, int spindle_num);
-
-/* Abort current operation. */
-int nml_shim_abort(void);
-
-/* Synchronize task planner. */
-int nml_shim_task_plan_synch(void);
-
-/* Set debug level (EMC_SET_DEBUG). */
-int nml_shim_set_debug(int debug);
-
-/* Set optional stop. */
-int nml_shim_set_optional_stop(int on);
-
-/* Set block delete. */
-int nml_shim_set_block_delete(int on);
-
-/* Reload tool table. */
-int nml_shim_load_tool_table(void);
-
-/* Open a program file. */
-int nml_shim_program_open(const char *file);
-
-/*
- * Wait for command completion.
- * Returns NML_SHIM_RCS_DONE, NML_SHIM_RCS_ERROR, or -1 on timeout.
- */
-int nml_shim_wait_complete(double timeout);
 
 /* ─── Errors ─── */
 

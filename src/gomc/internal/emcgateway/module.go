@@ -12,7 +12,7 @@
 package emcgateway
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/../../../emc/nml_intf -I${SRCDIR}/../../.. -I${SRCDIR}/../../../rtapi -I${SRCDIR}/../../../../include -I${SRCDIR}/../../../libnml/posemath -I${SRCDIR}/../../../libnml/rcs -I${SRCDIR}/../../../libnml/nml -I${SRCDIR}/../../../libnml/inifile -I${SRCDIR}/../../../libnml/os_intf -I${SRCDIR}/../../../emc -I${SRCDIR}/../../../emc/rs274ngc -I${SRCDIR}/../../../emc/tooldata
+#cgo CFLAGS: -I${SRCDIR}/../../../emc/nml_intf -I${SRCDIR}/../../.. -I${SRCDIR}/../../../rtapi -I${SRCDIR}/../../../../include -I${SRCDIR}/../../../libnml/posemath -I${SRCDIR}/../../../libnml/rcs -I${SRCDIR}/../../../libnml/nml -I${SRCDIR}/../../../libnml/inifile -I${SRCDIR}/../../../libnml/os_intf -I${SRCDIR}/../../../emc -I${SRCDIR}/../../../emc/rs274ngc -I${SRCDIR}/../../../emc/tooldata -I${SRCDIR}/../../generated/gmi/emccmd -I${SRCDIR}/../../pkg/cmodule
 #cgo LDFLAGS: -L${SRCDIR}/../../../../lib -llinuxcnc -lnml -lposemath -ltooldata -lstdc++
 
 #include "nml_shim.h"

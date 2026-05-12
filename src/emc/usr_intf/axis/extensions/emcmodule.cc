@@ -815,26 +815,10 @@ static PyTypeObject Stat_Type = {
 };
 
 static int Command_init(pyCommandChannel *self, PyObject *a, PyObject *k) {
-    const char *file = get_nmlfile();
-    if(file == NULL) return -1;
-
-    RCS_CMD_CHANNEL *c =
-        new RCS_CMD_CHANNEL(emcFormat, "emcCommand", "xemc", file);
-    if(!c) {
-        PyErr_Format( error, "new RCS_CMD_CHANNEL failed");
-        return -1;
-    }
-    RCS_STAT_CHANNEL *s =
-        new RCS_STAT_CHANNEL(emcFormat, "emcStatus", "xemc", file);
-    if(!c) {
-	delete s;
-        PyErr_Format( error, "new RCS_STAT_CHANNEL failed");
-        return -1;
-    }
-
-    self->s = s;
-    self->c = c;
-    return 0;
+    PyErr_SetString(error,
+        "linuxcnc.command() is deprecated and no longer functional. "
+        "Use gmi.command.Command() instead.");
+    return -1;
 }
 
 static void Command_dealloc(PyObject *self) {

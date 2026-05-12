@@ -299,12 +299,11 @@ static emcmot_config_t emcmotConfig;
 #define DEFAULT_EMC_UI_TIMEOUT 5.0
 
 
-// NML channels
-static RCS_CMD_CHANNEL *emcCommandBuffer = 0;
+// NML channels (stat + error only; commands come via GMI slot)
 static RCS_STAT_CHANNEL *emcStatusBuffer = 0;
 static NML *emcErrorBuffer = 0;
 
-// NML command channel data pointer
+// command pointer — set from GMI slot buffer each cycle
 static RCS_CMD_MSG *emcCommand = 0;
 
 // global EMC status
@@ -902,7 +901,8 @@ static int emcTaskPlan(void)
     int retval = 0;
 
     // check for new command
-    if (emcCommand->serial_number != emcStatus->echo_serial_number) {
+    if (emcCommand != 0 &&
+        emcCommand->serial_number != emcStatus->echo_serial_number) {
 	// flag it here locally as a new command
 	type = emcCommand->type;
     } else {
@@ -1775,8 +1775,7 @@ static int emcTaskIssueCommand(NMLmsg * cmd)
 	return 0;
     }
     if (emc_debug & EMC_DEBUG_TASK_ISSUE) {
-	rcs_print("Issuing %s -- \t (%s)\n", emcSymbolLookup(cmd->type),
-		  emcCommandBuffer->msg2str(cmd));
+	rcs_print("Issuing %s\n", emcSymbolLookup(cmd->type));
     }
     switch (cmd->type) {
 	// general commands
@@ -2960,40 +2959,6 @@ static int emctask_startup()
 #define RETRY_TIME 10.0		// seconds to wait for subsystems to come up
 #define RETRY_INTERVAL 1.0	// seconds between wait tries for a subsystem
 
-    // get the NML command buffer
-    if (!(emc_debug & EMC_DEBUG_NML)) {
-	set_rcs_print_destination(RCS_PRINT_TO_NULL);	// inhibit diag
-	// messages
-    }
-    end = RETRY_TIME;
-    good = 0;
-    do {
-	if (NULL != emcCommandBuffer) {
-	    delete emcCommandBuffer;
-	}
-	emcCommandBuffer =
-	    new RCS_CMD_CHANNEL(emcFormat, "emcCommand", "emc",
-				emc_nmlfile);
-	if (emcCommandBuffer->valid()) {
-	    good = 1;
-	    break;
-	}
-	esleep(RETRY_INTERVAL);
-	end -= RETRY_INTERVAL;
-	if (done) {
-	    emctask_shutdown();
-	    exit(1);
-	}
-    } while (end > 0.0);
-    set_rcs_print_destination(RCS_PRINT_TO_STDOUT);	// restore diag
-    // messages
-    if (!good) {
-	rcs_print_error("can't get emcCommand buffer\n");
-	return -1;
-    }
-    // get our command data structure
-    emcCommand = emcCommandBuffer->get_address();
-
     // get the NML status buffer
     if (!(emc_debug & EMC_DEBUG_NML)) {
 	set_rcs_print_destination(RCS_PRINT_TO_NULL);	// inhibit diag
@@ -3202,12 +3167,6 @@ static int emctask_shutdown(void)
 	emcStatus = 0;
     }
 
-    if (0 != emcCommandBuffer) {
-	delete emcCommandBuffer;
-	emcCommandBuffer = 0;
-	emcCommand = 0;
-    }
-
     if (0 != emcStatus) {
 	delete emcStatus;
 	emcStatus = 0;
@@ -3344,7 +3303,7 @@ static void *milltask_loop(void *arg)
         bool gmi_cmd_this_cycle = false;
 
         check_ini_hal_items(emcStatus->motion.traj.joints);
-	// read command — prefer GMI slot, fall back to NML
+	// read command from GMI slot
 	{
 	    size_t sz = emccmd_slot_take(gmi_cmd_buf, sizeof(gmi_cmd_buf));
 	    if (sz > 0) {
@@ -3352,10 +3311,6 @@ static void *milltask_loop(void *arg)
 	        taskPlanError = 0;
 	        taskExecuteError = 0;
 	        gmi_cmd_this_cycle = true;
-	    } else if (0 != emcCommandBuffer->read()) {
-	        emcCommand = emcCommandBuffer->get_address();
-	        taskPlanError = 0;
-	        taskExecuteError = 0;
 	    }
 	}
 	// run control cycle
@@ -3470,11 +3425,13 @@ static void *milltask_loop(void *arg)
 	// update task-specific status
 	emcTaskUpdate(&emcStatus->task);
 
-	emcStatus->task.command_type = emcCommand->type;
-	emcStatus->task.echo_serial_number = emcCommand->serial_number;
+	if (emcCommand != 0) {
+	    emcStatus->task.command_type = emcCommand->type;
+	    emcStatus->task.echo_serial_number = emcCommand->serial_number;
 
-	emcStatus->command_type = emcCommand->type;
-	emcStatus->echo_serial_number = emcCommand->serial_number;
+	    emcStatus->command_type = emcCommand->type;
+	    emcStatus->echo_serial_number = emcCommand->serial_number;
+	}
 
 	if (taskPlanError || taskExecuteError ||
 	    emcStatus->task.execState == EMC_TASK_EXEC_ERROR ||
