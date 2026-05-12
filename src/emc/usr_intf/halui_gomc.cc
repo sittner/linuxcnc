@@ -43,6 +43,7 @@
 #include "timer.hh"
 #include <rtapi_string.h>
 #include "tooldata.hh"
+#include "gomc/generated/gmi/emccmd/emccmd_api.h"
 
 // ---------------------------------------------------------------------------
 // File-static gomc API pointers — set by New(), used by helpers.
@@ -51,6 +52,9 @@ static const cmod_env_t  *the_env;
 static const gomc_hal_t  *the_hal;
 static const gomc_log_t  *the_log;
 static const gomc_ini_t  *the_ini;
+
+// emccmd API callbacks — fetched in halui_start() via gomc_api_t.
+static const emccmd_callbacks_t *emccmd;
 
 /* Using halui: see the man page */
 
@@ -267,38 +271,17 @@ static double maxSpindleOverride=1.0;
 static EMC_TASK_MODE_ENUM halui_old_mode = EMC_TASK_MODE_MANUAL;
 static int halui_sent_mdi = 0;
 
-// the NML channels to the EMC task
-static RCS_CMD_CHANNEL *emcCommandBuffer = 0;
+// the NML channels for status and errors (command path uses emccmd API)
 static RCS_STAT_CHANNEL *emcStatusBuffer = 0;
 EMC_STAT *emcStatus = 0;
 
 // the NML channel for errors
 static NML *emcErrorBuffer = 0;
 
-// the serial number to use.
-static int emcCommandSerialNumber = 0;
-
-// how long to wait for Task to report that it has received our command
-static double receiveTimeout = 10.0;
-
-// how long to wait for Task to finish running our command
-static double doneTimeout = 60.;
-
 static int emcTaskNmlGet()
 {
     int retval = 0;
 
-    // try to connect to EMC cmd
-    if (emcCommandBuffer == 0) {
-	emcCommandBuffer =
-	    new RCS_CMD_CHANNEL(emcFormat, "emcCommand", "xemc",
-				emc_nmlfile);
-	if (!emcCommandBuffer->valid()) {
-	    delete emcCommandBuffer;
-	    emcCommandBuffer = 0;
-	    retval = -1;
-	}
-    }
     // try to connect to EMC status
     if (emcStatusBuffer == 0) {
 	emcStatusBuffer =
@@ -426,68 +409,10 @@ static int updateStatus()
 }
 
 
-#define EMC_COMMAND_DELAY   0.1	// how long to sleep between checks
-
-static int emcCommandWaitDone()
-{
-    double end;
-    for (end = 0.0; end < doneTimeout; end += EMC_COMMAND_DELAY) {
-	updateStatus();
-	int serial_diff = emcStatus->echo_serial_number - emcCommandSerialNumber;
-
-	if (serial_diff < 0) {
-	    continue;
-	}
-
-	if (serial_diff > 0) {
-	    return 0;
-	}
-
-	if (emcStatus->status == RCS_DONE) {
-	    return 0;
-	}
-
-	if (emcStatus->status == RCS_ERROR) {
-	    return -1;
-	}
-
-	esleep(EMC_COMMAND_DELAY);
-    }
-
-    return -1;
-}
-
-static int emcCommandSend(RCS_CMD_MSG & cmd)
-{
-    // write command
-    if (emcCommandBuffer->write(&cmd)) {
-        gomc_log_errorf(the_log, "halui", "%s: error writing to Task", __func__);
-        return -1;
-    }
-    emcCommandSerialNumber = cmd.serial_number;
-
-    // wait for receive
-    double end;
-    for (end = 0.0; end < receiveTimeout; end += EMC_COMMAND_DELAY) {
-	updateStatus();
-	int serial_diff = emcStatus->echo_serial_number - emcCommandSerialNumber;
-
-	if (serial_diff >= 0) {
-	    return 0;
-	}
-
-	esleep(EMC_COMMAND_DELAY);
-    }
-
-    gomc_log_errorf(the_log, "halui", "%s: no echo from Task after %.3f seconds", __func__, receiveTimeout);
-    return -1;
-}
-
 static void halui_cleanup()
 {
     the_hal->exit(the_hal->ctx, comp_id);
 
-    if(emcCommandBuffer) { delete emcCommandBuffer;  emcCommandBuffer = 0; }
     if(emcStatusBuffer) { delete emcStatusBuffer;  emcStatusBuffer = 0; }
     if(emcErrorBuffer) { delete emcErrorBuffer;  emcErrorBuffer = 0; }
 }
@@ -975,84 +900,55 @@ int halui_hal_init(void)
 
 static int sendMachineOn()
 {
-    EMC_TASK_SET_STATE state_msg;
-
-    state_msg.state = EMC_TASK_STATE_ON;
-    return emcCommandSend(state_msg);
+    return emccmd->set_state(emccmd->ctx, EMC_TASK_STATE_ON) < 0 ? -1 : 0;
 }
 
 static int sendMachineOff()
 {
-    EMC_TASK_SET_STATE state_msg;
-
-    state_msg.state = EMC_TASK_STATE_OFF;
-    return emcCommandSend(state_msg);
+    return emccmd->set_state(emccmd->ctx, EMC_TASK_STATE_OFF) < 0 ? -1 : 0;
 }
 
 static int sendEstop()
 {
-    EMC_TASK_SET_STATE state_msg;
-
-    state_msg.state = EMC_TASK_STATE_ESTOP;
-    return emcCommandSend(state_msg);
+    return emccmd->set_state(emccmd->ctx, EMC_TASK_STATE_ESTOP) < 0 ? -1 : 0;
 }
 
 static int sendEstopReset()
 {
-    EMC_TASK_SET_STATE state_msg;
-
-    state_msg.state = EMC_TASK_STATE_ESTOP_RESET;
-    return emcCommandSend(state_msg);
+    return emccmd->set_state(emccmd->ctx, EMC_TASK_STATE_ESTOP_RESET) < 0 ? -1 : 0;
 }
 
 static int sendManual()
 {
-    EMC_TASK_SET_MODE mode_msg;
-
     if (emcStatus->task.mode == EMC_TASK_MODE_MANUAL) {
         return 0;
     }
-
-    mode_msg.mode = EMC_TASK_MODE_MANUAL;
-    return emcCommandSend(mode_msg);
+    return emccmd->set_mode(emccmd->ctx, EMC_TASK_MODE_MANUAL) < 0 ? -1 : 0;
 }
 
 static int sendAuto()
 {
-    EMC_TASK_SET_MODE mode_msg;
-
     if (emcStatus->task.mode == EMC_TASK_MODE_AUTO) {
         return 0;
     }
-
-    mode_msg.mode = EMC_TASK_MODE_AUTO;
-    return emcCommandSend(mode_msg);
+    return emccmd->set_mode(emccmd->ctx, EMC_TASK_MODE_AUTO) < 0 ? -1 : 0;
 }
 
 static int sendMdi()
 {
-    EMC_TASK_SET_MODE mode_msg;
-
     if (emcStatus->task.mode == EMC_TASK_MODE_MDI) {
         return 0;
     }
-
-    mode_msg.mode = EMC_TASK_MODE_MDI;
-    return emcCommandSend(mode_msg);
+    return emccmd->set_mode(emccmd->ctx, EMC_TASK_MODE_MDI) < 0 ? -1 : 0;
 }
 
 static int sendMdiCommand(int n)
 {
-    EMC_TASK_PLAN_EXECUTE emc_task_plan_execute_msg;
-
     if (updateStatus()) {
 	return -1;
     }
 
     if (!halui_sent_mdi) {
-        // There is currently no MDI command from halui executing, we're
-        // currently starting the first one.  Record what the Task mode is,
-        // so we can restore it when all the MDI commands finish.
         halui_old_mode = emcStatus->task.mode;
     }
 
@@ -1071,8 +967,7 @@ static int sendMdiCommand(int n)
 	    return -1;
 	}
     }
-    rtapi_strxcpy(emc_task_plan_execute_msg.command, mdi_commands[n]);
-    if (emcCommandSend(emc_task_plan_execute_msg)) {
+    if (emccmd->mdi(emccmd->ctx, mdi_commands[n]) < 0) {
         gomc_log_errorf(the_log, "halui", "%s: failed to send mdi command %d", __func__, n);
 	return -1;
     }
@@ -1082,66 +977,42 @@ static int sendMdiCommand(int n)
 
 static int sendTeleop()
 {
-    EMC_TRAJ_SET_TELEOP_ENABLE emc_set_teleop_enable_msg;
-
-    emc_set_teleop_enable_msg.enable = 1;
-    if (emcCommandSend(emc_set_teleop_enable_msg)) {
-        return -1;
-    }
-    return emcCommandWaitDone();
+    return emccmd->teleop_enable(emccmd->ctx, true) < 0 ? -1 : 0;
 }
 
 static int sendJoint()
 {
-    EMC_TRAJ_SET_TELEOP_ENABLE emc_set_teleop_enable_msg;
-
-    emc_set_teleop_enable_msg.enable = 0;
-    if (emcCommandSend(emc_set_teleop_enable_msg)) {
-        return -1;
-    }
-    return emcCommandWaitDone();
+    return emccmd->teleop_enable(emccmd->ctx, false) < 0 ? -1 : 0;
 }
 
 static int sendMistOn()
 {
-    EMC_COOLANT_MIST_ON emc_coolant_mist_on_msg;
-
-    return emcCommandSend(emc_coolant_mist_on_msg);
+    return emccmd->mist(emccmd->ctx, true) < 0 ? -1 : 0;
 }
 
 static int sendMistOff()
 {
-    EMC_COOLANT_MIST_OFF emc_coolant_mist_off_msg;
-
-    return emcCommandSend(emc_coolant_mist_off_msg);
+    return emccmd->mist(emccmd->ctx, false) < 0 ? -1 : 0;
 }
 
 static int sendFloodOn()
 {
-    EMC_COOLANT_FLOOD_ON emc_coolant_flood_on_msg;
-
-    return emcCommandSend(emc_coolant_flood_on_msg);
+    return emccmd->flood(emccmd->ctx, true) < 0 ? -1 : 0;
 }
 
 static int sendFloodOff()
 {
-    EMC_COOLANT_FLOOD_OFF emc_coolant_flood_off_msg;
-
-    return emcCommandSend(emc_coolant_flood_off_msg);
+    return emccmd->flood(emccmd->ctx, false) < 0 ? -1 : 0;
 }
 
 static int sendLubeOn()
 {
-    EMC_LUBE_ON emc_lube_on_msg;
-
-    return emcCommandSend(emc_lube_on_msg);
+    return emccmd->lube(emccmd->ctx, true) < 0 ? -1 : 0;
 }
 
 static int sendLubeOff()
 {
-    EMC_LUBE_OFF emc_lube_off_msg;
-
-    return emcCommandSend(emc_lube_off_msg);
+    return emccmd->lube(emccmd->ctx, false) < 0 ? -1 : 0;
 }
 
 // programStartLine is the saved valued of the line that
@@ -1150,154 +1021,110 @@ static int programStartLine = 0;
 
 static int sendProgramRun(int line)
 {
-    EMC_TASK_PLAN_RUN emc_task_plan_run_msg;
-
     updateStatus();
 
     if (0 == emcStatus->task.file[0]) {
 	return -1; // no program open
     }
-    // save the start line, to compare against active line later
     programStartLine = line;
-
-    emc_task_plan_run_msg.line = line;
     sendAuto();
-    return emcCommandSend(emc_task_plan_run_msg);
+    return emccmd->auto_cmd(emccmd->ctx, EMCCMD_AUTO_RUN, line) < 0 ? -1 : 0;
 }
 
 static int sendProgramPause()
 {
-    EMC_TASK_PLAN_PAUSE emc_task_plan_pause_msg;
-
-    return emcCommandSend(emc_task_plan_pause_msg);
+    return emccmd->auto_cmd(emccmd->ctx, EMCCMD_AUTO_PAUSE, 0) < 0 ? -1 : 0;
 }
 
 static int sendSetOptionalStop(bool state)
 {
-    EMC_TASK_PLAN_SET_OPTIONAL_STOP emc_task_plan_set_optional_stop_msg;
-
-    emc_task_plan_set_optional_stop_msg.state = state;
-    return emcCommandSend(emc_task_plan_set_optional_stop_msg);
+    return emccmd->set_optional_stop(emccmd->ctx, state) < 0 ? -1 : 0;
 }
 
 static int sendSetBlockDelete(bool state)
 {
-    EMC_TASK_PLAN_SET_BLOCK_DELETE emc_task_plan_set_block_delete_msg;
-
-    emc_task_plan_set_block_delete_msg.state = state;
-    return emcCommandSend(emc_task_plan_set_block_delete_msg);
+    return emccmd->set_block_delete(emccmd->ctx, state) < 0 ? -1 : 0;
 }
-
 
 static int sendProgramResume()
 {
-    EMC_TASK_PLAN_RESUME emc_task_plan_resume_msg;
-
-    return emcCommandSend(emc_task_plan_resume_msg);
+    return emccmd->auto_cmd(emccmd->ctx, EMCCMD_AUTO_RESUME, 0) < 0 ? -1 : 0;
 }
 
 static int sendProgramStep()
 {
-    EMC_TASK_PLAN_STEP emc_task_plan_step_msg;
-
-    return emcCommandSend(emc_task_plan_step_msg);
+    return emccmd->auto_cmd(emccmd->ctx, EMCCMD_AUTO_STEP, 0) < 0 ? -1 : 0;
 }
 
 static int sendSpindleForward(int spindle)
 {
-    EMC_SPINDLE_ON emc_spindle_on_msg;
-    emc_spindle_on_msg.spindle = spindle;
+    double speed;
     if (emcStatus->task.activeSettings[2] != 0) {
-	emc_spindle_on_msg.speed = fabs(emcStatus->task.activeSettings[2]);
+	speed = fabs(emcStatus->task.activeSettings[2]);
     } else {
-	emc_spindle_on_msg.speed = +1;
+	speed = 1;
     }
-    return emcCommandSend(emc_spindle_on_msg);
+    return emccmd->spindle(emccmd->ctx, EMCCMD_SPINDLE_FORWARD, speed, spindle, 0) < 0 ? -1 : 0;
 }
 
 static int sendSpindleReverse(int spindle)
 {
-    EMC_SPINDLE_ON emc_spindle_on_msg;
-    emc_spindle_on_msg.spindle = spindle;
+    double speed;
     if (emcStatus->task.activeSettings[2] != 0) {
-	emc_spindle_on_msg.speed =
-	    -1 * fabs(emcStatus->task.activeSettings[2]);
+	speed = fabs(emcStatus->task.activeSettings[2]);
     } else {
-	emc_spindle_on_msg.speed = -1;
+	speed = 1;
     }
-    return emcCommandSend(emc_spindle_on_msg);
+    return emccmd->spindle(emccmd->ctx, EMCCMD_SPINDLE_REVERSE, speed, spindle, 0) < 0 ? -1 : 0;
 }
 
 static int sendSpindleOff(int spindle)
 {
-    EMC_SPINDLE_OFF emc_spindle_off_msg;
-    emc_spindle_off_msg.spindle = spindle;
-    return emcCommandSend(emc_spindle_off_msg);
+    return emccmd->spindle(emccmd->ctx, EMCCMD_SPINDLE_OFF, 0, spindle, 0) < 0 ? -1 : 0;
 }
 
 static int sendSpindleIncrease(int spindle)
 {
-    EMC_SPINDLE_INCREASE emc_spindle_increase_msg;
-    emc_spindle_increase_msg.spindle = spindle;
-    return emcCommandSend(emc_spindle_increase_msg);
+    return emccmd->spindle(emccmd->ctx, EMCCMD_SPINDLE_INCREASE, 0, spindle, 0) < 0 ? -1 : 0;
 }
 
 static int sendSpindleDecrease(int spindle)
 {
-    EMC_SPINDLE_DECREASE emc_spindle_decrease_msg;
-    emc_spindle_decrease_msg.spindle = spindle;
-    return emcCommandSend(emc_spindle_decrease_msg);
+    return emccmd->spindle(emccmd->ctx, EMCCMD_SPINDLE_DECREASE, 0, spindle, 0) < 0 ? -1 : 0;
 }
 
 static int sendSpindleConstant(int spindle)
 {
-    EMC_SPINDLE_CONSTANT emc_spindle_constant_msg;
-    emc_spindle_constant_msg.spindle = spindle;
-    return emcCommandSend(emc_spindle_constant_msg);
+    return emccmd->spindle(emccmd->ctx, EMCCMD_SPINDLE_CONSTANT, 0, spindle, 0) < 0 ? -1 : 0;
 }
 
 static int sendBrakeEngage(int spindle)
 {
-    EMC_SPINDLE_BRAKE_ENGAGE emc_spindle_brake_engage_msg;
-    emc_spindle_brake_engage_msg.spindle = spindle;
-    return emcCommandSend(emc_spindle_brake_engage_msg);
+    return emccmd->brake(emccmd->ctx, true, spindle) < 0 ? -1 : 0;
 }
 
 static int sendBrakeRelease(int spindle)
 {
-    EMC_SPINDLE_BRAKE_RELEASE emc_spindle_brake_release_msg;
-    emc_spindle_brake_release_msg.spindle = spindle;
-    return emcCommandSend(emc_spindle_brake_release_msg);
+    return emccmd->brake(emccmd->ctx, false, spindle) < 0 ? -1 : 0;
 }
 
 static int sendHome(int joint)
 {
-    EMC_JOINT_HOME emc_joint_home_msg;
-
-    emc_joint_home_msg.joint = joint;
-    return emcCommandSend(emc_joint_home_msg);
+    return emccmd->home(emccmd->ctx, joint) < 0 ? -1 : 0;
 }
 
 static int sendUnhome(int joint)
 {
-    EMC_JOINT_UNHOME emc_joint_unhome_msg;
-
-    emc_joint_unhome_msg.joint = joint;
-    return emcCommandSend(emc_joint_unhome_msg);
+    return emccmd->unhome(emccmd->ctx, joint) < 0 ? -1 : 0;
 }
 
 static int sendAbort()
 {
-    EMC_TASK_ABORT task_abort_msg;
-
-    return emcCommandSend(task_abort_msg);
+    return emccmd->abort(emccmd->ctx) < 0 ? -1 : 0;
 }
-
 
 static void sendJogStop(int ja, int jjogmode)
 {
-    EMC_JOG_STOP emc_jog_stop_msg;
-
     if (   ( (jjogmode == JOGJOINT) && (emcStatus->motion.traj.mode == EMC_TRAJ_MODE_TELEOP) )
         || ( (jjogmode == JOGTELEOP ) && (emcStatus->motion.traj.mode != EMC_TRAJ_MODE_TELEOP) )
        ) {
@@ -1308,16 +1135,11 @@ static void sendJogStop(int ja, int jjogmode)
     if ( !jjogmode &&  (ja < 0))                     { gomc_log_errorf(the_log, "halui", "unexpected_2 %d",ja); return; }
     if ( !jjogmode && !(axis_mask & (1 << ja)) )     { gomc_log_errorf(the_log, "halui", "unexpected_3 %d",ja); return; }
 
-    emc_jog_stop_msg.jjogmode = jjogmode;
-    emc_jog_stop_msg.joint_or_axis = ja;
-    emcCommandSend(emc_jog_stop_msg);
+    emccmd->jog_stop(emccmd->ctx, jjogmode, ja);
 }
-
 
 static void sendJogCont(int ja, double speed, int jjogmode)
 {
-    EMC_JOG_CONT emc_jog_cont_msg;
-
     if (emcStatus->task.state != EMC_TASK_STATE_ON) { return; }
     if (   ( (jjogmode == JOGJOINT) && (emcStatus->motion.traj.mode == EMC_TRAJ_MODE_TELEOP) )
         || ( (jjogmode == JOGTELEOP ) && (emcStatus->motion.traj.mode != EMC_TRAJ_MODE_TELEOP) )
@@ -1329,17 +1151,11 @@ static void sendJogCont(int ja, double speed, int jjogmode)
     if ( !jjogmode &&  (ja < 0))                     { gomc_log_errorf(the_log, "halui", "unexpected_5 %d",ja); return; }
     if ( !jjogmode && !(axis_mask & (1 << ja)) )     { gomc_log_errorf(the_log, "halui", "unexpected_6 %d",ja); return; }
 
-    emc_jog_cont_msg.jjogmode = jjogmode;
-    emc_jog_cont_msg.joint_or_axis = ja;
-    emc_jog_cont_msg.vel = speed / 60.0;
-
-    emcCommandSend(emc_jog_cont_msg);
+    emccmd->jog(emccmd->ctx, EMCCMD_JOG_CONTINUOUS, jjogmode, ja, speed / 60.0, 0);
 }
 
 static void sendJogIncr(int ja, double speed, double incr, int jjogmode)
 {
-    EMC_JOG_INCR emc_jog_incr_msg;
-
     if (emcStatus->task.state != EMC_TASK_STATE_ON) { return; }
     if (   ( (jjogmode == JOGJOINT) && (emcStatus->motion.traj.mode == EMC_TRAJ_MODE_TELEOP) )
         || ( (jjogmode == JOGTELEOP ) && (emcStatus->motion.traj.mode != EMC_TRAJ_MODE_TELEOP) )
@@ -1351,77 +1167,51 @@ static void sendJogIncr(int ja, double speed, double incr, int jjogmode)
     if ( !jjogmode &&  (ja < 0))                     { gomc_log_errorf(the_log, "halui", "unexpected_8 %d",ja); return; }
     if ( !jjogmode && !(axis_mask & (1 << ja)) )     { gomc_log_errorf(the_log, "halui", "unexpected_9 %d",ja); return; }
 
-    emc_jog_incr_msg.jjogmode = jjogmode;
-    emc_jog_incr_msg.joint_or_axis = ja;
-    emc_jog_incr_msg.vel = speed / 60.0;
-    emc_jog_incr_msg.incr = incr;
-
-    emcCommandSend(emc_jog_incr_msg);
+    emccmd->jog(emccmd->ctx, EMCCMD_JOG_INCREMENT, jjogmode, ja, speed / 60.0, incr);
 }
 
 static int sendFeedOverride(double override)
 {
-    EMC_TRAJ_SET_SCALE emc_traj_set_scale_msg;
-
     if (override < 0.0) {
 	override = 0.0;
     }
-
     if (override > maxFeedOverride) {
 	override = maxFeedOverride;
     }
-
-    emc_traj_set_scale_msg.scale = override;
-    return emcCommandSend(emc_traj_set_scale_msg);
+    return emccmd->set_feed_override(emccmd->ctx, override) < 0 ? -1 : 0;
 }
 
 static int sendRapidOverride(double override)
 {
-    EMC_TRAJ_SET_RAPID_SCALE emc_traj_set_scale_msg;
-
     if (override < 0.0) {
 	override = 0.0;
     }
-
     if (override > 1.0) {
 	override = 1.0;
     }
-
-    emc_traj_set_scale_msg.scale = override;
-    return emcCommandSend(emc_traj_set_scale_msg);
+    return emccmd->set_rapid_override(emccmd->ctx, override) < 0 ? -1 : 0;
 }
 
 static int sendMaxVelocity(double velocity)
 {
-    EMC_TRAJ_SET_MAX_VELOCITY mv;
-
     if (velocity < 0.0) {
         velocity = 0.0;
     }
-
     if (velocity > maxMaxVelocity) {
         velocity = maxMaxVelocity;
     }
-
-    mv.velocity = velocity;
-    return emcCommandSend(mv);
+    return emccmd->set_max_velocity(emccmd->ctx, velocity) < 0 ? -1 : 0;
 }
 
 static int sendSpindleOverride(int spindle, double override)
 {
-    EMC_TRAJ_SET_SPINDLE_SCALE emc_traj_set_spindle_scale_msg;
-
     if (override < minSpindleOverride) {
 	override = minSpindleOverride;
     }
-
     if (override > maxSpindleOverride) {
 	override = maxSpindleOverride;
     }
-
-    emc_traj_set_spindle_scale_msg.spindle = spindle;
-    emc_traj_set_spindle_scale_msg.scale = override;
-    return emcCommandSend(emc_traj_set_spindle_scale_msg);
+    return emccmd->set_spindle_override(emccmd->ctx, override, spindle) < 0 ? -1 : 0;
 }
 
 static int iniLoad(const gomc_ini_t *ini)
@@ -2383,9 +2173,20 @@ static int halui_start(cmod_t *self)
 {
     halui_module *m = (halui_module *)self->priv;
 
-    // init NML
+    // Get the emccmd API callbacks from the registry.
+    if (!the_env->api) {
+	gomc_log_errorf(the_log, "halui", "no API registry available");
+	return -1;
+    }
+    emccmd = emccmd_api_get(the_env->api, "emccmd");
+    if (!emccmd) {
+	gomc_log_errorf(the_log, "halui", "emccmd API not registered (milltask not loaded?)");
+	return -1;
+    }
+
+    // init NML for stat and error channels
     if (0 != tryNml()) {
-	gomc_log_errorf(the_log, "halui", "can't connect to emc");
+	gomc_log_errorf(the_log, "halui", "can't connect to emc status/error");
 	return -1;
     }
 

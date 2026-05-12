@@ -242,6 +242,17 @@ static int32_t cmd_brake(void *ctx, bool on, int32_t spindle_num)
     }
 }
 
+static int32_t cmd_lube(void *ctx, bool on)
+{
+    if (on) {
+        EMC_LUBE_ON msg;
+        return emccmd_submit(&msg, sizeof(msg));
+    } else {
+        EMC_LUBE_OFF msg;
+        return emccmd_submit(&msg, sizeof(msg));
+    }
+}
+
 static int32_t cmd_abort(void *ctx)
 {
     EMC_TASK_ABORT msg;
@@ -328,6 +339,7 @@ extern const emccmd_callbacks_t emccmd_handler_table = {
     .flood = cmd_flood,
     .mist = cmd_mist,
     .brake = cmd_brake,
+    .lube = cmd_lube,
     .abort = cmd_abort,
     .task_plan_synch = cmd_task_plan_synch,
     .set_optional_stop = cmd_set_optional_stop,

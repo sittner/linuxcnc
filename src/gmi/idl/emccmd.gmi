@@ -128,6 +128,11 @@ func mist(on: bool) -> i32
 @path "/brake"
 func brake(on: bool, spindle_num: i32) -> i32
 
+# Lube on/off
+@method "POST"
+@path "/lube"
+func lube(on: bool) -> i32
+
 # Abort current operation
 @method "POST"
 @path "/abort"
