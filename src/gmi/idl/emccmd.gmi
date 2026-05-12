@@ -11,29 +11,29 @@
 
 # Auto command sub-type (linuxcnc.AUTO_*)
 enum AutoCmd {
-    RUN = 0
-    PAUSE = 1
-    RESUME = 2
-    STEP = 3
-    REVERSE = 4
-    FORWARD = 5
+    AUTO_RUN = 0
+    AUTO_PAUSE = 1
+    AUTO_RESUME = 2
+    AUTO_STEP = 3
+    AUTO_REVERSE = 4
+    AUTO_FORWARD = 5
 }
 
 # Jog type (linuxcnc.JOG_*)
 enum JogType {
-    STOP = 0
-    CONTINUOUS = 1
-    INCREMENT = 2
+    JOG_STOP = 0
+    JOG_CONTINUOUS = 1
+    JOG_INCREMENT = 2
 }
 
 # Spindle command direction (linuxcnc.SPINDLE_*)
 enum SpindleCmd {
-    OFF = 0
-    FORWARD = 1
-    REVERSE = -1
-    INCREASE = 10
-    DECREASE = 11
-    CONSTANT = 12
+    SPINDLE_OFF = 0
+    SPINDLE_FORWARD = 1
+    SPINDLE_REVERSE = -1
+    SPINDLE_INCREASE = 10
+    SPINDLE_DECREASE = 11
+    SPINDLE_CONSTANT = 12
 }
 
 # ─── Functions ───

@@ -285,6 +285,21 @@ $(GMI_EMCCMD_SERVER_GO): $(GMI_EMCCMD_IDL) $(GMICOMPILE_BIN)
 	@mkdir -p $(dir $(GMI_EMCCMD_SERVER_GO))
 	$(Q)$(GMICOMPILE) --server-go $(GMI_EMCCMD_IDL) -o $(GMI_EMCCMD_SERVER_GO)
 
+# --- emccmd C callback struct (milltask provider) ---
+
+GMI_EMCCMD_GEN := gomc/generated/gmi/emccmd
+GMI_EMCCMD_API_H := $(GMI_EMCCMD_GEN)/emccmd_api.h
+
+$(GMI_EMCCMD_API_H): $(GMI_EMCCMD_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI emccmd C API from $(GMI_EMCCMD_IDL)"
+	@mkdir -p $(GMI_EMCCMD_GEN)
+	$(Q)$(GMICOMPILE) --server-c $(GMI_EMCCMD_IDL) -o $(GMI_EMCCMD_API_H)
+	$(Q)$(GMICOMPILE_BIN) add-gmi generated/gmi/emccmd
+
+$(GMI_EMCCMD_GEN)/emccmd_cgo.go: $(GMI_EMCCMD_API_H)
+
+TARGETS += $(GMI_EMCCMD_API_H)
+
 $(GMI_EMCERROR_SERVER_GO): $(GMI_EMCERROR_IDL) $(GMICOMPILE_BIN)
 	$(ECHO) "Generating GMI emcerror Go server dispatch from $(GMI_EMCERROR_IDL)"
 	@mkdir -p $(dir $(GMI_EMCERROR_SERVER_GO))

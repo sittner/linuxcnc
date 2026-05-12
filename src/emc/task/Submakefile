@@ -29,11 +29,14 @@ MILLTASK_GOMC_SRCS := \
 	emc/task/inijoint_gomc.cc \
 	emc/task/iniaxis_gomc.cc \
 	emc/task/inispindle_gomc.cc \
+	emc/task/emccmd_slot.cc \
+	emc/task/emccmd_handlers.cc \
 
 USERSRCS += $(MILLTASK_GOMC_SRCS)
 
 $(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): EXTRAFLAGS += -fPIC \
     -Igomc/generated/gmi/mcode_handler -Igomc/generated/gmi/interp_ext -Igomc/generated/gmi/interp_ctx \
+    -Igomc/generated/gmi/emccmd \
     -Igomc/pkg/cmodule
 
 # Generated GMI headers needed by milltask sources (bootstrap deps)
@@ -41,6 +44,7 @@ $(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/canon/canon_api.h
 $(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/mcode_handler/mcode_handler_api.h
 $(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/interp_ext/interp_ext_api.h
 $(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/interp_ctx/interp_ctx_api.h
+$(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/emccmd/emccmd_api.h
 
 ../cmod/milltask.so: $(call TOOBJS, $(MILLTASK_GOMC_SRCS)) \
                      ../lib/librs274.so.0 ../lib/liblinuxcnc.a \

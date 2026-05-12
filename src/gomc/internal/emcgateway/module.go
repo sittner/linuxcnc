@@ -30,7 +30,6 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emccmdapi"
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcerrorapi"
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcstatapi"
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/toolsapi"
@@ -38,12 +37,16 @@ import (
 	"github.com/sittner/linuxcnc/src/gomc/internal/config"
 	"github.com/sittner/linuxcnc/src/gomc/pkg/gomc"
 	"github.com/sittner/linuxcnc/src/gomc/pkg/inifile"
+
+	// emccmd C callback API — init() registers EmccmdMeta for REST dispatch.
+	// milltask registers the actual implementation via gomc_api_t.
+	_ "github.com/sittner/linuxcnc/src/gomc/generated/gmi/emccmd"
 )
 
 func init() {
 	gomc.RegisterModule("emcgateway", newEmcGateway)
 	apiserver.RegisterMeta(emcstatapi.EmcstatMeta)
-	apiserver.RegisterMeta(emccmdapi.EmccmdMeta)
+	// emccmd meta is registered by the emccmd package's init()
 	apiserver.RegisterMeta(emcerrorapi.EmcerrorMeta)
 }
 
@@ -94,9 +97,7 @@ func newEmcGateway(ini *inifile.IniFile, logger *slog.Logger, name string, args 
 	if err := emcstatapi.RegisterEmcstatAPI(apiserver.DefaultRegistry(), "emcstat", gw); err != nil {
 		return nil, fmt.Errorf("emcgateway: register emcstat: %w", err)
 	}
-	if err := emccmdapi.RegisterEmccmdAPI(apiserver.DefaultRegistry(), "emccmd", gw); err != nil {
-		return nil, fmt.Errorf("emcgateway: register emccmd: %w", err)
-	}
+	// emccmd is registered by milltask via gomc_api_t — no gateway registration needed.
 	if err := emcerrorapi.RegisterEmcerrorAPI(apiserver.DefaultRegistry(), "emcerror", gw); err != nil {
 		return nil, fmt.Errorf("emcgateway: register emcerror: %w", err)
 	}
@@ -145,11 +146,27 @@ func newEmcGateway(ini *inifile.IniFile, logger *slog.Logger, name string, args 
 	emcerrorapi.RegisterEmcerrorWatch(wreg, "emcerror", gw, nil)
 
 	// Register command handlers on the watch WebSocket too.
-	wreg.Register(&apiserver.WatchAPI{
-		APIName:  "emccmd",
-		Instance: "emccmd",
-		Commands: emccmdapi.EmccmdCommands(gw),
-	})
+	// Commands dispatch through the C callbacks registered by milltask.
+	emccmdAPI := apiserver.DefaultRegistry().Get("emccmd")
+	if emccmdAPI != nil && emccmdAPI.Meta != nil {
+		cmds := make([]apiserver.CommandMeta, 0, len(emccmdAPI.Meta.Funcs))
+		for _, fn := range emccmdAPI.Meta.Funcs {
+			fn := fn // capture
+			cb := emccmdAPI.Callbacks
+			cmds = append(cmds, apiserver.CommandMeta{
+				Name: fn.Name,
+				Handler: func(req json.RawMessage) (json.RawMessage, error) {
+					res, err := fn.Dispatch(cb, []byte(req))
+					return json.RawMessage(res), err
+				},
+			})
+		}
+		wreg.Register(&apiserver.WatchAPI{
+			APIName:  "emccmd",
+			Instance: "emccmd",
+			Commands: cmds,
+		})
+	}
 
 	logger.Info("NML gateway initialized")
 	return gw, nil
@@ -405,4 +422,4 @@ func (gw *emcGateway) GetErrors() ([]emcerrorapi.ErrorMessage, error) {
 
 // ─── Command WebSocket ───
 
-// (emccmd commands generated via emccmdapi.EmccmdCommands)
+// (emccmd commands dispatched via C callbacks registered by milltask)

@@ -90,6 +90,9 @@ fpu_control_t __fpu_control = _FPU_IEEE & ~(_FPU_MASK_IM | _FPU_MASK_ZM | _FPU_M
 #include "interp_ext_api.h"
 #include "interp_ext.h"
 #include "mcode_handler_api.h"
+#include "emccmd_slot.hh"
+
+#include "gomc/generated/gmi/emccmd/emccmd_api.h"
 
 #include <pthread.h>
 #include <sys/eventfd.h>
@@ -99,6 +102,9 @@ fpu_control_t __fpu_control = _FPU_IEEE & ~(_FPU_MASK_IM | _FPU_MASK_ZM | _FPU_M
 extern void taskintf_gomc_init(const gomc_ini_t *ini,
                               const gomc_hal_t *hal,
                               const gomc_log_t *log);
+
+// from emccmd_handlers.cc
+extern const emccmd_callbacks_t emccmd_handler_table;
 
 // Set in New(), used by emctask_startup() to register the interp_ext API.
 static const gomc_api_t *gomc_api_ptr;
@@ -873,8 +879,6 @@ void readahead_waiting(void)
 static bool allow_while_idle_type() {
     // allow for EMC_TASK_MODE_AUTO, EMC_TASK_MODE_MDI
     // expect immediate command
-    RCS_CMD_MSG *emcCommand;
-    emcCommand = emcCommandBuffer->get_address();
     switch(emcCommand->type) {
       case EMC_JOG_CONT_TYPE:
       case EMC_JOG_INCR_TYPE:
@@ -3334,11 +3338,25 @@ static void *milltask_loop(void *arg)
     }
     while (!done) {
         static int gave_soft_limit_message = 0;
+        // Buffer for commands received via the GMI command slot.
+        // Must be large enough for any NML message struct.
+        alignas(16) static char gmi_cmd_buf[4096];
+        bool gmi_cmd_this_cycle = false;
+
         check_ini_hal_items(emcStatus->motion.traj.joints);
-	// read command
-	if (0 != emcCommandBuffer->read()) {
-	    taskPlanError = 0;
-	    taskExecuteError = 0;
+	// read command — prefer GMI slot, fall back to NML
+	{
+	    size_t sz = emccmd_slot_take(gmi_cmd_buf, sizeof(gmi_cmd_buf));
+	    if (sz > 0) {
+	        emcCommand = reinterpret_cast<RCS_CMD_MSG *>(gmi_cmd_buf);
+	        taskPlanError = 0;
+	        taskExecuteError = 0;
+	        gmi_cmd_this_cycle = true;
+	    } else if (0 != emcCommandBuffer->read()) {
+	        emcCommand = emcCommandBuffer->get_address();
+	        taskPlanError = 0;
+	        taskExecuteError = 0;
+	    }
 	}
 	// run control cycle
 	if (0 != emcTaskPlan()) {
@@ -3477,6 +3495,11 @@ static void *milltask_loop(void *arg)
 	} else {
 	    emcStatus->status = RCS_EXEC;
 	    emcStatus->task.status = RCS_EXEC;
+	}
+
+	// Unblock the GMI caller now that the command has been processed.
+	if (gmi_cmd_this_cycle) {
+	    emccmd_slot_done(emcStatus->status);
 	}
 
 	emcStatusBuffer->write(emcStatus);
@@ -3635,6 +3658,12 @@ extern "C" int New(const cmod_env_t *env, const char *name,
         };
         mcode_handler_api_register(gomc_api_ptr, "milltask",
                                    &mcode_api_table);
+
+        // Register the emccmd API — provides command dispatch to UIs.
+        // Instance name "emccmd" matches the REST URL path prefix.
+        emccmd_slot_init();
+        emccmd_api_register(gomc_api_ptr, "emccmd",
+                            &emccmd_handler_table);
     }
 
     // Start the M-code handler worker thread
