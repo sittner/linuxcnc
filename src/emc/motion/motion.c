@@ -83,7 +83,6 @@ emcmot_joint_t joints[EMCMOT_MAX_JOINTS];
 
   emcmotCommand points to emcmotStruct->command,
   emcmotStatus points to emcmotStruct->status,
-  emcmotError points to emcmotStruct->error, and
  */
 emcmot_struct_t *emcmotStruct = 0;
 /* ptrs to either buffered copies or direct memory for command and status */
@@ -91,7 +90,6 @@ struct emcmot_command_t *emcmotCommand = 0;
 struct emcmot_status_t *emcmotStatus = 0;
 struct emcmot_config_t *emcmotConfig = 0;
 struct emcmot_internal_t *emcmotInternal = 0;
-struct emcmot_error_t *emcmotError = 0;	/* unused for RT_FIFO */
 
 /***********************************************************************
 *                  LOCAL VARIABLE DECLARATIONS                         *
@@ -543,7 +541,7 @@ void switch_to_teleop_mode(void) {
 
     if (emcmotConfig->kinType != KINEMATICS_IDENTITY) {
         if (!motmod_home_api->get_allhomed(motmod_home_api->ctx)) {
-            reportError(_("all joints must be homed before going into teleop mode"));
+            rtapi_print_msg(RTAPI_MSG_ERR, _("all joints must be homed before going into teleop mode"));
             return;
         }
     }
@@ -565,29 +563,6 @@ void emcmot_config_change(void)
 	emcmotStatus->config_num = emcmotConfig->config_num;
 	emcmotConfig->head++;
     }
-}
-
-void reportError(const char *fmt, ...)
-{
-    va_list args;
-
-    va_start(args, fmt);
-    emcmotErrorPutfv(emcmotError, fmt, args);
-    va_end(args);
-}
-
-#ifndef va_copy
-#define va_copy(dest, src) ((dest)=(src))
-#endif
-
-static rtapi_msg_handler_t old_handler = NULL;
-static void emc_message_handler(msg_level_t level, const char *fmt, va_list ap)
-{
-    va_list apc;
-    va_copy(apc, ap);
-    if(level == RTAPI_MSG_ERR) emcmotErrorPutfv(emcmotError, fmt, apc);
-    if(old_handler) old_handler(level, fmt, ap);
-    va_end(apc);
 }
 
 int count_names(char *names[]){
@@ -944,9 +919,6 @@ static int motmod_init(cmod_t *self)
         return -1;
     }
 
-    old_handler = rtapi_get_msg_handler();
-    rtapi_set_msg_handler(emc_message_handler);
-
     hal_ready(mot_comp_id);
 
     rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: Init() complete\n");
@@ -957,8 +929,6 @@ static void motmod_Destroy(cmod_t *self)
 {
     int retval;
     (void)self;
-
-    rtapi_set_msg_handler(old_handler);
 
     rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: Destroy() started.\n");
 
@@ -1386,10 +1356,6 @@ static int init_comm_buffers(void)
     emcmotStatus = &emcmotStruct->status;
     emcmotConfig = &emcmotStruct->config;
     emcmotInternal = &emcmotStruct->internal;
-    emcmotError = &emcmotStruct->error;
-
-    /* init error struct */
-    emcmotErrorInit(emcmotError);
 
     /* init command struct */
     emcmotCommand->command = 0;

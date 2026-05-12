@@ -18,10 +18,7 @@ MILLTASK_GOMC_SRCS := \
 	emc/task/emccanon.cc \
 	emc/task/emctaskmain_gomc.cc \
 	emc/motion/usrmotintf.cc \
-	emc/motion/emcmotutil.c \
 	emc/task/taskintf_gomc.cc \
-	emc/motion/dbuf.c \
-	emc/motion/stashf.c \
 	emc/task/taskclass.cc \
 	emc/task/backtrace.cc \
 	emc/task/inihal_gomc.cc \

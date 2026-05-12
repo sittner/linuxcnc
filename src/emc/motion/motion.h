@@ -727,17 +727,6 @@ Suggestion: Split this in to an Error and a Status flag register..
         int inhibit_probe_home_error;
     } emcmot_config_t;
 
-/* error structure - A ring buffer used to pass formatted printf strings to usr space */
-    typedef struct emcmot_error_t {
-	unsigned char head;	/* flag count for mutex detect */
-	char error[EMCMOT_ERROR_NUM][EMCMOT_ERROR_LEN];
-	int start;		/* index of oldest error */
-	int end;		/* index of newest error */
-	int num;		/* number of items */
-	unsigned char tail;	/* flag count for mutex detect */
-    } emcmot_error_t;
-
-
 typedef struct emcmot_internal_t {
     unsigned char head; /* flag count for mutex detect */
     unsigned char tail; /* flag count for mutex detect */
@@ -749,13 +738,6 @@ typedef struct emcmot_internal_t {
                            move while overriding limits */
     int idForStep;      /* status id while stepping */
     } emcmot_internal_t;
-
-/* error ring buffer access functions */
-    extern int emcmotErrorInit(emcmot_error_t * errlog);
-    extern int emcmotErrorPut(emcmot_error_t * errlog, const char *error);
-    extern int emcmotErrorPutfv(emcmot_error_t * errlog, const char *fmt, va_list ap);
-    extern int emcmotErrorPutf(emcmot_error_t * errlog, const char *fmt, ...);
-    extern int emcmotErrorGet(emcmot_error_t * errlog, char *error);
 
 #define GET_JOINT_ACTIVE_FLAG(joint) ((joint)->flag & EMCMOT_JOINT_ACTIVE_BIT ? 1 : 0)
 #define GET_JOINT_INPOS_FLAG(joint) ((joint)->flag & EMCMOT_JOINT_INPOS_BIT ? 1 : 0)

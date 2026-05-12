@@ -21,9 +21,6 @@ MOTMOD_CMOD_SRCS := \
     emc/motion/control.c \
     emc/motion/axis.c \
     emc/motion/simple_tp.c \
-    emc/motion/emcmotutil.c \
-    emc/motion/stashf.c \
-    emc/motion/dbuf.c \
     emc/kinematics/cubic.c
 
 MOTMOD_CMOD_CFLAGS := \

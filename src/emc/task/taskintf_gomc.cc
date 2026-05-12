@@ -18,7 +18,7 @@
 #include <unistd.h>             // unlink()
 
 #include "usrmotintf.h"		// usrmotInit(), usrmotReadEmcmotStatus(),
-				// etc.
+				// usrmotWriteEmcmotCommand(), etc.
 #include "motion.h"		// emcmot_command_t,STATUS, etc.
 #include "homing.h"
 #include "emc.hh"
@@ -43,6 +43,9 @@ value_inihal_data old_inihal_data;
 static const gomc_ini_t *the_ini;
 static const gomc_hal_t *the_hal;
 static const gomc_log_t *the_log;
+
+// Log subscription for forwarding RTAPI_MSG_ERR to OPERATOR_ERROR.
+static gomc_log_sub_t *log_error_sub;
 
 void taskintf_gomc_init(const gomc_ini_t *ini,
                        const gomc_hal_t *hal,
@@ -917,7 +920,6 @@ int get_emcmot_internal_info = 0;  // debug usage
   emcJointUpdate(), emcTrajUpdate() to save calls to usrmotReadEmcmotStatus
  */
 static emcmot_internal_t emcmotInternal;
-static char errorString[EMCMOT_ERROR_LEN];
 static int new_config = 0;
 
 /*! \todo FIXME - debugging - uncomment the following line to log changes in
@@ -1773,6 +1775,11 @@ int emcMotionInit()
     // Ignore errors from emcPositionLoad(), because what are you going to do?
     (void)emcPositionLoad();
 
+    // Subscribe to ERROR-level log messages for forwarding to OPERATOR_ERROR.
+    if (the_log && the_log->subscribe) {
+        log_error_sub = the_log->subscribe(the_log->ctx, GOMC_LOG_ERROR);
+    }
+
     emcmotion_initialized = 1;
 
     return 0;
@@ -1782,6 +1789,12 @@ int emcMotionHalt()
 {
     int r1, r2, r3, r4, r5;
     int t;
+
+    // Unsubscribe from log messages.
+    if (log_error_sub && the_log && the_log->unsubscribe) {
+        the_log->unsubscribe(the_log->ctx, log_error_sub);
+        log_error_sub = NULL;
+    }
 
     r1 = -1;
     for (t = 0; t < EMCMOT_MAX_JOINTS; t++) {
@@ -2025,11 +2038,14 @@ int emcMotionUpdate(EMC_MOTION_STAT * stat)
 	}
     }
     // read the emcmot error
-    if (0 != usrmotReadEmcmotError(errorString)) {
-	// no error, so ignore
-    } else {
-	// an error to report
-	emcOperatorError(0, "%s", errorString);
+    if (log_error_sub) {
+	uint32_t err_level;
+	char err_component[GOMC_LOG_COMPONENT_LEN];
+	char err_msg[GOMC_LOG_MSG_LEN];
+	while (gomc_log_sub_poll(log_error_sub, &err_level,
+				 err_component, err_msg)) {
+	    emcOperatorError(0, "%s", err_msg);
+	}
     }
 
     // save the heartbeat and command number locally,

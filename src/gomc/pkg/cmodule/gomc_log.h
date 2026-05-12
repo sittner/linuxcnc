@@ -82,11 +82,31 @@ typedef struct {
 } gomc_log_ring_t;
 
 // ---------------------------------------------------------------------------
+// Subscription handle — per-subscriber ring for fan-out from the drain loop.
+// Allocated by subscribe(), freed by unsubscribe().
+// ---------------------------------------------------------------------------
+
+typedef struct {
+    gomc_log_ring_t *ring;      // per-subscriber ring (filled by Go drain)
+    uint32_t         read_pos;  // consumer's read position
+    uint32_t         min_level; // minimum level to receive (gomc_log_level_t)
+} gomc_log_sub_t;
+
+// ---------------------------------------------------------------------------
 // gomc_log_t — the logging handle passed to modules via cmod_env_t.
 // ---------------------------------------------------------------------------
 
 typedef struct {
-    gomc_log_ring_t *ring;  // pointer to shared ring buffer
+    gomc_log_ring_t *ring;  // pointer to shared ring buffer (producer side)
+
+    // Subscribe to log messages at or above min_level.
+    // Returns a subscription handle, or NULL on error.
+    gomc_log_sub_t *(*subscribe)(void *ctx, gomc_log_level_t min_level);
+
+    // Unsubscribe and free the subscription handle.
+    void (*unsubscribe)(void *ctx, gomc_log_sub_t *sub);
+
+    void *ctx;  // opaque context for subscribe/unsubscribe callbacks
 } gomc_log_t;
 
 // ---------------------------------------------------------------------------
@@ -212,6 +232,21 @@ gomc_ring_try_read(gomc_log_ring_t *ring, uint32_t read_pos,
     // Release the slot for reuse.
     __atomic_store_n(&slot->seq, 0, __ATOMIC_RELEASE);
     return 1;
+}
+
+// ---------------------------------------------------------------------------
+// Subscriber poll — read one message from a subscription's ring.
+// Returns 1 if a message was read, 0 if no message available.
+// ---------------------------------------------------------------------------
+
+static inline int
+gomc_log_sub_poll(gomc_log_sub_t *sub,
+                  uint32_t *out_level, char *out_component, char *out_msg) {
+    int64_t ts;  // discarded — subscribers don't need timestamps
+    int ok = gomc_ring_try_read(sub->ring, sub->read_pos,
+                                out_level, &ts, out_component, out_msg);
+    if (ok) sub->read_pos++;
+    return ok;
 }
 
 #ifdef __cplusplus

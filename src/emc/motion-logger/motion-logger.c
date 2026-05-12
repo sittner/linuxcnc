@@ -49,7 +49,6 @@ struct emcmot_command_t *c = 0;
 struct emcmot_status_t *emcmotStatus = 0;
 struct emcmot_config_t *emcmotConfig = 0;
 struct emcmot_internal_t *emcmotInternal = 0;
-struct emcmot_error_t *emcmotError = 0;
 
 int mot_comp_id;
 
@@ -104,7 +103,6 @@ static int init_comm_buffers(void) {
     emcmotStatus = &emcmotStruct->status;
     emcmotConfig = &emcmotStruct->config;
     emcmotInternal = &emcmotStruct->internal;
-    emcmotError = &emcmotStruct->error;
 
     emcmotConfig->numJoints = num_joints;
     emcmotConfig->numSpindles = num_spindles;

@@ -102,16 +102,22 @@ func RtapiInitializeApp() {
 	halRtapiInitializeApp()
 }
 
+// SetLogRing sets the gomc_log ring for the RTAPI message handler.
+// Must be called before RtapiAppInit().
+func SetLogRing(ring unsafe.Pointer) {
+	halSetLogRing(ring)
+}
+
 // RtapiAppInit initializes the in-process RTAPI/HAL environment.
-// Sets up the message queue thread and initializes HAL shared memory.
+// Sets up HAL shared memory.
 // Must be called before hal_init() / hal.NewComponent().
 func RtapiAppInit() error {
 	return halRtapiAppInit()
 }
 
 // RtapiAppCleanup shuts down the in-process RTAPI/HAL environment.
-// Tears down HAL threads, releases shared memory, and stops the
-// message queue.  Must be called after all components are unloaded.
+// Tears down HAL threads and releases shared memory.
+// Must be called after all components are unloaded.
 func RtapiAppCleanup() {
 	halRtapiAppCleanup()
 }

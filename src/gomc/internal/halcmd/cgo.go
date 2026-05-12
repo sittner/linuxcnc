@@ -1,7 +1,7 @@
 package halcmd
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/../../../hal -I${SRCDIR}/../../.. -I${SRCDIR}/../../../rtapi -I${SRCDIR}/../../../../include
+#cgo CFLAGS: -I${SRCDIR}/../../../hal -I${SRCDIR}/../../.. -I${SRCDIR}/../../../rtapi -I${SRCDIR}/../../../../include -I${SRCDIR}/../../pkg/cmodule
 #cgo LDFLAGS: -L${SRCDIR}/../../../../lib -llinuxcnchal -ldl
 
 #include <stdlib.h>
@@ -25,6 +25,7 @@ package halcmd
 #include "rtapi.h"
 #include "hal.h"
 #include "hal_priv.h"
+#include "gomc_log.h"
 
 extern char **environ;
 
@@ -252,103 +253,52 @@ static int rt_do_comp_args(void *module, const char *const args[], int nargs) {
     return 0;
 }
 
-// ===== Message queue for RT thread messages =====
-// RT threads cannot safely write to stdout/stderr.  Messages are queued and
-// consumed by a background pthread that drains them to the appropriate stream.
+// ===== RTAPI message routing through gomc_log ring =====
+// RT threads push messages into the gomc_log ring buffer.  The Go drain
+// goroutine reads them and handles stdout/stderr output + subscriber fan-out.
 
-#define RT_MSG_QUEUE_SIZE 128
-struct rt_message_t {
-    msg_level_t level;
-    char msg[1024];
-};
-static struct rt_message_t rt_msg_queue[RT_MSG_QUEUE_SIZE];
-static _Atomic int rt_msg_head = 0;
-static _Atomic int rt_msg_tail = 0;
-static pthread_t rt_queue_thread;
-static _Atomic int rt_queue_running = 0;
-static pthread_t rt_main_thread;
+static gomc_log_t rt_log;  // initialized by hal_shim_set_log_ring
 
-static void rt_msg_queue_push(msg_level_t level, const char *msg) {
-    int head = atomic_load_explicit(&rt_msg_head, memory_order_relaxed);
-    int next = (head + 1) % RT_MSG_QUEUE_SIZE;
-    if (next == atomic_load_explicit(&rt_msg_tail, memory_order_acquire)) {
-        return;  // Queue full, message dropped
+static gomc_log_level_t rtapi_level_to_gomc(msg_level_t level) {
+    switch (level) {
+    case RTAPI_MSG_DBG:  return GOMC_LOG_DEBUG;
+    case RTAPI_MSG_INFO:
+    case RTAPI_MSG_ALL:  return GOMC_LOG_INFO;
+    case RTAPI_MSG_WARN: return GOMC_LOG_WARN;
+    case RTAPI_MSG_ERR:  return GOMC_LOG_ERROR;
+    default:             return GOMC_LOG_INFO;
     }
-    rt_msg_queue[head].level = level;
-    snprintf(rt_msg_queue[head].msg, sizeof(rt_msg_queue[head].msg), "%s", msg);
-    atomic_store_explicit(&rt_msg_head, next, memory_order_release);
-}
-
-static int rt_msg_queue_consume_all(void) {
-    int processed = 0;
-    int tail = atomic_load_explicit(&rt_msg_tail, memory_order_relaxed);
-    while (tail != atomic_load_explicit(&rt_msg_head, memory_order_acquire)) {
-        msg_level_t level = rt_msg_queue[tail].level;
-        char msg_copy[sizeof(rt_msg_queue[tail].msg)];
-        strncpy(msg_copy, rt_msg_queue[tail].msg, sizeof(msg_copy) - 1);
-        msg_copy[sizeof(msg_copy) - 1] = '\0';
-        int next_tail = (tail + 1) % RT_MSG_QUEUE_SIZE;
-        atomic_store_explicit(&rt_msg_tail, next_tail, memory_order_release);
-        tail = next_tail;
-        fputs(msg_copy, level == RTAPI_MSG_ALL ? stdout : stderr);
-        processed++;
-    }
-    return processed;
-}
-
-static void *rt_queue_function(void *arg) {
-    (void)arg;
-    while (atomic_load(&rt_queue_running)) {
-        rt_msg_queue_consume_all();
-        struct timespec ts = {0, 10000000}; // 10ms
-        nanosleep(&ts, NULL);
-    }
-    rt_msg_queue_consume_all(); // drain remaining
-    return NULL;
 }
 
 static void rt_msg_handler(msg_level_t level, const char *fmt, va_list ap) {
-    if (rt_queue_running && !pthread_equal(pthread_self(), rt_main_thread)) {
-        char buf[1024];
-        vsnprintf(buf, sizeof(buf), fmt, ap);
-        rt_msg_queue_push(level, buf);
-    } else {
-        vfprintf(level == RTAPI_MSG_ALL ? stdout : stderr, fmt, ap);
+    if (rt_log.ring) {
+        gomc_log_emit(&rt_log, rtapi_level_to_gomc(level), "rtapi", fmt, ap);
     }
 }
 
+// hal_shim_set_log_ring sets the gomc_log ring for the RTAPI message handler.
+// Must be called before hal_shim_rtapi_app_init().
+static void hal_shim_set_log_ring(gomc_log_ring_t *ring) {
+    rt_log.ring = ring;
+}
+
 // hal_shim_rtapi_app_init performs the in-process equivalent of rtapi_app's
-// master() startup: sets up the message handler, starts the message queue
-// thread, and calls halpr_rtapi_app_main().
+// master() startup: sets up the message handler and calls halpr_rtapi_app_main().
 static int hal_shim_rtapi_app_init(void) {
     int result;
-    rt_main_thread = pthread_self();
     rtapi_set_msg_handler(rt_msg_handler);
-
-    atomic_store(&rt_queue_running, 1);
-    result = pthread_create(&rt_queue_thread, NULL, &rt_queue_function, NULL);
-    if (result != 0) {
-        atomic_store(&rt_queue_running, 0);
-        errno = result;
-        return -result;
-    }
 
     result = halpr_rtapi_app_main();
     if (result != 0) {
-        atomic_store(&rt_queue_running, 0);
-        pthread_join(rt_queue_thread, NULL);
         return result;
     }
     return 0;
 }
 
 // hal_shim_rtapi_app_cleanup performs the in-process equivalent of rtapi_app's
-// master() cleanup: calls halpr_rtapi_app_exit() and stops the message queue.
+// master() cleanup: calls halpr_rtapi_app_exit().
 static void hal_shim_rtapi_app_cleanup(void) {
     halpr_rtapi_app_exit();
-    atomic_store(&rt_queue_running, 0);
-    pthread_join(rt_queue_thread, NULL);
-    rt_msg_queue_consume_all();
 }
 
 // hal_shim_unload_all unloads all HAL components:
@@ -2106,10 +2056,16 @@ func halNewInst(compType, name, arg string) error {
 }
 
 // halRtapiAppInit wraps hal_shim_rtapi_app_init() — initializes HAL shared
-// memory and starts the message queue thread.  Must be called before hal_init().
+// memory.  Must be called before hal_init().
 func halRtapiAppInit() error {
 	ret := C.hal_shim_rtapi_app_init()
 	return halError(int(ret), "hal_shim_rtapi_app_init")
+}
+
+// halSetLogRing sets the gomc_log ring for the RTAPI message handler.
+// Must be called before halRtapiAppInit().
+func halSetLogRing(ring unsafe.Pointer) {
+	C.hal_shim_set_log_ring((*C.gomc_log_ring_t)(ring))
 }
 
 // halRtapiInitializeApp wraps rtapi_initialize_app() — idempotently sets up
@@ -2120,7 +2076,7 @@ func halRtapiInitializeApp() {
 }
 
 // halRtapiAppCleanup wraps hal_shim_rtapi_app_cleanup() — tears down HAL
-// threads, releases shared memory, and stops the message queue.
+// threads and releases shared memory.
 // Must be called after all components are unloaded and before hal_exit().
 func halRtapiAppCleanup() {
 	C.hal_shim_rtapi_app_cleanup()

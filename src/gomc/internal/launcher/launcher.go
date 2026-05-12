@@ -286,9 +286,10 @@ func (l *Launcher) Run() (runErr error) {
 	}
 
 	// Initialize the in-process RTAPI/HAL environment.  Sets up HAL shared
-	// memory, starts the message queue thread, and prepares for RT module
-	// loading via dlopen.
+	// memory and routes RTAPI messages through the gomc_log ring.
 	// Must be called before hal.NewComponent() / hal_init().
+	l.ensureLogRing()
+	halcmd.SetLogRing(unsafe.Pointer(l.logRing.ring))
 	l.logger.Info("initializing RTAPI app (in-process)")
 	if err := halcmd.RtapiAppInit(); err != nil {
 		return fmt.Errorf("rtapi app init: %w", err)

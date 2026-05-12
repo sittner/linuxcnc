@@ -8,6 +8,31 @@ package launcher
 
 /*
 #include "../../pkg/cmodule/gomc_log.h"
+#include <string.h>
+
+// gomc_sub_ring_write writes one message to a subscriber's ring.
+// Returns 0 on success, -1 if the ring is full (message dropped).
+static int gomc_sub_ring_write(gomc_log_ring_t *ring,
+                               uint32_t level, int64_t ts,
+                               const char *component, const char *msg) {
+    uint32_t pos = __atomic_fetch_add(&ring->write_pos, 1, __ATOMIC_RELAXED);
+    uint32_t idx = pos & GOMC_LOG_RING_MASK;
+    gomc_log_slot_t *slot = &ring->slots[idx];
+
+    uint32_t expected = 0;
+    if (!__atomic_compare_exchange_n(&slot->seq, &expected, 1, 0,
+                                     __ATOMIC_ACQUIRE, __ATOMIC_RELAXED)) {
+        return -1;  // ring full
+    }
+
+    slot->level = level;
+    slot->timestamp_ns = ts;
+    memcpy(slot->component, component, GOMC_LOG_COMPONENT_LEN);
+    memcpy(slot->msg, msg, GOMC_LOG_MSG_LEN);
+
+    __atomic_store_n(&slot->seq, pos + 1, __ATOMIC_RELEASE);
+    return 0;
+}
 */
 import "C"
 
@@ -30,6 +55,10 @@ type gomcLogRing struct {
 	readPos uint32
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
+
+	// Subscriber fan-out: drain loop copies messages to per-subscriber rings.
+	subsMu sync.Mutex
+	subs   []*C.gomc_log_sub_t
 }
 
 // newGomcLogRing allocates and returns a new log ring.
@@ -107,6 +136,9 @@ func (r *gomcLogRing) drainAll(logger *slog.Logger) int {
 		r.readPos++
 		count++
 
+		// Fan-out to subscribers whose level filter matches.
+		r.fanOut(level, ts, compBuf, msgBuf)
+
 		component := cStringFromBytes(compBuf)
 		msg := cStringFromBytes(msgBuf)
 		tsNano := int64(ts)
@@ -130,6 +162,73 @@ func (r *gomcLogRing) drainAll(logger *slog.Logger) int {
 		_ = logger.Handler().Handle(context.Background(), record)
 	}
 	return count
+}
+
+// fanOut copies a log message to all subscriber rings whose level filter matches.
+func (r *gomcLogRing) fanOut(level C.uint32_t, ts C.int64_t, comp, msg []byte) {
+	r.subsMu.Lock()
+	defer r.subsMu.Unlock()
+
+	for _, sub := range r.subs {
+		if level < sub.min_level {
+			continue
+		}
+		C.gomc_sub_ring_write(sub.ring,
+			level, ts,
+			(*C.char)(unsafe.Pointer(&comp[0])),
+			(*C.char)(unsafe.Pointer(&msg[0])))
+	}
+}
+
+// subscribe creates a new subscription with a per-subscriber ring buffer.
+func (r *gomcLogRing) subscribe(minLevel C.gomc_log_level_t) *C.gomc_log_sub_t {
+	sub := (*C.gomc_log_sub_t)(C.calloc(1, C.size_t(unsafe.Sizeof(C.gomc_log_sub_t{}))))
+	if sub == nil {
+		return nil
+	}
+	sub.ring = C.gomc_ring_create()
+	if sub.ring == nil {
+		C.free(unsafe.Pointer(sub))
+		return nil
+	}
+	sub.read_pos = 0
+	sub.min_level = C.uint32_t(minLevel)
+
+	r.subsMu.Lock()
+	r.subs = append(r.subs, sub)
+	r.subsMu.Unlock()
+	return sub
+}
+
+// unsubscribe removes a subscription and frees its resources.
+func (r *gomcLogRing) unsubscribe(sub *C.gomc_log_sub_t) {
+	r.subsMu.Lock()
+	for i, s := range r.subs {
+		if s == sub {
+			r.subs = append(r.subs[:i], r.subs[i+1:]...)
+			break
+		}
+	}
+	r.subsMu.Unlock()
+
+	if sub.ring != nil {
+		C.gomc_ring_destroy(sub.ring)
+	}
+	C.free(unsafe.Pointer(sub))
+}
+
+// --- Log subscribe/unsubscribe callbacks (exported to C) ---
+
+//export gomc_log_subscribe_cb
+func gomc_log_subscribe_cb(ctx unsafe.Pointer, minLevel C.gomc_log_level_t) *C.gomc_log_sub_t {
+	l := cgo.Handle(uintptr(ctx)).Value().(*Launcher)
+	return l.logRing.subscribe(minLevel)
+}
+
+//export gomc_log_unsubscribe_cb
+func gomc_log_unsubscribe_cb(ctx unsafe.Pointer, sub *C.gomc_log_sub_t) {
+	l := cgo.Handle(uintptr(ctx)).Value().(*Launcher)
+	l.logRing.unsubscribe(sub)
 }
 
 // cStringFromBytes extracts a C string from a byte slice (up to first NUL).

@@ -132,10 +132,18 @@ extern char* gomc_ini_get(void *ctx, char *section, char *key);
 extern char** gomc_ini_get_all(void *ctx, char *section, char *key, int *out_count);
 extern char* gomc_ini_source_file(void *ctx);
 
+// --- Log subscribe/unsubscribe (forward-declared, implemented in Go) ---
+
+extern gomc_log_sub_t* gomc_log_subscribe_cb(void *ctx, gomc_log_level_t min_level);
+extern void gomc_log_unsubscribe_cb(void *ctx, gomc_log_sub_t *sub);
+
 // --- Env initialisation helpers ---
 
-static void gomc_log_init(gomc_log_t *log, gomc_log_ring_t *ring) {
-    log->ring = ring;
+static void gomc_log_init(gomc_log_t *log, gomc_log_ring_t *ring, void *ctx) {
+    log->ring        = ring;
+    log->subscribe   = (gomc_log_sub_t*(*)(void*,gomc_log_level_t))gomc_log_subscribe_cb;
+    log->unsubscribe = (void(*)(void*,gomc_log_sub_t*))gomc_log_unsubscribe_cb;
+    log->ctx         = ctx;
 }
 
 static void gomc_ini_init(gomc_ini_t *ini, void *ctx) {
@@ -172,8 +180,8 @@ static void gomc_api_init_struct(gomc_api_t *api) {
     api->get_api      = (const void*(*)(void*,const char*,int,const char*))gomc_api_get_cb;
 }
 
-static cmod_env_t *gomc_env_create(gomc_log_ring_t *ring, void *ini_ctx,
-                                   void *dl_handle) {
+static cmod_env_t *gomc_env_create(gomc_log_ring_t *ring, void *log_ctx,
+                                   void *ini_ctx, void *dl_handle) {
     cmod_env_t *env = (cmod_env_t *)calloc(1, sizeof(cmod_env_t));
     if (!env) return NULL;
 
@@ -188,7 +196,7 @@ static cmod_env_t *gomc_env_create(gomc_log_ring_t *ring, void *ini_ctx,
         return NULL;
     }
 
-    gomc_log_init(log, ring);
+    gomc_log_init(log, ring, log_ctx);
     gomc_ini_init(ini, ini_ctx);
     gomc_hal_init_struct(hal);
     gomc_rtapi_init_struct(rtapi);
@@ -320,7 +328,8 @@ func (l *Launcher) loadCPlugin(path string, name string, args []string) error {
 	}
 
 	hCtx := cgo.NewHandle(l)
-	env := C.gomc_env_create(l.logRing.ring, unsafe.Pointer(uintptr(hCtx)), handle)
+	ctxPtr := unsafe.Pointer(uintptr(hCtx))
+	env := C.gomc_env_create(l.logRing.ring, ctxPtr, ctxPtr, handle)
 	if env == nil {
 		C.dlclose(handle)
 		return fmt.Errorf("load C plugin %q: failed to allocate cmod_env_t", path)

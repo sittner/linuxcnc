@@ -20,7 +20,7 @@
 #include <float.h>		/* DBL_MIN */
 #include "motion.h"		/* emcmot_status_t,CMD */
 #include "motion_struct.h"      /* emcmot_struct_t */
-#include "emcmotcfg.h"		/* EMCMOT_ERROR_NUM,LEN */
+#include "emcmotcfg.h"		/* EMCMOT_MAX_JOINTS, etc. */
 #include "emcmotglb.h"		/* SHMEM_KEY */
 #include "usrmotintf.h"		/* these decls */
 #include "_timer.h"
@@ -42,7 +42,6 @@ static emcmot_command_t *emcmotCommand = 0;
 static emcmot_status_t *emcmotStatus = 0;
 static emcmot_config_t *emcmotConfig = 0;
 static emcmot_internal_t *emcmotInternal = 0;
-static emcmot_error_t *emcmotError = 0;
 static emcmot_struct_t *emcmotStruct = 0;
 
 /* usrmotIniLoad() loads params (SHMEM_KEY, COMM_TIMEOUT)
@@ -185,30 +184,6 @@ int usrmotReadEmcmotInternal(emcmot_internal_t * s)
     } while ( ++split_read_count < 3 );
 printf("ReadEmcmotInternal COMM_SPLIT_READ_TIMEOUT\n" );
     return EMCMOT_COMM_SPLIT_READ_TIMEOUT;
-}
-
-/* copies error to s */
-int usrmotReadEmcmotError(char *e)
-{
-    /* check to see if ptr still around */
-    if (emcmotError == 0) {
-	return -1;
-    }
-
-    char data[EMCMOT_ERROR_LEN];
-    struct dbuf d;
-    dbuf_init(&d, (unsigned char *)data, EMCMOT_ERROR_LEN);
-
-    /* returns 0 if something, -1 if not */
-    int result = emcmotErrorGet(emcmotError, data);
-    if(result < 0) return result;
-
-    struct dbuf_iter di;
-    dbuf_iter_init(&di, &d);
-
-    result =  snprintdbuf(e, EMCMOT_ERROR_LEN, &di);
-    if(result < 0) return result;
-    return 0;
 }
 
 /*
@@ -560,7 +535,6 @@ int usrmotInit(const char *modname)
     emcmotStatus = &(emcmotStruct->status);
     emcmotInternal = &(emcmotStruct->internal);
     emcmotConfig = &(emcmotStruct->config);
-    emcmotError = &(emcmotStruct->error);
 
     inited = 1;
 
@@ -577,7 +551,6 @@ int usrmotExit(void)
     emcmotStruct = 0;
     emcmotCommand = 0;
     emcmotStatus = 0;
-    emcmotError = 0;
 /*! \todo Another #if 0 */
 #if 0
 /*! \todo FIXME - comp structs no longer in shmem */

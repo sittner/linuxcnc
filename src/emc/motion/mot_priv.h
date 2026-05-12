@@ -223,7 +223,6 @@ extern struct emcmot_command_t *emcmotCommand;
 extern struct emcmot_status_t *emcmotStatus;
 extern struct emcmot_config_t *emcmotConfig;
 extern struct emcmot_internal_t *emcmotInternal;
-extern struct emcmot_error_t *emcmotError;
 
 /***********************************************************************
 *                    PUBLIC FUNCTION PROTOTYPES                        *
@@ -257,7 +256,6 @@ extern void refresh_jog_limits(emcmot_joint_t *joint,int joint_num);
 extern void clearHomes(int joint_num);
 
 extern void emcmot_config_change(void);
-extern void reportError(const char *fmt, ...) __attribute__((format(printf,1,2))); /* Use the rtapi_print call */
 
 
 int joint_is_lockable(int joint_num);
