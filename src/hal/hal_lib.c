@@ -1098,7 +1098,6 @@ int hal_link(const char *pin_name, const char *sig_name)
 {
     hal_pin_t *pin;
     hal_sig_t *sig;
-    hal_comp_t *comp;
     void **data_ptr_addr, *data_addr;
 
     if (hal_data == 0) {
@@ -1210,7 +1209,6 @@ int hal_link(const char *pin_name, const char *sig_name)
     
     /* everything is OK, make the new link */
     data_ptr_addr = pin->data_ptr_addr;
-    comp = pin->owner_ptr;
     data_addr = sig->data_ptr;
     *data_ptr_addr = data_addr;
 
@@ -3339,7 +3337,6 @@ static void free_comp_struct(hal_comp_t * comp)
 static void unlink_pin(hal_pin_t * pin)
 {
     hal_sig_t *sig;
-    hal_comp_t *comp;
     void **data_ptr_addr;
     hal_data_u *dummy_addr, *sig_data_addr;
 
@@ -3349,7 +3346,6 @@ static void unlink_pin(hal_pin_t * pin)
     sig = pin->signal;
     /* make pin's 'data_ptr' point to its dummy signal */
     data_ptr_addr = pin->data_ptr_addr;
-    comp = pin->owner_ptr;
     dummy_addr = (void *)&(pin->dummysig);
     *data_ptr_addr = dummy_addr;
 

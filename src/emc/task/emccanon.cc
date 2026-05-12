@@ -1893,11 +1893,6 @@ static void DWELL(void */*ctx*/, double seconds)
 }
 
 /* Spindle Functions */
-static void SPINDLE_RETRACT_TRAVERSE()
-{
-    /*! \todo FIXME-- unimplemented */
-}
-
 static void SET_SPINDLE_MODE(void */*ctx*/, int32_t spindle, double css_max) {
    canon.spindle[spindle].css_maximum = fabs(css_max);
 }
@@ -1988,11 +1983,6 @@ static void STOP_SPINDLE_TURNING(void */*ctx*/, int32_t s)
     canon.spindle[s].dir = 0;
 }
 
-static void SPINDLE_RETRACT()
-{
-    /*! \todo FIXME-- unimplemented */
-}
-
 static void ORIENT_SPINDLE(void */*ctx*/, int32_t s, double orientation, int32_t mode)
 {
     EMC_SPINDLE_ORIENT o;
@@ -2012,21 +2002,6 @@ static void WAIT_SPINDLE_ORIENT_COMPLETE(void */*ctx*/, int32_t s, double timeou
     o.spindle = s;
     o.timeout = timeout;
     interp_list.append(o);
-}
-
-static void USE_SPINDLE_FORCE(void)
-{
-    /*! \todo FIXME-- unimplemented */
-}
-
-static void LOCK_SPINDLE_Z(void)
-{
-    /*! \todo FIXME-- unimplemented */
-}
-
-static void USE_NO_SPINDLE_FORCE(void)
-{
-    /*! \todo FIXME-- unimplemented */
 }
 
 /* Tool Functions */

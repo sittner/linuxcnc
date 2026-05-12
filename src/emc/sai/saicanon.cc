@@ -459,9 +459,6 @@ void DWELL(double seconds)
 }
 
 /* Spindle Functions */
-void SPINDLE_RETRACT_TRAVERSE()
-{PRINT("SPINDLE_RETRACT_TRAVERSE()\n");}
-
 void SET_SPINDLE_MODE(int spindle, double arg) {
   PRINT("SET_SPINDLE_MODE(%d %.4f)\n", spindle, arg);
 }
@@ -492,9 +489,6 @@ void STOP_SPINDLE_TURNING(int spindle)
   _sai._spindle_turning[spindle] = CANON_STOPPED;
 }
 
-void SPINDLE_RETRACT()
-{PRINT("SPINDLE_RETRACT()\n");}
-
 void ORIENT_SPINDLE(int spindle, double orientation, int mode)
 {PRINT("ORIENT_SPINDLE(%d, %.4f, %d)\n", spindle, orientation, mode);
 }
@@ -503,9 +497,6 @@ void WAIT_SPINDLE_ORIENT_COMPLETE(int spindle, double timeout)
 {
   PRINT("SPINDLE.%i.WAIT_ORIENT_COMPLETE(%.4f)\n", spindle, timeout);
 }
-
-void USE_NO_SPINDLE_FORCE()
-{PRINT("USE_NO_SPINDLE_FORCE()\n");}
 
 /* Tool Functions */
 void SET_TOOL_TABLE_ENTRY(int idx, int toolno, EmcPose offset, double diameter,
