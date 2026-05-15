@@ -34,15 +34,15 @@
 #include "gomc/pkg/cmodule/gomc_env.h"		/* cmod API: cmod_env_t, cmod_t, gomc_hal/ini/log */
 #include "rcs.hh"
 #include "posemath.h"		// PM_POSE, TO_RAD
-#include "emc.hh"		// EMC NML
-#include "emc_nml.hh"
-#include "emcglb.h"		// EMC_NMLFILE, TRAJ_MAX_VELOCITY, etc.
+#include "emc.hh"		// EMC task enums
+#include "emcglb.h"		// emc_debug
 #include "emccfg.h"		// DEFAULT_TRAJ_MAX_VELOCITY
 #include "rcs_print.hh"
 #include "timer.hh"
 #include <rtapi_string.h>
 #include "tooldata.hh"
 #include "gomc/generated/gmi/emccmd/emccmd_api.h"
+#include "gomc/generated/gmi/emcstat/emcstat_api.h"
 
 // ---------------------------------------------------------------------------
 // File-static gomc API pointers — set by New(), used by helpers.
@@ -270,108 +270,36 @@ static double maxSpindleOverride=1.0;
 static EMC_TASK_MODE_ENUM halui_old_mode = EMC_TASK_MODE_MANUAL;
 static int halui_sent_mdi = 0;
 
-// the NML channel for status (command path uses emccmd API,
-// error path uses emcerror ring)
-static RCS_STAT_CHANNEL *emcStatusBuffer = 0;
-EMC_STAT *emcStatus = 0;
+// emcstat API callbacks — fetched in halui_start() via gomc_api_t.
+static const emcstat_callbacks_t *emcstat_cb = NULL;
+static emcstat_stat_full_t halui_stat;
 
-static int emcTaskNmlGet()
-{
-    int retval = 0;
-
-    // try to connect to EMC status
-    if (emcStatusBuffer == 0) {
-	emcStatusBuffer =
-	    new RCS_STAT_CHANNEL(emcFormat, "emcStatus", "xemc",
-				 emc_nmlfile);
-	if (!emcStatusBuffer->valid()) {
-	    delete emcStatusBuffer;
-	    emcStatusBuffer = 0;
-	    emcStatus = 0;
-	    retval = -1;
-	} else {
-	    emcStatus = (EMC_STAT *) emcStatusBuffer->get_address();
-	}
-    }
-
-    return retval;
-}
-
-static int tryNml()
-{
-    double end;
-    int good;
-#define RETRY_TIME 10.0		// seconds to wait for subsystems to come up
-#define RETRY_INTERVAL 1.0	// seconds between wait tries for a subsystem
-
-    if ((emc_debug & EMC_DEBUG_NML) == 0) {
-	set_rcs_print_destination(RCS_PRINT_TO_NULL);	// inhibit diag
-	// messages
-    }
-    end = RETRY_TIME;
-    good = 0;
-    do {
-	if (0 == emcTaskNmlGet()) {
-	    good = 1;
-	    break;
-	}
-	esleep(RETRY_INTERVAL);
-	end -= RETRY_INTERVAL;
-    } while (end > 0.0);
-    if ((emc_debug & EMC_DEBUG_NML) == 0) {
-	set_rcs_print_destination(RCS_PRINT_TO_STDOUT);	// inhibit diag
-	// messages
-    }
-    if (!good) {
-	return -1;
-    }
-
-    return 0;
-
-#undef RETRY_TIME
-#undef RETRY_INTERVAL
+// Free malloc'd slice pointers in an emcstat_stat_full_t.
+static void emcstat_free(emcstat_stat_full_t *s) {
+    free(s->joints);
+    free(s->spindle);
+    free(s->axis);
+    free(s->active_gcodes);
+    free(s->active_mcodes);
+    free(s->active_settings);
+    memset(s, 0, sizeof(*s));
 }
 
 static int updateStatus()
 {
-    NMLTYPE type;
-
-    if (0 == emcStatus || 0 == emcStatusBuffer) {
-        gomc_log_errorf(the_log, "halui", "%s: no status buffer", __func__);
+    if (!emcstat_cb) {
+        gomc_log_errorf(the_log, "halui", "%s: no emcstat API", __func__);
         return -1;
     }
-
-    if (!emcStatusBuffer->valid()) {
-        gomc_log_errorf(the_log, "halui", "%s: status buffer is not valid", __func__);
-	return -1;
-    }
-
-    switch (type = emcStatusBuffer->peek()) {
-    case -1:
-	// error on CMS channel
-        gomc_log_errorf(the_log, "halui", "%s: error peeking status buffer", __func__);
-	return -1;
-	break;
-
-    case 0:			// no new data
-    case EMC_STAT_TYPE:	// new data
-	break;
-
-    default:
-        gomc_log_errorf(the_log, "halui", "%s: unknown error peeking status buffer", __func__);
-	return -1;
-	break;
-    }
-
+    emcstat_free(&halui_stat);
+    halui_stat = emcstat_cb->get_stat(emcstat_cb->ctx);
     return 0;
 }
-
 
 static void halui_cleanup()
 {
     the_hal->exit(the_hal->ctx, comp_id);
-
-    if(emcStatusBuffer) { delete emcStatusBuffer;  emcStatusBuffer = 0; }
+    emcstat_free(&halui_stat);
 }
 
 static enum {
@@ -877,7 +805,7 @@ static int sendEstopReset()
 
 static int sendManual()
 {
-    if (emcStatus->task.mode == EMC_TASK_MODE_MANUAL) {
+    if (halui_stat.task.mode == EMC_TASK_MODE_MANUAL) {
         return 0;
     }
     return emccmd->set_mode(emccmd->ctx, EMC_TASK_MODE_MANUAL) < 0 ? -1 : 0;
@@ -885,7 +813,7 @@ static int sendManual()
 
 static int sendAuto()
 {
-    if (emcStatus->task.mode == EMC_TASK_MODE_AUTO) {
+    if (halui_stat.task.mode == EMC_TASK_MODE_AUTO) {
         return 0;
     }
     return emccmd->set_mode(emccmd->ctx, EMC_TASK_MODE_AUTO) < 0 ? -1 : 0;
@@ -893,7 +821,7 @@ static int sendAuto()
 
 static int sendMdi()
 {
-    if (emcStatus->task.mode == EMC_TASK_MODE_MDI) {
+    if (halui_stat.task.mode == EMC_TASK_MODE_MDI) {
         return 0;
     }
     return emccmd->set_mode(emccmd->ctx, EMC_TASK_MODE_MDI) < 0 ? -1 : 0;
@@ -906,11 +834,11 @@ static int sendMdiCommand(int n)
     }
 
     if (!halui_sent_mdi) {
-        halui_old_mode = emcStatus->task.mode;
+        halui_old_mode = (EMC_TASK_MODE_ENUM)halui_stat.task.mode;
     }
 
     // switch to MDI mode if needed
-    if (emcStatus->task.mode != EMC_TASK_MODE_MDI) {
+    if (halui_stat.task.mode != EMC_TASK_MODE_MDI) {
 	if (sendMdi() != 0) {
             gomc_log_errorf(the_log, "halui", "%s: failed to Set Mode MDI", __func__);
             return -1;
@@ -919,8 +847,8 @@ static int sendMdiCommand(int n)
             gomc_log_errorf(the_log, "halui", "%s: failed to update status", __func__);
 	    return -1;
 	}
-	if (emcStatus->task.mode != EMC_TASK_MODE_MDI) {
-            gomc_log_errorf(the_log, "halui", "%s: switched mode, but got %d instead of mdi", __func__, emcStatus->task.mode);
+	if (halui_stat.task.mode != EMC_TASK_MODE_MDI) {
+            gomc_log_errorf(the_log, "halui", "%s: switched mode, but got %d instead of mdi", __func__, halui_stat.task.mode);
 	    return -1;
 	}
     }
@@ -980,7 +908,7 @@ static int sendProgramRun(int line)
 {
     updateStatus();
 
-    if (0 == emcStatus->task.file[0]) {
+    if (0 == halui_stat.task.file[0]) {
 	return -1; // no program open
     }
     programStartLine = line;
@@ -1016,8 +944,8 @@ static int sendProgramStep()
 static int sendSpindleForward(int spindle)
 {
     double speed;
-    if (emcStatus->task.activeSettings[2] != 0) {
-	speed = fabs(emcStatus->task.activeSettings[2]);
+    if (halui_stat.active_settings[2] != 0) {
+	speed = fabs(halui_stat.active_settings[2]);
     } else {
 	speed = 1;
     }
@@ -1027,8 +955,8 @@ static int sendSpindleForward(int spindle)
 static int sendSpindleReverse(int spindle)
 {
     double speed;
-    if (emcStatus->task.activeSettings[2] != 0) {
-	speed = fabs(emcStatus->task.activeSettings[2]);
+    if (halui_stat.active_settings[2] != 0) {
+	speed = fabs(halui_stat.active_settings[2]);
     } else {
 	speed = 1;
     }
@@ -1082,8 +1010,8 @@ static int sendAbort()
 
 static void sendJogStop(int ja, int jjogmode)
 {
-    if (   ( (jjogmode == JOGJOINT) && (emcStatus->motion.traj.mode == EMC_TRAJ_MODE_TELEOP) )
-        || ( (jjogmode == JOGTELEOP ) && (emcStatus->motion.traj.mode != EMC_TRAJ_MODE_TELEOP) )
+    if (   ( (jjogmode == JOGJOINT) && (halui_stat.motion.mode == EMC_TRAJ_MODE_TELEOP) )
+        || ( (jjogmode == JOGTELEOP ) && (halui_stat.motion.mode != EMC_TRAJ_MODE_TELEOP) )
        ) {
        return;
     }
@@ -1097,9 +1025,9 @@ static void sendJogStop(int ja, int jjogmode)
 
 static void sendJogCont(int ja, double speed, int jjogmode)
 {
-    if (emcStatus->task.state != EMC_TASK_STATE_ON) { return; }
-    if (   ( (jjogmode == JOGJOINT) && (emcStatus->motion.traj.mode == EMC_TRAJ_MODE_TELEOP) )
-        || ( (jjogmode == JOGTELEOP ) && (emcStatus->motion.traj.mode != EMC_TRAJ_MODE_TELEOP) )
+    if (halui_stat.task.state != EMC_TASK_STATE_ON) { return; }
+    if (   ( (jjogmode == JOGJOINT) && (halui_stat.motion.mode == EMC_TRAJ_MODE_TELEOP) )
+        || ( (jjogmode == JOGTELEOP ) && (halui_stat.motion.mode != EMC_TRAJ_MODE_TELEOP) )
        ) {
        return;
     }
@@ -1113,9 +1041,9 @@ static void sendJogCont(int ja, double speed, int jjogmode)
 
 static void sendJogIncr(int ja, double speed, double incr, int jjogmode)
 {
-    if (emcStatus->task.state != EMC_TASK_STATE_ON) { return; }
-    if (   ( (jjogmode == JOGJOINT) && (emcStatus->motion.traj.mode == EMC_TRAJ_MODE_TELEOP) )
-        || ( (jjogmode == JOGTELEOP ) && (emcStatus->motion.traj.mode != EMC_TRAJ_MODE_TELEOP) )
+    if (halui_stat.task.state != EMC_TASK_STATE_ON) { return; }
+    if (   ( (jjogmode == JOGJOINT) && (halui_stat.motion.mode == EMC_TRAJ_MODE_TELEOP) )
+        || ( (jjogmode == JOGTELEOP ) && (halui_stat.motion.mode != EMC_TRAJ_MODE_TELEOP) )
        ) {
        return;
     }
@@ -1184,11 +1112,6 @@ static int iniLoad(const gomc_ini_t *ini)
 	}
     } else {
 	emc_debug = 0;
-    }
-
-    inistring = ini->get(ini->ctx, "EMC", "NML_FILE");
-    if (inistring != NULL) {
-	rtapi_strxcpy(emc_nmlfile, inistring);
     }
 
     inistring = ini->get(ini->ctx, "DISPLAY", "MAX_FEED_OVERRIDE");
@@ -1899,20 +1822,20 @@ static void modify_hal_pins()
     int joint;
     int spindle;
 
-    if (emcStatus->task.state == EMC_TASK_STATE_ON) {
+    if (halui_stat.task.state == EMC_TASK_STATE_ON) {
 	*(halui_data->machine_is_on)=1;
     } else {
 	*(halui_data->machine_is_on)=0;
     }
 
-    if (emcStatus->task.state == EMC_TASK_STATE_ESTOP) {
+    if (halui_stat.task.state == EMC_TASK_STATE_ESTOP) {
 	*(halui_data->estop_is_activated)=1;
     } else {
 	*(halui_data->estop_is_activated)=0;
     }
 
     if (halui_sent_mdi) { // we have an ongoing MDI command
-	if (emcStatus->status == 1) { //which seems to have finished
+	if (halui_stat.rcs_status == 1) { //which seems to have finished
 	    halui_sent_mdi = 0;
 	    switch (halui_old_mode) {
 		case EMC_TASK_MODE_MANUAL: sendManual();break;
@@ -1924,63 +1847,63 @@ static void modify_hal_pins()
     }
 	
 
-    if (emcStatus->task.mode == EMC_TASK_MODE_MANUAL) {
+    if (halui_stat.task.mode == EMC_TASK_MODE_MANUAL) {
 	*(halui_data->mode_is_manual)=1;
     } else {
 	*(halui_data->mode_is_manual)=0;
     }
 
-    if (emcStatus->task.mode == EMC_TASK_MODE_AUTO) {
+    if (halui_stat.task.mode == EMC_TASK_MODE_AUTO) {
 	*(halui_data->mode_is_auto)=1;
     } else {
 	*(halui_data->mode_is_auto)=0;
     }
 
-    if (emcStatus->task.mode == EMC_TASK_MODE_MDI) {
+    if (halui_stat.task.mode == EMC_TASK_MODE_MDI) {
 	*(halui_data->mode_is_mdi)=1;
     } else {
 	*(halui_data->mode_is_mdi)=0;
     }
 
-    if (emcStatus->motion.traj.mode == EMC_TRAJ_MODE_TELEOP) {
+    if (halui_stat.motion.mode == EMC_TRAJ_MODE_TELEOP) {
 	*(halui_data->mode_is_teleop)=1;
     } else {
 	*(halui_data->mode_is_teleop)=0;
     }
 
-    if (emcStatus->motion.traj.mode == EMC_TRAJ_MODE_FREE) {
+    if (halui_stat.motion.mode == EMC_TRAJ_MODE_FREE) {
 	*(halui_data->mode_is_joint)=1;
     } else {
 	*(halui_data->mode_is_joint)=0;
     }
 
-    *(halui_data->program_is_paused) = emcStatus->task.interpState == EMC_TASK_INTERP_PAUSED;
-    *(halui_data->program_is_running) = emcStatus->task.interpState == EMC_TASK_INTERP_READING ||
-                                        emcStatus->task.interpState == EMC_TASK_INTERP_WAITING;
-    *(halui_data->program_is_idle) = emcStatus->task.interpState == EMC_TASK_INTERP_IDLE;
-    *(halui_data->program_os_is_on) = emcStatus->task.optional_stop_state;
-    *(halui_data->program_bd_is_on) = emcStatus->task.block_delete_state;
+    *(halui_data->program_is_paused) = halui_stat.task.interp_state == EMC_TASK_INTERP_PAUSED;
+    *(halui_data->program_is_running) = halui_stat.task.interp_state == EMC_TASK_INTERP_READING ||
+                                        halui_stat.task.interp_state == EMC_TASK_INTERP_WAITING;
+    *(halui_data->program_is_idle) = halui_stat.task.interp_state == EMC_TASK_INTERP_IDLE;
+    *(halui_data->program_os_is_on) = halui_stat.task.optional_stop;
+    *(halui_data->program_bd_is_on) = halui_stat.task.block_delete;
 
-    *(halui_data->mv_value) = emcStatus->motion.traj.maxVelocity;
-    *(halui_data->fo_value) = emcStatus->motion.traj.scale; //feedoverride from 0 to 1 for 100%
-    *(halui_data->ro_value) = emcStatus->motion.traj.rapid_scale; //rapid override from 0 to 1 for 100%
+    *(halui_data->mv_value) = halui_stat.motion.max_velocity;
+    *(halui_data->fo_value) = halui_stat.motion.feedrate; //feedoverride from 0 to 1 for 100%
+    *(halui_data->ro_value) = halui_stat.motion.rapidrate; //rapid override from 0 to 1 for 100%
 
-    *(halui_data->mist_is_on) = emcStatus->io.coolant.mist;
-    *(halui_data->flood_is_on) = emcStatus->io.coolant.flood;
-    *(halui_data->lube_is_on) = emcStatus->io.lube.on;
+    *(halui_data->mist_is_on) = halui_stat.mist;
+    *(halui_data->flood_is_on) = halui_stat.flood;
+    *(halui_data->lube_is_on) = halui_stat.lube_on;
 
-    *(halui_data->tool_number) = emcStatus->io.tool.toolInSpindle;
-    *(halui_data->tool_length_offset_x) = emcStatus->task.toolOffset.tran.x;
-    *(halui_data->tool_length_offset_y) = emcStatus->task.toolOffset.tran.y;
-    *(halui_data->tool_length_offset_z) = emcStatus->task.toolOffset.tran.z;
-    *(halui_data->tool_length_offset_a) = emcStatus->task.toolOffset.a;
-    *(halui_data->tool_length_offset_b) = emcStatus->task.toolOffset.b;
-    *(halui_data->tool_length_offset_c) = emcStatus->task.toolOffset.c;
-    *(halui_data->tool_length_offset_u) = emcStatus->task.toolOffset.u;
-    *(halui_data->tool_length_offset_v) = emcStatus->task.toolOffset.v;
-    *(halui_data->tool_length_offset_w) = emcStatus->task.toolOffset.w;
+    *(halui_data->tool_number) = halui_stat.tool_in_spindle;
+    *(halui_data->tool_length_offset_x) = halui_stat.tool_offset.x;
+    *(halui_data->tool_length_offset_y) = halui_stat.tool_offset.y;
+    *(halui_data->tool_length_offset_z) = halui_stat.tool_offset.z;
+    *(halui_data->tool_length_offset_a) = halui_stat.tool_offset.a;
+    *(halui_data->tool_length_offset_b) = halui_stat.tool_offset.b;
+    *(halui_data->tool_length_offset_c) = halui_stat.tool_offset.c;
+    *(halui_data->tool_length_offset_u) = halui_stat.tool_offset.u;
+    *(halui_data->tool_length_offset_v) = halui_stat.tool_offset.v;
+    *(halui_data->tool_length_offset_w) = halui_stat.tool_offset.w;
 
-    if (emcStatus->io.tool.toolInSpindle == 0) {
+    if (halui_stat.tool_in_spindle == 0) {
         *(halui_data->tool_diameter) = 0.0;
     } else {
         int idx;
@@ -1989,7 +1912,7 @@ static void modify_hal_pins()
             if (tooldata_get(&tdata,idx) != IDX_OK) {
                 fprintf(stderr,"UNEXPECTED idx %s %d\n",__FILE__,__LINE__);
             }
-            if (tdata.toolno == emcStatus->io.tool.toolInSpindle) {
+            if (tdata.toolno == halui_stat.tool_in_spindle) {
                 *(halui_data->tool_diameter) = tdata.diameter;
                 break;
             }
@@ -2000,91 +1923,94 @@ static void modify_hal_pins()
         }
     }
 
-    for (spindle = 0; spindle < num_spindles; spindle++){
-        *(halui_data->spindle_is_on[spindle]) = (emcStatus->motion.spindle[spindle].enabled);
-        *(halui_data->spindle_runs_forward[spindle]) = (emcStatus->motion.spindle[spindle].direction == 1);
-        *(halui_data->spindle_runs_backward[spindle]) = (emcStatus->motion.spindle[spindle].direction == -1);
-        *(halui_data->spindle_brake_is_on[spindle]) = emcStatus->motion.spindle[spindle].brake;
-        *(halui_data->so_value[spindle]) = emcStatus->motion.spindle[spindle].spindle_scale; //spindle-speed-override from 0 to 1 for 100%
+    for (spindle = 0; spindle < num_spindles && spindle < (int)halui_stat.spindle_len; spindle++){
+        *(halui_data->spindle_is_on[spindle]) = (halui_stat.spindle[spindle].enabled);
+        *(halui_data->spindle_runs_forward[spindle]) = (halui_stat.spindle[spindle].direction == 1);
+        *(halui_data->spindle_runs_backward[spindle]) = (halui_stat.spindle[spindle].direction == -1);
+        *(halui_data->spindle_brake_is_on[spindle]) = halui_stat.spindle[spindle].brake;
+        *(halui_data->so_value[spindle]) = halui_stat.spindle[spindle].override; //spindle-speed-override from 0 to 1 for 100%
     }
 
-    for (joint=0; joint < num_joints; joint++) {
-	*(halui_data->joint_is_homed[joint]) = emcStatus->motion.joint[joint].homed;
-	*(halui_data->joint_on_soft_min_limit[joint]) = emcStatus->motion.joint[joint].minSoftLimit;
-	*(halui_data->joint_on_soft_max_limit[joint]) = emcStatus->motion.joint[joint].maxSoftLimit;
-	*(halui_data->joint_on_hard_min_limit[joint]) = emcStatus->motion.joint[joint].minHardLimit;
-	*(halui_data->joint_on_hard_max_limit[joint]) = emcStatus->motion.joint[joint].maxHardLimit;
-	*(halui_data->joint_override_limits[joint]) = emcStatus->motion.joint[joint].overrideLimits;
-	*(halui_data->joint_has_fault[joint]) = emcStatus->motion.joint[joint].fault;
+    for (joint=0; joint < num_joints && joint < (int)halui_stat.joints_len; joint++) {
+	*(halui_data->joint_is_homed[joint]) = halui_stat.joints[joint].homed;
+	*(halui_data->joint_on_soft_min_limit[joint]) = halui_stat.joints[joint].min_soft_limit;
+	*(halui_data->joint_on_soft_max_limit[joint]) = halui_stat.joints[joint].max_soft_limit;
+	*(halui_data->joint_on_hard_min_limit[joint]) = halui_stat.joints[joint].min_hard_limit;
+	*(halui_data->joint_on_hard_max_limit[joint]) = halui_stat.joints[joint].max_hard_limit;
+	*(halui_data->joint_override_limits[joint]) = halui_stat.joints[joint].override_limits;
+	*(halui_data->joint_has_fault[joint]) = halui_stat.joints[joint].fault;
     }
 
     if (axis_mask & 0x0001) {
-      *(halui_data->axis_pos_commanded[0]) = emcStatus->motion.traj.position.tran.x;
-      *(halui_data->axis_pos_feedback[0]) = emcStatus->motion.traj.actualPosition.tran.x;
-      double x = emcStatus->motion.traj.actualPosition.tran.x - emcStatus->task.g5x_offset.tran.x - emcStatus->task.toolOffset.tran.x;
-      double y = emcStatus->motion.traj.actualPosition.tran.y - emcStatus->task.g5x_offset.tran.y - emcStatus->task.toolOffset.tran.y;
-      x = x * cos(-emcStatus->task.rotation_xy * TO_RAD) - y * sin(-emcStatus->task.rotation_xy * TO_RAD);
-      *(halui_data->axis_pos_relative[0]) = x - emcStatus->task.g92_offset.tran.x;
+      *(halui_data->axis_pos_commanded[0]) = halui_stat.position.x;
+      *(halui_data->axis_pos_feedback[0]) = halui_stat.actual_position.x;
+      double x = halui_stat.actual_position.x - halui_stat.g5x_offset.x - halui_stat.tool_offset.x;
+      double y = halui_stat.actual_position.y - halui_stat.g5x_offset.y - halui_stat.tool_offset.y;
+      x = x * cos(-halui_stat.rotation_xy * TO_RAD) - y * sin(-halui_stat.rotation_xy * TO_RAD);
+      *(halui_data->axis_pos_relative[0]) = x - halui_stat.g92_offset.x;
     }
 
     if (axis_mask & 0x0002) {
-      *(halui_data->axis_pos_commanded[1]) = emcStatus->motion.traj.position.tran.y;
-      *(halui_data->axis_pos_feedback[1]) = emcStatus->motion.traj.actualPosition.tran.y;
-      double x = emcStatus->motion.traj.actualPosition.tran.x - emcStatus->task.g5x_offset.tran.x - emcStatus->task.toolOffset.tran.x;
-      double y = emcStatus->motion.traj.actualPosition.tran.y - emcStatus->task.g5x_offset.tran.y - emcStatus->task.toolOffset.tran.y;
-      y = y * cos(-emcStatus->task.rotation_xy * TO_RAD) + x * sin(-emcStatus->task.rotation_xy * TO_RAD);
-      *(halui_data->axis_pos_relative[1]) = y - emcStatus->task.g92_offset.tran.y;
+      *(halui_data->axis_pos_commanded[1]) = halui_stat.position.y;
+      *(halui_data->axis_pos_feedback[1]) = halui_stat.actual_position.y;
+      double x = halui_stat.actual_position.x - halui_stat.g5x_offset.x - halui_stat.tool_offset.x;
+      double y = halui_stat.actual_position.y - halui_stat.g5x_offset.y - halui_stat.tool_offset.y;
+      y = y * cos(-halui_stat.rotation_xy * TO_RAD) + x * sin(-halui_stat.rotation_xy * TO_RAD);
+      *(halui_data->axis_pos_relative[1]) = y - halui_stat.g92_offset.y;
     }
 
     if (axis_mask & 0x0004) {
-      *(halui_data->axis_pos_commanded[2]) = emcStatus->motion.traj.position.tran.z;
-      *(halui_data->axis_pos_feedback[2]) = emcStatus->motion.traj.actualPosition.tran.z;
-      *(halui_data->axis_pos_relative[2]) = emcStatus->motion.traj.actualPosition.tran.z - emcStatus->task.g5x_offset.tran.z - emcStatus->task.g92_offset.tran.z - emcStatus->task.toolOffset.tran.z;
+      *(halui_data->axis_pos_commanded[2]) = halui_stat.position.z;
+      *(halui_data->axis_pos_feedback[2]) = halui_stat.actual_position.z;
+      *(halui_data->axis_pos_relative[2]) = halui_stat.actual_position.z - halui_stat.g5x_offset.z - halui_stat.g92_offset.z - halui_stat.tool_offset.z;
     }
 
     if (axis_mask & 0x0008) {
-      *(halui_data->axis_pos_commanded[3]) = emcStatus->motion.traj.position.a;
-      *(halui_data->axis_pos_feedback[3]) = emcStatus->motion.traj.actualPosition.a;
-      *(halui_data->axis_pos_relative[3]) = emcStatus->motion.traj.actualPosition.a - emcStatus->task.g5x_offset.a - emcStatus->task.g92_offset.a - emcStatus->task.toolOffset.a;
+      *(halui_data->axis_pos_commanded[3]) = halui_stat.position.a;
+      *(halui_data->axis_pos_feedback[3]) = halui_stat.actual_position.a;
+      *(halui_data->axis_pos_relative[3]) = halui_stat.actual_position.a - halui_stat.g5x_offset.a - halui_stat.g92_offset.a - halui_stat.tool_offset.a;
     }
 
     if (axis_mask & 0x0010) {
-      *(halui_data->axis_pos_commanded[4]) = emcStatus->motion.traj.position.b;
-      *(halui_data->axis_pos_feedback[4]) = emcStatus->motion.traj.actualPosition.b;
-      *(halui_data->axis_pos_relative[4]) = emcStatus->motion.traj.actualPosition.b - emcStatus->task.g5x_offset.b - emcStatus->task.g92_offset.b - emcStatus->task.toolOffset.b;
+      *(halui_data->axis_pos_commanded[4]) = halui_stat.position.b;
+      *(halui_data->axis_pos_feedback[4]) = halui_stat.actual_position.b;
+      *(halui_data->axis_pos_relative[4]) = halui_stat.actual_position.b - halui_stat.g5x_offset.b - halui_stat.g92_offset.b - halui_stat.tool_offset.b;
     }
 
     if (axis_mask & 0x0020) {
-      *(halui_data->axis_pos_commanded[5]) = emcStatus->motion.traj.position.c;
-      *(halui_data->axis_pos_feedback[5]) = emcStatus->motion.traj.actualPosition.c;
-      *(halui_data->axis_pos_relative[5]) = emcStatus->motion.traj.actualPosition.c - emcStatus->task.g5x_offset.c - emcStatus->task.g92_offset.c - emcStatus->task.toolOffset.c;
+      *(halui_data->axis_pos_commanded[5]) = halui_stat.position.c;
+      *(halui_data->axis_pos_feedback[5]) = halui_stat.actual_position.c;
+      *(halui_data->axis_pos_relative[5]) = halui_stat.actual_position.c - halui_stat.g5x_offset.c - halui_stat.g92_offset.c - halui_stat.tool_offset.c;
     }
 
     if (axis_mask & 0x0040) {
-      *(halui_data->axis_pos_commanded[6]) = emcStatus->motion.traj.position.u;
-      *(halui_data->axis_pos_feedback[6]) = emcStatus->motion.traj.actualPosition.u;
-      *(halui_data->axis_pos_relative[6]) = emcStatus->motion.traj.actualPosition.u - emcStatus->task.g5x_offset.u - emcStatus->task.g92_offset.u - emcStatus->task.toolOffset.u;
+      *(halui_data->axis_pos_commanded[6]) = halui_stat.position.u;
+      *(halui_data->axis_pos_feedback[6]) = halui_stat.actual_position.u;
+      *(halui_data->axis_pos_relative[6]) = halui_stat.actual_position.u - halui_stat.g5x_offset.u - halui_stat.g92_offset.u - halui_stat.tool_offset.u;
     }
 
     if (axis_mask & 0x0080) {
-      *(halui_data->axis_pos_commanded[7]) = emcStatus->motion.traj.position.v;
-      *(halui_data->axis_pos_feedback[7]) = emcStatus->motion.traj.actualPosition.v;
-      *(halui_data->axis_pos_relative[7]) = emcStatus->motion.traj.actualPosition.v - emcStatus->task.g5x_offset.v - emcStatus->task.g92_offset.v - emcStatus->task.toolOffset.v;
+      *(halui_data->axis_pos_commanded[7]) = halui_stat.position.v;
+      *(halui_data->axis_pos_feedback[7]) = halui_stat.actual_position.v;
+      *(halui_data->axis_pos_relative[7]) = halui_stat.actual_position.v - halui_stat.g5x_offset.v - halui_stat.g92_offset.v - halui_stat.tool_offset.v;
     }
 
     if (axis_mask & 0x0100) {
-      *(halui_data->axis_pos_commanded[8]) = emcStatus->motion.traj.position.w;
-      *(halui_data->axis_pos_feedback[8]) = emcStatus->motion.traj.actualPosition.w;
-      *(halui_data->axis_pos_relative[8]) = emcStatus->motion.traj.actualPosition.w - emcStatus->task.g5x_offset.w - emcStatus->task.g92_offset.w - emcStatus->task.toolOffset.w;
+      *(halui_data->axis_pos_commanded[8]) = halui_stat.position.w;
+      *(halui_data->axis_pos_feedback[8]) = halui_stat.actual_position.w;
+      *(halui_data->axis_pos_relative[8]) = halui_stat.actual_position.w - halui_stat.g5x_offset.w - halui_stat.g92_offset.w - halui_stat.tool_offset.w;
     }
 
-    *(halui_data->joint_is_homed[num_joints]) = emcStatus->motion.joint[*(halui_data->joint_selected)].homed;
-    *(halui_data->joint_on_soft_min_limit[num_joints]) = emcStatus->motion.joint[*(halui_data->joint_selected)].minSoftLimit;
-    *(halui_data->joint_on_soft_max_limit[num_joints]) = emcStatus->motion.joint[*(halui_data->joint_selected)].maxSoftLimit;
-    *(halui_data->joint_on_hard_min_limit[num_joints]) = emcStatus->motion.joint[*(halui_data->joint_selected)].minHardLimit;
-    *(halui_data->joint_override_limits[num_joints]) = emcStatus->motion.joint[*(halui_data->joint_selected)].overrideLimits;
-    *(halui_data->joint_on_hard_max_limit[num_joints]) = emcStatus->motion.joint[*(halui_data->joint_selected)].maxHardLimit;
-    *(halui_data->joint_has_fault[num_joints]) = emcStatus->motion.joint[*(halui_data->joint_selected)].fault;
+    if ((int)*(halui_data->joint_selected) < (int)halui_stat.joints_len) {
+        int js = *(halui_data->joint_selected);
+        *(halui_data->joint_is_homed[num_joints]) = halui_stat.joints[js].homed;
+        *(halui_data->joint_on_soft_min_limit[num_joints]) = halui_stat.joints[js].min_soft_limit;
+        *(halui_data->joint_on_soft_max_limit[num_joints]) = halui_stat.joints[js].max_soft_limit;
+        *(halui_data->joint_on_hard_min_limit[num_joints]) = halui_stat.joints[js].min_hard_limit;
+        *(halui_data->joint_override_limits[num_joints]) = halui_stat.joints[js].override_limits;
+        *(halui_data->joint_on_hard_max_limit[num_joints]) = halui_stat.joints[js].max_hard_limit;
+        *(halui_data->joint_has_fault[num_joints]) = halui_stat.joints[js].fault;
+    }
 
     // increment cycle count
     (*halui_data->cycle_count)++;
@@ -2111,9 +2037,9 @@ static void *halui_loop(void *arg)
         static bool task_start_synced = 0;
         if (!task_start_synced) {
            // wait for task to establish nonzero linearUnits
-           if (emcStatus->motion.traj.linearUnits != 0) {
+           if (halui_stat.linear_units != 0) {
               // set once at startup, no changes are expected:
-              *(halui_data->units_per_mm) = emcStatus->motion.traj.linearUnits;
+              *(halui_data->units_per_mm) = halui_stat.linear_units;
               task_start_synced = 1;
            }
         }
@@ -2141,17 +2067,16 @@ static int halui_start(cmod_t *self)
 	return -1;
     }
 
-    // init NML for stat and error channels
-    if (0 != tryNml()) {
-	gomc_log_errorf(the_log, "halui", "can't connect to emc status/error");
+    // Get the emcstat API for reading machine status.
+    emcstat_cb = emcstat_api_get(the_env->api, "milltask");
+    if (!emcstat_cb) {
+	gomc_log_errorf(the_log, "halui", "emcstat API not registered (milltask not loaded?)");
 	return -1;
     }
 
-#ifdef TOOL_NML //{
-    tool_nml_register((CANON_TOOL_TABLE*)&emcStatus->io.tool.toolTable);
-#else //}{
+#ifndef TOOL_NML
     tool_mmap_user();
-#endif //}
+#endif
 
     // get current serial number, and save it for restoring when we quit
     // so as not to interfere with real operator interface

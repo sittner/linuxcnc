@@ -174,12 +174,14 @@ type StatFull {
     axis_mask: i32
     flood: bool
     mist: bool
+    lube_on: bool
     tool_in_spindle: i32
     pocket_prepped: i32
     linear_units: f64
     homed: [MAX_JOINTS]bool
     limit: [MAX_JOINTS]i32
     state: i32              # RCS state for connectivity check
+    rcs_status: i32         # RCS command status (1=DONE, 2=EXEC, 3=ERROR)
     debug: i32              # debug flags bitmask
 }
 

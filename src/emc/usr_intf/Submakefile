@@ -38,8 +38,8 @@ HALUI_GOMC_SRCS := emc/usr_intf/halui_gomc.cc
 
 USERSRCS += $(HALUI_GOMC_SRCS)
 
-$(call TOOBJSDEPS, $(HALUI_GOMC_SRCS)): EXTRAFLAGS += -fPIC -Igomc/generated/gmi/emccmd -Igomc/pkg/cmodule
-$(call TOOBJSDEPS, $(HALUI_GOMC_SRCS)): gomc/generated/gmi/emccmd/emccmd_api.h
+$(call TOOBJSDEPS, $(HALUI_GOMC_SRCS)): EXTRAFLAGS += -fPIC -Igomc/generated/gmi/emccmd -Igomc/generated/gmi/emcstat -Igomc/pkg/cmodule
+$(call TOOBJSDEPS, $(HALUI_GOMC_SRCS)): gomc/generated/gmi/emccmd/emccmd_api.h gomc/generated/gmi/emcstat/emcstat_api.h
 
 ../cmod/halui.so: $(call TOOBJS, $(HALUI_GOMC_SRCS)) \
                   ../lib/liblinuxcnc.a ../lib/liblinuxcncini.so.0 \

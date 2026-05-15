@@ -131,6 +131,7 @@ static double                stat_settings_buf[ACTIVE_SETTINGS];
 static emcstat_stat_full_t   stat_push;     // current state
 static emcstat_stat_full_t   stat_shadow;   // previous state for change detection
 static bool                  stat_first = true;
+static pthread_mutex_t       stat_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static inline void pos_to_emcstat(const EmcPose &src, emcstat_position_t &dst) {
     dst.x = src.tran.x;
@@ -272,10 +273,12 @@ static void fill_stat_full(emcstat_stat_full_t *out, const EMC_STAT *st) {
     out->axis_mask       = st->motion.traj.axis_mask;
     out->flood           = st->io.coolant.flood != 0;
     out->mist            = st->io.coolant.mist != 0;
+    out->lube_on         = st->io.lube.on != 0;
     out->tool_in_spindle = st->io.tool.toolInSpindle;
     out->pocket_prepped  = st->io.tool.pocketPrepped;
     out->linear_units    = st->motion.traj.linearUnits;
     out->state           = (int32_t)st->task.state;
+    out->rcs_status      = (int32_t)st->status;
     out->debug           = st->motion.debug;
 
     // Homed / limit arrays
@@ -295,6 +298,45 @@ static emcstat_axis_info_t   stat_axis_shadow[EMCSTAT_MAX_AXIS];
 static int32_t               stat_gcodes_shadow[ACTIVE_G_CODES];
 static int32_t               stat_mcodes_shadow[ACTIVE_M_CODES];
 static double                stat_settings_shadow[ACTIVE_SETTINGS];
+
+// gmi_emcstat_get_stat: callback for the emcstat API.
+// Returns a copy of the shadow stat with malloc'd slice backing arrays.
+// Caller must free the slice pointers (joints, spindle, axis,
+// active_gcodes, active_mcodes, active_settings).
+static emcstat_stat_full_t gmi_emcstat_get_stat(void *ctx) {
+    (void)ctx;
+    pthread_mutex_lock(&stat_mutex);
+    emcstat_stat_full_t out = stat_shadow;
+    // Duplicate slice backing arrays so caller owns them.
+    if (out.joints_len > 0) {
+        out.joints = (emcstat_joint_info_t *)malloc(out.joints_len * sizeof(*out.joints));
+        memcpy(out.joints, stat_joints_shadow, out.joints_len * sizeof(*out.joints));
+    }
+    if (out.spindle_len > 0) {
+        out.spindle = (emcstat_spindle_info_t *)malloc(out.spindle_len * sizeof(*out.spindle));
+        memcpy(out.spindle, stat_spindle_shadow, out.spindle_len * sizeof(*out.spindle));
+    }
+    if (out.axis_len > 0) {
+        out.axis = (emcstat_axis_info_t *)malloc(out.axis_len * sizeof(*out.axis));
+        memcpy(out.axis, stat_axis_shadow, out.axis_len * sizeof(*out.axis));
+    }
+    if (out.active_gcodes_len > 0) {
+        out.active_gcodes = (int32_t *)malloc(out.active_gcodes_len * sizeof(*out.active_gcodes));
+        memcpy(out.active_gcodes, stat_gcodes_shadow, out.active_gcodes_len * sizeof(*out.active_gcodes));
+    }
+    if (out.active_mcodes_len > 0) {
+        out.active_mcodes = (int32_t *)malloc(out.active_mcodes_len * sizeof(*out.active_mcodes));
+        memcpy(out.active_mcodes, stat_mcodes_shadow, out.active_mcodes_len * sizeof(*out.active_mcodes));
+    }
+    if (out.active_settings_len > 0) {
+        out.active_settings = (double *)malloc(out.active_settings_len * sizeof(*out.active_settings));
+        memcpy(out.active_settings, stat_settings_shadow, out.active_settings_len * sizeof(*out.active_settings));
+    }
+    // String fields (file, command) point into EMC_STAT's static arrays —
+    // valid for the lifetime of the process.  Caller must not free them.
+    pthread_mutex_unlock(&stat_mutex);
+    return out;
+}
 
 // publish_stat: fill emcstat_stat_full_t from EMC_STAT, compare against
 // shadow, and push to Go if anything changed.
@@ -323,6 +365,7 @@ static void publish_stat(const EMC_STAT *st) {
 
     if (changed) {
         stat_first = false;
+        pthread_mutex_lock(&stat_mutex);
         memcpy(&stat_shadow, &stat_push, sizeof(stat_push));
         memcpy(stat_joints_shadow, stat_joints_buf, sizeof(stat_joints_buf));
         memcpy(stat_spindle_shadow, stat_spindle_buf, sizeof(stat_spindle_buf));
@@ -330,6 +373,7 @@ static void publish_stat(const EMC_STAT *st) {
         memcpy(stat_gcodes_shadow, stat_gcodes_buf, sizeof(stat_gcodes_buf));
         memcpy(stat_mcodes_shadow, stat_mcodes_buf, sizeof(stat_mcodes_buf));
         memcpy(stat_settings_shadow, stat_settings_buf, sizeof(stat_settings_buf));
+        pthread_mutex_unlock(&stat_mutex);
         if (gomc_api_ptr) {
             gomc_api_ptr->push_watch(gomc_api_ptr->ctx,
                 "emcstat", "emcstat", "get_stat",
@@ -3781,6 +3825,15 @@ extern "C" int New(const cmod_env_t *env, const char *name,
         emccmd_slot_init();
         emccmd_api_register(gomc_api_ptr, "emccmd",
                             &emccmd_handler_table);
+
+        // Register the emcstat API — provides status to in-process consumers
+        // (halui, etc.) via the get_stat callback.
+        static emcstat_callbacks_t emcstat_table = {
+            .ctx = NULL,
+            .get_stat = gmi_emcstat_get_stat,
+        };
+        emcstat_api_register(gomc_api_ptr, "milltask",
+                             &emcstat_table);
     }
 
     // Start the M-code handler worker thread
