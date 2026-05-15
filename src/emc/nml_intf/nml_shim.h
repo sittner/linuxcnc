@@ -1,11 +1,14 @@
 /*
- * nml_shim.h — C interface to the NML stat and error channels.
+ * nml_shim.h — C interface to the NML stat channel.
  *
  * This header provides extern "C" wrappers around the C++ NML API,
  * callable from Go via cgo. The implementation is in nml_shim.cc.
  *
- * Used by the emcgateway gomod to read machine status and poll error
- * messages without exposing C++ to cgo.
+ * Used by the emcgateway gomod to read machine status without exposing
+ * C++ to cgo.
+ *
+ * Error channel has been removed — errors now flow through the
+ * emcerror GMI @publish ring (emcerror_pub.h / emcerror_pub.go).
  *
  * Command functions have been removed — commands now go through the
  * emccmd GMI API (emccmd_handlers.cc / emccmd_slot).

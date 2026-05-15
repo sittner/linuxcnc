@@ -19,7 +19,6 @@
 #include "rcs.hh"
 #include "emc_nml.hh"
 #include "emc.hh"
-#include "nml_oi.hh"
 #include "emcglb.h"
 #include "linuxcnc.h"
 

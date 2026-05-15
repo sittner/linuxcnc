@@ -39,7 +39,6 @@
 #include "emcglb.h"		// EMC_NMLFILE, TRAJ_MAX_VELOCITY, etc.
 #include "emccfg.h"		// DEFAULT_TRAJ_MAX_VELOCITY
 #include "rcs_print.hh"
-#include "nml_oi.hh"
 #include "timer.hh"
 #include <rtapi_string.h>
 #include "tooldata.hh"
@@ -271,12 +270,10 @@ static double maxSpindleOverride=1.0;
 static EMC_TASK_MODE_ENUM halui_old_mode = EMC_TASK_MODE_MANUAL;
 static int halui_sent_mdi = 0;
 
-// the NML channels for status and errors (command path uses emccmd API)
+// the NML channel for status (command path uses emccmd API,
+// error path uses emcerror ring)
 static RCS_STAT_CHANNEL *emcStatusBuffer = 0;
 EMC_STAT *emcStatus = 0;
-
-// the NML channel for errors
-static NML *emcErrorBuffer = 0;
 
 static int emcTaskNmlGet()
 {
@@ -300,23 +297,6 @@ static int emcTaskNmlGet()
     return retval;
 }
 
-static int emcErrorNmlGet()
-{
-    int retval = 0;
-
-    if (emcErrorBuffer == 0) {
-	emcErrorBuffer =
-	    new NML(nmlErrorFormat, "emcError", "xemc", emc_nmlfile);
-	if (!emcErrorBuffer->valid()) {
-	    delete emcErrorBuffer;
-	    emcErrorBuffer = 0;
-	    retval = -1;
-	}
-    }
-
-    return retval;
-}
-
 static int tryNml()
 {
     double end;
@@ -332,28 +312,6 @@ static int tryNml()
     good = 0;
     do {
 	if (0 == emcTaskNmlGet()) {
-	    good = 1;
-	    break;
-	}
-	esleep(RETRY_INTERVAL);
-	end -= RETRY_INTERVAL;
-    } while (end > 0.0);
-    if ((emc_debug & EMC_DEBUG_NML) == 0) {
-	set_rcs_print_destination(RCS_PRINT_TO_STDOUT);	// inhibit diag
-	// messages
-    }
-    if (!good) {
-	return -1;
-    }
-
-    if ((emc_debug & EMC_DEBUG_NML) == 0) {
-	set_rcs_print_destination(RCS_PRINT_TO_NULL);	// inhibit diag
-	// messages
-    }
-    end = RETRY_TIME;
-    good = 0;
-    do {
-	if (0 == emcErrorNmlGet()) {
 	    good = 1;
 	    break;
 	}
@@ -414,7 +372,6 @@ static void halui_cleanup()
     the_hal->exit(the_hal->ctx, comp_id);
 
     if(emcStatusBuffer) { delete emcStatusBuffer;  emcStatusBuffer = 0; }
-    if(emcErrorBuffer) { delete emcErrorBuffer;  emcErrorBuffer = 0; }
 }
 
 static enum {
