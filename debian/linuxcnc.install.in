@@ -41,7 +41,6 @@ usr/bin/linuxcnc_info
 usr/bin/linuxcnc_var
 usr/bin/linuxcnclcd
 usr/bin/linuxcncmkdesktop
-usr/bin/linuxcncrsh
 usr/bin/linuxcnctop
 usr/bin/maho600gui
 usr/bin/max5gui
@@ -76,7 +75,6 @@ usr/bin/qtvcp
 usr/bin/rotarydelta
 usr/bin/rs274
 usr/bin/scaragui
-usr/bin/schedrmt
 usr/bin/scorbot-er-3
 usr/bin/sendkeys
 usr/bin/setup_designer

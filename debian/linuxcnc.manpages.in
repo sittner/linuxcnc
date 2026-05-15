@@ -38,7 +38,6 @@ usr/share/man/man1/linuxcnc.1
 usr/share/man/man1/linuxcnc_info.1
 usr/share/man/man1/linuxcnclcd.1
 usr/share/man/man1/linuxcncmkdesktop.1
-usr/share/man/man1/linuxcncrsh.1
 usr/share/man/man1/linuxcnctop.1
 usr/share/man/man1/linuxcnc_var.1
 usr/share/man/man1/maho600gui.1
@@ -76,7 +75,6 @@ usr/share/man/man1/qtvcp.1
 usr/share/man/man1/rotarydelta.1
 usr/share/man/man1/rs274.1
 usr/share/man/man1/scaragui.1
-usr/share/man/man1/schedrmt.1
 usr/share/man/man1/scorbot-er-3.1
 usr/share/man/man1/sendkeys.1
 usr/share/man/man1/setup_designer.1
