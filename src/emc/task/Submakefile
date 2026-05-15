@@ -33,7 +33,7 @@ USERSRCS += $(MILLTASK_GOMC_SRCS)
 
 $(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): EXTRAFLAGS += -fPIC \
     -Igomc/generated/gmi/mcode_handler -Igomc/generated/gmi/interp_ext -Igomc/generated/gmi/interp_ctx \
-    -Igomc/generated/gmi/emccmd \
+    -Igomc/generated/gmi/emccmd -Igomc/generated/gmi/emcerror \
     -Igomc/pkg/cmodule
 
 # Generated GMI headers needed by milltask sources (bootstrap deps)
@@ -42,6 +42,7 @@ $(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/mcode_handler/mcod
 $(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/interp_ext/interp_ext_api.h
 $(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/interp_ctx/interp_ctx_api.h
 $(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/emccmd/emccmd_api.h
+$(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/emcerror/emcerror_api.h
 
 ../cmod/milltask.so: $(call TOOBJS, $(MILLTASK_GOMC_SRCS)) \
                      ../lib/librs274.so.0 ../lib/liblinuxcnc.a \

@@ -300,6 +300,22 @@ $(GMI_EMCCMD_GEN)/emccmd_cgo.go: $(GMI_EMCCMD_API_H)
 
 TARGETS += $(GMI_EMCCMD_API_H)
 
+# --- emcerror C publish ring (milltask producer) ---
+
+GMI_EMCERROR_GEN := gomc/generated/gmi/emcerror
+GMI_EMCERROR_API_H := $(GMI_EMCERROR_GEN)/emcerror_api.h
+
+$(GMI_EMCERROR_API_H): $(GMI_EMCERROR_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI emcerror C API from $(GMI_EMCERROR_IDL)"
+	@mkdir -p $(GMI_EMCERROR_GEN)
+	$(Q)$(GMICOMPILE) --server-c $(GMI_EMCERROR_IDL) -o $(GMI_EMCERROR_API_H)
+
+$(GMI_EMCERROR_GEN)/emcerror_cgo.go: $(GMI_EMCERROR_API_H)
+$(GMI_EMCERROR_GEN)/emcerror_pub.h: $(GMI_EMCERROR_API_H)
+$(GMI_EMCERROR_GEN)/emcerror_pub.go: $(GMI_EMCERROR_API_H)
+
+TARGETS += $(GMI_EMCERROR_API_H)
+
 $(GMI_EMCERROR_SERVER_GO): $(GMI_EMCERROR_IDL) $(GMICOMPILE_BIN)
 	$(ECHO) "Generating GMI emcerror Go server dispatch from $(GMI_EMCERROR_IDL)"
 	@mkdir -p $(dir $(GMI_EMCERROR_SERVER_GO))

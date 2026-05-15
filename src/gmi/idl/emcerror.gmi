@@ -1,6 +1,6 @@
 # EMC Error Channel API
-# Error/info message stream — replaces linuxcnc.error_channel() for UI clients.
-# Gateway module (emcgateway) polls NML error buffer and pushes via WebSocket.
+# Error/info message stream — replaces NML error buffer for UI clients.
+# milltask publishes errors via ring buffer; Go drains and delivers to WS.
 
 @api emcerror
 @version 1
@@ -26,11 +26,20 @@ type ErrorMessage {
     text: string
 }
 
-# ─── Functions ───
+# ─── Publish (C → Go) ───
+
+# milltask calls this to publish operator errors/text/display messages.
+# Written to a lock-free ring buffer, drained by Go goroutine.
+@publish true
+@publish_ring_size 64
+func publish_error(kind: ErrorKind, text: string)
+
+# ─── Watch (Go → WS clients) ───
 
 # Poll for new error/info messages, pushed via WebSocket at 200ms intervals.
-# Returns only messages that arrived since the last poll (gateway tracks position).
+# Returns only messages that arrived since the last poll (drain flushes buffer).
 @watch true
+@watch_source "publish_error"
 @watch_default_rate 200ms
 @method "GET"
 @path "/errors"

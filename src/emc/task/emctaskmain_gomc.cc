@@ -93,6 +93,7 @@ fpu_control_t __fpu_control = _FPU_IEEE & ~(_FPU_MASK_IM | _FPU_MASK_ZM | _FPU_M
 #include "emccmd_slot.hh"
 
 #include "gomc/generated/gmi/emccmd/emccmd_api.h"
+#include "gomc/generated/gmi/emcerror/emcerror_pub.h"
 
 #include <pthread.h>
 #include <sys/eventfd.h>
@@ -108,6 +109,9 @@ extern const emccmd_callbacks_t emccmd_handler_table;
 
 // Set in New(), used by emctask_startup() to register the interp_ext API.
 static const gomc_api_t *gomc_api_ptr;
+
+// Emcerror publish ring — replaces NML error buffer.
+static emcerror_publish_error_ring_t *emcerror_ring;
 
 // --- M-code handler registry and worker thread ---
 
@@ -293,15 +297,8 @@ static int mcode_has_handler(int mcode)
 
 static emcmot_config_t emcmotConfig;
 
-/* time after which the user interface is declared dead
- * because it wouldn't read any more messages
- */
-#define DEFAULT_EMC_UI_TIMEOUT 5.0
-
-
-// NML channels (stat + error only; commands come via GMI slot)
+// NML channels (stat only; commands come via GMI slot, errors via ring)
 static RCS_STAT_CHANNEL *emcStatusBuffer = 0;
-static NML *emcErrorBuffer = 0;
 
 // command pointer — set from GMI slot buffer each cycle
 static RCS_CMD_MSG *emcCommand = 0;
@@ -368,47 +365,11 @@ void emctask_quit(int sig)
     signal(sig, emctask_quit);
 }
 
-/* make sure at least space bytes are available on
- * error channel; wait a bit to drain if needed
- */
-int emcErrorBufferOKtoWrite(int space, const char *caller)
-{
-    // check channel for validity
-    if (emcErrorBuffer == NULL)
-	return -1;
-    if (!emcErrorBuffer->valid())
-	return -1;
-
-    double send_errorchan_timout = etime() + DEFAULT_EMC_UI_TIMEOUT;
-
-    while (etime() < send_errorchan_timout) {
-	if (emcErrorBuffer->get_space_available() < space) {
-	    esleep(0.01);
-	    continue;
-	} else {
-	    break;
-	}
-    }
-    if (etime() >= send_errorchan_timout) {
-	if (emc_debug & EMC_DEBUG_TASK_ISSUE) {
-	    rcs_print("timeout waiting for error channel to drain, caller=`%s' request=%d\n", caller,space);
-	}
-	return -1;
-    } else {
-	// printf("--- %d bytes available after %f seconds\n", space, etime() - send_errorchan_timout + DEFAULT_EMC_UI_TIMEOUT);
-    }
-    return 0;
-}
-
-
 // implementation of EMC error logger
 int emcOperatorError(int id, const char *fmt, ...)
 {
-    EMC_OPERATOR_ERROR error_msg;
+    char buf[LINELEN];
     va_list ap;
-
-    if ( emcErrorBufferOKtoWrite(sizeof(error_msg) * 2, "emcOperatorError"))
-	return -1;
 
     if (NULL == fmt) {
 	return -1;
@@ -417,62 +378,63 @@ int emcOperatorError(int id, const char *fmt, ...)
 	return -1;
     }
     // prepend error code, leave off 0 ad-hoc code
-    error_msg.error[0] = 0;
+    buf[0] = 0;
     if (0 != id) {
-	snprintf(error_msg.error, sizeof(error_msg.error), "[%d] ", id);
+	snprintf(buf, sizeof(buf), "[%d] ", id);
     }
     // append error string
     va_start(ap, fmt);
-    vsnprintf(&error_msg.error[strlen(error_msg.error)], 
-	      sizeof(error_msg.error) - strlen(error_msg.error), fmt, ap);
+    vsnprintf(&buf[strlen(buf)],
+	      sizeof(buf) - strlen(buf), fmt, ap);
     va_end(ap);
 
     // force a NULL at the end for safety
-    error_msg.error[LINELEN - 1] = 0;
+    buf[LINELEN - 1] = 0;
 
-    // write it
-    rcs_print("%s\n", error_msg.error);
-    return emcErrorBuffer->write(error_msg);
+    rcs_print("%s\n", buf);
+
+    if (emcerror_ring) {
+	emcerror_publish_error(emcerror_ring, EMCERROR_OPERATOR_ERROR, buf);
+    }
+    return 0;
 }
 
 int emcOperatorText(int id, const char *fmt, ...)
 {
-    EMC_OPERATOR_TEXT text_msg;
+    char buf[LINELEN];
     va_list ap;
 
-    if ( emcErrorBufferOKtoWrite(sizeof(text_msg) * 2, "emcOperatorText"))
-	return -1;
-
-    // write args to NML message (ignore int text code)
+    // write args to buffer
     va_start(ap, fmt);
-    vsnprintf(text_msg.text, sizeof(text_msg.text), fmt, ap);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
 
     // force a NULL at the end for safety
-    text_msg.text[LINELEN - 1] = 0;
+    buf[LINELEN - 1] = 0;
 
-    // write it
-    return emcErrorBuffer->write(text_msg);
+    if (emcerror_ring) {
+	emcerror_publish_error(emcerror_ring, EMCERROR_OPERATOR_TEXT, buf);
+    }
+    return 0;
 }
 
 int emcOperatorDisplay(int id, const char *fmt, ...)
 {
-    EMC_OPERATOR_DISPLAY display_msg;
+    char buf[LINELEN];
     va_list ap;
 
-    if ( emcErrorBufferOKtoWrite(sizeof(display_msg) * 2, "emcOperatorDisplay"))
-	return -1;
-
-    // write args to NML message (ignore int display code)
+    // write args to buffer
     va_start(ap, fmt);
-    vsnprintf(display_msg.display, sizeof(display_msg.display), fmt, ap);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
 
     // force a NULL at the end for safety
-    display_msg.display[LINELEN - 1] = 0;
+    buf[LINELEN - 1] = 0;
 
-    // write it
-    return emcErrorBuffer->write(display_msg);
+    if (emcerror_ring) {
+	emcerror_publish_error(emcerror_ring, EMCERROR_OPERATOR_DISPLAY, buf);
+    }
+    return 0;
 }
 
 // Dispatch an M-code command to the registered handler.
@@ -2991,35 +2953,6 @@ static int emctask_startup()
 	return -1;
     }
 
-    if (!(emc_debug & EMC_DEBUG_NML)) {
-	set_rcs_print_destination(RCS_PRINT_TO_NULL);	// inhibit diag
-	// messages
-    }
-    end = RETRY_TIME;
-    good = 0;
-    do {
-	if (NULL != emcErrorBuffer) {
-	    delete emcErrorBuffer;
-	}
-	emcErrorBuffer =
-	    new NML(nmlErrorFormat, "emcError", "emc", emc_nmlfile);
-	if (emcErrorBuffer->valid()) {
-	    good = 1;
-	    break;
-	}
-	esleep(RETRY_INTERVAL);
-	end -= RETRY_INTERVAL;
-	if (done) {
-	    emctask_shutdown();
-	    exit(1);
-	}
-    } while (end > 0.0);
-    set_rcs_print_destination(RCS_PRINT_TO_STDOUT);	// restore diag
-    // messages
-    if (!good) {
-	rcs_print_error("can't get emcError buffer\n");
-	return -1;
-    }
     // get the timer
     if (!emcTaskNoDelay) {
 	timer = new RCS_TIMER(emc_task_cycle_time, "", "");
@@ -3155,11 +3088,6 @@ static int emctask_shutdown(void)
 	timer = 0;
     }
     // delete the NML channels
-
-    if (0 != emcErrorBuffer) {
-	delete emcErrorBuffer;
-	emcErrorBuffer = 0;
-    }
 
     if (0 != emcStatusBuffer) {
 	delete emcStatusBuffer;
@@ -3550,6 +3478,11 @@ extern "C" int New(const cmod_env_t *env, const char *name,
     m->thread_started = 0;
     the_module = m;
     gomc_api_ptr = env->api;
+
+    // Look up the emcerror publish ring (allocated by Go launcher).
+    if (gomc_api_ptr) {
+	emcerror_ring = emcerror_publish_error_ring_get(gomc_api_ptr);
+    }
 
     bindtextdomain("linuxcnc", EMC2_PO_DIR);
     setlocale(LC_MESSAGES,"");

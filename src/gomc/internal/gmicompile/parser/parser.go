@@ -325,6 +325,14 @@ func (p *Parser) parseFunc(anns []annotation) ast.Func {
 			fn.WatchDefaultRate = ann.value
 		case "watch_factory":
 			fn.WatchFactory = ann.value == "true"
+		case "publish":
+			fn.Publish = ann.value == "true"
+		case "publish_ring_size":
+			if n, err := strconv.Atoi(ann.value); err == nil {
+				fn.PublishRingSize = n
+			}
+		case "watch_source":
+			fn.WatchSource = ann.value
 		}
 	}
 

@@ -222,6 +222,9 @@ type Func struct {
 	Watch            bool   // true if this function supports WebSocket watch subscriptions
 	WatchDefaultRate string // default push rate (e.g. "50ms", "1s")
 	WatchFactory     bool   // true if watch uses per-connection factory (params sent as subscribe args)
+	Publish          bool   // true if this is a publish (event producer) function
+	PublishRingSize  int    // ring buffer slot count (default 64)
+	WatchSource      string // name of @publish function that feeds this watch
 }
 
 // Param represents a function parameter.

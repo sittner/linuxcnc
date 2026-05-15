@@ -80,6 +80,9 @@ func (g *dispatchCGen) emitCgoPreamble() {
 	// Static call wrappers — cgo cannot call C function pointers directly,
 	// so we generate a static wrapper for each callback.
 	for _, fn := range g.api.Funcs {
+		if fn.Publish {
+			continue // publish functions use ring buffers, not callbacks
+		}
 		g.emitCallWrapper(fn)
 	}
 
@@ -513,6 +516,9 @@ func (g *dispatchCGen) emitDispatchFuncs() {
 	g.printf("// --- Dispatch Functions ---\n\n")
 
 	for _, fn := range g.api.Funcs {
+		if fn.Publish {
+			continue
+		}
 		g.emitOneDispatch(fn)
 	}
 }
@@ -796,6 +802,9 @@ func (g *dispatchCGen) emitMeta() {
 	g.printf("\tPrefix:     %q,\n", g.api.Prefix)
 	g.printf("\tFuncs: []apiserver.FuncMeta{\n")
 	for _, fn := range g.api.Funcs {
+		if fn.Publish {
+			continue
+		}
 		dispatchName := g.api.Name + "Dispatch" + toPascalCase(fn.Name)
 		g.printf("\t\t{\n")
 		g.printf("\t\t\tName:     %q,\n", fn.Name)

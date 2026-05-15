@@ -142,6 +142,9 @@ func (g *serverGoGen) emitCallbacksInterface() {
 		if fn.Watch && fn.Method == "" {
 			continue // watch-only function — goes in WatchCallbacks
 		}
+		if fn.Publish {
+			continue // @publish function — handled by ring drain, not callbacks
+		}
 		methodName := toPascalCase(fn.Name)
 		params := g.goMethodParams(fn)
 		ret := g.goMethodReturn(fn)
@@ -186,6 +189,9 @@ func (g *serverGoGen) emitDispatchFuncs() {
 	for _, fn := range g.api.Funcs {
 		if fn.Watch && fn.Method == "" {
 			continue // watch-only function — no dispatch needed
+		}
+		if fn.Publish {
+			continue // @publish function — no dispatch needed
 		}
 		dispatchName := g.api.Name + "Dispatch" + toPascalCase(fn.Name)
 		g.printf("func %s(callbacks unsafe.Pointer, req []byte) ([]byte, error) {\n", dispatchName)
@@ -439,7 +445,7 @@ func (g *serverGoGen) emitCommands() {
 	// This includes REST functions and WS-command-only functions.
 	hasFuncs := false
 	for _, fn := range g.api.Funcs {
-		if !(fn.Watch && fn.Method == "") {
+		if !(fn.Watch && fn.Method == "") && !fn.Publish {
 			hasFuncs = true
 			break
 		}
@@ -462,6 +468,9 @@ func (g *serverGoGen) emitCommands() {
 	for _, fn := range g.api.Funcs {
 		if fn.Watch && fn.Method == "" {
 			continue // watch-only, not a command
+		}
+		if fn.Publish {
+			continue // @publish function — no dispatch command
 		}
 		dispatchName := g.api.Name + "Dispatch" + toPascalCase(fn.Name)
 		g.printf("\t\t{Name: %q, Handler: func(req json.RawMessage) (json.RawMessage, error) {\n", fn.Name)

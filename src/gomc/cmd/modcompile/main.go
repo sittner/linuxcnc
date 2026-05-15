@@ -1137,6 +1137,38 @@ func gmiGenerateServerC(api *gmiast.API, outputPath string) error {
 	}
 	fmt.Fprintf(os.Stderr, "generated %s\n", goPath)
 
+	// Generate publish ring header + Go drain if the API has @publish functions.
+	pubPath := filepath.Join(dir, api.Name+"_pub.h")
+	pf, err := os.Create(pubPath)
+	if err != nil {
+		return err
+	}
+	defer pf.Close()
+
+	hasPub, err := gmicgen.GeneratePublishHeader(pf, api)
+	if err != nil {
+		return err
+	}
+	if hasPub {
+		fmt.Fprintf(os.Stderr, "generated %s\n", pubPath)
+
+		pubGoPath := filepath.Join(dir, api.Name+"_pub.go")
+		pgf, err := os.Create(pubGoPath)
+		if err != nil {
+			return err
+		}
+		defer pgf.Close()
+
+		if _, err := gmicgen.GeneratePublishGo(pgf, api, pkgName); err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "generated %s\n", pubGoPath)
+	} else {
+		// No publish functions — remove empty file.
+		pf.Close()
+		os.Remove(pubPath)
+	}
+
 	return nil
 }
 

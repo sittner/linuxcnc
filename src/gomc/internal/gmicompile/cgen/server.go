@@ -250,6 +250,9 @@ func (g *serverGen) emitCallbackTypedefs() {
 
 	// Emit result structs for functions that return slices (need ptr + len).
 	for _, fn := range g.api.Funcs {
+		if fn.Publish {
+			continue // publish functions use ring buffers, not callbacks
+		}
 		if fn.Return != nil && fn.Return.Kind == ast.TypeSlice {
 			fnSnake := toSnakeCase(fn.Name)
 			elemCType := g.toCType(*fn.Return.Elem)
@@ -261,6 +264,9 @@ func (g *serverGen) emitCallbackTypedefs() {
 	}
 
 	for _, fn := range g.api.Funcs {
+		if fn.Publish {
+			continue // publish functions use ring buffers, not callbacks
+		}
 		// Direct return: function returns the declared type (or void).
 		retCType := "void"
 		if fn.Return != nil {
@@ -374,6 +380,9 @@ func (g *serverGen) emitCallbacksStruct() {
 	g.printf("typedef struct %s_callbacks {\n", g.api.Name)
 	g.printf("    void *ctx;\n")
 	for _, fn := range g.api.Funcs {
+		if fn.Publish {
+			continue
+		}
 		fieldName := cSafeName(toSnakeCase(fn.Name))
 		g.printf("    %s_%s_fn %s;\n", g.api.Name, toSnakeCase(fn.Name), fieldName)
 	}
@@ -385,16 +394,20 @@ func (g *serverGen) emitCallbacksStruct() {
 	g.printf("// Convenience macro for modcompile gmi_provide integration.\n")
 	g.printf("// Maps gmi_%s_<name>() user functions to callback struct fields.\n", g.api.Name)
 	g.printf("#define GMI_%s_CALLBACKS { \\\n", upper)
-	for i, fn := range g.api.Funcs {
+	first := true
+	for _, fn := range g.api.Funcs {
+		if fn.Publish {
+			continue
+		}
 		fieldName := cSafeName(toSnakeCase(fn.Name))
 		funcName := fmt.Sprintf("gmi_%s_%s", g.api.Name, toSnakeCase(fn.Name))
-		comma := ","
-		if i == len(g.api.Funcs)-1 {
-			comma = ""
+		if !first {
+			g.printf(", \\\n")
 		}
-		g.printf("    .%s = %s%s \\\n", fieldName, funcName, comma)
+		g.printf("    .%s = %s", fieldName, funcName)
+		first = false
 	}
-	g.printf("}\n\n")
+	g.printf(" \\\n}\n\n")
 }
 
 func (g *serverGen) emitRegistration() {
