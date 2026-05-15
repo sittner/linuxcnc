@@ -5,7 +5,7 @@
 @api emcerror
 @version 1
 @prefix emcerror
-@rest_export true
+@rest_export false
 
 # ─── Enums ───
 

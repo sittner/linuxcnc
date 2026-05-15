@@ -2,7 +2,10 @@
  * nml_shim.cc — extern "C" wrappers around the NML C++ API.
  *
  * Provides a flat C interface for the emcgateway gomod to access
- * NML stat and error channels via cgo.
+ * the NML stat channel via cgo.
+ *
+ * Error channel has been removed — errors now flow through the
+ * emcerror GMI @publish ring (emcerror_pub.h / emcerror_pub.go).
  *
  * Command functions have been removed — commands now go through the
  * emccmd GMI API (emccmd_handlers.cc / emccmd_slot).
@@ -22,7 +25,6 @@
 
 /* NML channels */
 static RCS_STAT_CHANNEL *stat_channel = nullptr;
-static NML              *err_channel  = nullptr;
 
 /* Forward declarations for NML format function */
 extern int emcFormat(NMLTYPE type, void *buf, CMS *cms);
@@ -58,19 +60,12 @@ extern "C" int nml_shim_init(const char *nml_file)
         return -1;
     }
 
-    err_channel = new NML(emcFormat, "emcError", "xemc", emc_nmlfile);
-    if (!err_channel || !err_channel->valid()) {
-        fprintf(stderr, "nml_shim: failed to open error channel\n");
-        return -1;
-    }
-
     return 0;
 }
 
 extern "C" void nml_shim_shutdown(void)
 {
     delete stat_channel; stat_channel = nullptr;
-    delete err_channel;  err_channel  = nullptr;
 }
 
 /* ─── Stat ─── */
@@ -206,63 +201,4 @@ extern "C" int nml_shim_poll_stat(nml_stat_t *out)
     out->debug               = st->debug;
 
     return 0;
-}
-
-/* ─── Errors ─── */
-
-extern "C" int nml_shim_poll_errors(nml_error_t *errors, int max_errors)
-{
-    if (!err_channel || !err_channel->valid())
-        return 0;
-
-    int count = 0;
-    while (count < max_errors) {
-        NMLTYPE type = err_channel->read();
-        if (type == 0)
-            break;
-
-        errors[count].kind = static_cast<int>(type);
-        const char *text = "";
-
-        switch (type) {
-        case EMC_OPERATOR_ERROR_TYPE: {
-            auto *m = static_cast<EMC_OPERATOR_ERROR *>(err_channel->get_address());
-            text = m->error;
-            break;
-        }
-        case EMC_OPERATOR_TEXT_TYPE: {
-            auto *m = static_cast<EMC_OPERATOR_TEXT *>(err_channel->get_address());
-            text = m->text;
-            break;
-        }
-        case EMC_OPERATOR_DISPLAY_TYPE: {
-            auto *m = static_cast<EMC_OPERATOR_DISPLAY *>(err_channel->get_address());
-            text = m->display;
-            break;
-        }
-        case NML_ERROR_TYPE: {
-            auto *m = static_cast<NML_ERROR *>(err_channel->get_address());
-            text = m->error;
-            break;
-        }
-        case NML_TEXT_TYPE: {
-            auto *m = static_cast<NML_TEXT *>(err_channel->get_address());
-            text = m->text;
-            break;
-        }
-        case NML_DISPLAY_TYPE: {
-            auto *m = static_cast<NML_DISPLAY *>(err_channel->get_address());
-            text = m->display;
-            break;
-        }
-        default:
-            text = "unrecognized error";
-            break;
-        }
-
-        snprintf(errors[count].text, NML_SHIM_LINELEN, "%s", text);
-        count++;
-    }
-
-    return count;
 }

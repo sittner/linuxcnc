@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcerror"
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcerrorapi"
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
 )
 
@@ -26,6 +27,7 @@ func (l *Launcher) initEmcerrorRing() {
 
 	// Register the drain's WatchFunc with the WS watch registry so that
 	// WebSocket clients can subscribe to error events.
+	// Instance "emcerror" matches what axis.py's ErrorChannel subscribes to.
 	watchReg := apiserver.DefaultWatchRegistry()
 	if watchReg == nil {
 		watchReg = apiserver.NewWatchRegistry()
@@ -33,7 +35,7 @@ func (l *Launcher) initEmcerrorRing() {
 	}
 	watchReg.Register(&apiserver.WatchAPI{
 		APIName:  "emcerror",
-		Instance: "default",
+		Instance: "emcerror",
 		Watches: []apiserver.WatchFuncMeta{
 			{
 				Name:        "get_errors",
@@ -42,6 +44,9 @@ func (l *Launcher) initEmcerrorRing() {
 			},
 		},
 	})
+
+	// Register API metadata so the watch registry can resolve the topic.
+	apiserver.RegisterMeta(emcerrorapi.EmcerrorMeta)
 
 	l.logger.Info("emcerror publish ring registered")
 }

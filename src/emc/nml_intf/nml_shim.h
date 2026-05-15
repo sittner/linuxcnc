@@ -142,11 +142,6 @@ typedef struct {
     int debug;
 } nml_stat_t;
 
-typedef struct {
-    int kind;           /* ErrorKind enum value */
-    char text[NML_SHIM_LINELEN];
-} nml_error_t;
-
 /* ─── Lifecycle ─── */
 
 /*
@@ -167,15 +162,6 @@ void nml_shim_shutdown(void);
  * Returns 0 on success, -1 if no new data or channel invalid.
  */
 int nml_shim_poll_stat(nml_stat_t *out);
-
-/* ─── Errors ─── */
-
-/*
- * Poll the NML error channel.
- * Writes up to max_errors messages into the errors array.
- * Returns the number of messages read (0 if none).
- */
-int nml_shim_poll_errors(nml_error_t *errors, int max_errors);
 
 #ifdef __cplusplus
 }

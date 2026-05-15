@@ -30,7 +30,6 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcerrorapi"
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcstatapi"
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/toolsapi"
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
@@ -47,7 +46,7 @@ func init() {
 	gomc.RegisterModule("emcgateway", newEmcGateway)
 	apiserver.RegisterMeta(emcstatapi.EmcstatMeta)
 	// emccmd meta is registered by the emccmd package's init()
-	apiserver.RegisterMeta(emcerrorapi.EmcerrorMeta)
+	// emcerror is registered by the launcher ring drain — no NML gateway needed.
 }
 
 // emcGateway implements gomc.Module.
@@ -98,9 +97,7 @@ func newEmcGateway(ini *inifile.IniFile, logger *slog.Logger, name string, args 
 		return nil, fmt.Errorf("emcgateway: register emcstat: %w", err)
 	}
 	// emccmd is registered by milltask via gomc_api_t — no gateway registration needed.
-	if err := emcerrorapi.RegisterEmcerrorAPI(apiserver.DefaultRegistry(), "emcerror", gw); err != nil {
-		return nil, fmt.Errorf("emcgateway: register emcerror: %w", err)
-	}
+	// emcerror is registered by the launcher ring drain — no NML gateway needed.
 	toolFile := ini.Get("EMCIO", "TOOL_TABLE")
 	// Load comments from tool table file at startup
 	if toolFile != "" {
@@ -142,8 +139,6 @@ func newEmcGateway(ini *inifile.IniFile, logger *slog.Logger, name string, args 
 			{Name: "clear_logger", Handler: gw.cmdClearLogger},
 		},
 	})
-
-	emcerrorapi.RegisterEmcerrorWatch(wreg, "emcerror", gw, nil)
 
 	// Register command handlers on the watch WebSocket too.
 	// Commands dispatch through the C callbacks registered by milltask.
@@ -394,30 +389,6 @@ func (gw *emcGateway) watchStat() (json.RawMessage, error) {
 	}
 	gw.mu.Unlock()
 	return data, err
-}
-
-// ─── Error Watch (generated via emcerrorapi.RegisterEmcerrorWatch) ───
-
-// GetErrors implements emcerrorapi.EmcerrorCallbacks.
-func (gw *emcGateway) GetErrors() ([]emcerrorapi.ErrorMessage, error) {
-	gw.mu.Lock()
-	defer gw.mu.Unlock()
-
-	const maxErrors = 16
-	var cerrs [maxErrors]C.nml_error_t
-	n := C.nml_shim_poll_errors(&cerrs[0], maxErrors)
-	if n == 0 {
-		return []emcerrorapi.ErrorMessage{}, nil
-	}
-
-	msgs := make([]emcerrorapi.ErrorMessage, int(n))
-	for i := 0; i < int(n); i++ {
-		msgs[i] = emcerrorapi.ErrorMessage{
-			Kind: emcerrorapi.ErrorKind(cerrs[i].kind),
-			Text: C.GoString(&cerrs[i].text[0]),
-		}
-	}
-	return msgs, nil
 }
 
 // ─── Command WebSocket ───
