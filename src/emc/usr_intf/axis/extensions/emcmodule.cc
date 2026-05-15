@@ -249,25 +249,11 @@ static int emcSendCommand(pyCommandChannel *s, RCS_CMD_MSG & cmd) {
     return -1;
 }
 
-static const char *get_nmlfile(void) {
-    PyObject *fileobj = PyObject_GetAttrString(m, "nmlfile");
-    if(fileobj == NULL) return NULL;
-    return PyUnicode_AsUTF8(fileobj);
-}
-
 static int Stat_init(pyStatChannel *self, PyObject *a, PyObject *k) {
-    const char *file = get_nmlfile();
-    if(file == NULL) return -1;
-
-    RCS_STAT_CHANNEL *c =
-        new RCS_STAT_CHANNEL(emcFormat, "emcStatus", "xemc", file);
-    if(!c) {
-        PyErr_Format( error, "new RCS_STAT_CHANNEL failed");
-        return -1;
-    }
-
-    self->c = c;
-    return 0;
+    PyErr_SetString(error,
+        "linuxcnc.stat() is deprecated and no longer functional. "
+        "Use the REST/WebSocket API instead.");
+    return -1;
 }
 
 static void Stat_dealloc(PyObject *self) {
@@ -1530,17 +1516,10 @@ static PyTypeObject Command_Type = {
 };
 
 static int Error_init(pyErrorChannel *self, PyObject *a, PyObject *k) {
-    const char *file = get_nmlfile();
-    if(file == NULL) return -1;
-
-    NML *c = new NML(emcFormat, "emcError", "xemc", file);
-    if(!c) {
-        PyErr_Format( error, "new NML failed");
-        return -1;
-    }
-
-    self->c = c;
-    return 0;
+    PyErr_SetString(error,
+        "linuxcnc.error_channel() is deprecated and no longer functional. "
+        "Use the REST/WebSocket API instead.");
+    return -1;
 }
 
 static PyObject* Error_poll(pyErrorChannel *s) {
