@@ -280,6 +280,21 @@ $(GMI_EMCSTAT_SERVER_GO): $(GMI_EMCSTAT_IDL) $(GMICOMPILE_BIN)
 	@mkdir -p $(dir $(GMI_EMCSTAT_SERVER_GO))
 	$(Q)$(GMICOMPILE) --server-go $(GMI_EMCSTAT_IDL) -o $(GMI_EMCSTAT_SERVER_GO)
 
+# --- emcstat C struct types (milltask publisher, push_watch) ---
+
+GMI_EMCSTAT_GEN := gomc/generated/gmi/emcstat
+GMI_EMCSTAT_API_H := $(GMI_EMCSTAT_GEN)/emcstat_api.h
+
+$(GMI_EMCSTAT_API_H): $(GMI_EMCSTAT_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI emcstat C API from $(GMI_EMCSTAT_IDL)"
+	@mkdir -p $(GMI_EMCSTAT_GEN)
+	$(Q)$(GMICOMPILE) --server-c $(GMI_EMCSTAT_IDL) -o $(GMI_EMCSTAT_API_H)
+	$(Q)$(GMICOMPILE_BIN) add-gmi generated/gmi/emcstat
+
+$(GMI_EMCSTAT_GEN)/emcstat_cgo.go: $(GMI_EMCSTAT_API_H)
+
+TARGETS += $(GMI_EMCSTAT_API_H)
+
 $(GMI_EMCCMD_SERVER_GO): $(GMI_EMCCMD_IDL) $(GMICOMPILE_BIN)
 	$(ECHO) "Generating GMI emccmd Go server dispatch from $(GMI_EMCCMD_IDL)"
 	@mkdir -p $(dir $(GMI_EMCCMD_SERVER_GO))

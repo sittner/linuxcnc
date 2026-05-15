@@ -1,14 +1,11 @@
 package emcgateway
 
-/*
-#include "nml_shim.h"
-*/
-import "C"
-
 import (
 	"encoding/json"
 	"sync"
 	"time"
+
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcstat"
 )
 
 const (
@@ -117,32 +114,28 @@ func (pl *posLogger) sampleLoop(gw *emcGateway) {
 }
 
 func (pl *posLogger) sample(gw *emcGateway) {
-	// Read NML stat under gateway mutex (shared with stat watch).
-	gw.mu.Lock()
-	var cstat C.nml_stat_t
-	rc := C.nml_shim_poll_stat(&cstat)
-	gw.mu.Unlock()
-
-	if rc != 0 {
+	// Read latest stat from push_watch cache (no cgo, no NML).
+	s := emcstat.GetLatestStat()
+	if s == nil {
 		return
 	}
 
-	mt := int(cstat.motion_type)
+	mt := int(s.Motion.MotionType)
 	if mt < 0 || mt > 5 {
 		mt = 0
 	}
 
 	// position - toolOffset (same as C positionlogger)
 	pos := [9]float64{
-		float64(cstat.position.x - cstat.tool_offset.x),
-		float64(cstat.position.y - cstat.tool_offset.y),
-		float64(cstat.position.z - cstat.tool_offset.z),
-		float64(cstat.position.a - cstat.tool_offset.a),
-		float64(cstat.position.b - cstat.tool_offset.b),
-		float64(cstat.position.c - cstat.tool_offset.c),
-		float64(cstat.position.u - cstat.tool_offset.u),
-		float64(cstat.position.v - cstat.tool_offset.v),
-		float64(cstat.position.w - cstat.tool_offset.w),
+		s.Position.X - s.ToolOffset.X,
+		s.Position.Y - s.ToolOffset.Y,
+		s.Position.Z - s.ToolOffset.Z,
+		s.Position.A - s.ToolOffset.A,
+		s.Position.B - s.ToolOffset.B,
+		s.Position.C - s.ToolOffset.C,
+		s.Position.U - s.ToolOffset.U,
+		s.Position.V - s.ToolOffset.V,
+		s.Position.W - s.ToolOffset.W,
 	}
 
 	pl.mu.Lock()

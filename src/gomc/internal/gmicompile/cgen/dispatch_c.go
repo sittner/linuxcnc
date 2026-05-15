@@ -410,7 +410,35 @@ func (g *dispatchCGen) emitFieldCToGo(goField, cExpr string, t ast.TypeRef) {
 			}
 		}
 	case ast.TypeArray:
-		g.printf("\t\t// TODO: array field %s\n", goField)
+		if t.Elem != nil {
+			arrLen := t.ArrayLen
+			switch t.Elem.Kind {
+			case ast.TypePrimitive:
+				goElem := goTypeForDispatch(*t.Elem)
+				g.printf("\t\t%s: func() [%d]%s {\n", goField, arrLen, goElem)
+				g.printf("\t\t\tvar result [%d]%s\n", arrLen, goElem)
+				g.printf("\t\t\tfor i := 0; i < %d; i++ { result[i] = %s(%s[i]) }\n", arrLen, goElem, cExpr)
+				g.printf("\t\t\treturn result\n")
+				g.printf("\t\t}(),\n")
+			case ast.TypeNamed:
+				if g.isEnum(t.Elem.Name) {
+					goElem := toPascalCase(t.Elem.Name)
+					g.printf("\t\t%s: func() [%d]%s {\n", goField, arrLen, goElem)
+					g.printf("\t\t\tvar result [%d]%s\n", arrLen, goElem)
+					g.printf("\t\t\tfor i := 0; i < %d; i++ { result[i] = %s(%s[i]) }\n", arrLen, goElem, cExpr)
+					g.printf("\t\t\treturn result\n")
+					g.printf("\t\t}(),\n")
+				} else {
+					goElem := toPascalCase(t.Elem.Name)
+					converter := toLowerCamelRaw(t.Elem.Name) + "CToGo"
+					g.printf("\t\t%s: func() [%d]%s {\n", goField, arrLen, goElem)
+					g.printf("\t\t\tvar result [%d]%s\n", arrLen, goElem)
+					g.printf("\t\t\tfor i := 0; i < %d; i++ { result[i] = %s(&%s[i]) }\n", arrLen, converter, cExpr)
+					g.printf("\t\t\treturn result\n")
+					g.printf("\t\t}(),\n")
+				}
+			}
+		}
 	}
 }
 

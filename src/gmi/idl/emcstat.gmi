@@ -148,6 +148,7 @@ type StatMotionInfo {
     current_vel: f64
     motion_id: i32
     motion_line: i32
+    motion_type: i32        # feed type: 0=traverse, 1=feed, 2=arc, etc.
 }
 
 type StatFull {

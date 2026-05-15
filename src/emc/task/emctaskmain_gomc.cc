@@ -94,6 +94,7 @@ fpu_control_t __fpu_control = _FPU_IEEE & ~(_FPU_MASK_IM | _FPU_MASK_ZM | _FPU_M
 
 #include "gomc/generated/gmi/emccmd/emccmd_api.h"
 #include "gomc/generated/gmi/emcerror/emcerror_pub.h"
+#include "gomc/generated/gmi/emcstat/emcstat_api.h"
 
 #include <pthread.h>
 #include <sys/eventfd.h>
@@ -112,6 +113,230 @@ static const gomc_api_t *gomc_api_ptr;
 
 // Emcerror publish ring — replaces NML error buffer.
 static emcerror_publish_error_ring_t *emcerror_ring;
+
+// --- Stat publisher ---
+//
+// Fills an emcstat_stat_full_t from the EMC_STAT* and pushes it to Go
+// via push_watch().  Go-side converter (emcstat/push_convert.go) does
+// C→Go→JSON and stores the result for WS subscribers.
+
+// Static backing arrays for slice fields in emcstat_stat_full_t.
+static emcstat_joint_info_t  stat_joints_buf[EMCSTAT_MAX_JOINTS];
+static emcstat_spindle_info_t stat_spindle_buf[EMCMOT_MAX_SPINDLES];
+static emcstat_axis_info_t   stat_axis_buf[EMCSTAT_MAX_AXIS];
+static int32_t               stat_gcodes_buf[ACTIVE_G_CODES];
+static int32_t               stat_mcodes_buf[ACTIVE_M_CODES];
+static double                stat_settings_buf[ACTIVE_SETTINGS];
+
+static emcstat_stat_full_t   stat_push;     // current state
+static emcstat_stat_full_t   stat_shadow;   // previous state for change detection
+static bool                  stat_first = true;
+
+static inline void pos_to_emcstat(const EmcPose &src, emcstat_position_t &dst) {
+    dst.x = src.tran.x;
+    dst.y = src.tran.y;
+    dst.z = src.tran.z;
+    dst.a = src.a;
+    dst.b = src.b;
+    dst.c = src.c;
+    dst.u = src.u;
+    dst.v = src.v;
+    dst.w = src.w;
+}
+
+static void fill_stat_full(emcstat_stat_full_t *out, const EMC_STAT *st) {
+    // Task
+    out->task.mode         = (emcstat_task_mode_t)st->task.mode;
+    out->task.state        = (emcstat_task_state_t)st->task.state;
+    out->task.interp_state = (emcstat_interp_state_t)st->task.interpState;
+    out->task.exec_state   = (emcstat_exec_state_t)st->task.execState;
+    out->task.file         = st->task.file;
+    out->task.command      = st->task.command;
+    out->task.line         = st->task.currentLine;
+    out->task.motion_line  = st->task.motionLine;
+    out->task.current_line = st->task.currentLine;
+    out->task.read_line    = st->task.readLine;
+    out->task.queued_mdi_commands = st->task.queuedMDIcommands;
+    out->task.optional_stop = st->task.optional_stop_state;
+    out->task.block_delete  = st->task.block_delete_state;
+    out->task.task_paused   = st->task.task_paused;
+    out->task.g5x_index     = st->task.g5x_index;
+
+    // Motion
+    out->motion.mode        = (emcstat_traj_mode_t)st->motion.traj.mode;
+    out->motion.enabled     = st->motion.traj.enabled != 0;
+    out->motion.in_position = st->motion.traj.inpos != 0;
+    out->motion.paused      = st->motion.traj.paused != 0;
+    out->motion.feedrate    = st->motion.traj.scale;
+    out->motion.rapidrate   = st->motion.traj.rapid_scale;
+    out->motion.max_velocity = st->motion.traj.maxVelocity;
+    out->motion.velocity    = st->motion.traj.velocity;
+    out->motion.distance_to_go = st->motion.traj.distance_to_go;
+    pos_to_emcstat(st->motion.traj.dtg, out->motion.dtg);
+    out->motion.current_vel  = st->motion.traj.current_vel;
+    out->motion.motion_id    = st->motion.traj.id;
+    out->motion.motion_line  = st->task.motionLine;
+    out->motion.motion_type  = st->motion.traj.motion_type;
+
+    // Positions
+    pos_to_emcstat(st->motion.traj.position, out->position);
+    pos_to_emcstat(st->motion.traj.actualPosition, out->actual_position);
+    pos_to_emcstat(st->motion.traj.probedPosition, out->probed_position);
+    pos_to_emcstat(st->task.g5x_offset, out->g5x_offset);
+    pos_to_emcstat(st->task.g92_offset, out->g92_offset);
+    pos_to_emcstat(st->task.toolOffset, out->tool_offset);
+    out->rotation_xy = st->task.rotation_xy;
+
+    // Joint actual positions
+    int nj = st->motion.traj.joints;
+    if (nj > EMCSTAT_MAX_JOINTS) nj = EMCSTAT_MAX_JOINTS;
+    for (int i = 0; i < nj; i++) {
+        out->joint_actual_position[i] = st->motion.joint[i].input;
+    }
+
+    // Joints
+    for (int i = 0; i < nj; i++) {
+        stat_joints_buf[i].homed       = st->motion.joint[i].homed != 0;
+        stat_joints_buf[i].homing      = st->motion.joint[i].homing != 0;
+        stat_joints_buf[i].enabled     = st->motion.joint[i].enabled != 0;
+        stat_joints_buf[i].fault       = st->motion.joint[i].fault != 0;
+        stat_joints_buf[i].min_soft_limit = st->motion.joint[i].minSoftLimit;
+        stat_joints_buf[i].max_soft_limit = st->motion.joint[i].maxSoftLimit;
+        stat_joints_buf[i].min_hard_limit = st->motion.joint[i].minHardLimit != 0;
+        stat_joints_buf[i].max_hard_limit = st->motion.joint[i].maxHardLimit != 0;
+        stat_joints_buf[i].override_limits = st->motion.joint[i].overrideLimits != 0;
+        stat_joints_buf[i].velocity    = st->motion.joint[i].velocity;
+        stat_joints_buf[i].input       = st->motion.joint[i].input;
+        stat_joints_buf[i].output      = st->motion.joint[i].output;
+        stat_joints_buf[i].limit       = 0;
+        if (st->motion.joint[i].minHardLimit) stat_joints_buf[i].limit |= 1;
+        if (st->motion.joint[i].maxHardLimit) stat_joints_buf[i].limit |= 2;
+        if (st->motion.joint[i].minSoftLimit > st->motion.joint[i].input)
+            stat_joints_buf[i].limit |= 4;
+        if (st->motion.joint[i].maxSoftLimit < st->motion.joint[i].input)
+            stat_joints_buf[i].limit |= 8;
+    }
+    out->joints     = stat_joints_buf;
+    out->joints_len = nj;
+
+    // Spindles
+    int ns = st->motion.traj.spindles;
+    if (ns > EMCMOT_MAX_SPINDLES) ns = EMCMOT_MAX_SPINDLES;
+    for (int i = 0; i < ns; i++) {
+        stat_spindle_buf[i].speed      = st->motion.spindle[i].speed;
+        stat_spindle_buf[i].direction  = st->motion.spindle[i].direction;
+        stat_spindle_buf[i].brake      = st->motion.spindle[i].brake != 0;
+        stat_spindle_buf[i].enabled    = st->motion.spindle[i].enabled != 0;
+        stat_spindle_buf[i].override   = st->motion.spindle[i].spindle_scale;
+        stat_spindle_buf[i].override_enabled = st->motion.spindle[i].spindle_override_enabled != 0;
+        stat_spindle_buf[i].homed      = st->motion.spindle[i].homed != 0;
+        stat_spindle_buf[i].orient_state = st->motion.spindle[i].orient_state;
+        stat_spindle_buf[i].orient_fault = st->motion.spindle[i].orient_fault;
+    }
+    out->spindle     = stat_spindle_buf;
+    out->spindle_len = ns;
+
+    // Axes
+    int na = 0;
+    for (int i = 0; i < EMCSTAT_MAX_AXIS; i++) {
+        if (st->motion.traj.axis_mask & (1 << i)) {
+            stat_axis_buf[na].velocity = st->motion.axis[i].velocity;
+            stat_axis_buf[na].min_position_limit = st->motion.axis[i].minPositionLimit;
+            stat_axis_buf[na].max_position_limit = st->motion.axis[i].maxPositionLimit;
+            na++;
+        }
+    }
+    out->axis     = stat_axis_buf;
+    out->axis_len = na;
+
+    // Active G/M codes and settings
+    for (int i = 0; i < ACTIVE_G_CODES; i++)
+        stat_gcodes_buf[i] = st->task.activeGCodes[i];
+    out->active_gcodes     = stat_gcodes_buf;
+    out->active_gcodes_len = ACTIVE_G_CODES;
+
+    for (int i = 0; i < ACTIVE_M_CODES; i++)
+        stat_mcodes_buf[i] = st->task.activeMCodes[i];
+    out->active_mcodes     = stat_mcodes_buf;
+    out->active_mcodes_len = ACTIVE_M_CODES;
+
+    for (int i = 0; i < ACTIVE_SETTINGS; i++)
+        stat_settings_buf[i] = st->task.activeSettings[i];
+    out->active_settings     = stat_settings_buf;
+    out->active_settings_len = ACTIVE_SETTINGS;
+
+    // Scalars
+    out->kinematics_type = (emcstat_kinematics_type_t)st->motion.traj.kinematics_type;
+    out->joints_count    = nj;
+    out->num_extrajoints = st->motion.numExtraJoints;
+    out->axis_mask       = st->motion.traj.axis_mask;
+    out->flood           = st->io.coolant.flood != 0;
+    out->mist            = st->io.coolant.mist != 0;
+    out->tool_in_spindle = st->io.tool.toolInSpindle;
+    out->pocket_prepped  = st->io.tool.pocketPrepped;
+    out->linear_units    = st->motion.traj.linearUnits;
+    out->state           = (int32_t)st->task.state;
+    out->debug           = st->motion.debug;
+
+    // Homed / limit arrays
+    for (int i = 0; i < nj; i++) {
+        out->homed[i] = st->motion.joint[i].homed != 0;
+        out->limit[i] = 0;
+        if (st->motion.joint[i].minHardLimit) out->limit[i] |= 1;
+        if (st->motion.joint[i].maxHardLimit) out->limit[i] |= 2;
+    }
+}
+
+// Shadow copies for slice backing arrays (memcmp on the struct only
+// compares pointer+len, not the pointed-to data).
+static emcstat_joint_info_t  stat_joints_shadow[EMCSTAT_MAX_JOINTS];
+static emcstat_spindle_info_t stat_spindle_shadow[EMCMOT_MAX_SPINDLES];
+static emcstat_axis_info_t   stat_axis_shadow[EMCSTAT_MAX_AXIS];
+static int32_t               stat_gcodes_shadow[ACTIVE_G_CODES];
+static int32_t               stat_mcodes_shadow[ACTIVE_M_CODES];
+static double                stat_settings_shadow[ACTIVE_SETTINGS];
+
+// publish_stat: fill emcstat_stat_full_t from EMC_STAT, compare against
+// shadow, and push to Go if anything changed.
+static void publish_stat(const EMC_STAT *st) {
+    fill_stat_full(&stat_push, st);
+
+    bool changed = stat_first;
+    if (!changed) {
+        // Compare the flat struct fields (positions, scalars, enums, etc.)
+        // Note: pointer fields always point to the same static buffers,
+        // so they compare equal.  We check their backing arrays separately.
+        changed = memcmp(&stat_push, &stat_shadow, sizeof(stat_push)) != 0;
+    }
+    if (!changed) {
+        // Check slice backing arrays
+        changed = memcmp(stat_joints_buf, stat_joints_shadow,
+                         stat_push.joints_len * sizeof(stat_joints_buf[0])) != 0
+               || memcmp(stat_spindle_buf, stat_spindle_shadow,
+                         stat_push.spindle_len * sizeof(stat_spindle_buf[0])) != 0
+               || memcmp(stat_axis_buf, stat_axis_shadow,
+                         stat_push.axis_len * sizeof(stat_axis_buf[0])) != 0
+               || memcmp(stat_gcodes_buf, stat_gcodes_shadow, sizeof(stat_gcodes_buf)) != 0
+               || memcmp(stat_mcodes_buf, stat_mcodes_shadow, sizeof(stat_mcodes_buf)) != 0
+               || memcmp(stat_settings_buf, stat_settings_shadow, sizeof(stat_settings_buf)) != 0;
+    }
+
+    if (changed) {
+        stat_first = false;
+        memcpy(&stat_shadow, &stat_push, sizeof(stat_push));
+        memcpy(stat_joints_shadow, stat_joints_buf, sizeof(stat_joints_buf));
+        memcpy(stat_spindle_shadow, stat_spindle_buf, sizeof(stat_spindle_buf));
+        memcpy(stat_axis_shadow, stat_axis_buf, sizeof(stat_axis_buf));
+        memcpy(stat_gcodes_shadow, stat_gcodes_buf, sizeof(stat_gcodes_buf));
+        memcpy(stat_mcodes_shadow, stat_mcodes_buf, sizeof(stat_mcodes_buf));
+        memcpy(stat_settings_shadow, stat_settings_buf, sizeof(stat_settings_buf));
+        if (gomc_api_ptr) {
+            gomc_api_ptr->push_watch(gomc_api_ptr->ctx,
+                "emcstat", "emcstat", "get_stat",
+                &stat_push, sizeof(stat_push));
+        }
+    }
+}
 
 // --- M-code handler registry and worker thread ---
 
@@ -3387,7 +3612,9 @@ static void *milltask_loop(void *arg)
 	    emccmd_slot_done(emcStatus->status);
 	}
 
-	emcStatusBuffer->write(emcStatus);
+	// Push stat to Go subscribers (replaces NML write).
+	publish_stat(emcStatus);
+	emcStatusBuffer->write(emcStatus);  // keep NML write until all consumers migrated
 
         endTime = etime();
         deltaTime = endTime - startTime;

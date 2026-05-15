@@ -355,3 +355,24 @@ func gomc_api_get_cb(ctx unsafe.Pointer, apiName *C.char, version C.int,
 	}
 	return cbs
 }
+
+//export gomc_watch_push_cb
+func gomc_watch_push_cb(ctx unsafe.Pointer, apiName *C.char, instanceName *C.char,
+	funcName *C.char, data unsafe.Pointer, dataLen C.int) C.int {
+
+	name := C.GoString(apiName)
+	instance := C.GoString(instanceName)
+	fn := C.GoString(funcName)
+
+	pw := apiserver.GetOrCreatePushWatch(name, instance, fn)
+	if pw == nil {
+		return -C.int(syscall.EINVAL)
+	}
+
+	if err := pw.Push(data, int(dataLen)); err != nil {
+		slog.Error("push_watch: conversion failed",
+			"api", name, "instance", instance, "func", fn, "error", err)
+		return -1
+	}
+	return 0
+}

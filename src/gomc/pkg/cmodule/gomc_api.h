@@ -48,6 +48,22 @@ typedef struct {
         int version,
         const char *instance_name
     );
+
+    // push_watch: push raw C struct data to a watch function.
+    // The Go side looks up a registered converter for the API,
+    // converts C→Go→JSON, and stores the result for WebSocket
+    // subscribers to read.  The data pointer must remain valid
+    // until this call returns (synchronous).
+    //
+    // Returns 0 on success, -EINVAL if no converter is registered.
+    int (*push_watch)(
+        void *ctx,
+        const char *api_name,
+        const char *instance_name,
+        const char *func_name,
+        const void *data,
+        int data_len
+    );
 } gomc_api_t;
 
 #ifdef __cplusplus
