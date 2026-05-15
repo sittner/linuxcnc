@@ -292,6 +292,7 @@ $(GMI_EMCSTAT_API_H): $(GMI_EMCSTAT_IDL) $(GMICOMPILE_BIN)
 	$(Q)$(GMICOMPILE_BIN) add-gmi generated/gmi/emcstat
 
 $(GMI_EMCSTAT_GEN)/emcstat_cgo.go: $(GMI_EMCSTAT_API_H)
+$(GMI_EMCSTAT_GEN)/emcstat_push.go: $(GMI_EMCSTAT_API_H)
 
 TARGETS += $(GMI_EMCSTAT_API_H)
 

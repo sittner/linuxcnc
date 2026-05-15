@@ -115,7 +115,7 @@ func (pl *posLogger) sampleLoop(gw *emcGateway) {
 
 func (pl *posLogger) sample(gw *emcGateway) {
 	// Read latest stat from push_watch cache (no cgo, no NML).
-	s := emcstat.GetLatestStat()
+	s := emcstat.GetLatestStatFull()
 	if s == nil {
 		return
 	}

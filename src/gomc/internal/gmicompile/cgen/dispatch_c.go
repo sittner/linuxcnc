@@ -281,6 +281,49 @@ func (g *dispatchCGen) emitConverters() {
 		g.printf("\t}\n")
 		g.printf("}\n\n")
 	}
+
+	// Generate xxxCToGoFree wrappers for types that contain slice fields.
+	// These call the no-free base converter, then free the C-allocated slices.
+	for _, t := range g.api.Types {
+		sliceFields := g.sliceFields(t)
+		if len(sliceFields) == 0 {
+			continue
+		}
+		goName := toPascalCase(t.Name)
+		cType := fmt.Sprintf("C.%s_%s_t", g.api.Name, toSnakeCase(t.Name))
+		baseName := toLowerCamelRaw(t.Name) + "CToGo"
+		freeName := baseName + "Free"
+
+		g.printf("func %s(src *%s) %s {\n", freeName, cType, goName)
+		g.printf("\tresult := %s(src)\n", baseName)
+		for _, f := range sliceFields {
+			cField := "src." + cgoFieldAccess(f.Name)
+			g.printf("\tif %s != nil { C.free(unsafe.Pointer(%s)) }\n", cField, cField)
+		}
+		g.printf("\treturn result\n")
+		g.printf("}\n\n")
+	}
+}
+
+// sliceFields returns all fields of a type that have TypeSlice kind.
+func (g *dispatchCGen) sliceFields(t ast.Type) []ast.Field {
+	var result []ast.Field
+	for _, f := range t.Fields {
+		if f.Type.Kind == ast.TypeSlice {
+			result = append(result, f)
+		}
+	}
+	return result
+}
+
+// typeHasSlices checks if a named type has any slice fields.
+func (g *dispatchCGen) typeHasSlices(name string) bool {
+	for _, t := range g.api.Types {
+		if t.Name == name {
+			return len(g.sliceFields(t)) > 0
+		}
+	}
+	return false
 }
 
 func (g *dispatchCGen) emitFieldCToGo(goField, cExpr string, t ast.TypeRef) {
@@ -356,7 +399,6 @@ func (g *dispatchCGen) emitFieldCToGo(goField, cExpr string, t ast.TypeRef) {
 					g.printf("\t\t\tcSlice := unsafe.Slice(%s, n)\n", cExpr)
 					g.printf("\t\t\tresult := make([]string, n)\n")
 					g.printf("\t\t\tfor i := 0; i < n; i++ { result[i] = C.GoString(cSlice[i]) }\n")
-					g.printf("\t\t\tC.free(unsafe.Pointer(%s))\n", cExpr)
 					g.printf("\t\t\treturn result\n")
 					g.printf("\t\t}(),\n")
 				} else if t.Elem.Name == ast.PrimU8 {
@@ -365,7 +407,6 @@ func (g *dispatchCGen) emitFieldCToGo(goField, cExpr string, t ast.TypeRef) {
 					g.printf("\t\t\tn := int(%s)\n", lenExpr)
 					g.printf("\t\t\tif n == 0 || %s == nil { return nil }\n", cExpr)
 					g.printf("\t\t\tresult := C.GoBytes(unsafe.Pointer(%s), C.int(n))\n", cExpr)
-					g.printf("\t\t\tC.free(unsafe.Pointer(%s))\n", cExpr)
 					g.printf("\t\t\treturn result\n")
 					g.printf("\t\t}(),\n")
 				} else {
@@ -377,7 +418,6 @@ func (g *dispatchCGen) emitFieldCToGo(goField, cExpr string, t ast.TypeRef) {
 					g.printf("\t\t\tcSlice := unsafe.Slice(%s, n)\n", cExpr)
 					g.printf("\t\t\tresult := make([]%s, n)\n", goElem)
 					g.printf("\t\t\tfor i := 0; i < n; i++ { result[i] = %s(cSlice[i]) }\n", goElem)
-					g.printf("\t\t\tC.free(unsafe.Pointer(%s))\n", cExpr)
 					g.printf("\t\t\treturn result\n")
 					g.printf("\t\t}(),\n")
 				}
@@ -390,7 +430,6 @@ func (g *dispatchCGen) emitFieldCToGo(goField, cExpr string, t ast.TypeRef) {
 					g.printf("\t\t\tcSlice := unsafe.Slice(%s, n)\n", cExpr)
 					g.printf("\t\t\tresult := make([]%s, n)\n", goElem)
 					g.printf("\t\t\tfor i := 0; i < n; i++ { result[i] = %s(cSlice[i]) }\n", goElem)
-					g.printf("\t\t\tC.free(unsafe.Pointer(%s))\n", cExpr)
 					g.printf("\t\t\treturn result\n")
 					g.printf("\t\t}(),\n")
 				} else {
@@ -403,7 +442,6 @@ func (g *dispatchCGen) emitFieldCToGo(goField, cExpr string, t ast.TypeRef) {
 					g.printf("\t\t\tcSlice := unsafe.Slice(%s, n)\n", cExpr)
 					g.printf("\t\t\tresult := make([]%s, n)\n", goElem)
 					g.printf("\t\t\tfor i := 0; i < n; i++ { result[i] = %s(&cSlice[i]) }\n", converter)
-					g.printf("\t\t\tC.free(unsafe.Pointer(%s))\n", cExpr)
 					g.printf("\t\t\treturn result\n")
 					g.printf("\t\t}(),\n")
 				}
@@ -775,6 +813,9 @@ func (g *dispatchCGen) emitReturnConvert(fn ast.Func) {
 			g.printf("\tresult := %s(out)\n", goType)
 		} else {
 			converter := toLowerCamelRaw(ret.Name) + "CToGo"
+			if g.typeHasSlices(ret.Name) {
+				converter += "Free"
+			}
 			g.printf("\tresult := %s(&out)\n", converter)
 		}
 		g.printf("\treturn json.Marshal(result)\n")

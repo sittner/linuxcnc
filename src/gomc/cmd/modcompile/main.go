@@ -1169,6 +1169,25 @@ func gmiGenerateServerC(api *gmiast.API, outputPath string) error {
 		os.Remove(pubPath)
 	}
 
+	// Generate push converter if the API has @watch functions returning structs.
+	pushPath := filepath.Join(dir, api.Name+"_push.go")
+	pushF, err := os.Create(pushPath)
+	if err != nil {
+		return err
+	}
+	defer pushF.Close()
+
+	hasPush, err := gmicgen.GeneratePushConvert(pushF, api, pkgName)
+	if err != nil {
+		return err
+	}
+	if hasPush {
+		fmt.Fprintf(os.Stderr, "generated %s\n", pushPath)
+	} else {
+		pushF.Close()
+		os.Remove(pushPath)
+	}
+
 	return nil
 }
 
