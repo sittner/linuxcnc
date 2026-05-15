@@ -267,7 +267,7 @@ static double maxFeedOverride=1;
 static double maxMaxVelocity=1;
 static double minSpindleOverride=0.0;
 static double maxSpindleOverride=1.0;
-static EMC_TASK_MODE_ENUM halui_old_mode = EMC_TASK_MODE_MANUAL;
+static emcstat_task_mode_t halui_old_mode = EMCSTAT_MANUAL;
 static int halui_sent_mdi = 0;
 
 // emcstat API callbacks — fetched in halui_start() via gomc_api_t.
@@ -785,46 +785,46 @@ int halui_hal_init(void)
 
 static int sendMachineOn()
 {
-    return emccmd->set_state(emccmd->ctx, EMC_TASK_STATE_ON) < 0 ? -1 : 0;
+    return emccmd->set_state(emccmd->ctx, EMCSTAT_ON) < 0 ? -1 : 0;
 }
 
 static int sendMachineOff()
 {
-    return emccmd->set_state(emccmd->ctx, EMC_TASK_STATE_OFF) < 0 ? -1 : 0;
+    return emccmd->set_state(emccmd->ctx, EMCSTAT_OFF) < 0 ? -1 : 0;
 }
 
 static int sendEstop()
 {
-    return emccmd->set_state(emccmd->ctx, EMC_TASK_STATE_ESTOP) < 0 ? -1 : 0;
+    return emccmd->set_state(emccmd->ctx, EMCSTAT_ESTOP) < 0 ? -1 : 0;
 }
 
 static int sendEstopReset()
 {
-    return emccmd->set_state(emccmd->ctx, EMC_TASK_STATE_ESTOP_RESET) < 0 ? -1 : 0;
+    return emccmd->set_state(emccmd->ctx, EMCSTAT_ESTOP_RESET) < 0 ? -1 : 0;
 }
 
 static int sendManual()
 {
-    if (halui_stat.task.mode == EMC_TASK_MODE_MANUAL) {
+    if (halui_stat.task.mode == EMCSTAT_MANUAL) {
         return 0;
     }
-    return emccmd->set_mode(emccmd->ctx, EMC_TASK_MODE_MANUAL) < 0 ? -1 : 0;
+    return emccmd->set_mode(emccmd->ctx, EMCSTAT_MANUAL) < 0 ? -1 : 0;
 }
 
 static int sendAuto()
 {
-    if (halui_stat.task.mode == EMC_TASK_MODE_AUTO) {
+    if (halui_stat.task.mode == EMCSTAT_AUTO) {
         return 0;
     }
-    return emccmd->set_mode(emccmd->ctx, EMC_TASK_MODE_AUTO) < 0 ? -1 : 0;
+    return emccmd->set_mode(emccmd->ctx, EMCSTAT_AUTO) < 0 ? -1 : 0;
 }
 
 static int sendMdi()
 {
-    if (halui_stat.task.mode == EMC_TASK_MODE_MDI) {
+    if (halui_stat.task.mode == EMCSTAT_MDI) {
         return 0;
     }
-    return emccmd->set_mode(emccmd->ctx, EMC_TASK_MODE_MDI) < 0 ? -1 : 0;
+    return emccmd->set_mode(emccmd->ctx, EMCSTAT_MDI) < 0 ? -1 : 0;
 }
 
 static int sendMdiCommand(int n)
@@ -834,11 +834,11 @@ static int sendMdiCommand(int n)
     }
 
     if (!halui_sent_mdi) {
-        halui_old_mode = (EMC_TASK_MODE_ENUM)halui_stat.task.mode;
+        halui_old_mode = (emcstat_task_mode_t)halui_stat.task.mode;
     }
 
     // switch to MDI mode if needed
-    if (halui_stat.task.mode != EMC_TASK_MODE_MDI) {
+    if (halui_stat.task.mode != EMCSTAT_MDI) {
 	if (sendMdi() != 0) {
             gomc_log_errorf(the_log, "halui", "%s: failed to Set Mode MDI", __func__);
             return -1;
@@ -847,7 +847,7 @@ static int sendMdiCommand(int n)
             gomc_log_errorf(the_log, "halui", "%s: failed to update status", __func__);
 	    return -1;
 	}
-	if (halui_stat.task.mode != EMC_TASK_MODE_MDI) {
+	if (halui_stat.task.mode != EMCSTAT_MDI) {
             gomc_log_errorf(the_log, "halui", "%s: switched mode, but got %d instead of mdi", __func__, halui_stat.task.mode);
 	    return -1;
 	}
@@ -1010,8 +1010,8 @@ static int sendAbort()
 
 static void sendJogStop(int ja, int jjogmode)
 {
-    if (   ( (jjogmode == JOGJOINT) && (halui_stat.motion.mode == EMC_TRAJ_MODE_TELEOP) )
-        || ( (jjogmode == JOGTELEOP ) && (halui_stat.motion.mode != EMC_TRAJ_MODE_TELEOP) )
+    if (   ( (jjogmode == JOGJOINT) && (halui_stat.motion.mode == EMCSTAT_TELEOP) )
+        || ( (jjogmode == JOGTELEOP ) && (halui_stat.motion.mode != EMCSTAT_TELEOP) )
        ) {
        return;
     }
@@ -1025,9 +1025,9 @@ static void sendJogStop(int ja, int jjogmode)
 
 static void sendJogCont(int ja, double speed, int jjogmode)
 {
-    if (halui_stat.task.state != EMC_TASK_STATE_ON) { return; }
-    if (   ( (jjogmode == JOGJOINT) && (halui_stat.motion.mode == EMC_TRAJ_MODE_TELEOP) )
-        || ( (jjogmode == JOGTELEOP ) && (halui_stat.motion.mode != EMC_TRAJ_MODE_TELEOP) )
+    if (halui_stat.task.state != EMCSTAT_ON) { return; }
+    if (   ( (jjogmode == JOGJOINT) && (halui_stat.motion.mode == EMCSTAT_TELEOP) )
+        || ( (jjogmode == JOGTELEOP ) && (halui_stat.motion.mode != EMCSTAT_TELEOP) )
        ) {
        return;
     }
@@ -1041,9 +1041,9 @@ static void sendJogCont(int ja, double speed, int jjogmode)
 
 static void sendJogIncr(int ja, double speed, double incr, int jjogmode)
 {
-    if (halui_stat.task.state != EMC_TASK_STATE_ON) { return; }
-    if (   ( (jjogmode == JOGJOINT) && (halui_stat.motion.mode == EMC_TRAJ_MODE_TELEOP) )
-        || ( (jjogmode == JOGTELEOP ) && (halui_stat.motion.mode != EMC_TRAJ_MODE_TELEOP) )
+    if (halui_stat.task.state != EMCSTAT_ON) { return; }
+    if (   ( (jjogmode == JOGJOINT) && (halui_stat.motion.mode == EMCSTAT_TELEOP) )
+        || ( (jjogmode == JOGTELEOP ) && (halui_stat.motion.mode != EMCSTAT_TELEOP) )
        ) {
        return;
     }
@@ -1822,13 +1822,13 @@ static void modify_hal_pins()
     int joint;
     int spindle;
 
-    if (halui_stat.task.state == EMC_TASK_STATE_ON) {
+    if (halui_stat.task.state == EMCSTAT_ON) {
 	*(halui_data->machine_is_on)=1;
     } else {
 	*(halui_data->machine_is_on)=0;
     }
 
-    if (halui_stat.task.state == EMC_TASK_STATE_ESTOP) {
+    if (halui_stat.task.state == EMCSTAT_ESTOP) {
 	*(halui_data->estop_is_activated)=1;
     } else {
 	*(halui_data->estop_is_activated)=0;
@@ -1838,49 +1838,49 @@ static void modify_hal_pins()
 	if (halui_stat.rcs_status == 1) { //which seems to have finished
 	    halui_sent_mdi = 0;
 	    switch (halui_old_mode) {
-		case EMC_TASK_MODE_MANUAL: sendManual();break;
-		case EMC_TASK_MODE_MDI: break;
-		case EMC_TASK_MODE_AUTO: sendAuto();break;
+		case EMCSTAT_MANUAL: sendManual();break;
+		case EMCSTAT_MDI: break;
+		case EMCSTAT_AUTO: sendAuto();break;
 		default: sendManual();break;
 	    }
 	}
     }
 	
 
-    if (halui_stat.task.mode == EMC_TASK_MODE_MANUAL) {
+    if (halui_stat.task.mode == EMCSTAT_MANUAL) {
 	*(halui_data->mode_is_manual)=1;
     } else {
 	*(halui_data->mode_is_manual)=0;
     }
 
-    if (halui_stat.task.mode == EMC_TASK_MODE_AUTO) {
+    if (halui_stat.task.mode == EMCSTAT_AUTO) {
 	*(halui_data->mode_is_auto)=1;
     } else {
 	*(halui_data->mode_is_auto)=0;
     }
 
-    if (halui_stat.task.mode == EMC_TASK_MODE_MDI) {
+    if (halui_stat.task.mode == EMCSTAT_MDI) {
 	*(halui_data->mode_is_mdi)=1;
     } else {
 	*(halui_data->mode_is_mdi)=0;
     }
 
-    if (halui_stat.motion.mode == EMC_TRAJ_MODE_TELEOP) {
+    if (halui_stat.motion.mode == EMCSTAT_TELEOP) {
 	*(halui_data->mode_is_teleop)=1;
     } else {
 	*(halui_data->mode_is_teleop)=0;
     }
 
-    if (halui_stat.motion.mode == EMC_TRAJ_MODE_FREE) {
+    if (halui_stat.motion.mode == EMCSTAT_FREE) {
 	*(halui_data->mode_is_joint)=1;
     } else {
 	*(halui_data->mode_is_joint)=0;
     }
 
-    *(halui_data->program_is_paused) = halui_stat.task.interp_state == EMC_TASK_INTERP_PAUSED;
-    *(halui_data->program_is_running) = halui_stat.task.interp_state == EMC_TASK_INTERP_READING ||
-                                        halui_stat.task.interp_state == EMC_TASK_INTERP_WAITING;
-    *(halui_data->program_is_idle) = halui_stat.task.interp_state == EMC_TASK_INTERP_IDLE;
+    *(halui_data->program_is_paused) = halui_stat.task.interp_state == EMCSTAT_PAUSED;
+    *(halui_data->program_is_running) = halui_stat.task.interp_state == EMCSTAT_READING ||
+                                        halui_stat.task.interp_state == EMCSTAT_WAITING;
+    *(halui_data->program_is_idle) = halui_stat.task.interp_state == EMCSTAT_IDLE;
     *(halui_data->program_os_is_on) = halui_stat.task.optional_stop;
     *(halui_data->program_bd_is_on) = halui_stat.task.block_delete;
 
