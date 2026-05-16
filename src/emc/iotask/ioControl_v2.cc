@@ -78,6 +78,7 @@
 #include "tooldata.hh"
 
 #include "gomc/pkg/cmodule/gomc_env.h"
+#include "gomc/generated/gmi/emcio/emcio_api.h"
 
 #define UNEXPECTED_MSG fprintf(stderr,"UNEXPECTED %s %d",__FILE__,__LINE__);
 
@@ -218,6 +219,9 @@ struct iocontrol_module {
     // Main loop thread
     pthread_t loop_thread;
     std::atomic<int> done;
+
+    // GMI callback table (persists for lifetime of module)
+    emcio_callbacks_t emcio_cb;
     bool thread_started;
 };
 
@@ -1258,6 +1262,452 @@ static void *iocontrol_loop(void *arg)
 
 
 /********************************************************************
+* GMI emcio callbacks — called by milltask via function pointers.
+* These implement the v2 protocol with abort/fault handshake.
+********************************************************************/
+
+// Helper: wait for emc-abort-ack from toolchanger, then deassert emc-abort.
+static void wait_for_abort_ack(iocontrol_module *m)
+{
+    iocontrol_str *d = m->hal_data;
+    *(d->state) = ST_WAIT_FOR_ABORT_ACK;
+    while (!m->done) {
+        if (*(d->emc_abort_ack)) {
+            *(d->emc_abort) = 0;
+            *(d->emc_reason) = 0;
+            *(d->state) = ST_IDLE;
+            return;
+        }
+        esleep(emc_io_cycle_time);
+    }
+}
+
+static int32_t gmi_io_abort(void *ctx, int32_t reason)
+{
+    iocontrol_module *m = (iocontrol_module *)ctx;
+    iocontrol_str *d = m->hal_data;
+
+    gomc_log_debugf(m->env->log, m->name, "gmi_io_abort reason=%d", reason);
+    m->emcioStatus.coolant.mist = 0;
+    m->emcioStatus.coolant.flood = 0;
+    *(d->coolant_mist) = 0;
+    *(d->coolant_flood) = 0;
+    *(d->tool_change) = 0;
+    *(d->tool_prepare) = 0;
+    *(d->start_change) = 0;
+
+    if (m->proto > V1) {
+        *(d->emc_reason) = reason;
+        *(d->emc_abort) = 1;
+        wait_for_abort_ack(m);
+    } else {
+        *(d->state) = ST_IDLE;
+    }
+    return 0;
+}
+
+static int32_t gmi_set_debug(void *ctx, int32_t debug)
+{
+    iocontrol_module *m = (iocontrol_module *)ctx;
+    gomc_log_debugf(m->env->log, m->name, "gmi_set_debug debug=%d", debug);
+    emc_debug = debug;
+    return 0;
+}
+
+static int32_t gmi_estop_on(void *ctx)
+{
+    iocontrol_module *m = (iocontrol_module *)ctx;
+    gomc_log_debugf(m->env->log, m->name, "gmi_estop_on");
+    *(m->hal_data->user_enable_out) = 0;
+    hal_init_pins(m);
+    return 0;
+}
+
+static int32_t gmi_estop_off(void *ctx)
+{
+    iocontrol_module *m = (iocontrol_module *)ctx;
+    gomc_log_debugf(m->env->log, m->name, "gmi_estop_off");
+    *(m->hal_data->user_enable_out) = 1;
+    *(m->hal_data->user_request_enable) = 1;
+    return 0;
+}
+
+static int32_t gmi_coolant_mist_on(void *ctx)
+{
+    iocontrol_module *m = (iocontrol_module *)ctx;
+    m->emcioStatus.coolant.mist = 1;
+    *(m->hal_data->coolant_mist) = 1;
+    return 0;
+}
+
+static int32_t gmi_coolant_mist_off(void *ctx)
+{
+    iocontrol_module *m = (iocontrol_module *)ctx;
+    m->emcioStatus.coolant.mist = 0;
+    *(m->hal_data->coolant_mist) = 0;
+    return 0;
+}
+
+static int32_t gmi_coolant_flood_on(void *ctx)
+{
+    iocontrol_module *m = (iocontrol_module *)ctx;
+    m->emcioStatus.coolant.flood = 1;
+    *(m->hal_data->coolant_flood) = 1;
+    return 0;
+}
+
+static int32_t gmi_coolant_flood_off(void *ctx)
+{
+    iocontrol_module *m = (iocontrol_module *)ctx;
+    m->emcioStatus.coolant.flood = 0;
+    *(m->hal_data->coolant_flood) = 0;
+    return 0;
+}
+
+static int32_t gmi_lube_on(void *ctx)
+{
+    iocontrol_module *m = (iocontrol_module *)ctx;
+    m->emcioStatus.lube.on = 1;
+    *(m->hal_data->lube) = 1;
+    return 0;
+}
+
+static int32_t gmi_lube_off(void *ctx)
+{
+    iocontrol_module *m = (iocontrol_module *)ctx;
+    m->emcioStatus.lube.on = 0;
+    *(m->hal_data->lube) = 0;
+    return 0;
+}
+
+static int32_t gmi_tool_prepare(void *ctx, int32_t toolno)
+{
+    iocontrol_module *m = (iocontrol_module *)ctx;
+    iocontrol_str *d = m->hal_data;
+    CANON_TOOL_TABLE tdata;
+
+    int idx = tooldata_find_index_for_tool(toolno);
+    if (idx == -1) {
+        m->emcioStatus.tool.pocketPrepped = -1;
+        return -1;
+    }
+    if (tooldata_get(&tdata, idx) != IDX_OK) {
+        UNEXPECTED_MSG;
+        return -1;
+    }
+
+    gomc_log_debugf(m->env->log, m->name, "gmi_tool_prepare tool=%d idx=%d", toolno, idx);
+
+    if (m->random_toolchanger && idx == 0) {
+        m->emcioStatus.tool.pocketPrepped = 0;
+        return 0;
+    }
+
+    *(d->tool_prep_index) = idx;
+
+    if (idx == 0) {
+        m->emcioStatus.tool.pocketPrepped = 0;
+        *(d->tool_prep_number) = 0;
+        *(d->tool_prep_pocket) = 0;
+        return 0;
+    }
+
+    *(d->tool_prep_number) = tdata.toolno;
+    *(d->tool_prep_pocket) = m->random_toolchanger ? idx : tdata.pocketno;
+
+    if (tdata.toolno != toolno)
+        gomc_log_debugf(m->env->log, m->name,
+            "gmi_tool_prepare: mismatch: tooltable[%d]=%d, got %d",
+            idx, tdata.toolno, toolno);
+
+    // v2: warn if toolchanger is faulted — next M6 will abort
+    if ((m->proto > V1) && *(d->toolchanger_faulted)) {
+        gomc_log_debugf(m->env->log, m->name,
+            "prepare: toolchanger faulted (reason=%d), next M6 will %s",
+            m->toolchanger_reason,
+            m->toolchanger_reason > 0 ? "set fault code and reason" : "abort program");
+    }
+
+    // Signal HAL and wait for tool-prepared
+    *(d->tool_prepare) = 1;
+    *(d->state) = ST_PREPARING;
+    while (!m->done) {
+        // Monitor toolchanger fault during prepare
+        if ((m->proto > V1) && *(d->toolchanger_fault)) {
+            m->toolchanger_reason = *(d->toolchanger_reason);
+            *(d->toolchanger_fault_ack) = 1;
+            *(d->toolchanger_faulted) = 1;
+        } else if (m->proto > V1) {
+            if (*(d->toolchanger_fault_ack))
+                *(d->toolchanger_fault_ack) = 0;
+            if (*(d->toolchanger_clear_fault) && !*(d->toolchanger_fault)) {
+                *(d->toolchanger_faulted) = 0;
+                m->toolchanger_reason = 0;
+            }
+        }
+
+        if (*(d->tool_prepared)) {
+            m->emcioStatus.tool.pocketPrepped = *(d->tool_prep_index);
+            *(d->tool_prepare) = 0;
+            *(d->state) = ST_IDLE;
+            return 0;
+        }
+        esleep(emc_io_cycle_time);
+    }
+    return -1;  // shutdown
+}
+
+static int32_t gmi_tool_start_change(void *ctx)
+{
+    iocontrol_module *m = (iocontrol_module *)ctx;
+    iocontrol_str *d = m->hal_data;
+
+    gomc_log_debugf(m->env->log, m->name, "gmi_tool_start_change");
+
+    if ((m->proto > V1) && m->support_start_change) {
+        *(d->start_change) = 1;
+        *(d->state) = ST_START_CHANGE;
+        while (!m->done) {
+            if (*(d->start_change_ack)) {
+                *(d->start_change) = 0;
+                *(d->state) = ST_IDLE;
+                return 0;
+            }
+            esleep(emc_io_cycle_time);
+        }
+        return -1;  // shutdown
+    }
+    return 0;
+}
+
+static int32_t gmi_tool_load(void *ctx)
+{
+    iocontrol_module *m = (iocontrol_module *)ctx;
+    iocontrol_str *d = m->hal_data;
+
+    gomc_log_debugf(m->env->log, m->name, "gmi_tool_load loaded=%d prepped=%d",
+                    m->emcioStatus.tool.toolInSpindle,
+                    m->emcioStatus.tool.pocketPrepped);
+
+    if (m->random_toolchanger && m->emcioStatus.tool.pocketPrepped == 0)
+        return 0;
+
+    CANON_TOOL_TABLE tdata;
+    if (tooldata_get(&tdata, m->emcioStatus.tool.pocketPrepped) != IDX_OK) {
+        UNEXPECTED_MSG;
+        return -1;
+    }
+    if (!m->random_toolchanger && (m->emcioStatus.tool.pocketPrepped > 0) &&
+        (m->emcioStatus.tool.toolInSpindle == tdata.toolno))
+        return 0;
+
+    if (m->emcioStatus.tool.pocketPrepped == -1)
+        return 0;
+
+    // v2: check for toolchanger fault before starting change
+    if ((m->proto > V1) && *(d->toolchanger_faulted)) {
+        m->toolchanger_reason = *(d->toolchanger_reason);
+        *(d->emc_reason) = EMC_ABORT_BY_TOOLCHANGER_FAULT;
+        *(d->emc_abort) = 1;
+        *(d->state) = ST_WAIT_FOR_ABORT_ACK;
+        wait_for_abort_ack(m);
+        m->emcioStatus.fault = 1;
+        m->emcioStatus.reason = m->toolchanger_reason;
+        return -1;
+    }
+
+    // Signal HAL and wait for tool-changed
+    *(d->tool_change) = 1;
+    *(d->state) = ST_CHANGING;
+    while (!m->done) {
+        // Monitor toolchanger fault during change (v2)
+        if ((m->proto > V1) && *(d->toolchanger_fault)) {
+            m->toolchanger_reason = *(d->toolchanger_reason);
+            *(d->toolchanger_fault_ack) = 1;
+            *(d->toolchanger_faulted) = 1;
+            // Abort the change
+            *(d->tool_change) = 0;
+            *(d->emc_reason) = EMC_ABORT_BY_TOOLCHANGER_FAULT;
+            *(d->emc_abort) = 1;
+            wait_for_abort_ack(m);
+            m->emcioStatus.fault = 1;
+            m->emcioStatus.reason = m->toolchanger_reason;
+            return -1;
+        } else if (m->proto > V1) {
+            if (*(d->toolchanger_fault_ack))
+                *(d->toolchanger_fault_ack) = 0;
+        }
+
+        if (*(d->tool_changed)) {
+            if (!m->random_toolchanger && m->emcioStatus.tool.pocketPrepped == 0) {
+                m->emcioStatus.tool.toolInSpindle = 0;
+            } else {
+                CANON_TOOL_TABLE td2;
+                if (tooldata_get(&td2, m->emcioStatus.tool.pocketPrepped) != IDX_OK) {
+                    UNEXPECTED_MSG;
+                    return -1;
+                }
+                m->emcioStatus.tool.toolInSpindle = td2.toolno;
+            }
+            *(d->tool_number) = m->emcioStatus.tool.toolInSpindle;
+            load_tool(m, m->emcioStatus.tool.pocketPrepped);
+            m->emcioStatus.tool.pocketPrepped = -1;
+            *(d->tool_prep_number) = 0;
+            *(d->tool_prep_pocket) = 0;
+            *(d->tool_prep_index) = 0;
+            *(d->tool_change) = 0;
+            *(d->state) = ST_IDLE;
+            m->emcioStatus.fault = 0;
+            return 0;
+        }
+        esleep(emc_io_cycle_time);
+    }
+    return -1;  // shutdown
+}
+
+static int32_t gmi_tool_unload(void *ctx)
+{
+    iocontrol_module *m = (iocontrol_module *)ctx;
+    gomc_log_debugf(m->env->log, m->name, "gmi_tool_unload");
+    m->emcioStatus.tool.toolInSpindle = 0;
+    return 0;
+}
+
+static int32_t gmi_tool_load_table(void *ctx, const char *file)
+{
+    iocontrol_module *m = (iocontrol_module *)ctx;
+    const char *filename = (file && strlen(file)) ? file : m->io_tool_table_file;
+    gomc_log_debugf(m->env->log, m->name, "gmi_tool_load_table file=%s", filename);
+    if (0 != tooldata_load(filename, m->ttcomments)) {
+        return -1;
+    }
+    reload_tool_number(m, m->emcioStatus.tool.toolInSpindle);
+    return 0;
+}
+
+static int32_t gmi_tool_set_offset(void *ctx,
+    int32_t pocket, int32_t toolno,
+    double x, double y, double z,
+    double a, double b, double c,
+    double u, double v, double w,
+    double diameter, double frontangle, double backangle,
+    int32_t orientation)
+{
+    iocontrol_module *m = (iocontrol_module *)ctx;
+
+    gomc_log_debugf(m->env->log, m->name,
+        "gmi_tool_set_offset idx=%d toolno=%d z=%lf x=%lf dia=%lf",
+        pocket, toolno, z, x, diameter);
+
+    CANON_TOOL_TABLE tdata;
+    if (tooldata_get(&tdata, pocket) != IDX_OK) {
+        UNEXPECTED_MSG;
+        return -1;
+    }
+    tdata.toolno = toolno;
+    tdata.offset.tran.x = x;
+    tdata.offset.tran.y = y;
+    tdata.offset.tran.z = z;
+    tdata.offset.a = a;
+    tdata.offset.b = b;
+    tdata.offset.c = c;
+    tdata.offset.u = u;
+    tdata.offset.v = v;
+    tdata.offset.w = w;
+    tdata.diameter = diameter;
+    tdata.frontangle = frontangle;
+    tdata.backangle = backangle;
+    tdata.orientation = orientation;
+    if (tooldata_put(tdata, pocket) != IDX_OK) {
+        UNEXPECTED_MSG;
+        return -1;
+    }
+    if (0 != tooldata_save(m->io_tool_table_file, m->ttcomments)) {
+        return -1;
+    }
+    if (m->io_db_mode == DB_ACTIVE) {
+        int pno = pocket;
+        if (!m->random_toolchanger) { pno = tdata.pocketno; }
+        if (tooldata_db_notify(TOOL_OFFSET, toolno, pno, tdata)) {
+            UNEXPECTED_MSG;
+        }
+    }
+    return 0;
+}
+
+static int32_t gmi_tool_set_number(void *ctx, int32_t tool)
+{
+    iocontrol_module *m = (iocontrol_module *)ctx;
+    iocontrol_str *d = m->hal_data;
+
+    CANON_TOOL_TABLE tdata;
+    if (tooldata_get(&tdata, tool) != IDX_OK) {
+        UNEXPECTED_MSG;
+        return -1;
+    }
+    load_tool(m, tool);
+
+    if (tooldata_get(&tdata, 0) != IDX_OK) {
+        UNEXPECTED_MSG;
+        return -1;
+    }
+    m->emcioStatus.tool.toolInSpindle = tdata.toolno;
+    gomc_log_debugf(m->env->log, m->name,
+        "gmi_tool_set_number new_tool=%d", tdata.toolno);
+    *(d->tool_number) = m->emcioStatus.tool.toolInSpindle;
+    return 0;
+}
+
+static emcio_io_status_t gmi_get_status(void *ctx)
+{
+    iocontrol_module *m = (iocontrol_module *)ctx;
+    iocontrol_str *d = m->hal_data;
+    emcio_io_status_t s;
+    memset(&s, 0, sizeof(s));
+
+    // Read live HAL inputs
+    s.estop = (*(d->emc_enable_in) == 0);
+    s.lube_level = *(d->lube_level);
+
+    // Copy cached state
+    s.heartbeat = m->emcioStatus.heartbeat++;
+    s.status = EMCIO_DONE;
+    s.reason = m->toolchanger_reason;
+    s.fault = *(d->toolchanger_faulted) ? 1 : 0;
+    s.tool.pocket_prepped = m->emcioStatus.tool.pocketPrepped;
+    s.tool.tool_in_spindle = m->emcioStatus.tool.toolInSpindle;
+    s.tool.tool_from_pocket = 0;  // v2 doesn't have tool_from_pocket pin
+    s.coolant.mist = m->emcioStatus.coolant.mist;
+    s.coolant.flood = m->emcioStatus.coolant.flood;
+    s.lube_on = m->emcioStatus.lube.on;
+    s.debug = emc_debug;
+
+    return s;
+}
+
+static const emcio_callbacks_t emcio_table = {
+    .ctx              = NULL,  // set at registration time
+    .io_abort         = gmi_io_abort,
+    .set_debug        = gmi_set_debug,
+    .estop_on         = gmi_estop_on,
+    .estop_off        = gmi_estop_off,
+    .coolant_mist_on  = gmi_coolant_mist_on,
+    .coolant_mist_off = gmi_coolant_mist_off,
+    .coolant_flood_on = gmi_coolant_flood_on,
+    .coolant_flood_off= gmi_coolant_flood_off,
+    .lube_on          = gmi_lube_on,
+    .lube_off         = gmi_lube_off,
+    .tool_prepare     = gmi_tool_prepare,
+    .tool_start_change= gmi_tool_start_change,
+    .tool_load        = gmi_tool_load,
+    .tool_unload      = gmi_tool_unload,
+    .tool_load_table  = gmi_tool_load_table,
+    .tool_set_offset  = gmi_tool_set_offset,
+    .tool_set_number  = gmi_tool_set_number,
+    .get_status       = gmi_get_status,
+};
+
+/********************************************************************
 * cmod lifecycle functions
 ********************************************************************/
 
@@ -1270,6 +1720,11 @@ static int iocontrol_start(cmod_t *self)
                         emc_nmlfile);
         return -1;
     }
+
+    // Register GMI emcio API so milltask can call us via function pointers.
+    m->emcio_cb = emcio_table;
+    m->emcio_cb.ctx = m;
+    emcio_api_register(m->env->api, "iocontrol", &m->emcio_cb);
 
     m->done = 0;
     m->thread_started = true;

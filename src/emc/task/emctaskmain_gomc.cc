@@ -109,7 +109,8 @@ extern void taskintf_gomc_init(const gomc_ini_t *ini,
 extern const emccmd_callbacks_t emccmd_handler_table;
 
 // Set in New(), used by emctask_startup() to register the interp_ext API.
-static const gomc_api_t *gomc_api_ptr;
+// Non-static: also used by taskclass_gmi.cc (extern).
+const gomc_api_t *gomc_api_ptr;
 
 // Emcerror publish ring — replaces NML error buffer.
 static emcerror_publish_error_ring_t *emcerror_ring;
