@@ -8,7 +8,7 @@ USERSRCS += $(EMCSHSRCS) $(EMCLCDSRCS) $(USRMOTSRCS)
 
 $(call TOOBJSDEPS, $(EMCSHSRCS)) : EXTRAFLAGS = $(ULFLAGS) $(TCL_CFLAGS) -fPIC
 
-../tcl/linuxcnc.so: $(call TOOBJS, $(EMCSHSRCS)) ../lib/liblinuxcnc.a ../lib/liblinuxcncini.so.0
+../tcl/linuxcnc.so: $(call TOOBJS, $(EMCSHSRCS)) ../lib/liblinuxcncini.so.0
 	$(ECHO) Linking $(notdir $@)
 	$(Q)$(CXX) -shared $(LDFLAGS) -o $@ $(ULFLAGS) $(TCL_CFLAGS) $^ $(TCL_LIBS) -lXinerama
 TARGETS += ../tcl/linuxcnc.so
