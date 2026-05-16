@@ -1,22 +1,4 @@
-EMCSHSRCS := emc/usr_intf/emcsh.cc \
-             emc/usr_intf/shcom.cc
-EMCLCDSRCS := emc/usr_intf/emclcd.cc \
-              emc/usr_intf/shcom.cc \
-              emc/usr_intf/sockets.c
-
-USERSRCS += $(EMCSHSRCS) $(EMCLCDSRCS) $(USRMOTSRCS)
-
-$(call TOOBJSDEPS, $(EMCSHSRCS)) : EXTRAFLAGS = $(ULFLAGS) $(TCL_CFLAGS) -fPIC
-
-../tcl/linuxcnc.so: $(call TOOBJS, $(EMCSHSRCS)) ../lib/liblinuxcncini.so.0
-	$(ECHO) Linking $(notdir $@)
-	$(Q)$(CXX) -shared $(LDFLAGS) -o $@ $(ULFLAGS) $(TCL_CFLAGS) $^ $(TCL_LIBS) -lXinerama
-TARGETS += ../tcl/linuxcnc.so
-
-../bin/linuxcnclcd: $(call TOOBJS, $(EMCLCDSRCS)) ../lib/liblinuxcnchal.so.0 ../lib/liblinuxcnc.a ../lib/liblinuxcncini.so.0
-	$(ECHO) Linking $(notdir $@)
-	$(Q)$(CXX) -o $@ $(ULFLAGS) $^ $(LDFLAGS)
-TARGETS += ../bin/linuxcnclcd
+USERSRCS += $(USRMOTSRCS)
 
 # halui.so — cmod plugin variant (uses gomc API, no liblinuxcnchal)
 HALUI_GOMC_SRCS := emc/usr_intf/halui_gomc.cc

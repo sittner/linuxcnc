@@ -34,6 +34,10 @@
 #include <sys/time.h>
 #include <rtapi_string.h>
 
+// Storage for emcglb globals (formerly in liblinuxcnc.a/emcglb.o)
+char emc_inifile[LINELEN] = "";
+int emc_debug = 0;
+
 #include "shcom.hh"
 
 #define setresult(t,s) Tcl_SetObjResult((t), Tcl_NewStringObj((s),-1))
