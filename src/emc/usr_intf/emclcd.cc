@@ -1686,16 +1686,21 @@ int main(int argc, char *argv[])
         }
       }
 
-    // process command line args
-    if (emcGetArgs(argc, argv) != 0) {
-	rcs_print_error("error in argument list\n");
-	exit(1);
+    // process command line args: -ini sets EMC_INIFILE
+    for (int t = 1; t < argc; t++) {
+        if (!strcmp(argv[t], "-ini") && t + 1 < argc) {
+            if (strlen(argv[t + 1]) >= LINELEN) {
+                fprintf(stderr, "INI file name too long\n");
+                exit(1);
+            }
+            rtapi_strxcpy(emc_inifile, argv[++t]);
+        }
     }
     // get configuration information
     iniLoad(emc_inifile);
     // init NML
     if (tryNml() != 0) {
-	rcs_print_error("can't connect to emc\n");
+	fprintf(stderr, "can't connect to emc\n");
 	thisQuit();
 	exit(1);
     }
