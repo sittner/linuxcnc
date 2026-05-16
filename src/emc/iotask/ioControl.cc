@@ -68,8 +68,7 @@
 #include "emc.hh"                /* EMC NML struct types */
 #include "emc_nml.hh"
 #include "emcglb.h"                /* EMC_NMLFILE, EMC_INIFILE, TOOL_TABLE_FILE */
-#include "timer.hh"
-#include "rcs_print.hh"
+#include <unistd.h>
 #include <rtapi_string.h>
 #include "tooldata.hh"
 
@@ -610,7 +609,7 @@ static int32_t gmi_tool_prepare(void *ctx, int32_t toolno)
             *(d->tool_prepare) = 0;
             return 0;
         }
-        esleep(emc_io_cycle_time);
+        usleep((useconds_t)(emc_io_cycle_time * 1e6));
     }
     return -1;  // shutdown
 }
@@ -674,7 +673,7 @@ static int32_t gmi_tool_load(void *ctx)
             *(d->tool_change) = 0;
             return 0;
         }
-        esleep(emc_io_cycle_time);
+        usleep((useconds_t)(emc_io_cycle_time * 1e6));
     }
     return -1;  // shutdown
 }
@@ -933,7 +932,7 @@ extern "C" int New(const cmod_env_t *env, const char *name,
         }
     }
     if (0 != tooldata_load(m->io_tool_table_file, m->ttcomments)) {
-        rcs_print_error("can't load tool table.");
+        gomc_log_errorf(m->env->log, m->name, "can't load tool table.");
     }
 
     m->emcioStatus.aux.estop = 1;

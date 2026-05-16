@@ -22,19 +22,6 @@
 
 #include <string.h>		// memset()
 
-RCS_STAT_MSG::RCS_STAT_MSG(NMLTYPE t, size_t sz):NMLmsg(t, sz)
-{
-// just avoiding an inline function.
-    command_type = -1;
-    echo_serial_number = -1;
-    status = -1;
-    state = -1;
-    line = -1;
-    source_line = -1;
-    memset(source_file, 0, 64);
-
-}
-
 int RCS_STAT_MSG_format(NMLTYPE t, void *buf, CMS * cms)
 {
     cms->update(((RCS_STAT_MSG *) buf)->command_type);
@@ -44,28 +31,7 @@ int RCS_STAT_MSG_format(NMLTYPE t, void *buf, CMS * cms)
     cms->update(((RCS_STAT_MSG *) buf)->line);
     cms->update(((RCS_STAT_MSG *) buf)->source_line);
     cms->update(((RCS_STAT_MSG *) buf)->source_file, 64);
-
-    switch (t) {
-    case RCS_GENERIC_STATUS_TYPE:
-	((RCS_GENERIC_STATUS *) buf)->update(cms);
-	return (1);
-
-    default:
-	return (0);
-    }
     return (0);
-}
-
-RCS_GENERIC_STATUS::RCS_GENERIC_STATUS():
-RCS_STAT_MSG(RCS_GENERIC_STATUS_TYPE, sizeof(RCS_GENERIC_STATUS))
-{
-// Just avoiding an inline function.
-}
-
-void
-  RCS_GENERIC_STATUS::update(CMS *)
-{
-// Just avoiding an inline function.
 }
 
 RCS_STAT_CHANNEL::RCS_STAT_CHANNEL(NML_FORMAT_PTR f_ptr, const char *name,

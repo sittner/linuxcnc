@@ -19,7 +19,8 @@
 
 class RCS_CMD_MSG:public NMLmsg {
   public:
-    RCS_CMD_MSG(NMLTYPE t, long sz);
+    RCS_CMD_MSG(NMLTYPE t, long sz) : NMLmsg(t, sz), serial_number(0) {
+    }
     int serial_number;
 };
 
@@ -46,8 +47,7 @@ enum RCS_GENERIC_CMD_ID {
 
 class RCS_GENERIC_CMD:public RCS_CMD_MSG {
   public:
-    RCS_GENERIC_CMD();
-    void update(CMS *);
+    RCS_GENERIC_CMD() : RCS_CMD_MSG(RCS_GENERIC_CMD_TYPE, sizeof(RCS_GENERIC_CMD)) {}
     int gen_id;
 };
 

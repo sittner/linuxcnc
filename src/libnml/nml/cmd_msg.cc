@@ -27,37 +27,10 @@ NMLTYPE nmltype;
 #include "cmd_msg.hh"
 #include "linklist.hh"
 
-RCS_CMD_MSG::RCS_CMD_MSG(NMLTYPE t, long sz):NMLmsg(t, sz)
-{
-    serial_number = 0;
-}
-
 int RCS_CMD_MSG_format(NMLTYPE t, void *buf, CMS * cms)
 {
     cms->update(((RCS_CMD_MSG *) buf)->serial_number);
-
-//  printf(" RCS_CMD_MSG_format: called.\n");
-    switch (t) {
-    case RCS_GENERIC_CMD_TYPE:
-	((RCS_GENERIC_CMD *) buf)->update(cms);
-	return (1);
-
-    default:
-	return (0);
-    }
     return (0);
-}
-
-RCS_GENERIC_CMD::RCS_GENERIC_CMD():
-RCS_CMD_MSG(RCS_GENERIC_CMD_TYPE, sizeof(RCS_GENERIC_CMD))
-{
-// Just avoiding an inline function.
-}
-
-void
-  RCS_GENERIC_CMD::update(CMS * cms)
-{
-    cms->update(gen_id);
 }
 
 RCS_CMD_CHANNEL::RCS_CMD_CHANNEL(NML_FORMAT_PTR f_ptr, const char *name,

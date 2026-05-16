@@ -19,7 +19,10 @@
 
 class RCS_STAT_MSG:public NMLmsg {
   public:
-    RCS_STAT_MSG(NMLTYPE t, size_t sz);
+    RCS_STAT_MSG(NMLTYPE t, size_t sz) : NMLmsg(t, sz),
+	command_type(-1), echo_serial_number(-1), status(-1),
+	state(-1), line(-1), source_line(-1) {
+    }
     NMLTYPE command_type;
     int echo_serial_number;
     int status;
@@ -46,8 +49,7 @@ class RCS_STAT_CHANNEL:public NML {
 
 class RCS_GENERIC_STATUS:public RCS_STAT_MSG {
   public:
-    RCS_GENERIC_STATUS();
-    void update(CMS *);
+    RCS_GENERIC_STATUS() : RCS_STAT_MSG(RCS_GENERIC_STATUS_TYPE, sizeof(RCS_GENERIC_STATUS)) {}
 };
 
 enum RCS_STATE

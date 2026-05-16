@@ -20,44 +20,45 @@ extern "C" {
 #endif
 
 #include <stddef.h>		/* size_t */
+#include <string.h>		/* memset */
 
 #ifdef __cplusplus
 };
 #endif
 
-/* Definitions from other Header files. */
-
-class CMS;			/* Use only partial definition to avoid */
-				/* depending on cms.hh */
+class CMS;
 
 #include "nml_type.hh"
 
-/* Class NMLmsg */
-/* Base class for all types that can be written to NML. */
-/* The constructor is protected so that to users cannot send messages */
-/*  without deriving their own classes from NMLmsg.  */
-/* Derived classes should pass the type and size to the NMLmsg constructor. */
-/*  and define their own update function. */
+/* Class NMLmsg — base class for all NML message types.
+ * Constructors are inline so no link dependency on libnml is needed. */
 class NMLmsg {
   protected:
-    NMLmsg(NMLTYPE t, long s);
-      NMLmsg(NMLTYPE t, size_t s);
-
-    /* This second constructor never clears the message regardless of what is
-       in nmlmsg. The value of noclear is irrelevant but adding it changes
-       which constructor is called. */
-      NMLmsg(NMLTYPE t, long s, int noclear);
+    NMLmsg(NMLTYPE t, long s) : type(t), size(s) {
+	memset(this, 0, s);
+	type = t;
+	size = s;
+    }
+    NMLmsg(NMLTYPE t, size_t s) : type(t), size((long)s) {
+	memset(this, 0, s);
+	type = t;
+	size = (long)s;
+    }
+    NMLmsg(NMLTYPE t, long s, int /*noclear*/) : type(t), size(s) {
+    }
 
   public:
-    void clear();
+    void clear() {
+	long temp_size = size;
+	NMLTYPE temp_type = type;
+	memset(this, 0, size);
+	size = temp_size;
+	type = temp_type;
+    }
 
-    static int automatically_clear;	/* controls whether NMLmsgs are set
-					   to zero in the constructor. */
     NMLTYPE type;		/* Each derived type should have a unique id */
-    long size;			/* The size is used so that the entire buffer 
+    long size;			/* The size is used so that the entire buffer
 				   is not copied unnecessarily. */
-
-    void update(CMS *);
 };
 
 // This is just a symbol passed to the RCS Java Tools (CodeGen, RCS-Design, RCS-Diagnostis)

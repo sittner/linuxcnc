@@ -17,6 +17,8 @@ MILLTASK_GOMC_SRCS := \
 	emc/task/inispindle_gomc.cc \
 	emc/task/emccmd_slot.cc \
 	emc/task/emccmd_handlers.cc \
+	emc/task/rcs_shim.cc \
+	libnml/linklist/linklist.cc \
 
 USERSRCS += $(MILLTASK_GOMC_SRCS)
 
@@ -38,7 +40,7 @@ $(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/emcio/emcio_api.h
 
 ../cmod/milltask.so: $(call TOOBJS, $(MILLTASK_GOMC_SRCS)) \
                      ../lib/librs274.so.0 ../lib/liblinuxcnc.a \
-                     ../lib/libnml.so.0 ../lib/liblinuxcncini.so.0 \
+                     ../lib/liblinuxcncini.so.0 \
                      ../lib/libposemath.so.0 \
                      ../lib/libtooldata.so.0
 	$(ECHO) Linking $(notdir $@)
