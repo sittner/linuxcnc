@@ -19,6 +19,8 @@ MILLTASK_GOMC_SRCS := \
 	emc/task/emccmd_handlers.cc \
 	emc/task/rcs_shim.cc \
 	libnml/linklist/linklist.cc \
+	emc/nml_intf/canon_position.cc \
+	emc/nml_intf/interpl.cc \
 
 USERSRCS += $(MILLTASK_GOMC_SRCS)
 

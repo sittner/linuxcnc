@@ -5,8 +5,6 @@ LIBEMCSRCS := \
     emc/nml_intf/emc_symbol_lookup.cc \
     emc/nml_intf/emcpose.c \
     emc/nml_intf/emcops.cc \
-    emc/nml_intf/canon_position.cc \
-    emc/nml_intf/interpl.cc \
     emc/nml_intf/tool_shim.cc
 USERSRCS += $(LIBEMCSRCS)
 
