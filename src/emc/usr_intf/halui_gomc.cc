@@ -37,8 +37,7 @@
 #include "emc.hh"		// EMC task enums
 #include "emcglb.h"		// emc_debug
 #include "emccfg.h"		// DEFAULT_TRAJ_MAX_VELOCITY
-#include "rcs_print.hh"
-#include "timer.hh"
+#include <unistd.h>
 #include <rtapi_string.h>
 #include "tooldata.hh"
 #include "gomc/generated/gmi/emccmd/emccmd_api.h"
@@ -2045,7 +2044,7 @@ static void *halui_loop(void *arg)
         }
         check_hal_changes(); //if anything changed send NML messages
         modify_hal_pins(); //if status changed modify HAL too
-        esleep(0.02); //sleep for a while
+        usleep(20000); //sleep for a while
         updateStatus();
     }
 
@@ -2125,9 +2124,6 @@ extern "C" int New(const cmod_env_t *env, const char *name,
     the_hal = env->hal;
     the_log = env->log;
     the_ini = env->ini;
-
-    // set print destination to stdout, for console apps
-    set_rcs_print_destination(RCS_PRINT_TO_STDOUT);
 
     // get configuration information
     if (0 != iniLoad(env->ini)) {

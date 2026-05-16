@@ -8,7 +8,7 @@ USERSRCS += $(EMCSHSRCS) $(EMCLCDSRCS) $(USRMOTSRCS)
 
 $(call TOOBJSDEPS, $(EMCSHSRCS)) : EXTRAFLAGS = $(ULFLAGS) $(TCL_CFLAGS) -fPIC
 
-../tcl/linuxcnc.so: $(call TOOBJS, $(EMCSHSRCS)) ../lib/liblinuxcnc.a ../lib/liblinuxcncini.so.0 ../lib/libnml.so.0
+../tcl/linuxcnc.so: $(call TOOBJS, $(EMCSHSRCS)) ../lib/liblinuxcnc.a ../lib/liblinuxcncini.so.0
 	$(ECHO) Linking $(notdir $@)
 	$(Q)$(CXX) -shared $(LDFLAGS) -o $@ $(ULFLAGS) $(TCL_CFLAGS) $^ $(TCL_LIBS) -lXinerama
 TARGETS += ../tcl/linuxcnc.so
@@ -28,7 +28,7 @@ $(call TOOBJSDEPS, $(HALUI_GOMC_SRCS)): gomc/generated/gmi/emccmd/emccmd_api.h g
 
 ../cmod/halui.so: $(call TOOBJS, $(HALUI_GOMC_SRCS)) \
                   ../lib/liblinuxcnc.a ../lib/liblinuxcncini.so.0 \
-                  ../lib/libnml.so.0 ../lib/libtooldata.so.0
+                  ../lib/libtooldata.so.0
 	$(ECHO) Linking $(notdir $@)
 	@mkdir -p ../cmod
 	@$(CXX) -shared -o $@ $^ $(LDFLAGS)

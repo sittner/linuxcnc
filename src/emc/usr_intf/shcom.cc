@@ -36,8 +36,6 @@
 #include "emccfg.h"		// DEFAULT_TRAJ_MAX_VELOCITY
 #include "inifile.hh"		// INIFILE
 #include "nml_oi.hh"            // nmlErrorFormat, NML_ERROR, etc
-#include "rcs_print.hh"
-#include "timer.hh"             // esleep
 #include "shcom.hh"             // Common NML communications functions
 #include <rtapi_string.h>
 
@@ -130,7 +128,7 @@ int emcCommandWaitDone()
 	    return -1;
 	}
 
-	esleep(EMC_COMMAND_DELAY);
+	usleep((unsigned int)(EMC_COMMAND_DELAY * 1e6));
     }
 
     return -1;
@@ -147,7 +145,7 @@ int emcCommandWaitReceived()
 	    return 0;
 	}
 
-	esleep(EMC_COMMAND_DELAY);
+	usleep((unsigned int)(EMC_COMMAND_DELAY * 1e6));
     }
 
     return -1;

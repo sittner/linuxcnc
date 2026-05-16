@@ -31,8 +31,7 @@
 #include "emcglb.h"		// EMC_NMLFILE, TRAJ_MAX_VELOCITY, etc.
 #include "emccfg.h"		// DEFAULT_TRAJ_MAX_VELOCITY
 #include "inifile.hh"		// INIFILE
-#include "rcs_print.hh"
-#include "timer.hh"
+#include <sys/time.h>
 #include <rtapi_string.h>
 
 #include "shcom.hh"
@@ -556,7 +555,9 @@ static int emc_time(ClientData clientdata,
 {
     CHECKEMC
     if (objc == 1) {
-	Tcl_SetObjResult(interp, Tcl_NewDoubleObj(etime()));
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	Tcl_SetObjResult(interp, Tcl_NewDoubleObj(tv.tv_sec + tv.tv_usec * 1e-6));
 	return TCL_OK;
     }
 
@@ -3483,13 +3484,15 @@ int emc_init(ClientData cd, Tcl_Interp *interp, int argc, const char **argv)
 {
     bool quick = false;
     initMain();
-    // process command line args
-    // use -ini inifilename to set EMC_INIFILE
-    // see emcargs.c for other arguments
-    // use -quick to return quickly if emc is not running
-    if (0 != emcGetArgs(argc, (char**)argv)) {
-        setresult(interp,"error in argument list\n");
-        return TCL_ERROR;
+    // process command line args: -ini inifilename sets EMC_INIFILE
+    for (int t = 1; t < argc; t++) {
+        if (!strcmp(argv[t], "-ini") && t + 1 < argc) {
+            if (strlen(argv[t + 1]) >= LINELEN) {
+                setresult(interp, "INI file name too long");
+                return TCL_ERROR;
+            }
+            rtapi_strxcpy(emc_inifile, argv[++t]);
+        }
     }
     // get configuration information
     iniLoad(emc_inifile);
