@@ -179,7 +179,7 @@ static void flush_segments(void);
 
 static inline void add_tag_to_msg(NMLmsg * msg, StateTag const &tag){
     //FIXME this better be an EMC_TRAJ message or bad things will happen
-    ((EMC_TRAJ_CMD_MSG *) msg)->tag = tag;
+    ((EMC_TRAJ_CMD_MSG *) msg)->tag = tag.get_state_tag();
 }
 
 
