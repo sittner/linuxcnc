@@ -31,11 +31,18 @@
 extern"C" {
 #endif
 
+#ifndef TOOLIDX_T_DEFINED
+#define TOOLIDX_T_DEFINED
 typedef enum {
     IDX_OK = 0,
     IDX_NEW,
     IDX_FAIL,
 } toolidx_t;
+
+struct    CANON_TOOL_TABLE tooldata_entry_init(void);
+toolidx_t tooldata_put(struct CANON_TOOL_TABLE tdata,int idx);
+toolidx_t tooldata_get(CANON_TOOL_TABLE* pdata,int idx);
+#endif // TOOLIDX_T_DEFINED
 
 typedef enum {
     DB_NOTUSED=0,  // equivalent to not specifying in inifile
@@ -49,9 +56,6 @@ typedef enum {
 } tool_notify_t;
 //----------------------------------------------------------
 // tooldata_*(): access to internal tool table data:
-struct    CANON_TOOL_TABLE tooldata_entry_init(void);
-toolidx_t tooldata_put(struct CANON_TOOL_TABLE tdata,int idx);
-toolidx_t tooldata_get(CANON_TOOL_TABLE* pdata,int idx);
 
 void   tooldata_init(bool random_tool_changer);
 void   tooldata_reset(void);

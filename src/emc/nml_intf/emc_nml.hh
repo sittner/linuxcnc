@@ -20,7 +20,7 @@
 #include "cmd_msg.hh"
 #include "stat_msg.hh"
 #include "emcpos.h"
-#include "modal_state.hh"
+#include "state_tag.h"
 #include "canon.hh"		// CANON_TOOL_TABLE, CANON_UNITS
 #include "rs274ngc.hh"		// ACTIVE_G_CODES, etc
 
@@ -158,7 +158,8 @@ class EMC_AXIS_STAT_MSG:public RCS_STAT_MSG {
 
 class EMC_AXIS_STAT:public EMC_AXIS_STAT_MSG {
   public:
-    EMC_AXIS_STAT();
+    EMC_AXIS_STAT():
+        EMC_AXIS_STAT_MSG(EMC_AXIS_STAT_TYPE, sizeof(EMC_AXIS_STAT)) {}
 
     // For internal NML/CMS use only.
     void update(CMS * cms);
@@ -510,7 +511,16 @@ class EMC_JOINT_STAT_MSG:public RCS_STAT_MSG {
 
 class EMC_JOINT_STAT:public EMC_JOINT_STAT_MSG {
   public:
-    EMC_JOINT_STAT();
+    EMC_JOINT_STAT():
+        EMC_JOINT_STAT_MSG(EMC_JOINT_STAT_TYPE, sizeof(EMC_JOINT_STAT)),
+        jointType(EMC_LINEAR), units(1.0), backlash(0.0),
+        minPositionLimit(-1.0), maxPositionLimit(1.0),
+        maxFerror(1.0), minFerror(1.0),
+        ferrorCurrent(0.0), ferrorHighMark(0.0),
+        output(0.0), input(0.0), velocity(0.0),
+        inpos(1), homing(0), homed(0), fault(0), enabled(0),
+        minSoftLimit(0), maxSoftLimit(0),
+        minHardLimit(0), maxHardLimit(0), overrideLimits(0) {}
 
     // For internal NML/CMS use only.
     void update(CMS * cms);
@@ -1024,7 +1034,27 @@ class EMC_TRAJ_STAT_MSG:public RCS_STAT_MSG {
 
 class EMC_TRAJ_STAT:public EMC_TRAJ_STAT_MSG {
   public:
-    EMC_TRAJ_STAT();
+    EMC_TRAJ_STAT():
+        EMC_TRAJ_STAT_MSG(EMC_TRAJ_STAT_TYPE, sizeof(EMC_TRAJ_STAT)),
+        linearUnits(1.0), angularUnits(1.0), cycleTime(0.0),
+        joints(1), spindles(0), axis_mask(1),
+        mode(EMC_TRAJ_MODE_FREE), enabled(OFF), inpos(ON),
+        queue(0), activeQueue(0), queueFull(OFF), id(0), paused(OFF),
+        scale(0.0), rapid_scale(0.0),
+        position(), actualPosition(),
+        velocity(1.0), acceleration(1.0),
+        maxVelocity(1.0), maxAcceleration(1.0),
+        probedPosition(), probe_tripped(OFF), probing(OFF), probeval(0),
+        kinematics_type(0), motion_type(0),
+        distance_to_go(0.0), dtg(),
+        current_vel(0.0),
+        feed_override_enabled(OFF),
+        adaptive_feed_enabled(OFF), feed_hold_enabled(OFF), tag() {
+        ZERO_EMC_POSE(position);
+        ZERO_EMC_POSE(actualPosition);
+        ZERO_EMC_POSE(probedPosition);
+        ZERO_EMC_POSE(dtg);
+    }
 
     // For internal NML/CMS use only.
     void update(CMS * cms);
@@ -1186,7 +1216,12 @@ class EMC_SPINDLE_STAT_MSG:public RCS_STAT_MSG {
 
 class EMC_SPINDLE_STAT:public EMC_SPINDLE_STAT_MSG {
   public:
-    EMC_SPINDLE_STAT();
+    EMC_SPINDLE_STAT():
+        EMC_SPINDLE_STAT_MSG(EMC_SPINDLE_STAT_TYPE, sizeof(EMC_SPINDLE_STAT)),
+        speed(0.0), spindle_scale(1.0), css_maximum(0.0), css_factor(0.0),
+        state(0), direction(0), brake(1), increasing(0), enabled(0),
+        orient_state(0), orient_fault(0),
+        spindle_override_enabled(0), homed(false) {}
 
     // For internal NML/CMS use only.
     void update(CMS * cms);
@@ -1208,7 +1243,14 @@ class EMC_SPINDLE_STAT:public EMC_SPINDLE_STAT_MSG {
 
 class EMC_MOTION_STAT:public EMC_MOTION_STAT_MSG {
   public:
-    EMC_MOTION_STAT();
+    EMC_MOTION_STAT():
+        EMC_MOTION_STAT_MSG(EMC_MOTION_STAT_TYPE, sizeof(EMC_MOTION_STAT)),
+        debug(0) {
+        memset(synch_di, 0, sizeof(synch_di));
+        memset(synch_do, 0, sizeof(synch_do));
+        memset(analog_input, 0, sizeof(analog_input));
+        memset(analog_output, 0, sizeof(analog_output));
+    }
 
     // For internal NML/CMS use only.
     void update(CMS * cms);
@@ -1484,7 +1526,25 @@ class EMC_TASK_STAT_MSG:public RCS_STAT_MSG {
 
 class EMC_TASK_STAT:public EMC_TASK_STAT_MSG {
   public:
-    EMC_TASK_STAT();
+    EMC_TASK_STAT():
+        EMC_TASK_STAT_MSG(EMC_TASK_STAT_TYPE, sizeof(EMC_TASK_STAT)),
+        mode(EMC_TASK_MODE_MANUAL), state(EMC_TASK_STATE_ESTOP),
+        execState(EMC_TASK_EXEC_DONE), interpState(EMC_TASK_INTERP_IDLE),
+        callLevel(0), motionLine(0), currentLine(0), readLine(0),
+        optional_stop_state(OFF), block_delete_state(OFF), input_timeout(OFF),
+        g5x_index(0), rotation_xy(0.0),
+        programUnits(CANON_UNITS_MM),
+        interpreter_errcode(0), task_paused(0), delayLeft(0.0),
+        queuedMDIcommands(0) {
+        file[0] = 0;
+        command[0] = 0;
+        ZERO_EMC_POSE(g5x_offset);
+        ZERO_EMC_POSE(g92_offset);
+        ZERO_EMC_POSE(toolOffset);
+        for (int t = 0; t < ACTIVE_G_CODES; t++) activeGCodes[t] = -1;
+        for (int t = 0; t < ACTIVE_M_CODES; t++) activeMCodes[t] = -1;
+        for (int t = 0; t < ACTIVE_SETTINGS; t++) activeSettings[t] = 0.0;
+    }
 
     // For internal NML/CMS use only.
     void update(CMS * cms);
@@ -1658,13 +1718,47 @@ class EMC_TOOL_STAT_MSG:public RCS_STAT_MSG {
     void update(CMS * cms);
 };
 
+// Need tooldata types for EMC_TOOL_STAT inline methods
+#include "tooldata_fwd.hh"
+
 class EMC_TOOL_STAT:public EMC_TOOL_STAT_MSG {
   public:
-    EMC_TOOL_STAT();
+    EMC_TOOL_STAT():
+        EMC_TOOL_STAT_MSG(EMC_TOOL_STAT_TYPE, sizeof(EMC_TOOL_STAT)),
+        pocketPrepped(0), toolInSpindle(0), toolFromPocket(0) {
+#ifdef TOOL_NML //{
+        for (int idx = 0; idx < CANON_POCKETS_MAX; idx++)
+            toolTable[idx] = tooldata_entry_init();
+#else //}{
+        toolTableCurrent = tooldata_entry_init();
+#endif //}
+    }
 
     // For internal NML/CMS use only.
     void update(CMS * cms);
-    EMC_TOOL_STAT operator =(EMC_TOOL_STAT s);	// need this for [] members
+    inline EMC_TOOL_STAT operator =(EMC_TOOL_STAT s) {
+        pocketPrepped = s.pocketPrepped;
+        toolInSpindle = s.toolInSpindle;
+        toolFromPocket = s.toolFromPocket;
+#ifdef TOOL_NML //{
+        for (int idx = 0; idx < CANON_POCKETS_MAX; idx++) {
+            toolTable[idx].toolno = s.toolTable[idx].toolno;
+            toolTable[idx].pocketno = s.toolTable[idx].pocketno;
+            toolTable[idx].offset = s.toolTable[idx].offset;
+            toolTable[idx].diameter = s.toolTable[idx].diameter;
+            toolTable[idx].frontangle = s.toolTable[idx].frontangle;
+            toolTable[idx].backangle = s.toolTable[idx].backangle;
+            toolTable[idx].orientation = s.toolTable[idx].orientation;
+        }
+#else //}{
+        struct CANON_TOOL_TABLE tdata;
+        if (tooldata_get(&tdata,0) != IDX_OK) {
+            fprintf(stderr,"UNEXPECTED idx %s %d\n",__FILE__,__LINE__);
+        }
+        toolTableCurrent = tdata;
+#endif //}
+        return s;
+    }
 
     int pocketPrepped;		// idx ready for loading from
     int toolInSpindle;		// tool loaded, 0 is no tool
@@ -1747,7 +1841,9 @@ class EMC_AUX_STAT_MSG:public RCS_STAT_MSG {
 
 class EMC_AUX_STAT:public EMC_AUX_STAT_MSG {
   public:
-    EMC_AUX_STAT();
+    EMC_AUX_STAT():
+        EMC_AUX_STAT_MSG(EMC_AUX_STAT_TYPE, sizeof(EMC_AUX_STAT)),
+        estop(1) {}
 
     // For internal NML/CMS use only.
     void update(CMS * cms);
@@ -1975,7 +2071,9 @@ class EMC_COOLANT_STAT_MSG:public RCS_STAT_MSG {
 
 class EMC_COOLANT_STAT:public EMC_COOLANT_STAT_MSG {
   public:
-    EMC_COOLANT_STAT();
+    EMC_COOLANT_STAT():
+        EMC_COOLANT_STAT_MSG(EMC_COOLANT_STAT_TYPE, sizeof(EMC_COOLANT_STAT)),
+        mist(0), flood(0) {}
 
     // For internal NML/CMS use only.
     void update(CMS * cms);
@@ -2027,7 +2125,9 @@ class EMC_LUBE_STAT_MSG:public RCS_STAT_MSG {
 
 class EMC_LUBE_STAT:public EMC_LUBE_STAT_MSG {
   public:
-    EMC_LUBE_STAT();
+    EMC_LUBE_STAT():
+        EMC_LUBE_STAT_MSG(EMC_LUBE_STAT_TYPE, sizeof(EMC_LUBE_STAT)),
+        on(0), level(1) {}
 
     // For internal NML/CMS use only.
     void update(CMS * cms);
@@ -2204,7 +2304,7 @@ class EMC_STAT_MSG:public RCS_STAT_MSG {
 
 class EMC_STAT:public EMC_STAT_MSG {
   public:
-    EMC_STAT();
+    EMC_STAT():EMC_STAT_MSG(EMC_STAT_TYPE, sizeof(EMC_STAT)) {}
 
     // For internal NML/CMS use only.
     void update(CMS * cms);

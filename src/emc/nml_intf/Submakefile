@@ -3,7 +3,6 @@ INCLUDES += emc emc/nml_intf
 LIBEMCSRCS := \
     emc/nml_intf/emcglb.c \
     emc/nml_intf/emcpose.c \
-    emc/nml_intf/emcops.cc \
     emc/nml_intf/tool_shim.cc
 USERSRCS += $(LIBEMCSRCS)
 
