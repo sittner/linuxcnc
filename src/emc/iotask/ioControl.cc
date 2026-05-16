@@ -70,7 +70,6 @@
 #include "emc.hh"                /* EMC NML */
 #include "emc_nml.hh"
 #include "emcglb.h"                /* EMC_NMLFILE, EMC_INIFILE, TOOL_TABLE_FILE */
-#include "nml_oi.hh"
 #include "timer.hh"
 #include "rcs_print.hh"
 #include <rtapi_string.h>
@@ -117,7 +116,6 @@ struct iocontrol_module {
     RCS_CMD_MSG *emcioCommand;
     RCS_STAT_CHANNEL *emcioStatusBuffer;
     EMC_IO_STAT emcioStatus;
-    NML *emcErrorBuffer;
 
     // Configuration (read from INI via env->get_ini in New)
     bool io_debug;
@@ -184,18 +182,6 @@ static int emcIoNmlGet(iocontrol_module *m)
             m->emcioStatus.echo_serial_number = 0;
             m->emcioStatus.status = RCS_DONE;
             m->emcioStatusBuffer->write(&m->emcioStatus);
-        }
-    }
-
-    /* try to connect to EMC error buffer */
-    if (m->emcErrorBuffer == 0) {
-        m->emcErrorBuffer =
-            new NML(nmlErrorFormat, "emcError", "tool", emc_nmlfile);
-        if (!m->emcErrorBuffer->valid()) {
-            gomc_log_errorf(m->env->log, m->name, "emcError buffer not available");
-            delete m->emcErrorBuffer;
-            m->emcErrorBuffer = 0;
-            retval = -1;
         }
     }
 
@@ -978,10 +964,6 @@ static void iocontrol_destroy(cmod_t *self)
 {
     iocontrol_module *m = (iocontrol_module *)self->priv;
 
-    if (m->emcErrorBuffer != 0) {
-        delete m->emcErrorBuffer;
-        m->emcErrorBuffer = 0;
-    }
     if (m->emcioStatusBuffer != 0) {
         delete m->emcioStatusBuffer;
         m->emcioStatusBuffer = 0;
