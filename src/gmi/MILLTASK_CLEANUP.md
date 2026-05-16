@@ -17,6 +17,47 @@ eliminating global state and introducing a canon callback table.
 
 ## Current State
 
+### NML Removal — Done
+
+All NML/libnml dependencies have been removed from the build:
+
+**libnml.so:** Removed entirely. Build target deleted from `libnml/Submakefile`.
+The Submakefile is now empty — only `linklist.cc` survives, compiled directly
+by milltask.
+
+**liblinuxcnc.a:** Reduced to 3 objects: `emcglb.o`, `emcpose.o`, `tool_shim.o`.
+Removed objects:
+- `emc.cc` (deleted — 2700 lines of CMS update methods)
+- `emcargs.cc` (deleted — NML arg parsing)
+- `emcops.cc` (deleted — stat constructors inlined into `emc_nml.hh`)
+- `modal_state.cc` (moved exclusively to librs274)
+- `canon_position.cc`, `interpl.cc`, `emc_symbol_lookup.cc` (moved to `emc/task/`)
+
+**Dead NML clients removed from build:**
+- `tcl/linuxcnc.so` (Tcl extension: `emcsh.cc`, `shcom.cc`) — dead NML
+  channel client, was loaded by AXIS via `linuxcnc.tcl`. Load line commented
+  out in `linuxcnc.tcl` / `linuxcnc.tcl.in`.
+- `bin/linuxcnclcd` (`emclcd.cc`, `shcom.cc`, `sockets.c`) — dead NML LCD client.
+
+**All remaining binaries are libnml-free:**
+`io.so`, `iov2.so`, `milltask.so`, `halui.so`, `rs274`, `emcmodule.so`,
+`motion-logger`, `gomc-server`.
+
+**Circular include fix:** Created `emc/tooldata/tooldata_fwd.hh` to break the
+`emc_nml.hh` ↔ `tooldata.hh` circular dependency (needed for inlined
+`EMC_TOOL_STAT` constructor/operator=).
+
+**Lightweight shims replacing libnml functions:**
+- `emc/task/rcs_shim.cc` — `rcs_print` → `vfprintf(stderr)`,
+  `etime` → `gettimeofday`, `esleep` → `usleep`, `RCS_TIMER` for milltask
+- `emc/usr_intf/sockets.c` — `rcs_print_error` → `fprintf(stderr)` macro
+- `emc/usr_intf/emcsh.cc` (removed) — had inline `-ini` parsing replacing
+  `emcGetArgs`, `etime` → `gettimeofday`, `esleep` → `usleep`
+
+**StateTag → state_tag_t:** `EMC_TRAJ_CMD_MSG.tag` and `EMC_TRAJ_STAT.tag`
+changed from C++ `StateTag` (uses `std::bitset`) to POD `state_tag_t` in
+shared memory structs. `StateTag` remains only in librs274/interpreter.
+
 ### Python Extension Points in Milltask
 
 | Feature | Where | What it does |
