@@ -103,8 +103,7 @@ func (l *Launcher) ensureLogRing() {
 //  2. Acquires the lock file.
 //  3. Parses the INI file.
 //  4. Validates cross-section INI dependencies (validateDependencies).
-//  5. Starts NML server (emcsvr cmod plugin) — only if [TASK]TASK is configured (M5).
-//  6. Starts the realtime environment (M4).
+//  5. Starts the realtime environment (M4).
 //  7. Starts iocontrol — only if [TASK]TASK is configured (M5).
 //  8. Starts halui — only if [HAL]HALUI is configured (M5).
 //  9. Preloads tpmod/homemod — only if [TASK]TASK is configured (M4).
@@ -146,7 +145,7 @@ func (l *Launcher) Run() (runErr error) {
 
 	// Export INI file path and config directory so that child processes
 	// (linuxcncsvr, iocontrol, task, etc.) can find the configuration.
-	// These must be set before startServer() is called.
+	// These must be set before realtime is started.
 	l.setConfigEnv()
 
 	l.logger.Info("acquiring lock file")
@@ -239,7 +238,7 @@ func (l *Launcher) Run() (runErr error) {
 
 	// Pre-launch validation checks (mirrors scripts/linuxcnc.in lines 495–530
 	// and 791–812): run after INI parsing + include expansion + chdir, but
-	// before startServer().
+	// before realtime init.
 
 	// 1. [EMC]VERSION check + update_ini (lines 495–508).
 	if err := l.checkVersion(); err != nil {
@@ -267,17 +266,6 @@ func (l *Launcher) Run() (runErr error) {
 	}
 
 	// --- M5: Process Manager ---
-
-	// Start in-process NML server before realtime — only when the task
-	// controller is running.  The NML server creates the shared memory buffers
-	// that realtime components depend on.  In HAL-only mode there are no NML
-	// buffers to serve.
-	// This mirrors scripts/linuxcnc.in lines 817–825.
-	if hasTask {
-		if err := l.startServer(); err != nil {
-			return fmt.Errorf("starting NML server: %w", err)
-		}
-	}
 
 	// --- M4: Realtime Manager ---
 	l.rtMgr = realtime.New(l.logger)
@@ -462,35 +450,6 @@ func (l *Launcher) Run() (runErr error) {
 }
 
 // startServer loads and starts the NML server as a cmod plugin.
-//
-// The NML server creates shared memory buffers that realtime components and
-// NML clients (iocontrol, task) depend on, so it must be started before
-// realtime init.  It is loaded via the standard cmod mechanism (dlopen +
-// New/Start) and its Stop/Destroy are handled by the normal cmod teardown.
-//
-// After Start(), a brief 100 ms window is given to let NML channels initialize.
-func (l *Launcher) startServer() error {
-	l.logger.Info("loading NML server (cmod plugin)")
-
-	path := resolveCModulePath("emcsvr")
-	if !cModuleExists(path) {
-		return fmt.Errorf("NML server C module not found: %s", path)
-	}
-
-	if err := l.loadCPlugin(path, "emcsvr", nil); err != nil {
-		return fmt.Errorf("loading NML server cmod: %w", err)
-	}
-
-	if err := l.startCModuleByName("emcsvr"); err != nil {
-		return fmt.Errorf("starting NML server cmod: %w", err)
-	}
-
-	// Brief startup window to let NML channels initialize.
-	time.Sleep(100 * time.Millisecond)
-	l.logger.Info("NML server running (cmod plugin)")
-	return nil
-}
-
 // resolveNmlFile determines the NML configuration file path.
 //
 // Resolution order:

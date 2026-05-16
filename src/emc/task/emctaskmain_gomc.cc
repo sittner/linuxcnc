@@ -567,9 +567,6 @@ static int mcode_has_handler(int mcode)
 
 static emcmot_config_t emcmotConfig;
 
-// NML channels (stat only; commands come via GMI slot, errors via ring)
-static RCS_STAT_CHANNEL *emcStatusBuffer = 0;
-
 // command pointer — set from GMI slot buffer each cycle
 static RCS_CMD_MSG *emcCommand = 0;
 
@@ -3191,38 +3188,6 @@ static int emctask_startup()
 #define RETRY_TIME 10.0		// seconds to wait for subsystems to come up
 #define RETRY_INTERVAL 1.0	// seconds between wait tries for a subsystem
 
-    // get the NML status buffer
-    if (!(emc_debug & EMC_DEBUG_NML)) {
-	set_rcs_print_destination(RCS_PRINT_TO_NULL);	// inhibit diag
-	// messages
-    }
-    end = RETRY_TIME;
-    good = 0;
-    do {
-	if (NULL != emcStatusBuffer) {
-	    delete emcStatusBuffer;
-	}
-	emcStatusBuffer =
-	    new RCS_STAT_CHANNEL(emcFormat, "emcStatus", "emc",
-				 emc_nmlfile);
-	if (emcStatusBuffer->valid()) {
-	    good = 1;
-	    break;
-	}
-	esleep(RETRY_INTERVAL);
-	end -= RETRY_INTERVAL;
-	if (done) {
-	    emctask_shutdown();
-	    exit(1);
-	}
-    } while (end > 0.0);
-    set_rcs_print_destination(RCS_PRINT_TO_STDOUT);	// restore diag
-    // messages
-    if (!good) {
-	rcs_print_error("can't get emcStatus buffer\n");
-	return -1;
-    }
-
     // get the timer
     if (!emcTaskNoDelay) {
 	timer = new RCS_TIMER(emc_task_cycle_time, "", "");
@@ -3357,14 +3322,6 @@ static int emctask_shutdown(void)
 	delete timer;
 	timer = 0;
     }
-    // delete the NML channels
-
-    if (0 != emcStatusBuffer) {
-	delete emcStatusBuffer;
-	emcStatusBuffer = 0;
-	emcStatus = 0;
-    }
-
     if (0 != emcStatus) {
 	delete emcStatus;
 	emcStatus = 0;
@@ -3401,10 +3358,6 @@ static int iniLoad(const gomc_ini_t *ini)
 	    rtapi_strlcpy(machine, "unknown", LINELEN-1);
 	}
 	rcs_print("task: machine: '%s'  version '%s'\n", machine, version);
-    }
-
-    if (NULL != (inistring = ini->get(ini->ctx, "EMC", "NML_FILE"))) {
-	rtapi_strxcpy(emc_nmlfile, inistring);
     }
 
     saveInt = emc_task_interp_max_len;
@@ -3659,7 +3612,6 @@ static void *milltask_loop(void *arg)
 
 	// Push stat to Go subscribers (replaces NML write).
 	publish_stat(emcStatus);
-	emcStatusBuffer->write(emcStatus);  // keep NML write until all consumers migrated
 
         endTime = etime();
         deltaTime = endTime - startTime;

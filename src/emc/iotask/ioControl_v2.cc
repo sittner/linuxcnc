@@ -65,11 +65,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
-#include <pthread.h>
 #include <atomic>
 
-#include "rcs.hh"                /* RCS_CMD_CHANNEL */
-#include "emc.hh"                /* EMC NML */
+#include "emc.hh"                /* EMC NML struct types */
 #include "emc_nml.hh"
 #include "emcglb.h"                /* EMC_NMLFILE, EMC_INIFILE, TOOL_TABLE_FILE */
 #include "timer.hh"
@@ -92,24 +90,6 @@ enum {
     EMC_ABORT_BY_TOOLCHANGER_FAULT = EMC_ABORT_USER + 1
 };
 
-static const char *strcs[] = { "invalid","RCS_DONE","RCS_EXEC","RCS_ERROR"};
-
-// read_inputs() returns a mask of changes observed
-enum {
-    TI_PREPARING = 1,
-    TI_PREPARE_COMPLETE = 2,
-    TI_CHANGING = 4,
-    TI_CHANGE_COMPLETE = 8,
-    TI_TC_FAULT = 16,
-    TI_TC_ABORT = 32,
-    TI_EMC_ABORT_SIGNALED = 64,
-    TI_EMC_ABORT_ACKED = 128,
-    TI_ESTOP_CHANGED = 256,
-    TI_LUBELEVEL_CHANGED = 512,
-    TI_START_CHANGE = 1024,
-    TI_START_CHANGE_ACKED = 2048
-};
-
 // iocontrol states. Reflected in state pin
 typedef  enum {
     ST_IDLE = 0,
@@ -118,7 +98,6 @@ typedef  enum {
     ST_CHANGING = 3,
     ST_WAIT_FOR_ABORT_ACK = 4, // V2 only
 } iostate_t;
-static const char *strstate[] = { "IDLE","PREPARING","START_CHANGE", "CHANGING","WAIT_FOR_ABORT_ACK"};
 
 struct iocontrol_str {
     gomc_hal_bit_t *user_enable_out;        /* output, TRUE when EMC wants stop */
@@ -195,10 +174,7 @@ struct iocontrol_module {
     int comp_id;
     iocontrol_str *hal_data;
 
-    // NML
-    RCS_CMD_CHANNEL *emcioCommandBuffer;
-    RCS_CMD_MSG *emcioCommand;
-    RCS_STAT_CHANNEL *emcioStatusBuffer;
+    // Cached IO status (used by GMI callbacks)
     EMC_IO_STAT emcioStatus;
 
     // Configuration (read from INI via env->get_ini in New)
@@ -216,13 +192,11 @@ struct iocontrol_module {
     // Runtime state
     int toolchanger_reason;  // last fault reason read from toolchanger
 
-    // Main loop thread
-    pthread_t loop_thread;
+    // Shutdown flag (checked by blocking GMI callbacks)
     std::atomic<int> done;
 
     // GMI callback table (persists for lifetime of module)
     emcio_callbacks_t emcio_cb;
-    bool thread_started;
 };
 
 // predicates for testing toolchanger fault conditions
@@ -230,63 +204,7 @@ struct iocontrol_module {
 #define TC_HARDFAULT (TC_FAULT && (m->toolchanger_reason <= 0))
 #define TC_SOFTFAULT (TC_FAULT && (m->toolchanger_reason > 0))
 
-/********************************************************************
- *
- * Description: emcIoNmlGet()
- *                Attempts to connect to NML buffers and set the relevant
- *                pointers.
- *
- * Return Value: Zero on success or -1 if can not connect to a buffer.
- *
- * Side Effects: None.
- *
- * Called By: iocontrol_start()
- *
- ********************************************************************/
-static int emcIoNmlGet(iocontrol_module *m)
-{
-    int retval = 0;
-
-    /* Try to connect to EMC IO command buffer */
-    if (m->emcioCommandBuffer == 0) {
-        m->emcioCommandBuffer =
-            new RCS_CMD_CHANNEL(emcFormat, "toolCmd", "tool", emc_nmlfile);
-        if (!m->emcioCommandBuffer->valid()) {
-            gomc_log_errorf(m->env->log, m->name, "emcToolCmd buffer not available");
-            delete m->emcioCommandBuffer;
-            m->emcioCommandBuffer = 0;
-            retval = -1;
-        } else {
-            /* Get our command data structure */
-            m->emcioCommand = m->emcioCommandBuffer->get_address();
-        }
-    }
-
-    /* try to connect to EMC IO status buffer */
-    if (m->emcioStatusBuffer == 0) {
-        m->emcioStatusBuffer =
-            new RCS_STAT_CHANNEL(emcFormat, "toolSts", "tool",
-                                 emc_nmlfile);
-        if (!m->emcioStatusBuffer->valid()) {
-            gomc_log_errorf(m->env->log, m->name, "toolSts buffer not available");
-            delete m->emcioStatusBuffer;
-            m->emcioStatusBuffer = 0;
-            retval = -1;
-        } else {
-            /* initialize and write status */
-            m->emcioStatus.heartbeat = 0;
-            m->emcioStatus.command_type = 0;
-            m->emcioStatus.echo_serial_number = 0;
-            m->emcioStatus.status = RCS_DONE;
-            m->emcioStatusBuffer->write(&m->emcioStatus);
-        }
-    }
-
-    return retval;
-}
-
 // iniLoad reads configuration from the launcher's parsed INI via env callbacks.
-// Replaces the old iniLoad() that opened and parsed the INI file directly.
 static int iniLoad(iocontrol_module *m)
 {
     const cmod_env_t *env = m->env;
@@ -310,11 +228,6 @@ static int iniLoad(iocontrol_module *m)
 
     // make it verbose if debugging RCS
     if (emc_debug & EMC_DEBUG_IOCONTROL) {
-    }
-
-    val = env->ini->get(env->ini->ctx, "EMC", "NML_FILE");
-    if (val) {
-        rtapi_strxcpy(emc_nmlfile, val);
     }
 
     val = env->ini->get(env->ini->ctx, "EMCIO", "CYCLE_TIME");
@@ -719,547 +632,9 @@ static void reload_tool_number(iocontrol_module *m, int toolno) {
         }
         if(tdata.toolno == toolno) {
             load_tool(m, idx);
-            break;
         }
     }
 }
-
-static char *str_input(int status)
-{
-    static char seen[200];
-
-    seen[0] = 0;
-    if (status & TI_PREPARING) rtapi_strxcat(seen," TI_PREPARING");
-    if (status & TI_PREPARE_COMPLETE) rtapi_strxcat(seen," TI_PREPARE_COMPLETE");
-    if (status & TI_CHANGING) rtapi_strxcat(seen," TI_CHANGING");
-    if (status & TI_CHANGE_COMPLETE) rtapi_strxcat(seen," TI_CHANGE_COMPLETE");
-    if (status & TI_TC_FAULT) rtapi_strxcat(seen," TI_TC_FAULT");
-    if (status & TI_TC_ABORT) rtapi_strxcat(seen," TI_TC_ABORT");
-    if (status & TI_EMC_ABORT_SIGNALED) rtapi_strxcat(seen," TI_EMC_ABORT_SIGNALED");
-    if (status & TI_EMC_ABORT_ACKED) rtapi_strxcat(seen," TI_EMC_ABORT_ACKED");
-    if (status & TI_ESTOP_CHANGED) rtapi_strxcat(seen," TI_ESTOP_CHANGED");
-    if (status & TI_LUBELEVEL_CHANGED) rtapi_strxcat(seen," TI_LUBELEVEL_CHANGED");
-    if (status & TI_START_CHANGE) rtapi_strxcat(seen," TI_START_CHANGE");
-    if (status & TI_START_CHANGE_ACKED) rtapi_strxcat(seen," TI_START_CHANGE_ACKED");
-    return seen;
-}
-
-/********************************************************************
- *
- * Description: read_inputs()
- *                        Reads pin values from HAL
- *                      Handle pin protocol
- *                        this function gets called once per cycle
- *                        It sets the values for the emcioStatus.aux.*
- *                      also handle estop and lube_level
- *
- * Returns:        returns a bitmask of relevant status
- *
- * Side Effects: updates toolchanger_reason,
- *               emcioStatus.tool.*
- *               emcioStatus.aux.estop
- *               emcioStatus.lube.level
- *
- * Called By: iocontrol_loop every CYCLE
- ********************************************************************/
-static int read_inputs(iocontrol_module *m)
-{
-    int oldval, retval = 0;
-    iocontrol_str *d = m->hal_data;
-
-    oldval = m->emcioStatus.aux.estop;
-
-    if ( *(d->emc_enable_in)==0) //check for estop from HW
-        m->emcioStatus.aux.estop = 1;
-    else
-        m->emcioStatus.aux.estop = 0;
-
-    if (oldval != m->emcioStatus.aux.estop) {
-        retval |= TI_ESTOP_CHANGED;
-    }
-
-    oldval = m->emcioStatus.lube.level;
-    m->emcioStatus.lube.level = *(d->lube_level); // check for lube_level from HW
-    if (oldval != m->emcioStatus.lube.level) {
-        retval |=  TI_LUBELEVEL_CHANGED;
-    }
-
-    if (m->proto > V1) {
-        // record toolchanger fault
-        if (*d->toolchanger_fault) {
-            // reason code now valid
-            m->toolchanger_reason = *d->toolchanger_reason;
-            gomc_log_debugf(m->env->log, m->name, "%s:read_input: toolchanger fault signaled, reason: %d ",
-                            m->name, m->toolchanger_reason);
-
-            // raise ack line
-            *(d->toolchanger_fault_ack) = 1;
-            // record the fact that a fault or abort was received
-            *(d->toolchanger_faulted) = 1;
-            retval |= TI_TC_FAULT;
-        } else {
-            // clear the ack line
-            *(d->toolchanger_fault_ack) = 0;
-        }
-
-        // clear toolchanger fault condition if so signaled,
-        if (*d->toolchanger_clear_fault) {
-            *(d->toolchanger_faulted) = 0;
-            // clear last tc fault reason
-            m->toolchanger_reason = 0;
-            retval &= ~TI_TC_FAULT;
-        }
-
-        // an EMC-side abort is in progress.
-        if (*d->emc_abort) {
-            if (*d->emc_abort_ack) {
-                // the toolchanger acknowledged the fact so deassert
-                *(d->emc_abort) = 0;
-                // a completed EMC-side abort always forces IDLE state
-                *(d->state) = ST_IDLE;
-                retval |= TI_EMC_ABORT_ACKED;
-            } else {
-                // waiting for abort being acked by toolchanger.
-                retval |= TI_EMC_ABORT_SIGNALED;
-            }
-        }
-        // the very start of an M6 operation was signaled
-        if (*d->start_change) {
-            if (*d->start_change_ack) {
-                // the toolchanger acknowledged the start-change
-                *(d->start_change) = 0;
-                retval |= TI_START_CHANGE_ACKED;
-            } else {
-                // wait for ack by toolchanger
-                retval |= TI_START_CHANGE;
-            }
-        }
-    }
-
-    if (*d->tool_prepare) {
-        if (*d->tool_prepared) {
-            m->emcioStatus.tool.pocketPrepped = *(d->tool_prep_index); //check if tool has been prepared
-            *(d->tool_prepare) = 0;
-            *(d->state) = ST_IDLE; // normal prepare completion
-            retval |= TI_PREPARE_COMPLETE;
-        } else {
-            *(d->state) = ST_PREPARING;
-            retval |= TI_PREPARING;
-        }
-    }
-
-    if (*d->tool_change) {
-
-        // check whether a toolchanger fault will force an abort of this change
-        if ((m->proto > V1) && (*d->toolchanger_faulted))  {
-
-            m->toolchanger_reason = *d->toolchanger_reason;
-            *(d->emc_reason) = EMC_ABORT_BY_TOOLCHANGER_FAULT;
-            *(d->emc_abort) = 1;
-            retval |= TI_TC_ABORT;
-            // give up on request
-            *(d->tool_change) = 0;
-            *(d->state) = ST_WAIT_FOR_ABORT_ACK;
-        }
-
-        if (*d->tool_changed) {
-            // good to commit this change
-            if(!m->random_toolchanger && m->emcioStatus.tool.pocketPrepped == 0) {
-                m->emcioStatus.tool.toolInSpindle = 0;
-            } else {
-                // the tool now in the spindle is the one that was prepared
-                CANON_TOOL_TABLE tdata;
-                if (tooldata_get(&tdata,m->emcioStatus.tool.pocketPrepped) != IDX_OK) {
-                    UNEXPECTED_MSG; return -1;
-                }
-                m->emcioStatus.tool.toolInSpindle = tdata.toolno;
-            }
-            *(d->tool_number) = m->emcioStatus.tool.toolInSpindle;
-            load_tool(m, m->emcioStatus.tool.pocketPrepped);
-            m->emcioStatus.tool.pocketPrepped = -1;
-            *(d->tool_prep_number) = 0;
-            *(d->tool_prep_pocket) = 0;
-            *(d->tool_prep_index)  = 0;
-            *(d->tool_change) = 0;
-            *(d->state) = ST_IDLE;
-            retval |= TI_CHANGE_COMPLETE;
-        } else {
-            retval |= TI_CHANGING;
-        }
-    }
-    return retval;
-}
-
-
-static void update_status(iocontrol_module *m, int status, int serial)
-{
-    static int status_reported = -1;
-    iocontrol_str *d = m->hal_data;
-
-    m->emcioStatus.status = status;
-    if (status_reported != status) {
-        gomc_log_debugf(m->env->log, m->name, "%s: updating status=%s state=%s fault=%d reason=%d",
-                        m->name, strcs[m->emcioStatus.status], strstate[*(d->state)],
-                        m->emcioStatus.fault, m->emcioStatus.reason
-                        );
-        status_reported = m->emcioStatus.status;
-    }
-    m->emcioStatus.command_type = EMC_IO_STAT_TYPE;
-    m->emcioStatus.echo_serial_number = serial;
-    m->emcioStatus.heartbeat++;
-    m->emcioStatusBuffer->write(&m->emcioStatus);
-}
-
-
-/********************************************************************
-* iocontrol_loop — main NML processing loop, runs in a dedicated thread.
-* Replaces the old while(!done) loop from main().
-********************************************************************/
-static void *iocontrol_loop(void *arg)
-{
-    iocontrol_module *m = (iocontrol_module *)arg;
-    iocontrol_str *d = m->hal_data;
-    int input_status;
-    NMLTYPE type;
-
-    while (!m->done) {
-
-        input_status = read_inputs(m);
-
-        // always piggyback fault and reason
-        m->emcioStatus.fault =  *(d->toolchanger_faulted);
-        m->emcioStatus.reason = m->toolchanger_reason;
-
-        if (input_status & (TI_ESTOP_CHANGED|TI_LUBELEVEL_CHANGED)) {
-            if (input_status & TI_ESTOP_CHANGED) {
-                gomc_log_debugf(m->env->log, m->name, "%s:ESTOP changed to %d", m->name, m->emcioStatus.aux.estop);
-            }
-            if (input_status & TI_LUBELEVEL_CHANGED)
-                gomc_log_debugf(m->env->log, m->name, "%s:lube_level changed to %d", m->name, m->emcioStatus.lube.level);
-
-            update_status(m, RCS_DONE, m->emcioCommand->serial_number + 1);
-        }
-
-        if (input_status & (TI_PREPARING)) {
-            update_status(m, RCS_EXEC, m->emcioCommand->serial_number);
-        }
-
-        if (input_status & (TI_START_CHANGE|TI_CHANGING)) {
-            if (TC_FAULT) {
-                gomc_log_debugf(m->env->log, m->name, "%s: signaling fault during change, reason=%d state=%s input_status=%s",
-                                m->name,
-                                m->toolchanger_reason,
-                                strstate[*(d->state)],
-                                str_input(input_status)
-                                );
-                update_status(m, RCS_ERROR, m->emcioCommand->serial_number);
-            } else {
-                update_status(m, RCS_EXEC, m->emcioCommand->serial_number);
-            }
-        }
-
-        if (input_status & (TI_PREPARE_COMPLETE|TI_CHANGE_COMPLETE|TI_START_CHANGE_ACKED)) {
-            update_status(m, RCS_DONE, m->emcioCommand->serial_number);
-        }
-
-        /* read NML, run commands */
-        if (-1 == m->emcioCommandBuffer->read()) {
-            esleep(emc_io_cycle_time);
-            continue;
-        }
-
-        if (0 == m->emcioCommand ||
-            0 == m->emcioCommand->type ||
-            m->emcioCommand->serial_number == m->emcioStatus.echo_serial_number) {
-            esleep(emc_io_cycle_time);
-            continue;
-        }
-
-        m->emcioStatus.status = RCS_DONE;
-        type = m->emcioCommand->type;
-
-        switch (type) {
-        case 0:
-            break;
-
-        case EMC_IO_INIT_TYPE:
-            gomc_log_debugf(m->env->log, m->name, "EMC_IO_INIT");
-            hal_init_pins(m);
-            break;
-
-        case EMC_TOOL_INIT_TYPE:
-            tooldata_load(m->io_tool_table_file, m->ttcomments);
-            reload_tool_number(m, m->emcioStatus.tool.toolInSpindle);
-            break;
-
-        case EMC_TOOL_HALT_TYPE:
-            gomc_log_debugf(m->env->log, m->name, "EMC_TOOL_HALT");
-            break;
-
-        case EMC_TOOL_ABORT_TYPE:
-            gomc_log_debugf(m->env->log, m->name, "EMC_TOOL_ABORT reason=%d",
-                            ((EMC_TOOL_ABORT *) m->emcioCommand)->reason);
-
-            m->emcioStatus.coolant.mist = 0;
-            m->emcioStatus.coolant.flood = 0;
-            *(d->coolant_mist) = 0;
-            *(d->coolant_flood) = 0;
-
-            if (m->proto > V1) {
-                *(d->emc_reason) = ((EMC_TOOL_ABORT *) m->emcioCommand)->reason;
-                *(d->emc_abort) = 1;
-            }
-            *(d->tool_change) = 0;
-            *(d->tool_prepare) = 0;
-            *(d->start_change) = 0;
-
-            *(d->state) = (m->proto > V1) ? ST_WAIT_FOR_ABORT_ACK : ST_IDLE;
-            break;
-
-        case EMC_TOOL_PREPARE_TYPE:
-        {
-            int idx = 0;
-            int toolno = ((EMC_TOOL_PREPARE*)m->emcioCommand)->tool;
-            CANON_TOOL_TABLE tdata;
-            idx = tooldata_find_index_for_tool(toolno);
-#ifdef TOOL_NML
-            if (!m->random_toolchanger && toolno == 0) { idx = 0; }
-#endif
-            gomc_log_debugf(m->env->log, m->name, "EMC_TOOL_PREPARE tool=%d pocket=%d", toolno, idx);
-
-            if (m->random_toolchanger && idx == 0) {
-                break;
-            }
-            *(d->tool_prep_index) = idx;
-            if (idx == -1) {
-                m->emcioStatus.tool.pocketPrepped = 0;
-            } else {
-                if (tooldata_get(&tdata,idx) != IDX_OK) {
-                     UNEXPECTED_MSG;
-                }
-                *(d->tool_prep_pocket) = m->random_toolchanger ? idx : tdata.pocketno;
-                if (!m->random_toolchanger && idx == 0) {
-                    *(d->tool_prep_number) = 0;
-                    *(d->tool_prep_pocket) = 0;
-                } else {
-                    *(d->tool_prep_number) = tdata.toolno;
-                    if (tdata.toolno != toolno)
-                        gomc_log_debugf(m->env->log, m->name, "EMC_TOOL_PREPARE: mismatch: tooltable[%d]=%d, got %d",
-                                idx, tdata.toolno, toolno);
-                }
-                if ((m->proto > V1) && *(d->toolchanger_faulted)) {
-                    gomc_log_debugf(m->env->log, m->name, "%s: prepare: toolchanger faulted (reason=%d), next M6 will %s",
-                        m->name, m->toolchanger_reason,
-                        m->toolchanger_reason > 0 ? "set fault code and reason" : "abort program");
-                }
-                *(d->tool_prepare) = 1;
-                *(d->state) = ST_PREPARING;
-
-                if (!(input_status & TI_PREPARE_COMPLETE)) {
-                    m->emcioStatus.status = RCS_EXEC;
-                }
-            }
-        }
-        break;
-
-        case EMC_TOOL_LOAD_TYPE:
-        {
-            gomc_log_debugf(m->env->log, m->name, "EMC_TOOL_LOAD loaded=%d prepped=%d",
-                            m->emcioStatus.tool.toolInSpindle, m->emcioStatus.tool.pocketPrepped);
-
-            if (m->random_toolchanger && m->emcioStatus.tool.pocketPrepped == 0) {
-                break;
-            }
-
-            CANON_TOOL_TABLE tdata;
-            if (tooldata_get(&tdata, m->emcioStatus.tool.pocketPrepped) != IDX_OK) {
-                UNEXPECTED_MSG;
-            }
-            if (!m->random_toolchanger && (m->emcioStatus.tool.pocketPrepped > 0) &&
-                (m->emcioStatus.tool.toolInSpindle == tdata.toolno) ) {
-                break;
-            }
-
-            if (m->emcioStatus.tool.pocketPrepped != -1) {
-                *(d->tool_change) = 1;
-                *(d->state) = ST_CHANGING;
-
-                if (! (input_status & TI_CHANGE_COMPLETE)) {
-                    m->emcioStatus.status = RCS_EXEC;
-                }
-            }
-            break;
-        }
-        case EMC_TOOL_START_CHANGE_TYPE:
-            gomc_log_debugf(m->env->log, m->name, "EMC_START_CHANGE");
-            if ((m->proto > V1) && m->support_start_change) {
-                *(d->start_change) = 1;
-                *(d->state) = ST_START_CHANGE;
-                if (! (input_status & TI_START_CHANGE_ACKED)) {
-                    m->emcioStatus.status = RCS_EXEC;
-                }
-            }
-            break;
-
-        case EMC_TOOL_UNLOAD_TYPE:
-            gomc_log_debugf(m->env->log, m->name, "EMC_TOOL_UNLOAD");
-            m->emcioStatus.tool.toolInSpindle = 0;
-            break;
-
-        case EMC_TOOL_LOAD_TOOL_TABLE_TYPE:
-        {
-            const char *filename =
-                ((EMC_TOOL_LOAD_TOOL_TABLE *) m->emcioCommand)->file;
-            if(!strlen(filename)) filename = m->io_tool_table_file;
-            gomc_log_debugf(m->env->log, m->name, "EMC_TOOL_LOAD_TOOL_TABLE");
-            if (0 != tooldata_load(filename, m->ttcomments)) {
-                m->emcioStatus.status = RCS_ERROR;
-            } else {
-                reload_tool_number(m, m->emcioStatus.tool.toolInSpindle);
-            }
-        }
-        break;
-
-        case EMC_TOOL_SET_OFFSET_TYPE:
-            {
-                int idx, toolno, o;
-                double dd, f, b;
-                EmcPose offs;
-
-                idx    = ((EMC_TOOL_SET_OFFSET *) m->emcioCommand)->pocket;
-                toolno = ((EMC_TOOL_SET_OFFSET *) m->emcioCommand)->toolno;
-                offs   = ((EMC_TOOL_SET_OFFSET *) m->emcioCommand)->offset;
-                dd = ((EMC_TOOL_SET_OFFSET *) m->emcioCommand)->diameter;
-                f = ((EMC_TOOL_SET_OFFSET *) m->emcioCommand)->frontangle;
-                b = ((EMC_TOOL_SET_OFFSET *) m->emcioCommand)->backangle;
-                o = ((EMC_TOOL_SET_OFFSET *) m->emcioCommand)->orientation;
-
-                gomc_log_debugf(m->env->log, m->name, "EMC_TOOL_SET_OFFSET idx=%d toolno=%d zoffset=%lf, "
-                     "xoffset=%lf, diameter=%lf, "
-                     "frontangle=%lf, backangle=%lf, orientation=%d",
-                     idx, toolno, offs.tran.z, offs.tran.x, dd, f, b, o);
-                CANON_TOOL_TABLE tdata;
-                if (tooldata_get(&tdata,idx) != IDX_OK) {
-                    UNEXPECTED_MSG;
-                }
-                tdata.toolno = toolno;
-                tdata.offset = offs;
-                tdata.diameter = dd;
-                tdata.frontangle = f;
-                tdata.backangle = b;
-                tdata.orientation = o;
-                if (tooldata_put(tdata,idx) == IDX_FAIL) {
-                    UNEXPECTED_MSG;
-                }
-                if (0 != tooldata_save(m->io_tool_table_file, m->ttcomments)) {
-                    m->emcioStatus.status = RCS_ERROR;
-                }
-                if (m->io_db_mode == DB_ACTIVE) {
-                    int pno = idx;
-                    if (!m->random_toolchanger) { pno = tdata.pocketno; }
-                    if (tooldata_db_notify(TOOL_OFFSET,toolno,pno,tdata)) { UNEXPECTED_MSG; }
-                }
-            }
-            break;
-        case EMC_TOOL_SET_NUMBER_TYPE:
-        {
-            int idx;
-
-            idx = ((EMC_TOOL_SET_NUMBER *) m->emcioCommand)->tool;
-            CANON_TOOL_TABLE tdata;
-            if (tooldata_get(&tdata,idx) != IDX_OK) {
-                UNEXPECTED_MSG;
-            }
-            load_tool(m, idx);
-
-            idx=0;
-            if (tooldata_get(&tdata,idx) != IDX_OK) {
-                UNEXPECTED_MSG;
-            }
-            m->emcioStatus.tool.toolInSpindle = tdata.toolno;
-            gomc_log_debugf(m->env->log, m->name, "EMC_TOOL_SET_NUMBER idx=%d old_loaded=%d new_number=%d",
-                 idx, m->emcioStatus.tool.toolInSpindle, tdata.toolno);
-            *(d->tool_number) = m->emcioStatus.tool.toolInSpindle;
-        }
-        break;
-
-        case EMC_COOLANT_MIST_ON_TYPE:
-            gomc_log_debugf(m->env->log, m->name, "EMC_COOLANT_MIST_ON");
-            m->emcioStatus.coolant.mist = 1;
-            *(d->coolant_mist) = 1;
-            break;
-
-        case EMC_COOLANT_MIST_OFF_TYPE:
-            gomc_log_debugf(m->env->log, m->name, "EMC_COOLANT_MIST_OFF");
-            m->emcioStatus.coolant.mist = 0;
-            *(d->coolant_mist) = 0;
-            break;
-
-        case EMC_COOLANT_FLOOD_ON_TYPE:
-            gomc_log_debugf(m->env->log, m->name, "EMC_COOLANT_FLOOD_ON");
-            m->emcioStatus.coolant.flood = 1;
-            *(d->coolant_flood) = 1;
-            break;
-
-        case EMC_COOLANT_FLOOD_OFF_TYPE:
-            gomc_log_debugf(m->env->log, m->name, "EMC_COOLANT_FLOOD_OFF");
-            m->emcioStatus.coolant.flood = 0;
-            *(d->coolant_flood) = 0;
-            break;
-
-        case EMC_AUX_ESTOP_ON_TYPE:
-            gomc_log_debugf(m->env->log, m->name, "EMC_AUX_ESTOP_ON");
-            *(d->user_enable_out) = 0;
-            hal_init_pins(m);
-            break;
-
-        case EMC_AUX_ESTOP_OFF_TYPE:
-            gomc_log_debugf(m->env->log, m->name, "EMC_AUX_ESTOP_OFF");
-            *(d->user_enable_out) = 1;
-            *(d->user_request_enable) = 1;
-            break;
-
-        case EMC_AUX_ESTOP_RESET_TYPE:
-            gomc_log_debugf(m->env->log, m->name, "EMC_AUX_ESTOP_RESET");
-            break;
-
-        case EMC_LUBE_ON_TYPE:
-            gomc_log_debugf(m->env->log, m->name, "EMC_LUBE_ON");
-            m->emcioStatus.lube.on = 1;
-            *(d->lube) = 1;
-            break;
-
-        case EMC_LUBE_OFF_TYPE:
-            gomc_log_debugf(m->env->log, m->name, "EMC_LUBE_OFF");
-            m->emcioStatus.lube.on = 0;
-            *(d->lube) = 0;
-            break;
-
-        case EMC_SET_DEBUG_TYPE:
-            gomc_log_debugf(m->env->log, m->name, "EMC_SET_DEBUG");
-            emc_debug = ((EMC_SET_DEBUG *) m->emcioCommand)->debug;
-            break;
-
-        default:
-            gomc_log_warnf(m->env->log, m->name, "IO: unknown command %s", emcSymbolLookup(type));
-            break;
-        }                        /* switch (type) */
-
-        // ack for the received command
-        m->emcioStatus.command_type = type;
-        m->emcioStatus.echo_serial_number = m->emcioCommand->serial_number;
-        m->emcioStatus.heartbeat++;
-        m->emcioStatus.reason = m->toolchanger_reason;
-        m->emcioStatusBuffer->write(&m->emcioStatus);
-
-        esleep(emc_io_cycle_time);
-        *(d->user_request_enable) = 0;
-
-    }        // end of "while (!m->done)" loop
-
-    return NULL;
-}
-
 
 /********************************************************************
 * GMI emcio callbacks — called by milltask via function pointers.
@@ -1715,24 +1090,12 @@ static int iocontrol_start(cmod_t *self)
 {
     iocontrol_module *m = (iocontrol_module *)self->priv;
 
-    if (0 != emcIoNmlGet(m)) {
-        gomc_log_errorf(m->env->log, m->name, "can't connect to NML buffers in %s",
-                        emc_nmlfile);
-        return -1;
-    }
-
     // Register GMI emcio API so milltask can call us via function pointers.
     m->emcio_cb = emcio_table;
     m->emcio_cb.ctx = m;
     emcio_api_register(m->env->api, "iocontrol", &m->emcio_cb);
 
     m->done = 0;
-    m->thread_started = true;
-    if (pthread_create(&m->loop_thread, NULL, iocontrol_loop, m) != 0) {
-        gomc_log_errorf(m->env->log, m->name, "IOV2: ERROR: pthread_create failed");
-        m->thread_started = false;
-        return -1;
-    }
 
     return 0;
 }
@@ -1740,26 +1103,12 @@ static int iocontrol_start(cmod_t *self)
 static void iocontrol_stop(cmod_t *self)
 {
     iocontrol_module *m = (iocontrol_module *)self->priv;
-
     m->done = 1;
-    if (m->thread_started) {
-        pthread_join(m->loop_thread, NULL);
-        m->thread_started = false;
-    }
 }
 
 static void iocontrol_destroy(cmod_t *self)
 {
     iocontrol_module *m = (iocontrol_module *)self->priv;
-
-    if (m->emcioStatusBuffer != 0) {
-        delete m->emcioStatusBuffer;
-        m->emcioStatusBuffer = 0;
-    }
-    if (m->emcioCommandBuffer != 0) {
-        delete m->emcioCommandBuffer;
-        m->emcioCommandBuffer = 0;
-    }
 
     for(int i=0; i<CANON_POCKETS_MAX; i++) {
         free(m->ttcomments[i]);

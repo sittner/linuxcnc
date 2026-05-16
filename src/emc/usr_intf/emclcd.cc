@@ -1601,33 +1601,7 @@ static void update()
 
 static void thisQuit()
 {
-    EMC_NULL emc_null_msg;
-
     deleteScreens();
-
-    if (emcStatusBuffer != 0) {
-	// wait until current message has been received
-	emcCommandWaitReceived();
-    }
-
-    // clean up NML buffers
-
-    if (emcErrorBuffer != 0) {
-	delete emcErrorBuffer;
-	emcErrorBuffer = 0;
-    }
-
-    if (emcStatusBuffer != 0) {
-	delete emcStatusBuffer;
-	emcStatusBuffer = 0;
-	emcStatus = 0;
-    }
-
-    if (emcCommandBuffer != 0) {
-	delete emcCommandBuffer;
-	emcCommandBuffer = 0;
-    }
-
     exit(0);
 }
 

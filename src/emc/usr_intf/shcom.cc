@@ -77,133 +77,24 @@ void strupr(char *s)
 
 int emcTaskNmlGet()
 {
-    int retval = 0;
-
-    // try to connect to EMC cmd
-    if (emcCommandBuffer == 0) {
-	emcCommandBuffer =
-	    new RCS_CMD_CHANNEL(emcFormat, "emcCommand", "xemc",
-				emc_nmlfile);
-	if (!emcCommandBuffer->valid()) {
-	    delete emcCommandBuffer;
-	    emcCommandBuffer = 0;
-	    retval = -1;
-	}
-    }
-    // try to connect to EMC status
-    if (emcStatusBuffer == 0) {
-	emcStatusBuffer =
-	    new RCS_STAT_CHANNEL(emcFormat, "emcStatus", "xemc",
-				 emc_nmlfile);
-	if (!emcStatusBuffer->valid()
-	    || EMC_STAT_TYPE != emcStatusBuffer->peek()) {
-	    delete emcStatusBuffer;
-	    emcStatusBuffer = 0;
-	    emcStatus = 0;
-	    retval = -1;
-	} else {
-	    emcStatus = (EMC_STAT *) emcStatusBuffer->get_address();
-	}
-    }
-
-    return retval;
+    fprintf(stderr, "NML channels have been removed. Use the REST/WebSocket API instead.\n");
+    return -1;
 }
 
 int emcErrorNmlGet()
 {
-    int retval = 0;
-
-    if (emcErrorBuffer == 0) {
-	emcErrorBuffer =
-	    new NML(nmlErrorFormat, "emcError", "xemc", emc_nmlfile);
-	if (!emcErrorBuffer->valid()) {
-	    delete emcErrorBuffer;
-	    emcErrorBuffer = 0;
-	    retval = -1;
-	}
-    }
-
-    return retval;
+    return -1;
 }
 
 int tryNml(double retry_time, double retry_interval)
 {
-    double end;
-    int good;
-
-    if ((emc_debug & EMC_DEBUG_NML) == 0) {
-	set_rcs_print_destination(RCS_PRINT_TO_NULL);	// inhibit diag
-	// messages
-    }
-    end = retry_time;
-    good = 0;
-    do {
-	if (0 == emcTaskNmlGet()) {
-	    good = 1;
-	    break;
-	}
-	esleep(retry_interval);
-	end -= retry_interval;
-    } while (end > 0.0);
-    if ((emc_debug & EMC_DEBUG_NML) == 0) {
-	set_rcs_print_destination(RCS_PRINT_TO_STDOUT);	// inhibit diag
-	// messages
-    }
-    if (!good) {
-	return -1;
-    }
-
-    if ((emc_debug & EMC_DEBUG_NML) == 0) {
-	set_rcs_print_destination(RCS_PRINT_TO_NULL);	// inhibit diag
-	// messages
-    }
-    end = retry_time;
-    good = 0;
-    do {
-	if (0 == emcErrorNmlGet()) {
-	    good = 1;
-	    break;
-	}
-	esleep(retry_interval);
-	end -= retry_interval;
-    } while (end > 0.0);
-    if ((emc_debug & EMC_DEBUG_NML) == 0) {
-	set_rcs_print_destination(RCS_PRINT_TO_STDOUT);	// inhibit diag
-	// messages
-    }
-    if (!good) {
-	return -1;
-    }
-
-    return 0;
+    fprintf(stderr, "NML channels have been removed. Use the REST/WebSocket API instead.\n");
+    return -1;
 }
 
 int updateStatus()
 {
-    NMLTYPE type;
-
-    if (0 == emcStatus || 0 == emcStatusBuffer
-	|| !emcStatusBuffer->valid()) {
-	return -1;
-    }
-
-    switch (type = emcStatusBuffer->peek()) {
-    case -1:
-	// error on CMS channel
-	return -1;
-	break;
-
-    case 0:			// no new data
-    case EMC_STAT_TYPE:	// new data
-	// new data
-	break;
-
-    default:
-	return -1;
-	break;
-    }
-
-    return 0;
+    return -1;
 }
 
 /*
@@ -212,73 +103,7 @@ int updateStatus()
 */
 int updateError()
 {
-    NMLTYPE type;
-
-    if (0 == emcErrorBuffer || !emcErrorBuffer->valid()) {
-	return -1;
-    }
-
-    switch (type = emcErrorBuffer->read()) {
-    case -1:
-	// error reading channel
-	return -1;
-	break;
-
-    case 0:
-	// nothing new
-	break;
-
-    case EMC_OPERATOR_ERROR_TYPE:
-	strncpy(error_string,
-		((EMC_OPERATOR_ERROR *) (emcErrorBuffer->get_address()))->
-		error, LINELEN - 1);
-	error_string[NML_ERROR_LEN - 1] = 0;
-	break;
-
-    case EMC_OPERATOR_TEXT_TYPE:
-	strncpy(operator_text_string,
-		((EMC_OPERATOR_TEXT *) (emcErrorBuffer->get_address()))->
-		text, LINELEN - 1);
-	operator_text_string[NML_TEXT_LEN - 1] = 0;
-	break;
-
-    case EMC_OPERATOR_DISPLAY_TYPE:
-	strncpy(operator_display_string,
-		((EMC_OPERATOR_DISPLAY *) (emcErrorBuffer->
-					   get_address()))->display,
-		LINELEN - 1);
-	operator_display_string[NML_DISPLAY_LEN - 1] = 0;
-	break;
-
-    case NML_ERROR_TYPE:
-	strncpy(error_string,
-		((NML_ERROR *) (emcErrorBuffer->get_address()))->error,
-		NML_ERROR_LEN - 1);
-	error_string[NML_ERROR_LEN - 1] = 0;
-	break;
-
-    case NML_TEXT_TYPE:
-	strncpy(operator_text_string,
-		((NML_TEXT *) (emcErrorBuffer->get_address()))->text,
-		NML_TEXT_LEN - 1);
-	operator_text_string[NML_TEXT_LEN - 1] = 0;
-	break;
-
-    case NML_DISPLAY_TYPE:
-	strncpy(operator_display_string,
-		((NML_DISPLAY *) (emcErrorBuffer->get_address()))->display,
-		NML_DISPLAY_LEN - 1);
-	operator_display_string[NML_DISPLAY_LEN - 1] = 0;
-	break;
-
-    default:
-	// if not recognized, set the error string
-	snprintf(error_string, sizeof(error_string), "unrecognized error %" PRId32, type);
-	return -1;
-	break;
-    }
-
-    return 0;
+    return -1;
 }
 
 #define EMC_COMMAND_DELAY   0.1	// how long to sleep between checks
@@ -330,12 +155,7 @@ int emcCommandWaitReceived()
 
 int emcCommandSend(RCS_CMD_MSG & cmd)
 {
-    // write command
-    if (emcCommandBuffer->write(&cmd)) {
-        return -1;
-    }
-    emcCommandSerialNumber = cmd.serial_number;
-    return 0;
+    return -1;
 }
 
 
@@ -1274,13 +1094,6 @@ int iniLoad(const char *filename)
     } else {
 	// not found, use default
 	emc_debug = 0;
-    }
-
-    if (NULL != (inistring = inifile.Find("NML_FILE", "EMC"))) {
-	// copy to global
-	rtapi_strxcpy(emc_nmlfile, inistring);
-    } else {
-	// not found, use default
     }
 
     for (t = 0; t < EMCMOT_MAX_JOINTS; t++) {
