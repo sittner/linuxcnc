@@ -21,6 +21,7 @@ MILLTASK_GOMC_SRCS := \
 	libnml/linklist/linklist.cc \
 	emc/nml_intf/canon_position.cc \
 	emc/nml_intf/interpl.cc \
+	emc/nml_intf/emc_symbol_lookup.cc \
 
 USERSRCS += $(MILLTASK_GOMC_SRCS)
 
