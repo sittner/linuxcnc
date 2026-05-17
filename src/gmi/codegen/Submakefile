@@ -470,6 +470,36 @@ $(GMI_INTERP_EXT_GEN)/interp_ext_cgo.go: $(GMI_INTERP_EXT_GEN)/interp_ext_api.h
 
 TARGETS += $(GMI_INTERP_EXT_GEN)/interp_ext_api.h
 
+# --- motctl API (motion controller command interface) ---
+
+GMI_MOTCTL_IDL := gmi/idl/motctl.gmi
+GMI_MOTCTL_GEN := gomc/generated/gmi/motctl
+
+$(GMI_MOTCTL_GEN)/motctl_api.h: $(GMI_MOTCTL_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI motctl API from $(GMI_MOTCTL_IDL)"
+	@mkdir -p $(GMI_MOTCTL_GEN)
+	$(Q)$(GMICOMPILE) --server-c $(GMI_MOTCTL_IDL) -o $(GMI_MOTCTL_GEN)/motctl_api.h
+	$(Q)$(GMICOMPILE_BIN) add-gmi generated/gmi/motctl
+
+$(GMI_MOTCTL_GEN)/motctl_cgo.go: $(GMI_MOTCTL_GEN)/motctl_api.h
+
+TARGETS += $(GMI_MOTCTL_GEN)/motctl_api.h
+
+# --- motstat API (motion controller status interface) ---
+
+GMI_MOTSTAT_IDL := gmi/idl/motstat.gmi
+GMI_MOTSTAT_GEN := gomc/generated/gmi/motstat
+
+$(GMI_MOTSTAT_GEN)/motstat_api.h: $(GMI_MOTSTAT_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI motstat API from $(GMI_MOTSTAT_IDL)"
+	@mkdir -p $(GMI_MOTSTAT_GEN)
+	$(Q)$(GMICOMPILE) --server-c $(GMI_MOTSTAT_IDL) -o $(GMI_MOTSTAT_GEN)/motstat_api.h
+	$(Q)$(GMICOMPILE_BIN) add-gmi generated/gmi/motstat
+
+$(GMI_MOTSTAT_GEN)/motstat_cgo.go: $(GMI_MOTSTAT_GEN)/motstat_api.h
+
+TARGETS += $(GMI_MOTSTAT_GEN)/motstat_api.h
+
 clean: gmi-codegen-clean
 .PHONY: gmi-codegen-clean
 gmi-codegen-clean:

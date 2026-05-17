@@ -27,6 +27,15 @@
 #include "rtapi_math.h"
 #include "axis.h"
 
+#include "motctl_api.h"
+#include "motstat_api.h"
+
+/* From motctl_handlers.c / motstat_handlers.c */
+extern void motctl_init_handlers(emcmot_struct_t *mot, double timeout);
+extern motctl_callbacks_t motctl_get_callbacks(void);
+extern void motstat_init_handlers(emcmot_struct_t *mot);
+extern motstat_callbacks_t motstat_get_callbacks(void);
+
 // Forward declarations (defined later in this file)
 extern const tp_callbacks_t   *motmod_tp_api;
 extern const home_callbacks_t *motmod_home_api;
@@ -38,8 +47,6 @@ extern const home_callbacks_t *motmod_home_api;
 *                    MODULE PARAMETERS                                 *
 ************************************************************************/
 
-/* RTAPI shmem key - for comms with higher level user space stuff */
-static int key = DEFAULT_SHMEM_KEY;	/* the shared memory key, default value */
 static long base_period_nsec = 0;	/* fastest thread period */
 int base_thread_fp = 0;	/* default is no floating point in base thread */
 static long servo_period_nsec = 1000000;	/* servo thread period */
@@ -96,8 +103,6 @@ struct emcmot_internal_t *emcmotInternal = 0;
 ************************************************************************/
 
 /* RTAPI shmem ID - for comms with higher level user space stuff */
-static int emc_shmem_id;	/* the shared memory ID */
-
 static int mot_comp_id;	/* component ID for motion module */
 
 /***********************************************************************
@@ -608,8 +613,7 @@ static int parse_argv(int argc, const char **argv)
         const char *a = argv[i];
         if (!a) continue;
 
-        if (strncmp(a, "key=", 4) == 0)                  key = atoi(a + 4);
-        else if (strncmp(a, "base_period_nsec=", 17) == 0) base_period_nsec = atol(a + 17);
+        if (strncmp(a, "base_period_nsec=", 17) == 0) base_period_nsec = atol(a + 17);
         else if (strncmp(a, "base_thread_fp=", 15) == 0)  base_thread_fp = atoi(a + 15);
         else if (strncmp(a, "servo_period_nsec=", 18) == 0) servo_period_nsec = atol(a + 18);
         else if (strncmp(a, "traj_period_nsec=", 17) == 0) traj_period_nsec = atol(a + 17);
@@ -731,6 +735,33 @@ int New(const cmod_env_t *env, const char *name,
 	    _("MOTION: failed to register mot API: %d\n"), retval);
 	hal_exit(mot_comp_id);
 	return -1;
+    }
+
+    /* Register motctl/motstat GMI APIs so milltask can look them up. */
+    {
+        static motctl_callbacks_t motctl_cb;
+        static motstat_callbacks_t motstat_cb;
+
+        /* Callbacks are wired to stubs until init_handlers() is called
+           in Init().  The struct addresses are stable (static), so
+           consumers can stash the pointer during their own New(). */
+        motctl_cb = motctl_get_callbacks();
+        retval = motctl_api_register(env->api, "default", &motctl_cb);
+        if (retval != 0) {
+            rtapi_print_msg(RTAPI_MSG_ERR,
+                _("MOTION: failed to register motctl API: %d\n"), retval);
+            hal_exit(mot_comp_id);
+            return -1;
+        }
+
+        motstat_cb = motstat_get_callbacks();
+        retval = motstat_api_register(env->api, "default", &motstat_cb);
+        if (retval != 0) {
+            rtapi_print_msg(RTAPI_MSG_ERR,
+                _("MOTION: failed to register motstat API: %d\n"), retval);
+            hal_exit(mot_comp_id);
+            return -1;
+        }
     }
 
     if (( num_joints < 1 ) || ( num_joints > EMCMOT_MAX_JOINTS )) {
@@ -893,6 +924,10 @@ static int motmod_init(cmod_t *self)
 	return -1;
     }
 
+    /* Wire up motctl/motstat handler contexts now that emcmotStruct exists. */
+    motctl_init_handlers(emcmotStruct, DEFAULT_EMCMOT_COMM_TIMEOUT);
+    motstat_init_handlers(emcmotStruct);
+
     retval = export_functions();
     if (retval != 0) {
 	rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: export_functions() failed\n"));
@@ -932,11 +967,10 @@ static void motmod_Destroy(cmod_t *self)
 
     rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: Destroy() started.\n");
 
-    /* free shared memory */
-    retval = rtapi_shmem_delete(emc_shmem_id, mot_comp_id);
-    if (retval < 0) {
-	rtapi_print_msg(RTAPI_MSG_ERR,
-	    _("MOTION: rtapi_shmem_delete() failed, returned %d\n"), retval);
+    /* free motion structure */
+    if (emcmotStruct) {
+        rtapi_free(emcmotStruct);
+        emcmotStruct = 0;
     }
     /* disconnect from HAL and RTAPI */
     retval = hal_exit(mot_comp_id);
@@ -1324,7 +1358,6 @@ static int init_comm_buffers(void)
 {
     int joint_num, spindle_num, n;
     emcmot_joint_t *joint;
-    int retval;
 
     rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: init_comm_buffers() starting...\n");
 
@@ -1334,22 +1367,13 @@ static int init_comm_buffers(void)
     emcmotCommand = 0;
     emcmotConfig = 0;
 
-    /* allocate and initialize the shared memory structure */
-    emc_shmem_id = rtapi_shmem_new(key, mot_comp_id, sizeof(emcmot_struct_t));
-    if (emc_shmem_id < 0) {
+    /* allocate the motion structure (direct memory, no shmem key) */
+    emcmotStruct = rtapi_calloc(sizeof(emcmot_struct_t));
+    if (!emcmotStruct) {
 	rtapi_print_msg(RTAPI_MSG_ERR,
-	    "MOTION: rtapi_shmem_new failed, returned %d\n", emc_shmem_id);
+	    "MOTION: rtapi_calloc failed for emcmot_struct_t\n");
 	return -1;
     }
-    retval = rtapi_shmem_getptr(emc_shmem_id, (void **) &emcmotStruct);
-    if (retval < 0) {
-	rtapi_print_msg(RTAPI_MSG_ERR,
-	    "MOTION: rtapi_shmem_getptr failed, returned %d\n", retval);
-	return -1;
-    }
-
-    /* zero shared memory before doing anything else. */
-    memset(emcmotStruct, 0, sizeof(emcmot_struct_t));
 
     /* we'll reference emcmotStruct directly */
     emcmotCommand = &emcmotStruct->command;

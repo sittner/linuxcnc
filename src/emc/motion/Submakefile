@@ -21,6 +21,8 @@ MOTMOD_CMOD_SRCS := \
     emc/motion/control.c \
     emc/motion/axis.c \
     emc/motion/simple_tp.c \
+    emc/motion/motctl_handlers.c \
+    emc/motion/motstat_handlers.c \
     emc/kinematics/cubic.c
 
 MOTMOD_CMOD_CFLAGS := \
@@ -28,7 +30,7 @@ MOTMOD_CMOD_CFLAGS := \
     -DUSPACE -D_GNU_SOURCE -Drealtime -DSEQUENTIAL_SUPPORT \
     -fno-builtin-sin -fno-builtin-cos -fno-builtin-sincos \
     -fno-strict-aliasing -fwrapv \
-    -I. -I../include -Ilibnml/linklist -Igomc/pkg/cmodule -Igomc/generated/gmi/kins -Igomc/generated/gmi/tp -Igomc/generated/gmi/home -Igomc/generated/gmi/mot -Iemc/tp -Iemc/motion
+    -I. -I../include -Ilibnml/linklist -Igomc/pkg/cmodule -Igomc/generated/gmi/kins -Igomc/generated/gmi/tp -Igomc/generated/gmi/home -Igomc/generated/gmi/mot -Igomc/generated/gmi/motctl -Igomc/generated/gmi/motstat -Iemc/tp -Iemc/motion
 
 ../cmod/motmod.so: $(MOTMOD_CMOD_SRCS) \
                    $(wildcard emc/motion/*.h) \
@@ -37,6 +39,8 @@ MOTMOD_CMOD_CFLAGS := \
                    gomc/generated/gmi/tp/tp_api.h \
                    gomc/generated/gmi/home/home_api.h \
                    gomc/generated/gmi/mot/mot_api.h \
+                   gomc/generated/gmi/motctl/motctl_api.h \
+                   gomc/generated/gmi/motstat/motstat_api.h \
                    | headers ../lib/liblinuxcnchal.so
 	$(ECHO) "Compiling cmod motmod.so"
 	@mkdir -p $(dir $@)
