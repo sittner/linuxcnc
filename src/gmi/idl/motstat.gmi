@@ -187,6 +187,12 @@ type MotionStatus {
     heartbeat: u32
     config_num: i32
 
+    # --- Config snapshot (from emcmot_config_t, changes tracked by config_num) ---
+    kin_type: i32
+    traj_cycle_time: f64
+    limit_vel: f64
+    debug: i32
+
     # --- Per-joint status ---
     joints: [MAX_JOINTS]JointStatus
 

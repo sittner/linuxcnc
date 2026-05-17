@@ -230,6 +230,9 @@ func disable() -> i32
 
 # ─── Joint Configuration ───
 
+@doc "Mark a joint as active (amps will be enabled when system is enabled)"
+func joint_activate(joint: i32) -> i32
+
 @doc "Set joint position limits"
 func set_joint_position_limits(joint: i32, min: f64, max: f64) -> i32
 

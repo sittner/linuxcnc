@@ -672,7 +672,7 @@ int emcJointActivate(int joint)
 	return 0;
     }
 
-    int retval = 0; // joint activate is a no-op in the motctl API
+    int retval = motctl->joint_activate(motctl->ctx, joint);
 
     if (emc_debug & EMC_DEBUG_CONFIG) {
         rcs_print("%s(%d) returned %d\n", __FUNCTION__, joint, retval);
@@ -835,6 +835,14 @@ int emcJointLoadComp(int joint, const char *file, int type)
 }
 
 static int new_config = 0;
+
+// Cached config fields from motstat (populated on config_num change).
+static struct {
+    int32_t kin_type;
+    double  traj_cycle_time;
+    double  limit_vel;
+    int32_t debug;
+} cached_config;
 
 /*! \todo FIXME - debugging - uncomment the following line to log changes in
    JOINT_FLAG */
@@ -1451,14 +1459,9 @@ int emcTrajUpdate(EMC_TRAJ_STAT * stat)
     stat->feed_hold_enabled = enables & FH_ENABLED;
 
     if (new_config) {
-	// Config values come from INI (they are also set as module params
-	// on the motmod side, so we read them directly from INI).
-	const char *ct = the_ini->get(the_ini->ctx, "TRAJ", "CYCLE_TIME");
-	if (ct) stat->cycleTime = strtod(ct, NULL);
-	const char *mv = the_ini->get(the_ini->ctx, "TRAJ", "MAX_VELOCITY");
-	if (mv) stat->maxVelocity = strtod(mv, NULL);
-	// kinType is set by kins module, read from motstat
-	// stat->kinematics_type is already set from the initial config
+	stat->cycleTime = cached_config.traj_cycle_time;
+	stat->kinematics_type = cached_config.kin_type;
+	stat->maxVelocity = cached_config.limit_vel;
     }
 
     return 0;
@@ -1915,6 +1918,10 @@ int emcMotionUpdate(EMC_MOTION_STAT * stat)
     if (ms.config_num != (int32_t)last_config_num) {
 	last_config_num = ms.config_num;
 	new_config = 1;
+	cached_config.kin_type        = ms.kin_type;
+	cached_config.traj_cycle_time = ms.traj_cycle_time;
+	cached_config.limit_vel       = ms.limit_vel;
+	cached_config.debug           = ms.debug;
     }
     // read the emcmot error
     if (log_error_sub) {
@@ -1941,7 +1948,7 @@ int emcMotionUpdate(EMC_MOTION_STAT * stat)
     stat->heartbeat = localMotionHeartbeat;
     stat->command_type = localMotionCommandType;
     stat->echo_serial_number = localMotionEchoSerialNumber;
-    stat->debug = emc_debug;
+    stat->debug = cached_config.debug;
 
     for (dio = 0; dio < EMCMOT_MAX_DIO; dio++) {
 	stat->synch_di[dio] = emcmotStatus.synch_di[dio];

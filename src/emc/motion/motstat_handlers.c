@@ -149,6 +149,12 @@ static int32_t h_get_status(void *ctx, motstat_motion_status_t *status)
     status->heartbeat  = s.heartbeat;
     status->config_num = s.config_num;
 
+    /* Config snapshot */
+    status->kin_type        = cfg->kinType;
+    status->traj_cycle_time = cfg->trajCycleTime;
+    status->limit_vel       = cfg->limitVel;
+    status->debug           = cfg->debug;
+
     /* Joints */
     int nj = cfg->numJoints;
     if (nj > MOTSTAT_MAX_JOINTS) nj = MOTSTAT_MAX_JOINTS;

@@ -597,6 +597,14 @@ static int32_t h_disable(void *ctx)
  * Joint Configuration
  * ================================================================ */
 
+static int32_t h_joint_activate(void *ctx, int32_t joint)
+{
+    CTX; emcmot_command_t cmd;
+    cmd_init(&cmd, EMCMOT_JOINT_ACTIVATE);
+    cmd.joint = joint;
+    return send_command(mc, &cmd);
+}
+
 static int32_t h_set_joint_position_limits(void *ctx, int32_t joint,
     double min, double max)
 {
@@ -880,6 +888,7 @@ motctl_callbacks_t motctl_get_callbacks(void)
         .set_max_feed_override     = h_set_max_feed_override,
         .enable                    = h_enable,
         .disable                   = h_disable,
+        .joint_activate            = h_joint_activate,
         .set_joint_position_limits = h_set_joint_position_limits,
         .set_joint_backlash        = h_set_joint_backlash,
         .set_joint_max_ferror      = h_set_joint_max_ferror,
