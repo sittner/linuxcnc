@@ -697,21 +697,23 @@ static int32_t h_set_axis_position_limits(void *ctx, int32_t axis,
     return send_command(mc, &cmd);
 }
 
-static int32_t h_set_axis_vel_limit(void *ctx, int32_t axis, double vel)
+static int32_t h_set_axis_vel_limit(void *ctx, int32_t axis, double vel, double ext_offset_vel)
 {
     CTX; emcmot_command_t cmd;
     cmd_init(&cmd, EMCMOT_SET_AXIS_VEL_LIMIT);
     cmd.axis = axis;
     cmd.vel = vel;
+    cmd.ext_offset_vel = ext_offset_vel;
     return send_command(mc, &cmd);
 }
 
-static int32_t h_set_axis_acc_limit(void *ctx, int32_t axis, double acc)
+static int32_t h_set_axis_acc_limit(void *ctx, int32_t axis, double acc, double ext_offset_acc)
 {
     CTX; emcmot_command_t cmd;
     cmd_init(&cmd, EMCMOT_SET_AXIS_ACC_LIMIT);
     cmd.axis = axis;
     cmd.acc = acc;
+    cmd.ext_offset_acc = ext_offset_acc;
     return send_command(mc, &cmd);
 }
 

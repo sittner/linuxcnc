@@ -55,7 +55,7 @@
 #include <unistd.h>		// close(), read(), write()
 #include <libintl.h>
 #include <locale.h>
-#include "usrmotintf.h"
+// usrmotintf.h removed — milltask uses motctl/motstat APIs now
 #include <rtapi_string.h>	// rtapi_strlcpy()
 #include "tooldata.hh"
 
@@ -564,8 +564,6 @@ static int mcode_has_handler(int mcode)
     if (mcode < 100 || mcode > 199) return 0;
     return mcode_handlers[mcode - 100].fn != NULL;
 }
-
-static emcmot_config_t emcmotConfig;
 
 // command pointer — set from GMI slot buffer each cycle
 static RCS_CMD_MSG *emcCommand = 0;
@@ -3443,9 +3441,7 @@ static void *milltask_loop(void *arg)
     minTime = DBL_MAX;
     maxTime = 0.0;
 
-    if (0 != usrmotReadEmcmotConfig(&emcmotConfig)) {
-        rcs_print("%s failed usrmotReadEmcmotconfig()\n",__FILE__);
-    }
+    // Config is now read via motstat/INI — no usrmotReadEmcmotConfig needed.
     while (!done) {
         static int gave_soft_limit_message = 0;
         // Buffer for commands received via the GMI command slot.
@@ -3526,7 +3522,7 @@ static void *milltask_loop(void *arg)
             && emcStatus->motion.on_soft_limit) { 
            if (!gave_soft_limit_message) {
                 emcOperatorError(0, "On Soft Limit");
-                if (emcmotConfig.kinType == KINEMATICS_IDENTITY) {
+                if (emcStatus->motion.traj.kinematics_type == KINEMATICS_IDENTITY) {
                     emcOperatorError(0,"Identity kinematics are MISCONFIGURED");
                 }
                 gave_soft_limit_message = 1;

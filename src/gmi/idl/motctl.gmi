@@ -262,11 +262,11 @@ func override_limits(joint: i32) -> i32
 @doc "Set axis position limits"
 func set_axis_position_limits(axis: i32, min: f64, max: f64) -> i32
 
-@doc "Set axis velocity limit"
-func set_axis_vel_limit(axis: i32, vel: f64) -> i32
+@doc "Set axis velocity limit (with ext_offset velocity)"
+func set_axis_vel_limit(axis: i32, vel: f64, ext_offset_vel: f64) -> i32
 
-@doc "Set axis acceleration limit"
-func set_axis_acc_limit(axis: i32, acc: f64) -> i32
+@doc "Set axis acceleration limit (with ext_offset acceleration)"
+func set_axis_acc_limit(axis: i32, acc: f64, ext_offset_acc: f64) -> i32
 
 @doc "Set which joint locks for indexing on this axis"
 func set_axis_locking_joint(axis: i32, joint: i32) -> i32

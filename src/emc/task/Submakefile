@@ -6,7 +6,6 @@ MILLTASK_GOMC_SRCS := \
 	emc/task/emctask.cc \
 	emc/task/emccanon.cc \
 	emc/task/emctaskmain_gomc.cc \
-	emc/motion/usrmotintf.cc \
 	emc/task/taskintf_gomc.cc \
 	emc/task/taskclass_gmi.cc \
 	emc/task/backtrace.cc \
@@ -29,6 +28,7 @@ $(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): EXTRAFLAGS += -fPIC \
     -Igomc/generated/gmi/mcode_handler -Igomc/generated/gmi/interp_ext -Igomc/generated/gmi/interp_ctx \
     -Igomc/generated/gmi/emccmd -Igomc/generated/gmi/emcerror -Igomc/generated/gmi/emcstat \
     -Igomc/generated/gmi/emcio \
+    -Igomc/generated/gmi/motctl -Igomc/generated/gmi/motstat \
     -Igomc/pkg/cmodule
 
 # Generated GMI headers needed by milltask sources (bootstrap deps)
@@ -40,6 +40,8 @@ $(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/emccmd/emccmd_api.
 $(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/emcerror/emcerror_api.h
 $(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/emcstat/emcstat_api.h
 $(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/emcio/emcio_api.h
+$(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/motctl/motctl_api.h
+$(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/motstat/motstat_api.h
 
 ../cmod/milltask.so: $(call TOOBJS, $(MILLTASK_GOMC_SRCS)) \
                      ../lib/librs274.so.0 ../lib/liblinuxcnc.a \

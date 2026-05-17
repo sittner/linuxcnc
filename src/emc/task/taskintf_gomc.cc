@@ -17,8 +17,6 @@
 #include <string.h>		// memcpy() strncpy()
 #include <unistd.h>             // unlink()
 
-#include "usrmotintf.h"		// usrmotInit(), usrmotReadEmcmotStatus(),
-				// usrmotWriteEmcmotCommand(), etc.
 #include "motion.h"		// emcmot_command_t,STATUS, etc.
 #include "homing.h"
 #include "emc.hh"
@@ -30,6 +28,9 @@
 #include "gomc/pkg/cmodule/gomc_ini.h"
 #include "gomc/pkg/cmodule/gomc_hal.h"
 #include "gomc/pkg/cmodule/gomc_log.h"
+#include "gomc/pkg/cmodule/gomc_api.h"
+#include "motctl_api.h"
+#include "motstat_api.h"
 #include "iniaxis_gomc.hh"
 #include "inijoint_gomc.hh"
 #include "inispindle_gomc.hh"
@@ -44,6 +45,10 @@ static const gomc_ini_t *the_ini;
 static const gomc_hal_t *the_hal;
 static const gomc_log_t *the_log;
 
+// Motion controller APIs — looked up from the GMI registry during init.
+static const motctl_callbacks_t *motctl;
+static const motstat_callbacks_t *motstat;
+
 // Log subscription for forwarding RTAPI_MSG_ERR to OPERATOR_ERROR.
 static gomc_log_sub_t *log_error_sub;
 
@@ -54,6 +59,28 @@ void taskintf_gomc_init(const gomc_ini_t *ini,
     the_ini = ini;
     the_hal = hal;
     the_log = log;
+}
+
+// Called once the gomc_api_t is available (after New(), before Init()).
+extern const gomc_api_t *gomc_api_ptr;
+
+static int taskintf_lookup_apis(void)
+{
+    if (!gomc_api_ptr) {
+        rcs_print_error("taskintf: gomc_api_ptr is NULL\n");
+        return -1;
+    }
+    motctl = motctl_api_get(gomc_api_ptr, "default");
+    if (!motctl) {
+        rcs_print_error("taskintf: motctl API not registered (is motmod loaded?)\n");
+        return -1;
+    }
+    motstat = motstat_api_get(gomc_api_ptr, "default");
+    if (!motstat) {
+        rcs_print_error("taskintf: motstat API not registered (is motmod loaded?)\n");
+        return -1;
+    }
+    return 0;
 }
 
 /* define this to catch isnan errors, for rtlinux FPU register 
@@ -74,8 +101,6 @@ void taskintf_gomc_init(const gomc_ini_t *ini,
 
 // MOTION INTERFACE
 
-/*! \todo FIXME - this decl was originally much later in the file, moved
-here temporarily for debugging */
 static emcmot_status_t emcmotStatus;
 
 /*
@@ -94,8 +119,6 @@ static struct JointConfig_t JointConfig[EMCMOT_MAX_JOINTS];
 static struct AxisConfig_t AxisConfig[EMCMOT_MAX_AXIS];
 static struct SpindleConfig_t SpindleConfig[EMCMOT_MAX_SPINDLES];
 
-static emcmot_command_t emcmotCommand;
-
 __attribute__ ((unused))
 static int emcmotIoInited = 0;	// non-zero means io called init
 static int emcmotion_initialized = 0;	// non-zero means both
@@ -105,6 +128,28 @@ static int emcmotion_initialized = 0;	// non-zero means both
 static unsigned long localMotionHeartbeat = 0;
 static int localMotionCommandType = 0;
 static int localMotionEchoSerialNumber = 0;
+
+// --- Conversion helpers ---
+
+static inline motctl_pose_t to_motctl_pose(const EmcPose &p)
+{
+    motctl_pose_t mp;
+    mp.x = p.tran.x; mp.y = p.tran.y; mp.z = p.tran.z;
+    mp.a = p.a; mp.b = p.b; mp.c = p.c;
+    mp.u = p.u; mp.v = p.v; mp.w = p.w;
+    return mp;
+}
+
+static inline motctl_state_tag_t to_motctl_tag(const state_tag_t &t)
+{
+    motctl_state_tag_t mt;
+    static_assert(sizeof(mt.fields_float) == sizeof(t.fields_float), "tag float size mismatch");
+    static_assert(sizeof(mt.fields) == sizeof(t.fields), "tag int size mismatch");
+    memcpy(mt.fields_float, t.fields_float, sizeof(mt.fields_float));
+    memcpy(mt.fields, t.fields, sizeof(mt.fields));
+    mt.packed_flags = t.packed_flags;
+    return mt;
+}
 
 //FIXME-AJ: see if needed
 //static double localEmcAxisUnits[EMCMOT_MAX_AXIS];
@@ -159,11 +204,7 @@ int emcJointSetBacklash(int joint, double backlash)
 	return 0;
     }
 
-    emcmotCommand.command = EMCMOT_SET_JOINT_BACKLASH;
-    emcmotCommand.joint = joint;
-    emcmotCommand.backlash = backlash;
-
-    int retval = usrmotWriteEmcmotCommand(&emcmotCommand);
+    int retval = motctl->set_joint_backlash(motctl->ctx, joint, backlash);
 
     if (emc_debug & EMC_DEBUG_CONFIG) {
         rcs_print("%s(%d, %.4f) returned %d\n", __FUNCTION__, joint, backlash, retval);
@@ -186,12 +227,8 @@ int emcJointSetMinPositionLimit(int joint, double limit)
 
     JointConfig[joint].MinLimit = limit;
 
-    emcmotCommand.command = EMCMOT_SET_JOINT_POSITION_LIMITS;
-    emcmotCommand.joint = joint;
-    emcmotCommand.minLimit = JointConfig[joint].MinLimit;
-    emcmotCommand.maxLimit = JointConfig[joint].MaxLimit;
-
-    int retval = usrmotWriteEmcmotCommand(&emcmotCommand);
+    int retval = motctl->set_joint_position_limits(motctl->ctx, joint,
+        JointConfig[joint].MinLimit, JointConfig[joint].MaxLimit);
 
     if (emc_debug & EMC_DEBUG_CONFIG) {
         rcs_print("%s(%d, %.4g) returned %d\n", __FUNCTION__, joint, limit, retval);
@@ -214,12 +251,8 @@ int emcJointSetMaxPositionLimit(int joint, double limit)
 
     JointConfig[joint].MaxLimit = limit;
 
-    emcmotCommand.command = EMCMOT_SET_JOINT_POSITION_LIMITS;
-    emcmotCommand.joint = joint;
-    emcmotCommand.minLimit = JointConfig[joint].MinLimit;
-    emcmotCommand.maxLimit = JointConfig[joint].MaxLimit;
-
-    int retval = usrmotWriteEmcmotCommand(&emcmotCommand);
+    int retval = motctl->set_joint_position_limits(motctl->ctx, joint,
+        JointConfig[joint].MinLimit, JointConfig[joint].MaxLimit);
 
     if (emc_debug & EMC_DEBUG_CONFIG) {
         rcs_print("%s(%d, %.4g) returned %d\n", __FUNCTION__, joint, limit, retval);
@@ -239,11 +272,7 @@ int emcJointSetMotorOffset(int joint, double offset)
     if (joint < 0 || joint >= EMCMOT_MAX_JOINTS) {
 	return 0;
     }
-    emcmotCommand.command = EMCMOT_SET_JOINT_MOTOR_OFFSET;
-    emcmotCommand.joint = joint;
-    emcmotCommand.motor_offset = offset;
-    
-    int retval = usrmotWriteEmcmotCommand(&emcmotCommand);
+    int retval = motctl->set_joint_motor_offset(motctl->ctx, joint, offset);
 
     if (emc_debug & EMC_DEBUG_CONFIG) {
         rcs_print("%s(%d, %.4f) returned %d\n", __FUNCTION__, joint, offset, retval);
@@ -264,11 +293,7 @@ int emcJointSetFerror(int joint, double ferror)
 	return 0;
     }
 
-    emcmotCommand.command = EMCMOT_SET_JOINT_MAX_FERROR;
-    emcmotCommand.joint = joint;
-    emcmotCommand.maxFerror = ferror;
-
-    int retval = usrmotWriteEmcmotCommand(&emcmotCommand);
+    int retval = motctl->set_joint_max_ferror(motctl->ctx, joint, ferror);
 
     if (emc_debug & EMC_DEBUG_CONFIG) {
         rcs_print("%s(%d, %.4f) returned %d\n", __FUNCTION__, joint, ferror, retval);
@@ -288,11 +313,7 @@ int emcJointSetMinFerror(int joint, double ferror)
     if (joint < 0 || joint >= EMCMOT_MAX_JOINTS) {
 	return 0;
     }
-    emcmotCommand.command = EMCMOT_SET_JOINT_MIN_FERROR;
-    emcmotCommand.joint = joint;
-    emcmotCommand.minFerror = ferror;
-
-    int retval = usrmotWriteEmcmotCommand(&emcmotCommand);
+    int retval = motctl->set_joint_min_ferror(motctl->ctx, joint, ferror);
 
     if (emc_debug & EMC_DEBUG_CONFIG) {
         rcs_print("%s(%d, %.4f) returned %d\n", __FUNCTION__, joint, ferror, retval);
@@ -318,48 +339,24 @@ int emcJointSetHomingParams(int joint, double home, double offset, double home_f
 	return 0;
     }
 
-    emcmotCommand.command = EMCMOT_SET_JOINT_HOMING_PARAMS;
-    emcmotCommand.joint = joint;
-    emcmotCommand.home = home;
-    emcmotCommand.offset = offset;
-    emcmotCommand.home_final_vel = home_final_vel;
-    emcmotCommand.search_vel = search_vel;
-    emcmotCommand.latch_vel = latch_vel;
-    emcmotCommand.flags = 0;
-    emcmotCommand.home_sequence = sequence;
-    emcmotCommand.volatile_home = volatile_home;
-    if (use_index) {
-	emcmotCommand.flags |= HOME_USE_INDEX;
-    }
-    if (encoder_does_not_reset) {
-	emcmotCommand.flags |= HOME_INDEX_NO_ENCODER_RESET;
-    }
-    if (ignore_limits) {
-	emcmotCommand.flags |= HOME_IGNORE_LIMITS;
-    }
-    if (is_shared) {
-	emcmotCommand.flags |= HOME_IS_SHARED;
-    }
-    if (locking_indexer) {
-        emcmotCommand.flags |= HOME_UNLOCK_FIRST;
-    }
+    int flags = 0;
+    if (use_index) flags |= HOME_USE_INDEX;
+    if (encoder_does_not_reset) flags |= HOME_INDEX_NO_ENCODER_RESET;
+    if (ignore_limits) flags |= HOME_IGNORE_LIMITS;
+    if (is_shared) flags |= HOME_IS_SHARED;
+    if (locking_indexer) flags |= HOME_UNLOCK_FIRST;
     if (absolute_encoder) {
         switch (absolute_encoder) {
           case 0: break;
-          case 1: emcmotCommand.flags |= HOME_ABSOLUTE_ENCODER;
-                  emcmotCommand.flags |= HOME_NO_REHOME;
-                  break;
-          case 2: emcmotCommand.flags |= HOME_ABSOLUTE_ENCODER;
-                  emcmotCommand.flags |= HOME_NO_REHOME;
-                  emcmotCommand.flags |= HOME_NO_FINAL_MOVE;
-                  break;
-          default: fprintf(stderr,
-                   "Unknown option for absolute_encoder <%d>",absolute_encoder);
-                  break;
+          case 1: flags |= HOME_ABSOLUTE_ENCODER | HOME_NO_REHOME; break;
+          case 2: flags |= HOME_ABSOLUTE_ENCODER | HOME_NO_REHOME | HOME_NO_FINAL_MOVE; break;
+          default: fprintf(stderr, "Unknown option for absolute_encoder <%d>", absolute_encoder); break;
         }
     }
 
-    int retval = usrmotWriteEmcmotCommand(&emcmotCommand);
+    int retval = motctl->set_joint_homing_params(motctl->ctx, joint,
+        offset, home, home_final_vel, search_vel, latch_vel,
+        flags, sequence, volatile_home);
 
     if (emc_debug & EMC_DEBUG_CONFIG) {
         rcs_print("%s(%d, %.4f, %.4f, %.4f, %.4f, %.4f, %d, %d, %d, %d, %d) returned %d\n",
@@ -377,13 +374,7 @@ int emcJointUpdateHomingParams(int joint, double home, double offset, int sequen
 	return 0;
     }
 
-    emcmotCommand.command = EMCMOT_UPDATE_JOINT_HOMING_PARAMS;
-    emcmotCommand.joint = joint;
-    emcmotCommand.home = home;
-    emcmotCommand.offset = offset;
-    emcmotCommand.home_sequence = sequence;
-
-    int retval = usrmotWriteEmcmotCommand(&emcmotCommand);
+    int retval = motctl->update_joint_homing_params(motctl->ctx, joint, offset, home, sequence);
 
     if (emc_debug & EMC_DEBUG_CONFIG) {
         rcs_print("%s(%d, %.4f, %.4f) returned %d\n",
@@ -406,11 +397,7 @@ int emcJointSetMaxVelocity(int joint, double vel)
 
     JointConfig[joint].MaxVel = vel;
 
-    emcmotCommand.command = EMCMOT_SET_JOINT_VEL_LIMIT;
-    emcmotCommand.joint = joint;
-    emcmotCommand.vel = vel;
-    
-    int retval = usrmotWriteEmcmotCommand(&emcmotCommand);
+    int retval = motctl->set_joint_vel_limit(motctl->ctx, joint, vel);
 
     if (emc_debug & EMC_DEBUG_CONFIG) {
         rcs_print("%s(%d, %.4f) returned %d\n", __FUNCTION__, joint, vel, retval);
@@ -429,12 +416,8 @@ int emcJointSetMaxAcceleration(int joint, double acc)
 	acc = 0.0;
     }
     JointConfig[joint].MaxAccel = acc;
-    //FIXME-AJ: need functions for setting the AXIS_MAX_ACCEL (either from the INI, or from kins..)
-    emcmotCommand.command = EMCMOT_SET_JOINT_ACC_LIMIT;
-    emcmotCommand.joint = joint;
-    emcmotCommand.acc = acc;
-    
-    int retval = usrmotWriteEmcmotCommand(&emcmotCommand);
+
+    int retval = motctl->set_joint_acc_limit(motctl->ctx, joint, acc);
 
     if (emc_debug & EMC_DEBUG_CONFIG) {
         rcs_print("%s(%d, %.4g) returned %d\n", __FUNCTION__, joint, acc, retval);
@@ -454,12 +437,8 @@ int emcAxisSetMinPositionLimit(int axis, double limit)
 
     AxisConfig[axis].MinLimit = limit;
 
-    emcmotCommand.command = EMCMOT_SET_AXIS_POSITION_LIMITS;
-    emcmotCommand.axis = axis;
-    emcmotCommand.minLimit = AxisConfig[axis].MinLimit;
-    emcmotCommand.maxLimit = AxisConfig[axis].MaxLimit;
-
-    int retval = usrmotWriteEmcmotCommand(&emcmotCommand);
+    int retval = motctl->set_axis_position_limits(motctl->ctx, axis,
+        AxisConfig[axis].MinLimit, AxisConfig[axis].MaxLimit);
 
     if (emc_debug & EMC_DEBUG_CONFIG) {
         rcs_print("%s(%d, %.4f) returned %d\n", __FUNCTION__, axis, limit, retval);
@@ -477,12 +456,8 @@ int emcAxisSetMaxPositionLimit(int axis, double limit)
 
     AxisConfig[axis].MaxLimit = limit;
 
-    emcmotCommand.command = EMCMOT_SET_AXIS_POSITION_LIMITS;
-    emcmotCommand.axis = axis;
-    emcmotCommand.minLimit = AxisConfig[axis].MinLimit;
-    emcmotCommand.maxLimit = AxisConfig[axis].MaxLimit;
-
-    int retval = usrmotWriteEmcmotCommand(&emcmotCommand);
+    int retval = motctl->set_axis_position_limits(motctl->ctx, axis,
+        AxisConfig[axis].MinLimit, AxisConfig[axis].MaxLimit);
 
     if (emc_debug & EMC_DEBUG_CONFIG) {
         rcs_print("%s(%d, %.4f) returned %d\n", __FUNCTION__, axis, limit, retval);
@@ -504,11 +479,7 @@ int emcAxisSetMaxVelocity(int axis, double vel,double ext_offset_vel)
 
     AxisConfig[axis].MaxVel = vel;
 
-    emcmotCommand.command = EMCMOT_SET_AXIS_VEL_LIMIT;
-    emcmotCommand.axis = axis;
-    emcmotCommand.vel = vel;
-    emcmotCommand.ext_offset_vel = ext_offset_vel;
-    int retval = usrmotWriteEmcmotCommand(&emcmotCommand);
+    int retval = motctl->set_axis_vel_limit(motctl->ctx, axis, vel, ext_offset_vel);
 
     if (emc_debug & EMC_DEBUG_CONFIG) {
         rcs_print("%s(%d, %.4f) returned %d\n", __FUNCTION__, axis, vel, retval);
@@ -528,13 +499,9 @@ int emcAxisSetMaxAcceleration(int axis, double acc,double ext_offset_acc)
 	acc = 0.0;
     }
     
-    AxisConfig[axis].MaxAccel = acc;    
+    AxisConfig[axis].MaxAccel = acc;
 
-    emcmotCommand.command = EMCMOT_SET_AXIS_ACC_LIMIT;
-    emcmotCommand.axis = axis;
-    emcmotCommand.acc = acc;
-    emcmotCommand.ext_offset_acc = ext_offset_acc;
-    int retval = usrmotWriteEmcmotCommand(&emcmotCommand);
+    int retval = motctl->set_axis_acc_limit(motctl->ctx, axis, acc, ext_offset_acc);
 
     if (emc_debug & EMC_DEBUG_CONFIG) {
         rcs_print("%s(%d, %.4f) returned %d\n", __FUNCTION__, axis, acc, retval);
@@ -553,10 +520,7 @@ int emcAxisSetLockingJoint(int axis, int joint)
 	joint = -1;
     }
 
-    emcmotCommand.command = EMCMOT_SET_AXIS_LOCKING_JOINT;
-    emcmotCommand.axis    = axis;
-    emcmotCommand.joint   = joint;
-    int retval = usrmotWriteEmcmotCommand(&emcmotCommand);
+    int retval = motctl->set_axis_locking_joint(motctl->ctx, axis, joint);
 
     if (emc_debug & EMC_DEBUG_CONFIG) {
         rcs_print("%s(%d, %d) returned %d\n", __FUNCTION__, axis, joint, retval);
@@ -600,9 +564,7 @@ int emcAxisUpdate(EMC_AXIS_STAT stat[], int axis_mask)
 
 /* This function checks to see if any joint or the traj has
    been inited already.  At startup, if none have been inited,
-   usrmotIniLoad and usrmotInit must be called first.  At
-   shutdown, after all have been halted, the usrmotExit must
-   be called.
+   the motctl/motstat APIs must be looked up first.
 */
 
 static int JointOrTrajInited(void)
@@ -631,10 +593,9 @@ int emcJointInit(int joint)
     if (joint < 0 || joint >= EMCMOT_MAX_JOINTS) {
 	return 0;
     }
-    // init emcmot interface
+    // init motctl/motstat APIs on first init
     if (!JointOrTrajInited()) {
-	usrmotIniLoad(emc_inifile);
-	if (0 != usrmotInit("emc2_task")) {
+	if (0 != taskintf_lookup_apis()) {
 	    return -1;
 	}
     }
@@ -652,10 +613,8 @@ int emcAxisInit(int axis)
     if (axis < 0 || axis >= EMCMOT_MAX_AXIS) {
 	return 0;
     }
-    // init emcmot interface
     if (!JointOrTrajInited()) {
-	usrmotIniLoad(emc_inifile);
-	if (0 != usrmotInit("emc2_task")) {
+	if (0 != taskintf_lookup_apis()) {
 	    return -1;
 	}
     }
@@ -673,10 +632,8 @@ int emcSpindleInit(int spindle)
     if (spindle < 0 || spindle >= EMCMOT_MAX_SPINDLES) {
 	return 0;
     }
-    // init emcmot interface
     if (!JointOrTrajInited()) {
-	usrmotIniLoad(emc_inifile);
-	if (0 != usrmotInit("emc2_task")) {
+	if (0 != taskintf_lookup_apis()) {
 	    return -1;
 	}
     }
@@ -698,11 +655,6 @@ int emcJointHalt(int joint)
 	//dumpJoint(joint, emc_inifile, &emcStatus->motion.joint[joint]);
     }
     JointConfig[joint].Inited = 0;
-
-    if (!JointOrTrajInited()) {
-	usrmotExit();		// ours is final exit
-    }
-
     return 0;
 }
 
@@ -711,11 +663,7 @@ int emcJogAbort(int joint)
     if (joint < 0 || joint >= EMCMOT_MAX_JOINTS) {
 	return 0;
     }
-    emcmotCommand.command = EMCMOT_JOG_ABORT;
-    emcmotCommand.joint = joint;
-    emcmotCommand.axis  = -1; //NA
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->jog_abort(motctl->ctx, joint, 1/*is_teleop=joint mode*/);
 }
 
 int emcJointActivate(int joint)
@@ -724,10 +672,7 @@ int emcJointActivate(int joint)
 	return 0;
     }
 
-    emcmotCommand.command = EMCMOT_JOINT_ACTIVATE;
-    emcmotCommand.joint = joint;
-
-    int retval = usrmotWriteEmcmotCommand(&emcmotCommand);
+    int retval = 0; // joint activate is a no-op in the motctl API
 
     if (emc_debug & EMC_DEBUG_CONFIG) {
         rcs_print("%s(%d) returned %d\n", __FUNCTION__, joint, retval);
@@ -741,10 +686,7 @@ int emcJointDeactivate(int joint)
 	return 0;
     }
 
-    emcmotCommand.command = EMCMOT_JOINT_DEACTIVATE;
-    emcmotCommand.joint = joint;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return 0; // joint deactivate is a no-op in the motctl API
 }
 
 int emcJointOverrideLimits(int joint)
@@ -754,10 +696,7 @@ int emcJointOverrideLimits(int joint)
 	return 0;
     }
 
-    emcmotCommand.command = EMCMOT_OVERRIDE_LIMITS;
-    emcmotCommand.joint = joint;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->override_limits(motctl->ctx, joint);
 }
 
 int emcJointEnable(int joint)
@@ -766,10 +705,7 @@ int emcJointEnable(int joint)
 	return 0;
     }
 
-    emcmotCommand.command = EMCMOT_JOINT_ENABLE_AMPLIFIER;
-    emcmotCommand.joint = joint;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return 0; // joint enable amplifier is a no-op in the motctl API
 }
 
 int emcJointDisable(int joint)
@@ -778,10 +714,7 @@ int emcJointDisable(int joint)
 	return 0;
     }
 
-    emcmotCommand.command = EMCMOT_JOINT_DISABLE_AMPLIFIER;
-    emcmotCommand.joint = joint;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return 0; // joint disable amplifier is a no-op in the motctl API
 }
 
 int emcJointHome(int joint)
@@ -790,10 +723,7 @@ int emcJointHome(int joint)
 	return 0;
     }
 
-    emcmotCommand.command = EMCMOT_JOINT_HOME;
-    emcmotCommand.joint = joint;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->joint_home(motctl->ctx, joint);
 }
 
 int emcJointUnhome(int joint)
@@ -802,10 +732,7 @@ int emcJointUnhome(int joint)
 		return 0;
 	}
 
-	emcmotCommand.command = EMCMOT_JOINT_UNHOME;
-	emcmotCommand.joint = joint;
-
-	return usrmotWriteEmcmotCommand(&emcmotCommand);
+	return motctl->joint_unhome(motctl->ctx, joint);
 }
 
 int emcJogCont(int nr, double vel, int jjogmode)
@@ -817,8 +744,6 @@ int emcJogCont(int nr, double vel, int jjogmode)
         } else if (vel < -JointConfig[nr].MaxVel) {
             vel = -JointConfig[nr].MaxVel;
         }
-        emcmotCommand.joint = nr;
-        emcmotCommand.axis = -1;  //NA
     } else {
         if (nr < 0 || nr >= EMCMOT_MAX_AXIS) { return 0; }
         if (vel > AxisConfig[nr].MaxVel) {
@@ -826,13 +751,8 @@ int emcJogCont(int nr, double vel, int jjogmode)
         } else if (vel < -AxisConfig[nr].MaxVel) {
             vel = -AxisConfig[nr].MaxVel;
         }
-        emcmotCommand.joint = -1; //NA
-        emcmotCommand.axis = nr;
     }
-    emcmotCommand.command = EMCMOT_JOG_CONT;
-    emcmotCommand.vel = vel;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->jog_cont(motctl->ctx, nr, vel, jjogmode ? 0 : 1);
 }
 
 int emcJogIncr(int nr, double incr, double vel, int jjogmode)
@@ -844,8 +764,6 @@ int emcJogIncr(int nr, double incr, double vel, int jjogmode)
         } else if (vel < -JointConfig[nr].MaxVel) {
             vel = -JointConfig[nr].MaxVel;
         }
-        emcmotCommand.joint = nr;
-        emcmotCommand.axis = -1; //NA
     } else {
         if (nr < 0 || nr >= EMCMOT_MAX_AXIS) { return 0; }
         if (vel > AxisConfig[nr].MaxVel) {
@@ -853,27 +771,19 @@ int emcJogIncr(int nr, double incr, double vel, int jjogmode)
         } else if (vel < -AxisConfig[nr].MaxVel) {
             vel = -AxisConfig[nr].MaxVel;
         }
-        emcmotCommand.joint = -1; //NA
-        emcmotCommand.axis = nr;
     }
-    emcmotCommand.command = EMCMOT_JOG_INCR;
-    emcmotCommand.vel = vel;
-    emcmotCommand.offset = incr;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->jog_incr(motctl->ctx, nr, vel, incr, jjogmode ? 0 : 1);
 }
 
 int emcJogAbs(int nr, double pos, double vel, int jjogmode)
 {
-    if (jjogmode) {        
+    if (jjogmode) {
         if (nr < 0 || nr >= EMCMOT_MAX_JOINTS) { return 0; }
         if (vel > JointConfig[nr].MaxVel) {
             vel = JointConfig[nr].MaxVel;
         } else if (vel < -JointConfig[nr].MaxVel) {
             vel = -JointConfig[nr].MaxVel;
         }
-        emcmotCommand.joint = nr;
-        emcmotCommand.axis = -1; //NA
     } else {
         if (nr < 0 || nr >= EMCMOT_MAX_AXIS) { return 0; }
         if (vel > AxisConfig[nr].MaxVel) {
@@ -881,45 +791,49 @@ int emcJogAbs(int nr, double pos, double vel, int jjogmode)
         } else if (vel < -AxisConfig[nr].MaxVel) {
             vel = -AxisConfig[nr].MaxVel;
         }
-        emcmotCommand.joint = -1; //NA
-        emcmotCommand.axis = nr;
     }
-    emcmotCommand.command = EMCMOT_JOG_ABS;
-    emcmotCommand.vel = vel;
-    emcmotCommand.offset = pos;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->jog_abs(motctl->ctx, nr, vel, pos, jjogmode ? 0 : 1);
 }
 
 int emcJogStop(int nr, int jjogmode)
 {
     if (jjogmode) {
         if (nr < 0 || nr >= EMCMOT_MAX_JOINTS) { return 0; }
-        emcmotCommand.joint = nr;
-        emcmotCommand.axis = -1; //NA
     } else {
         if (nr < 0 || nr >= EMCMOT_MAX_AXIS) { return 0; }
-        emcmotCommand.joint = -1; //NA
-        emcmotCommand.axis = nr;
     }
-    emcmotCommand.command = EMCMOT_JOG_ABORT;
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->jog_abort(motctl->ctx, nr, jjogmode ? 0 : 1);
 }
 
 
 int emcJointLoadComp(int joint, const char *file, int type)
 {
-    return usrmotLoadComp(joint, file, type);
+    FILE *f = fopen(file, "r");
+    if (!f) {
+        rcs_print_error("can't open compensation file %s\n", file);
+        return -1;
+    }
+    char buf[256];
+    while (fgets(buf, sizeof(buf), f)) {
+        double nom, fwd, rev;
+        int n;
+        if (type == 0) {
+            n = sscanf(buf, "%lf %lf %lf", &nom, &fwd, &rev);
+        } else {
+            n = sscanf(buf, "%lf %lf", &nom, &fwd);
+            rev = fwd;
+        }
+        if (n < 2) continue;
+        if (motctl->set_joint_comp(motctl->ctx, joint, nom, fwd, rev) != 0) {
+            rcs_print_error("error sending comp data for joint %d\n", joint);
+            fclose(f);
+            return -1;
+        }
+    }
+    fclose(f);
+    return 0;
 }
 
-static emcmot_config_t emcmotConfig;
-int get_emcmot_internal_info = 0;  // debug usage
-
-/*
-  these globals are set in emcMotionUpdate(), then referenced in
-  emcJointUpdate(), emcTrajUpdate() to save calls to usrmotReadEmcmotStatus
- */
-static emcmot_internal_t emcmotInternal;
 static int new_config = 0;
 
 /*! \todo FIXME - debugging - uncomment the following line to log changes in
@@ -1016,14 +930,11 @@ int emcTrajSetJoints(int joints)
     }
 
     TrajConfig.Joints = joints;
-    emcmotCommand.command = EMCMOT_SET_NUM_JOINTS;
-    emcmotCommand.joint = joints;
-    int retval = usrmotWriteEmcmotCommand(&emcmotCommand);
-
+    // num_joints is now a module param — just store locally
     if (emc_debug & EMC_DEBUG_CONFIG) {
-        rcs_print("%s(%d) returned %d\n", __FUNCTION__, joints, retval);
+        rcs_print("%s(%d)\n", __FUNCTION__, joints);
     }
-    return retval;
+    return 0;
 }
 
 // FIXME CJR move this to TrajConfig?
@@ -1057,14 +968,11 @@ int emcTrajSetSpindles(int spindles)
     }
 
     TrajConfig.Spindles = spindles;
-    emcmotCommand.command = EMCMOT_SET_NUM_SPINDLES;
-    emcmotCommand.spindle = spindles;
-    int retval = usrmotWriteEmcmotCommand(&emcmotCommand);
-
+    // num_spindles is now a module param — just store locally
     if (emc_debug & EMC_DEBUG_CONFIG) {
-        rcs_print("%s(%d) returned %d\n", __FUNCTION__, spindles, retval);
+        rcs_print("%s(%d)\n", __FUNCTION__, spindles);
     }
-    return retval;
+    return 0;
 }
 
 int emcTrajSetUnits(double linearUnits, double angularUnits)
@@ -1086,17 +994,11 @@ int emcTrajSetMode(int mode)
 {
     switch (mode) {
     case EMC_TRAJ_MODE_FREE:
-	emcmotCommand.command = EMCMOT_FREE;
-	return usrmotWriteEmcmotCommand(&emcmotCommand);
-
+	return motctl->set_free(motctl->ctx);
     case EMC_TRAJ_MODE_COORD:
-	emcmotCommand.command = EMCMOT_COORD;
-	return usrmotWriteEmcmotCommand(&emcmotCommand);
-
+	return motctl->set_coord(motctl->ctx);
     case EMC_TRAJ_MODE_TELEOP:
-	emcmotCommand.command = EMCMOT_TELEOP;
-	return usrmotWriteEmcmotCommand(&emcmotCommand);
-
+	return motctl->set_teleop(motctl->ctx);
     default:
 	return -1;
     }
@@ -1116,11 +1018,7 @@ int emcTrajSetVelocity(double vel, double ini_maxvel)
 	    ini_maxvel = TrajConfig.MaxVel;
     }
 
-    emcmotCommand.command = EMCMOT_SET_VEL;
-    emcmotCommand.vel = vel;
-    emcmotCommand.ini_maxvel = ini_maxvel;
-
-    int retval = usrmotWriteEmcmotCommand(&emcmotCommand);
+    int retval = motctl->set_vel(motctl->ctx, vel);
 
     if (emc_debug & EMC_DEBUG_CONFIG) {
         rcs_print("%s(%.4f, %.4f) returned %d\n", __FUNCTION__, vel, ini_maxvel, retval);
@@ -1136,10 +1034,7 @@ int emcTrajSetAcceleration(double acc)
 	acc = TrajConfig.MaxAccel;
     }
 
-    emcmotCommand.command = EMCMOT_SET_ACC;
-    emcmotCommand.acc = acc;
-
-    int retval = usrmotWriteEmcmotCommand(&emcmotCommand);
+    int retval = motctl->set_acc(motctl->ctx, acc);
 
     if (emc_debug & EMC_DEBUG_CONFIG) {
         rcs_print("%s(%.4g) returned %d\n", __FUNCTION__, acc, retval);
@@ -1159,10 +1054,7 @@ int emcTrajSetMaxVelocity(double vel)
 
     TrajConfig.MaxVel = vel;
 
-    emcmotCommand.command = EMCMOT_SET_VEL_LIMIT;
-    emcmotCommand.vel = vel;
-
-    int retval = usrmotWriteEmcmotCommand(&emcmotCommand);
+    int retval = motctl->set_vel_limit(motctl->ctx, vel);
 
     if (emc_debug & EMC_DEBUG_CONFIG) {
         rcs_print("%s(%.4f) returned %d\n", __FUNCTION__, vel, retval);
@@ -1195,10 +1087,8 @@ int emcTrajSetHome(EmcPose home)
     }
 #endif
 
-    emcmotCommand.command = EMCMOT_SET_WORLD_HOME;
-    emcmotCommand.pos = home;
-
-    int retval = usrmotWriteEmcmotCommand(&emcmotCommand);
+    motctl_pose_t mp = to_motctl_pose(home);
+    int retval = motctl->set_world_home(motctl->ctx, &mp);
 
     if (emc_debug & EMC_DEBUG_CONFIG) {
         rcs_print("%s(%.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f) returned %d\n", 
@@ -1214,10 +1104,7 @@ int emcTrajSetScale(double scale)
 	scale = 0.0;
     }
 
-    emcmotCommand.command = EMCMOT_FEED_SCALE;
-    emcmotCommand.scale = scale;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->set_feed_scale(motctl->ctx, scale);
 }
 
 int emcTrajSetRapidScale(double scale)
@@ -1226,10 +1113,7 @@ int emcTrajSetRapidScale(double scale)
 	scale = 0.0;
     }
 
-    emcmotCommand.command = EMCMOT_RAPID_SCALE;
-    emcmotCommand.scale = scale;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->set_rapid_scale(motctl->ctx, scale);
 }
 
 int emcTrajSetSpindleScale(int spindle, double scale)
@@ -1238,47 +1122,27 @@ int emcTrajSetSpindleScale(int spindle, double scale)
 	scale = 0.0;
     }
 
-    emcmotCommand.command = EMCMOT_SPINDLE_SCALE;
-    emcmotCommand.scale = scale;
-    emcmotCommand.spindle = spindle;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->set_spindle_scale(motctl->ctx, spindle, scale);
 }
 
 int emcTrajSetFOEnable(unsigned char mode)
 {
-    emcmotCommand.command = EMCMOT_FS_ENABLE;
-    emcmotCommand.mode = mode;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->feed_scale_enable(motctl->ctx, mode);
 }
 
 int emcTrajSetFHEnable(unsigned char mode)
 {
-    emcmotCommand.command = EMCMOT_FH_ENABLE;
-    emcmotCommand.mode = mode;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->feed_hold_enable(motctl->ctx, mode);
 }
 
 int emcTrajSetSOEnable(unsigned char mode)
 {
-    emcmotCommand.command = EMCMOT_SS_ENABLE;
-    emcmotCommand.mode = mode;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->spindle_scale_enable(motctl->ctx, -1, mode);
 }
 
 int emcTrajSetAFEnable(unsigned char enable)
 {
-    emcmotCommand.command = EMCMOT_AF_ENABLE;
-
-    if ( enable ) {
-	emcmotCommand.flags = 1;
-    } else {
-	emcmotCommand.flags = 0;
-    }
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->adaptive_feed_enable(motctl->ctx, enable ? 1 : 0);
 }
 
 int emcTrajSetMotionId(int id)
@@ -1308,10 +1172,9 @@ int emcTrajInit()
     TrajConfig.MotionId = 0;
     TrajConfig.MaxVel = DEFAULT_TRAJ_MAX_VELOCITY;
 
-    // init emcmot interface
+    // init motctl/motstat APIs on first init
     if (!JointOrTrajInited()) {
-	usrmotIniLoad(emc_inifile);
-	if (0 != usrmotInit("emc2_task")) {
+	if (0 != taskintf_lookup_apis()) {
 	    return -1;
 	}
     }
@@ -1326,68 +1189,47 @@ int emcTrajInit()
 int emcTrajHalt()
 {
     TrajConfig.Inited = 0;
-
-    if (!JointOrTrajInited()) {
-	usrmotExit();		// ours is final exit
-    }
-
     return 0;
 }
 
 int emcTrajEnable()
 {
-    emcmotCommand.command = EMCMOT_ENABLE;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->enable(motctl->ctx);
 }
 
 int emcTrajDisable()
 {
-    emcmotCommand.command = EMCMOT_DISABLE;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->disable(motctl->ctx);
 }
 
 int emcTrajAbort()
 {
-    emcmotCommand.command = EMCMOT_ABORT;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->abort(motctl->ctx);
 }
 
 int emcTrajPause()
 {
-    emcmotCommand.command = EMCMOT_PAUSE;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->pause(motctl->ctx);
 }
 
 int emcTrajReverse()
 {
-    emcmotCommand.command = EMCMOT_REVERSE;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->reverse(motctl->ctx);
 }
 
 int emcTrajForward()
 {
-    emcmotCommand.command = EMCMOT_FORWARD;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->forward(motctl->ctx);
 }
 
 int emcTrajStep()
 {
-    emcmotCommand.command = EMCMOT_STEP;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->step(motctl->ctx, TrajConfig.MotionId);
 }
 
 int emcTrajResume()
 {
-    emcmotCommand.command = EMCMOT_RESUME;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->resume(motctl->ctx);
 }
 
 int emcTrajDelay(double delay)
@@ -1409,28 +1251,19 @@ double emcTrajGetAngularUnits()
 
 int emcTrajSetOffset(EmcPose tool_offset)
 {
-    emcmotCommand.command = EMCMOT_SET_OFFSET;
-    emcmotCommand.tool_offset = tool_offset;
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    motctl_pose_t mp = to_motctl_pose(tool_offset);
+    return motctl->set_offset(motctl->ctx, &mp);
 }
 
 int emcTrajSetSpindleSync(int spindle, double fpr, bool wait_for_index)
 {
-    emcmotCommand.command = EMCMOT_SET_SPINDLESYNC;
-    emcmotCommand.spindle = spindle;
-    emcmotCommand.spindlesync = fpr;
-    emcmotCommand.flags = wait_for_index;
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    // motion_type is passed as wait_for_index flag
+    return motctl->set_spindlesync(motctl->ctx, fpr, wait_for_index);
 }
 
 int emcTrajSetTermCond(int cond, double tolerance)
 {
-    emcmotCommand.command = EMCMOT_SET_TERM_COND;
-    // Direct passthrough since TP can handle the distinction now
-    emcmotCommand.termCond = cond;
-    emcmotCommand.tolerance = tolerance;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->set_term_cond(motctl->ctx, cond, tolerance);
 }
 
 int emcTrajLinearMove(EmcPose end, int type, double vel, double ini_maxvel, double acc,
@@ -1445,19 +1278,10 @@ int emcTrajLinearMove(EmcPose end, int type, double vel, double ini_maxvel, doub
     }
 #endif
 
-    emcmotCommand.command = EMCMOT_SET_LINE;
-
-    emcmotCommand.pos = end;
-
-    emcmotCommand.id = TrajConfig.MotionId;
-    emcmotCommand.tag = localEmcTrajTag;
-    emcmotCommand.motion_type = type;
-    emcmotCommand.vel = vel;
-    emcmotCommand.ini_maxvel = ini_maxvel;
-    emcmotCommand.acc = acc;
-    emcmotCommand.turn = indexer_jnum;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    motctl_pose_t mp = to_motctl_pose(end);
+    motctl_state_tag_t mt = to_motctl_tag(localEmcTrajTag);
+    return motctl->set_line(motctl->ctx, &mp, vel, ini_maxvel, acc,
+        type, TrajConfig.MotionId, &mt, indexer_jnum);
 }
 
 int emcTrajCircularMove(EmcPose end, PM_CARTESIAN center,
@@ -1474,35 +1298,17 @@ int emcTrajCircularMove(EmcPose end, PM_CARTESIAN center,
     }
 #endif
 
-    emcmotCommand.command = EMCMOT_SET_CIRCLE;
-
-    emcmotCommand.pos = end;
-    emcmotCommand.motion_type = type;
-
-    emcmotCommand.center.x = center.x;
-    emcmotCommand.center.y = center.y;
-    emcmotCommand.center.z = center.z;
-
-    emcmotCommand.normal.x = normal.x;
-    emcmotCommand.normal.y = normal.y;
-    emcmotCommand.normal.z = normal.z;
-
-    emcmotCommand.turn = turn;
-    emcmotCommand.id = TrajConfig.MotionId;
-    emcmotCommand.tag = localEmcTrajTag;
-
-    emcmotCommand.vel = vel;
-    emcmotCommand.ini_maxvel = ini_maxvel;
-    emcmotCommand.acc = acc;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    motctl_pose_t mp = to_motctl_pose(end);
+    motctl_cartesian_t mc = {center.x, center.y, center.z};
+    motctl_cartesian_t mn = {normal.x, normal.y, normal.z};
+    motctl_state_tag_t mt = to_motctl_tag(localEmcTrajTag);
+    return motctl->set_circle(motctl->ctx, &mp, &mc, &mn, turn,
+        vel, ini_maxvel, acc, type, TrajConfig.MotionId, &mt);
 }
 
 int emcTrajClearProbeTrippedFlag()
 {
-    emcmotCommand.command = EMCMOT_CLEAR_PROBE_FLAGS;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->clear_probe_flags(motctl->ctx);
 }
 
 int emcTrajProbe(EmcPose pos, int type, double vel, double ini_maxvel, double acc, unsigned char probe_type)
@@ -1516,17 +1322,10 @@ int emcTrajProbe(EmcPose pos, int type, double vel, double ini_maxvel, double ac
     }
 #endif
 
-    emcmotCommand.command = EMCMOT_PROBE;
-    emcmotCommand.pos = pos;
-    emcmotCommand.id = TrajConfig.MotionId;
-    emcmotCommand.tag = localEmcTrajTag;
-    emcmotCommand.motion_type = type;
-    emcmotCommand.vel = vel;
-    emcmotCommand.ini_maxvel = ini_maxvel;
-    emcmotCommand.acc = acc;
-    emcmotCommand.probe_type = probe_type;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    motctl_pose_t mp = to_motctl_pose(pos);
+    motctl_state_tag_t mt = to_motctl_tag(localEmcTrajTag);
+    return motctl->probe(motctl->ctx, &mp, vel, ini_maxvel, acc,
+        type, probe_type, TrajConfig.MotionId, &mt);
 }
 
 int emcTrajRigidTap(EmcPose pos, double vel, double ini_maxvel, double acc, double scale)
@@ -1538,16 +1337,10 @@ int emcTrajRigidTap(EmcPose pos, double vel, double ini_maxvel, double acc, doub
     }
 #endif
 
-    emcmotCommand.command = EMCMOT_RIGID_TAP;
-    emcmotCommand.pos.tran = pos.tran;
-    emcmotCommand.id = TrajConfig.MotionId;
-    emcmotCommand.tag = localEmcTrajTag;
-    emcmotCommand.vel = vel;
-    emcmotCommand.ini_maxvel = ini_maxvel;
-    emcmotCommand.acc = acc;
-    emcmotCommand.scale = scale;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    motctl_pose_t mp = to_motctl_pose(pos);
+    motctl_state_tag_t mt = to_motctl_tag(localEmcTrajTag);
+    return motctl->rigid_tap(motctl->ctx, &mp, vel, ini_maxvel, acc,
+        scale, TrajConfig.MotionId, &mt);
 }
 
 
@@ -1658,9 +1451,14 @@ int emcTrajUpdate(EMC_TRAJ_STAT * stat)
     stat->feed_hold_enabled = enables & FH_ENABLED;
 
     if (new_config) {
-	stat->cycleTime = emcmotConfig.trajCycleTime;
-	stat->kinematics_type = emcmotConfig.kinType;
-	stat->maxVelocity = emcmotConfig.limitVel;
+	// Config values come from INI (they are also set as module params
+	// on the motmod side, so we read them directly from INI).
+	const char *ct = the_ini->get(the_ini->ctx, "TRAJ", "CYCLE_TIME");
+	if (ct) stat->cycleTime = strtod(ct, NULL);
+	const char *mv = the_ini->get(the_ini->ctx, "TRAJ", "MAX_VELOCITY");
+	if (mv) stat->maxVelocity = strtod(mv, NULL);
+	// kinType is set by kins module, read from motstat
+	// stat->kinematics_type is already set from the initial config
     }
 
     return 0;
@@ -1833,10 +1631,7 @@ int emcMotionAbort()
 
 int emcMotionSetDebug(int debug)
 {
-    emcmotCommand.command = EMCMOT_SET_DEBUG;
-    emcmotCommand.debug = debug;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->set_debug(motctl->ctx, debug);
 }
 
 /*! \function emcMotionSetAout()
@@ -1851,15 +1646,11 @@ int emcMotionSetDebug(int debug)
 */
 int emcMotionSetAout(unsigned char index, double start, double end, unsigned char now)
 {
-    emcmotCommand.command = EMCMOT_SET_AOUT;
-    emcmotCommand.now = now;
-    emcmotCommand.out = index;
-  /*! \todo FIXME-- if this works, set up some dedicated cmd fields instead of
-     borrowing these */
-    emcmotCommand.minLimit = start;
-    emcmotCommand.maxLimit = end;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    if (now) {
+        return motctl->set_aout(motctl->ctx, index, start);
+    } else {
+        return motctl->set_aout_synched(motctl->ctx, index, start, end);
+    }
 }
 
 /*! \function emcMotionSetDout()
@@ -1875,13 +1666,11 @@ int emcMotionSetAout(unsigned char index, double start, double end, unsigned cha
 int emcMotionSetDout(unsigned char index, unsigned char start,
 		     unsigned char end, unsigned char now)
 {
-    emcmotCommand.command = EMCMOT_SET_DOUT;
-    emcmotCommand.now = now;
-    emcmotCommand.out = index;
-    emcmotCommand.start = start;
-    emcmotCommand.end = end;
-
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    if (now) {
+        return motctl->set_dout(motctl->ctx, index, start);
+    } else {
+        return motctl->set_dout_synched(motctl->ctx, index, start, end);
+    }
 }
 
 int emcSpindleSetParams(int spindle, double max_pos, double min_pos, double max_neg,
@@ -1892,18 +1681,9 @@ int emcSpindleSetParams(int spindle, double max_pos, double min_pos, double max_
 	return 0;
     }
 
-    emcmotCommand.command = EMCMOT_SET_SPINDLE_PARAMS;
-    emcmotCommand.spindle = spindle;
-    emcmotCommand.maxLimit = max_pos;
-    emcmotCommand.minLimit = min_neg;
-    emcmotCommand.min_pos_speed = min_pos;
-    emcmotCommand.max_neg_speed = max_neg;
-    emcmotCommand.home = home_angle;
-    emcmotCommand.search_vel = search_vel;
-    emcmotCommand.home_sequence = sequence;
-    emcmotCommand.offset = increment;
-
-    int retval = usrmotWriteEmcmotCommand(&emcmotCommand);
+    int retval = motctl->set_spindle_params(motctl->ctx, spindle,
+        max_pos, min_pos, max_neg, min_neg,
+        search_vel, sequence, increment);
 
     if (emc_debug & EMC_DEBUG_CONFIG) {
         rcs_print("%s(%d, %e, %e, %e, %e, %f, %f, %i, %f) returned %d\n",
@@ -1920,70 +1700,43 @@ int emcSpindleAbort(int spindle)
 
 int emcSpindleSpeed(int spindle, double speed, double css_factor, double offset)
 {
-    emcmotCommand.command = EMCMOT_SPINDLE_ON;
-    emcmotCommand.spindle = spindle;
-    emcmotCommand.vel = speed;
-    emcmotCommand.ini_maxvel = css_factor;
-    emcmotCommand.acc = offset;
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->spindle_on(motctl->ctx, spindle, speed, css_factor, offset, 0);
 }
 
 int emcSpindleOrient(int spindle, double orientation, int mode)
 {
-    emcmotCommand.command = EMCMOT_SPINDLE_ORIENT;
-    emcmotCommand.spindle = spindle;
-    emcmotCommand.orientation = orientation;
-    emcmotCommand.mode = mode;
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->spindle_orient(motctl->ctx, spindle, orientation, mode);
 }
 
 
 int emcSpindleOn(int spindle, double speed, double css_factor, double offset, int wait_for_at_speed)
 {
-    emcmotCommand.command = EMCMOT_SPINDLE_ON;
-    emcmotCommand.spindle = spindle;
-    emcmotCommand.state = 1;
-    emcmotCommand.vel = speed;
-    emcmotCommand.ini_maxvel = css_factor;
-    emcmotCommand.acc = offset;
-    emcmotCommand.wait_for_spindle_at_speed = wait_for_at_speed;
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->spindle_on(motctl->ctx, spindle, speed, css_factor, offset, wait_for_at_speed);
 }
 
 int emcSpindleOff(int spindle)
 {
-    emcmotCommand.command = EMCMOT_SPINDLE_OFF;
-    emcmotCommand.state = 0;
-    emcmotCommand.spindle = spindle;
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->spindle_off(motctl->ctx, spindle);
 }
 
 int emcSpindleBrakeRelease(int spindle)
 {
-    emcmotCommand.command = EMCMOT_SPINDLE_BRAKE_RELEASE;
-    emcmotCommand.spindle = spindle;
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->spindle_brake_release(motctl->ctx, spindle);
 }
 
 int emcSpindleBrakeEngage(int spindle)
 {
-    emcmotCommand.command = EMCMOT_SPINDLE_BRAKE_ENGAGE;
-    emcmotCommand.spindle = spindle;
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->spindle_brake_engage(motctl->ctx, spindle);
 }
 
 int emcSpindleIncrease(int spindle)
 {
-    emcmotCommand.command = EMCMOT_SPINDLE_INCREASE;
-    emcmotCommand.spindle = spindle;
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->spindle_increase(motctl->ctx, spindle);
 }
 
 int emcSpindleDecrease(int spindle)
 {
-    emcmotCommand.command = EMCMOT_SPINDLE_DECREASE;
-    emcmotCommand.spindle = spindle;
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->spindle_decrease(motctl->ctx, spindle);
 }
 
 int emcSpindleConstant(int spindle)
@@ -2020,22 +1773,148 @@ int emcMotionUpdate(EMC_MOTION_STAT * stat)
     int exec;
     int dio, aio, num_error;
 
-    // read the emcmot status
-    if (0 != usrmotReadEmcmotStatus(&emcmotStatus)) {
+    // read the emcmot status via motstat API
+    motstat_motion_status_t ms;
+    if (0 != motstat->get_status(motstat->ctx, &ms)) {
 	return -1;
     }
-    new_config = 0;
-    if (emcmotStatus.config_num != emcmotConfig.config_num) {
-	if (0 != usrmotReadEmcmotConfig(&emcmotConfig)) {
-	    return -1;
-	}
-	new_config = 1;
+    // Copy motstat fields into the legacy emcmotStatus struct.
+    // This allows emcJointUpdate/emcTrajUpdate/etc. to continue
+    // reading from emcmotStatus without rewriting all their field access.
+    emcmotStatus.heartbeat = ms.heartbeat;
+    emcmotStatus.commandEcho = (cmd_code_t)ms.command_echo;
+    emcmotStatus.commandNumEcho = ms.command_num_echo;
+    emcmotStatus.commandStatus = (cmd_status_t)ms.command_status;
+    // Reconstruct motionFlag from individual booleans
+    emcmotStatus.motionFlag = 0;
+    if (ms.enabled)  emcmotStatus.motionFlag |= EMCMOT_MOTION_ENABLE_BIT;
+    if (ms.inpos)    emcmotStatus.motionFlag |= EMCMOT_MOTION_INPOS_BIT;
+    if (ms.coord)    emcmotStatus.motionFlag |= EMCMOT_MOTION_COORD_BIT;
+    if (ms.error)    emcmotStatus.motionFlag |= EMCMOT_MOTION_ERROR_BIT;
+    if (ms.teleop)   emcmotStatus.motionFlag |= EMCMOT_MOTION_TELEOP_BIT;
+    emcmotStatus.depth = ms.queue_depth;
+    emcmotStatus.activeDepth = ms.active_depth;
+    emcmotStatus.queueFull = ms.queue_full;
+    emcmotStatus.id = ms.id;
+    emcmotStatus.motionType = ms.motion_type;
+    emcmotStatus.distance_to_go = ms.distance_to_go;
+    emcmotStatus.current_vel = ms.current_vel;
+    emcmotStatus.feed_scale = ms.feed_scale;
+    emcmotStatus.rapid_scale = ms.rapid_scale;
+    emcmotStatus.paused = ms.paused;
+    emcmotStatus.vel = ms.vel;
+    emcmotStatus.acc = ms.acc;
+    emcmotStatus.overrideLimitMask = ms.override_limit_mask;
+    // Reconstruct enables flags from individual booleans
+    {
+        unsigned char en = 0;
+        if (ms.feed_scale_enabled) en |= FS_ENABLED;
+        if (ms.adaptive_feed_enabled) en |= AF_ENABLED;
+        if (ms.feed_hold_enabled) en |= FH_ENABLED;
+        if (ms.spindle_scale_enabled) en |= SS_ENABLED;
+        emcmotStatus.enables_queued = en;
+        emcmotStatus.enables_new = en;
+    }
+    emcmotStatus.probeVal = ms.probe.val;
+    emcmotStatus.probing = ms.probe.probing;
+    emcmotStatus.probeTripped = ms.probe.tripped;
+    emcmotStatus.jogging_active = ms.jogging_active;
+    // Positions
+    emcmotStatus.carte_pos_cmd.tran.x = ms.carte_pos_cmd.x;
+    emcmotStatus.carte_pos_cmd.tran.y = ms.carte_pos_cmd.y;
+    emcmotStatus.carte_pos_cmd.tran.z = ms.carte_pos_cmd.z;
+    emcmotStatus.carte_pos_cmd.a = ms.carte_pos_cmd.a;
+    emcmotStatus.carte_pos_cmd.b = ms.carte_pos_cmd.b;
+    emcmotStatus.carte_pos_cmd.c = ms.carte_pos_cmd.c;
+    emcmotStatus.carte_pos_cmd.u = ms.carte_pos_cmd.u;
+    emcmotStatus.carte_pos_cmd.v = ms.carte_pos_cmd.v;
+    emcmotStatus.carte_pos_cmd.w = ms.carte_pos_cmd.w;
+    emcmotStatus.carte_pos_fb.tran.x = ms.carte_pos_fb.x;
+    emcmotStatus.carte_pos_fb.tran.y = ms.carte_pos_fb.y;
+    emcmotStatus.carte_pos_fb.tran.z = ms.carte_pos_fb.z;
+    emcmotStatus.carte_pos_fb.a = ms.carte_pos_fb.a;
+    emcmotStatus.carte_pos_fb.b = ms.carte_pos_fb.b;
+    emcmotStatus.carte_pos_fb.c = ms.carte_pos_fb.c;
+    emcmotStatus.carte_pos_fb.u = ms.carte_pos_fb.u;
+    emcmotStatus.carte_pos_fb.v = ms.carte_pos_fb.v;
+    emcmotStatus.carte_pos_fb.w = ms.carte_pos_fb.w;
+    // DTG
+    emcmotStatus.dtg.tran.x = ms.dtg.x;
+    emcmotStatus.dtg.tran.y = ms.dtg.y;
+    emcmotStatus.dtg.tran.z = ms.dtg.z;
+    emcmotStatus.dtg.a = ms.dtg.a;
+    emcmotStatus.dtg.b = ms.dtg.b;
+    emcmotStatus.dtg.c = ms.dtg.c;
+    emcmotStatus.dtg.u = ms.dtg.u;
+    emcmotStatus.dtg.v = ms.dtg.v;
+    emcmotStatus.dtg.w = ms.dtg.w;
+    // Probed position
+    emcmotStatus.probedPos.tran.x = ms.probe.pos.x;
+    emcmotStatus.probedPos.tran.y = ms.probe.pos.y;
+    emcmotStatus.probedPos.tran.z = ms.probe.pos.z;
+    emcmotStatus.probedPos.a = ms.probe.pos.a;
+    emcmotStatus.probedPos.b = ms.probe.pos.b;
+    emcmotStatus.probedPos.c = ms.probe.pos.c;
+    emcmotStatus.probedPos.u = ms.probe.pos.u;
+    emcmotStatus.probedPos.v = ms.probe.pos.v;
+    emcmotStatus.probedPos.w = ms.probe.pos.w;
+    // State tag
+    memcpy(emcmotStatus.tag.fields_float, ms.tag.fields_float, sizeof(ms.tag.fields_float));
+    memcpy(emcmotStatus.tag.fields, ms.tag.fields, sizeof(ms.tag.fields));
+    emcmotStatus.tag.packed_flags = ms.tag.packed_flags;
+    // DIO/AIO
+    for (int i = 0; i < EMCMOT_MAX_DIO && i < MOTSTAT_MAX_DIO; i++) {
+        emcmotStatus.synch_di[i] = ms.synch_di[i];
+        emcmotStatus.synch_do[i] = ms.synch_do[i];
+    }
+    for (int i = 0; i < EMCMOT_MAX_AIO && i < MOTSTAT_MAX_AIO; i++) {
+        emcmotStatus.analog_input[i] = ms.analog_input[i];
+        emcmotStatus.analog_output[i] = ms.analog_output[i];
+    }
+    // Joint status
+    for (int j = 0; j < MOTSTAT_MAX_JOINTS && j < EMCMOT_MAX_JOINTS; j++) {
+        emcmot_joint_status_t *dst = &emcmotStatus.joint_status[j];
+        const motstat_joint_status_t *src = &ms.joints[j];
+        dst->pos_cmd = src->pos_cmd;
+        dst->pos_fb = src->pos_fb;
+        dst->vel_cmd = src->vel_cmd;
+        dst->ferror = src->ferror;
+        dst->ferror_high_mark = src->ferror_high_mark;
+        dst->min_pos_limit = src->min_pos_limit;
+        dst->max_pos_limit = src->max_pos_limit;
+        dst->min_ferror = src->min_ferror;
+        dst->max_ferror = src->max_ferror;
+        dst->homing = src->homing;
+        dst->homed = src->homed;
+        // Rebuild flag from individual booleans
+        dst->flag = 0;
+        if (src->fault) dst->flag |= EMCMOT_JOINT_FAULT_BIT;
+        if (src->enabled) dst->flag |= EMCMOT_JOINT_ENABLE_BIT;
+        if (src->inpos) dst->flag |= EMCMOT_JOINT_INPOS_BIT;
+        if (src->on_neg_limit) dst->flag |= EMCMOT_JOINT_MIN_HARD_LIMIT_BIT;
+        if (src->on_pos_limit) dst->flag |= EMCMOT_JOINT_MAX_HARD_LIMIT_BIT;
+        if (src->error) dst->flag |= EMCMOT_JOINT_ERROR_BIT;
+    }
+    // Axis status
+    for (int a = 0; a < EMCMOT_MAX_AXIS && a < MOTSTAT_MAX_AXIS; a++) {
+        emcmotStatus.axis_status[a].min_pos_limit = ms.axes[a].min_pos_limit;
+        emcmotStatus.axis_status[a].max_pos_limit = ms.axes[a].max_pos_limit;
+    }
+    // Spindle status
+    for (int s = 0; s < EMCMOT_MAX_SPINDLES && s < MOTSTAT_MAX_SPINDLES; s++) {
+        emcmotStatus.spindle_status[s].speed = ms.spindles[s].speed;
+        emcmotStatus.spindle_status[s].scale = ms.spindles[s].scale;
+        emcmotStatus.spindle_status[s].direction = ms.spindles[s].direction;
+        emcmotStatus.spindle_status[s].brake = ms.spindles[s].brake;
+        emcmotStatus.spindle_status[s].orient_state = ms.spindles[s].orient_state;
+        emcmotStatus.spindle_status[s].orient_fault = ms.spindles[s].orient_fault;
     }
 
-    if (get_emcmot_internal_info) {
-	if (0 != usrmotReadEmcmotInternal(&emcmotInternal)) {
-	    return -1;
-	}
+    new_config = 0;
+    static uint32_t last_config_num = 0;
+    if (ms.config_num != (int32_t)last_config_num) {
+	last_config_num = ms.config_num;
+	new_config = 1;
     }
     // read the emcmot error
     if (log_error_sub) {
@@ -2062,7 +1941,7 @@ int emcMotionUpdate(EMC_MOTION_STAT * stat)
     stat->heartbeat = localMotionHeartbeat;
     stat->command_type = localMotionCommandType;
     stat->echo_serial_number = localMotionEchoSerialNumber;
-    stat->debug = emcmotConfig.debug;
+    stat->debug = emc_debug;
 
     for (dio = 0; dio < EMCMOT_MAX_DIO; dio++) {
 	stat->synch_di[dio] = emcmotStatus.synch_di[dio];
@@ -2119,27 +1998,22 @@ int emcSetupArcBlends(int arcBlendEnable,
         double arcBlendRampFreq,
         double arcBlendTangentKinkRatio) {
 
-    emcmotCommand.command = EMCMOT_SETUP_ARC_BLENDS;
-    emcmotCommand.arcBlendEnable = arcBlendEnable;
-    emcmotCommand.arcBlendFallbackEnable = arcBlendFallbackEnable;
-    emcmotCommand.arcBlendOptDepth = arcBlendOptDepth;
-    emcmotCommand.arcBlendGapCycles = arcBlendGapCycles;
-    emcmotCommand.arcBlendRampFreq = arcBlendRampFreq;
-    emcmotCommand.arcBlendTangentKinkRatio = arcBlendTangentKinkRatio;
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    // Arc blend config is now set via module params at loadrt time.
+    (void)arcBlendEnable;
+    (void)arcBlendFallbackEnable;
+    (void)arcBlendOptDepth;
+    (void)arcBlendGapCycles;
+    (void)arcBlendRampFreq;
+    (void)arcBlendTangentKinkRatio;
+    return 0;
 }
 
 int emcSetMaxFeedOverride(double maxFeedScale) {
-    emcmotCommand.command = EMCMOT_SET_MAX_FEED_OVERRIDE;
-    emcmotCommand.maxFeedScale = maxFeedScale;
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->set_max_feed_override(motctl->ctx, maxFeedScale);
 }
 
 int emcSetProbeErrorInhibit(int j_inhibit, int h_inhibit) {
-    emcmotCommand.command = EMCMOT_SET_PROBE_ERR_INHIBIT;
-    emcmotCommand.probe_jog_err_inhibit = j_inhibit;
-    emcmotCommand.probe_home_err_inhibit = h_inhibit;
-    return usrmotWriteEmcmotCommand(&emcmotCommand);
+    return motctl->set_probe_err_inhibit(motctl->ctx, j_inhibit, h_inhibit);
 }
 
 int emcGetExternalOffsetApplied(void) {
