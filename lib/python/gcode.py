@@ -59,9 +59,6 @@ def parse(filename, canon, *args):
     if len(args) >= 2 and not isinstance(args[0], list):
         initcodes = args[1] or ""
 
-    import sys
-    print(f"gcode_rest.parse: file={filename!r} initcodes={initcodes!r} unitcode={unitcode!r}", file=sys.stderr)
-
     # Connect to the REST server
     base_url = os.environ.get("GMC_REST_URL", "http://localhost:5080")
     client = NgcpreviewClient(base_url)
