@@ -46,6 +46,9 @@ typedef struct {
 
     // Parameter file name (stored by set_parameter_file_name)
     char param_file[1024];
+
+    // Metric flag: when true, divide linear axes by 25.4 (matches gcodemodule.cc)
+    int metric;
 } preview_ctx_t;
 
 typedef struct preview_segment {
@@ -55,6 +58,10 @@ typedef struct preview_segment {
     double end[9];
     double feedrate;
     double tool_offset[9];
+    // Arc-specific (only for type==3)
+    double center_x;
+    double center_y;
+    int rotation;
 } preview_segment_t;
 
 typedef struct preview_dwell {
@@ -99,8 +106,14 @@ static void ctx_ensure_tc_cap(preview_ctx_t *ctx) {
 static void add_segment(preview_ctx_t *ctx, int type,
     double x, double y, double z, double a, double b, double c,
     double u, double v, double w) {
+    // Convert mm to inches when in metric mode (matches gcodemodule.cc)
+    if (ctx->metric) {
+        x /= 25.4; y /= 25.4; z /= 25.4;
+        u /= 25.4; v /= 25.4; w /= 25.4;
+    }
     ctx_ensure_seg_cap(ctx);
     preview_segment_t *s = &ctx->segments[ctx->seg_count++];
+    memset(s, 0, sizeof(*s));
     s->type = type;
     s->line_no = ctx->line_no;
     memcpy(s->start, ctx->pos, sizeof(s->start));
@@ -109,7 +122,7 @@ static void add_segment(preview_ctx_t *ctx, int type,
     s->end[6] = u; s->end[7] = v; s->end[8] = w;
     s->feedrate = ctx->feedrate;
     memcpy(s->tool_offset, ctx->tool_offset, sizeof(s->tool_offset));
-    // Update current position
+    // Update current position (stored in internal units = inches)
     ctx->pos[0] = x; ctx->pos[1] = y; ctx->pos[2] = z;
     ctx->pos[3] = a; ctx->pos[4] = b; ctx->pos[5] = c;
     ctx->pos[6] = u; ctx->pos[7] = v; ctx->pos[8] = w;
@@ -143,15 +156,16 @@ static void pc_arc_feed(void *vctx, int32_t ln,
     double u, double v, double w) {
     preview_ctx_t *ctx = (preview_ctx_t*)vctx;
     ctx->line_no = ln;
-    // For arc, record as a single segment from current to endpoint.
-    // The arc center info is lost — client uses line segments.
-    // first_end/second_end are endpoint coords in the selected plane.
-    // We record the full 9-axis endpoint.
-    // NOTE: The actual endpoint depends on the selected plane. For XY plane:
-    //   end = (first_end, second_end, axis_end_point, a, b, c, u, v, w)
-    // This simplified recording stores the endpoint as-is.
+    // Record arc endpoint and center in the selected plane.
+    // first_end/second_end = endpoint in-plane, first_axis/second_axis = center in-plane.
+    // For XY plane: end=(first_end, second_end, axis_end_point)
     add_segment(ctx, 3, first_end, second_end, axis_end_point,
                 a, b, c, u, v, w);
+    // Store arc center and rotation on the last-added segment
+    preview_segment_t *s = &ctx->segments[ctx->seg_count - 1];
+    s->center_x = ctx->metric ? first_axis / 25.4 : first_axis;
+    s->center_y = ctx->metric ? second_axis / 25.4 : second_axis;
+    s->rotation = rotation;
 }
 
 static void pc_straight_probe(void *vctx, int32_t ln,
@@ -166,6 +180,12 @@ static void pc_straight_probe(void *vctx, int32_t ln,
 static void pc_set_feed_rate(void *vctx, double rate) {
     preview_ctx_t *ctx = (preview_ctx_t*)vctx;
     ctx->feedrate = rate;
+}
+
+static void pc_use_length_units(void *vctx, int32_t units) {
+    preview_ctx_t *ctx = (preview_ctx_t*)vctx;
+    // CANON_UNITS_MM = 2
+    ctx->metric = (units == 2);
 }
 
 static void pc_dwell(void *vctx, double seconds) {
@@ -272,9 +292,9 @@ static int32_t pc_get_queue_empty(void *ctx) {
     return 1; // queue always empty for preview
 }
 
-static int32_t pc_get_length_unit_type(void *ctx) {
-    (void)ctx;
-    return 1; // CANON_UNITS_INCHES (overridden by G20/G21 in file)
+static int32_t pc_get_length_unit_type(void *vctx) {
+    (void)vctx;
+    return 1; // CANON_UNITS_INCHES — matches gcodemodule.cc; G20/G21 in initcodes handles unit switching
 }
 
 static int32_t pc_get_plane(void *ctx) {
@@ -373,7 +393,7 @@ static canon_callbacks_t make_preview_canon(preview_ctx_t *ctx) {
     cb.set_g5x_offset = pc_set_g5x_offset;
     cb.set_g92_offset = pc_set_g92_offset;
     cb.set_xy_rotation = (void (*)(void*, double))pc_nop_vd;
-    cb.use_length_units = (void (*)(void*, int32_t))pc_nop_vi;
+    cb.use_length_units = pc_use_length_units;
     cb.select_plane = (void (*)(void*, int32_t))pc_nop_vi;
     cb.set_traverse_rate = (void (*)(void*, double))pc_nop_vd;
     cb.set_feed_reference = (void (*)(void*, int32_t))pc_nop_vi;
@@ -532,6 +552,8 @@ import "C"
 import (
 	"fmt"
 	"log/slog"
+	"math"
+	"strings"
 	"unsafe"
 
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/ngcpreviewapi"
@@ -546,13 +568,15 @@ func init() {
 }
 
 type ngcPreview struct {
-	logger *slog.Logger
+	logger        *slog.Logger
+	parameterFile string // from [RS274NGC]PARAMETER_FILE
 }
 
 func newNgcPreview(ini *inifile.IniFile, logger *slog.Logger, name string, args []string) (gomc.Module, error) {
-	m := &ngcPreview{logger: logger}
+	paramFile := ini.Get("RS274NGC", "PARAMETER_FILE")
+	m := &ngcPreview{logger: logger, parameterFile: paramFile}
 	ngcpreviewapi.RegisterNgcpreviewAPI(apiserver.DefaultRegistry(), "ngcpreview", m)
-	logger.Info("ngcpreview module loaded and API registered")
+	logger.Info("ngcpreview module loaded and API registered", "parameterFile", paramFile)
 	return m, nil
 }
 
@@ -562,6 +586,14 @@ func (m *ngcPreview) Start() error {
 
 func (m *ngcPreview) Stop()    {}
 func (m *ngcPreview) Destroy() {}
+
+// sanitize replaces NaN/Inf with 0 to avoid JSON serialization errors.
+func sanitize(v float64) float64 {
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return 0
+	}
+	return v
+}
 
 // GenPreview implements ngcpreviewapi.NgcpreviewCallbacks.
 func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode string) (*ngcpreviewapi.PreviewResult, error) {
@@ -574,6 +606,12 @@ func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode stri
 
 	// Set up preview context (C heap to satisfy cgo pointer rules)
 	ctx := (*C.preview_ctx_t)(C.calloc(1, C.size_t(unsafe.Sizeof(C.preview_ctx_t{}))))
+	// Pre-populate parameter file path from INI
+	if m.parameterFile != "" {
+		cPF := C.CString(m.parameterFile)
+		C.strncpy(&ctx.param_file[0], cPF, 1023)
+		C.free(unsafe.Pointer(cPF))
+	}
 	defer func() {
 		C.free(unsafe.Pointer(ctx.segments))
 		C.free(unsafe.Pointer(ctx.dwells))
@@ -596,7 +634,39 @@ func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode stri
 		}, nil
 	}
 
-	// Execute initcodes if provided
+	// Open file first (sets up parameter file, subroutine paths, etc.)
+	cFile := C.CString(filename)
+	rc = C.interp_shim_open(h, cFile)
+	C.free(unsafe.Pointer(cFile))
+	if rc != C.INTERP_SHIM_OK {
+		errText := C.GoString(C.interp_shim_error_text(h, rc))
+		return &ngcpreviewapi.PreviewResult{
+			Error: fmt.Sprintf("open failed: %d (%s)", rc, errText),
+		}, nil
+	}
+
+	// Execute initcodes after open (matches gcodemodule behavior)
+	if initcodes != "" {
+		for _, line := range strings.Split(initcodes, "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			cCode := C.CString(line)
+			rc = C.interp_shim_read_string(h, cCode)
+			C.free(unsafe.Pointer(cCode))
+			if rc == C.INTERP_SHIM_OK {
+				rc = C.interp_shim_execute(h)
+			}
+			if rc > C.INTERP_SHIM_ENDFILE {
+				return &ngcpreviewapi.PreviewResult{
+					Error: fmt.Sprintf("initcodes execution failed: %d", rc),
+				}, nil
+			}
+		}
+	}
+
+	// Execute unitcode after initcodes
 	if unitcode != "" {
 		cCode := C.CString(unitcode)
 		rc = C.interp_shim_read_string(h, cCode)
@@ -609,31 +679,6 @@ func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode stri
 				Error: fmt.Sprintf("unitcode execution failed: %d", rc),
 			}, nil
 		}
-	}
-
-	if initcodes != "" {
-		cCode := C.CString(initcodes)
-		rc = C.interp_shim_read_string(h, cCode)
-		C.free(unsafe.Pointer(cCode))
-		if rc == C.INTERP_SHIM_OK {
-			rc = C.interp_shim_execute(h)
-		}
-		if rc != C.INTERP_SHIM_OK {
-			return &ngcpreviewapi.PreviewResult{
-				Error: fmt.Sprintf("initcodes execution failed: %d", rc),
-			}, nil
-		}
-	}
-
-	// Open file
-	cFile := C.CString(filename)
-	rc = C.interp_shim_open(h, cFile)
-	C.free(unsafe.Pointer(cFile))
-	if rc != C.INTERP_SHIM_OK {
-		errText := C.GoString(C.interp_shim_error_text(h, rc))
-		return &ngcpreviewapi.PreviewResult{
-			Error: fmt.Sprintf("open failed: %d (%s)", rc, errText),
-		}, nil
 	}
 
 	// Read/execute loop
@@ -693,21 +738,24 @@ func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode stri
 				Type:   ngcpreviewapi.SegmentType(s._type),
 				LineNo: int32(s.line_no),
 				Start: ngcpreviewapi.Position{
-					X: float64(s.start[0]), Y: float64(s.start[1]), Z: float64(s.start[2]),
-					A: float64(s.start[3]), B: float64(s.start[4]), C: float64(s.start[5]),
-					U: float64(s.start[6]), V: float64(s.start[7]), W: float64(s.start[8]),
+					X: sanitize(float64(s.start[0])), Y: sanitize(float64(s.start[1])), Z: sanitize(float64(s.start[2])),
+					A: sanitize(float64(s.start[3])), B: sanitize(float64(s.start[4])), C: sanitize(float64(s.start[5])),
+					U: sanitize(float64(s.start[6])), V: sanitize(float64(s.start[7])), W: sanitize(float64(s.start[8])),
 				},
 				End: ngcpreviewapi.Position{
-					X: float64(s.end[0]), Y: float64(s.end[1]), Z: float64(s.end[2]),
-					A: float64(s.end[3]), B: float64(s.end[4]), C: float64(s.end[5]),
-					U: float64(s.end[6]), V: float64(s.end[7]), W: float64(s.end[8]),
+					X: sanitize(float64(s.end[0])), Y: sanitize(float64(s.end[1])), Z: sanitize(float64(s.end[2])),
+					A: sanitize(float64(s.end[3])), B: sanitize(float64(s.end[4])), C: sanitize(float64(s.end[5])),
+					U: sanitize(float64(s.end[6])), V: sanitize(float64(s.end[7])), W: sanitize(float64(s.end[8])),
 				},
-				Feedrate: float64(s.feedrate),
+				Feedrate: sanitize(float64(s.feedrate)),
 				ToolOffset: ngcpreviewapi.Position{
-					X: float64(s.tool_offset[0]), Y: float64(s.tool_offset[1]), Z: float64(s.tool_offset[2]),
-					A: float64(s.tool_offset[3]), B: float64(s.tool_offset[4]), C: float64(s.tool_offset[5]),
-					U: float64(s.tool_offset[6]), V: float64(s.tool_offset[7]), W: float64(s.tool_offset[8]),
+					X: sanitize(float64(s.tool_offset[0])), Y: sanitize(float64(s.tool_offset[1])), Z: sanitize(float64(s.tool_offset[2])),
+					A: sanitize(float64(s.tool_offset[3])), B: sanitize(float64(s.tool_offset[4])), C: sanitize(float64(s.tool_offset[5])),
+					U: sanitize(float64(s.tool_offset[6])), V: sanitize(float64(s.tool_offset[7])), W: sanitize(float64(s.tool_offset[8])),
 				},
+				CenterX:  sanitize(float64(s.center_x)),
+				CenterY:  sanitize(float64(s.center_y)),
+				Rotation: int32(s.rotation),
 			}
 		}
 	}

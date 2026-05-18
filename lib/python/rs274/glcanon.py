@@ -24,7 +24,7 @@ import _glhelpers
 import gmi
 from gmi.constants import KINEMATICS_IDENTITY, MAX_AXIS
 import array
-import gcode
+import gcode_rest as gcode
 import os
 import re
 from functools import reduce

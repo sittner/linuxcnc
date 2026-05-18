@@ -40,6 +40,10 @@ type Segment {
     end: Position
     feedrate: f64
     tool_offset: Position
+    # Arc-specific fields (only set for ARC segments)
+    center_x: f64
+    center_y: f64
+    rotation: i32
 }
 
 # A dwell (pause) point
