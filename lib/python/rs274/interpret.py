@@ -15,7 +15,7 @@
 #    along with this program; if not, write to the Free Software
 #    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 import math
-import gcode_rest as gcode
+import gcode
 
 class Translated:
     g92_offset_x = g92_offset_y = g92_offset_z = 0

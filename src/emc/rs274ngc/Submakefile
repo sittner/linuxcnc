@@ -49,17 +49,3 @@ $(patsubst ./emc/rs274ngc/%,../include/%,$(wildcard ./emc/rs274ngc/*.h)): ../inc
 	cp $^ $@
 $(patsubst ./emc/rs274ngc/%,../include/%,$(wildcard ./emc/rs274ngc/*.hh)): ../include/%.hh: ./emc/rs274ngc/%.hh
 	cp $^ $@
-
-GCODEMODULESRCS := emc/rs274ngc/gcodemodule.cc
-PYSRCS += $(GCODEMODULESRCS)
-$(call TOOBJSDEPS, $(GCODEMODULESRCS)): gomc/generated/gmi/canon/canon_api.h
-$(call TOOBJSDEPS, $(GCODEMODULESRCS)): EXTRAFLAGS += -Igomc/generated/gmi/interp_ext -Igomc/generated/gmi/interp_ctx
-$(call TOOBJSDEPS, $(GCODEMODULESRCS)): gomc/generated/gmi/interp_ext/interp_ext_api.h gomc/generated/gmi/interp_ctx/interp_ctx_api.h
-
-GCODEMODULE := ../lib/python/gcode.so
-$(GCODEMODULE): $(call TOOBJS, $(GCODEMODULESRCS)) ../lib/librs274.so.0
-	$(ECHO) Linking python module $(notdir $@)
-	$(CXX) $(LDFLAGS) -shared -o $@ $^ -lstdc++
-
-
-PYTARGETS += $(GCODEMODULE)
