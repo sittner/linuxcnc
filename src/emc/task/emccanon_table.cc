@@ -456,7 +456,8 @@ static void t_get_external_offsets(void *ctx, double offsets[9]) {
 
 // ---- Factory function ----
 
-static const canon_callbacks_t emccanon_table = {
+static canon_callbacks_t emccanon_table = {
+    .ctx = NULL,  // set by emccanon_init_context()
     .init_canon = t_init_canon,
     .set_g5x_offset = t_set_g5x_offset,
     .set_g92_offset = t_set_g92_offset,
@@ -602,6 +603,6 @@ static const canon_callbacks_t emccanon_table = {
     .get_external_offsets = t_get_external_offsets,
 };
 
-const canon_callbacks_t *emccanon_get_callbacks(void) {
+canon_callbacks_t *emccanon_get_callbacks(void) {
     return &emccanon_table;
 }

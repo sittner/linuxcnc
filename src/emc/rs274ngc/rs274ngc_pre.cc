@@ -112,9 +112,6 @@ const char *Interp::interp_status(int status) {
     return statustext;
 }
 
-int trace;
-static char savedError[LINELEN+1];
-
 Interp::Interp()
     : log_file(stderr),
     _setup{},
@@ -2151,21 +2148,21 @@ void Interp::setError(const char *fmt, ...)
 
     va_start(ap, fmt);
 
-    vsnprintf(savedError, LINELEN, fmt, ap);
+    vsnprintf(_setup.savedError, LINELEN, fmt, ap);
 
     va_end(ap);
 }
 
 const char *Interp::getSavedError()
 {
-    return savedError;
+    return _setup.savedError;
 }
 
 // set error message text without going through printf format interpretation
 int Interp::setSavedError(const char *msg)
 {
-    savedError[0] = '\0';
-    strncpy(savedError, msg, LINELEN);
+    _setup.savedError[0] = '\0';
+    strncpy(_setup.savedError, msg, LINELEN);
     return INTERP_OK;
 }
 
@@ -2194,7 +2191,7 @@ char * Interp::error_text(int error_code,        //!< code number of error
 {
     if(error_code == INTERP_ERROR)
     {
-        strncpy(error_text, savedError, max_size);
+        strncpy(error_text, _setup.savedError, max_size);
         error_text[max_size-1] = 0;
 
         return error_text;

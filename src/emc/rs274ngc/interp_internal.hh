@@ -821,7 +821,13 @@ struct setup
 
     // task calls upon interp.init() repeatedly
     // protect init() operations which are not idempotent
-    int init_once;  
+    int init_once;
+
+    // --- Multi-instance state (moved from file-scope statics) ---
+    unsigned int nurbs_order;
+    std::vector<CONTROL_POINT> nurbs_control_points;
+    char savedError[LINELEN+1];
+    int trace;
 };
 
 inline bool is_a_cycle(int motion) {

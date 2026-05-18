@@ -137,34 +137,65 @@ static PyTypeObject LineCodeType = {
     0,                      /*tp_is_gc*/
 };
 
-static PyObject *callback;
-static int interp_error;
-static int last_sequence_number;
-static bool metric;
-static double _pos_x, _pos_y, _pos_z, _pos_a, _pos_b, _pos_c, _pos_u, _pos_v, _pos_w;
-EmcPose tool_offset;
+// Per-instance preview state (enables concurrent preview instances)
+struct GcodePreviewState {
+    PyObject *callback;
+    int interp_error;
+    int last_sequence_number;
+    bool metric;
+    double pos_x, pos_y, pos_z, pos_a, pos_b, pos_c, pos_u, pos_v, pos_w;
+    EmcPose tool_offset;
+    InterpBase *pinterp;
 
-static InterpBase *pinterp;
+    GcodePreviewState()
+        : callback(nullptr), interp_error(0), last_sequence_number(0)
+        , metric(false)
+        , pos_x(0), pos_y(0), pos_z(0), pos_a(0), pos_b(0), pos_c(0)
+        , pos_u(0), pos_v(0), pos_w(0)
+        , tool_offset{}
+        , pinterp(nullptr)
+    {}
+};
+
+static GcodePreviewState _gps;
+
+// Convenience macros for accessing preview state
+#define GPS         (_gps)
+#define CALLBACK    (GPS.callback)
+#define INTERP_ERR  (GPS.interp_error)
+#define LAST_SEQ    (GPS.last_sequence_number)
+#define METRIC      (GPS.metric)
+#define POS_X       (GPS.pos_x)
+#define POS_Y       (GPS.pos_y)
+#define POS_Z       (GPS.pos_z)
+#define POS_A       (GPS.pos_a)
+#define POS_B       (GPS.pos_b)
+#define POS_C       (GPS.pos_c)
+#define POS_U       (GPS.pos_u)
+#define POS_V       (GPS.pos_v)
+#define POS_W       (GPS.pos_w)
+#define TOOL_OFFSET (GPS.tool_offset)
+#define PINTERP     (GPS.pinterp)
 
 #define callmethod(o, m, f, ...) PyObject_CallMethod((o), (char*)(m), (char*)(f), ## __VA_ARGS__)
 
-static void maybe_new_line(int sequence_number=pinterp->sequence_number());
+static void maybe_new_line(int sequence_number=PINTERP->sequence_number());
 static void maybe_new_line(int sequence_number) {
-    if(!pinterp) return;
-    if(interp_error) return;
-    if(sequence_number == last_sequence_number)
+    if(!PINTERP) return;
+    if(INTERP_ERR) return;
+    if(sequence_number == LAST_SEQ)
         return;
     LineCode *new_line_code =
         (LineCode*)(PyObject_New(LineCode, &LineCodeType));
-    pinterp->active_settings(new_line_code->settings);
-    pinterp->active_g_codes(new_line_code->gcodes);
-    pinterp->active_m_codes(new_line_code->mcodes);
+    PINTERP->active_settings(new_line_code->settings);
+    PINTERP->active_g_codes(new_line_code->gcodes);
+    PINTERP->active_m_codes(new_line_code->mcodes);
     new_line_code->gcodes[0] = sequence_number;
-    last_sequence_number = sequence_number;
+    LAST_SEQ = sequence_number;
     PyObject *result = 
-        callmethod(callback, "next_line", "O", new_line_code);
+        callmethod(CALLBACK, "next_line", "O", new_line_code);
     Py_DECREF(new_line_code);
-    if(result == NULL) interp_error ++;
+    if(result == NULL) INTERP_ERR ++;
     Py_XDECREF(result);
 }
 
@@ -181,12 +212,12 @@ void NURBS_FEED(int line_number, std::vector<CONTROL_POINT> nurbs_control_points
     PLANE_POINT P1;
     while (u+umax/div < umax) {
         PLANE_POINT P1 = nurbs_point(u+umax/div,k,nurbs_control_points,knot_vector);
-        STRAIGHT_FEED(line_number, P1.X,P1.Y, _pos_z, _pos_a, _pos_b, _pos_c, _pos_u, _pos_v, _pos_w);
+        STRAIGHT_FEED(line_number, P1.X,P1.Y, POS_Z, POS_A, POS_B, POS_C, POS_U, POS_V, POS_W);
         u = u + umax/div;
     } 
     P1.X = nurbs_control_points[n].X;
     P1.Y = nurbs_control_points[n].Y;
-    STRAIGHT_FEED(line_number, P1.X,P1.Y, _pos_z, _pos_a, _pos_b, _pos_c, _pos_u, _pos_v, _pos_w);
+    STRAIGHT_FEED(line_number, P1.X,P1.Y, POS_Z, POS_A, POS_B, POS_C, POS_U, POS_V, POS_W);
     knot_vector.clear();
 }
 
@@ -196,7 +227,7 @@ void ARC_FEED(int line_number,
               double a_position, double b_position, double c_position,
               double u_position, double v_position, double w_position) {
     // XXX: set _pos_*
-    if(metric) {
+    if(METRIC) {
         first_end /= 25.4;
         second_end /= 25.4;
         first_axis /= 25.4;
@@ -207,14 +238,14 @@ void ARC_FEED(int line_number,
         w_position /= 25.4;
     }
     maybe_new_line(line_number);
-    if(interp_error) return;
+    if(INTERP_ERR) return;
     PyObject *result =
-        callmethod(callback, "arc_feed", "ffffifffffff",
+        callmethod(CALLBACK, "arc_feed", "ffffifffffff",
                             first_end, second_end, first_axis, second_axis,
                             rotation, axis_end_point, 
                             a_position, b_position, c_position,
                             u_position, v_position, w_position);
-    if(result == NULL) interp_error ++;
+    if(result == NULL) INTERP_ERR ++;
     Py_XDECREF(result);
 }
 
@@ -222,16 +253,16 @@ void STRAIGHT_FEED(int line_number,
                    double x, double y, double z,
                    double a, double b, double c,
                    double u, double v, double w) {
-    _pos_x=x; _pos_y=y; _pos_z=z; 
-    _pos_a=a; _pos_b=b; _pos_c=c;
-    _pos_u=u; _pos_v=v; _pos_w=w;
-    if(metric) { x /= 25.4; y /= 25.4; z /= 25.4; u /= 25.4; v /= 25.4; w /= 25.4; }
+    POS_X=x; POS_Y=y; POS_Z=z; 
+    POS_A=a; POS_B=b; POS_C=c;
+    POS_U=u; POS_V=v; POS_W=w;
+    if(METRIC) { x /= 25.4; y /= 25.4; z /= 25.4; u /= 25.4; v /= 25.4; w /= 25.4; }
     maybe_new_line(line_number);
-    if(interp_error) return;
+    if(INTERP_ERR) return;
     PyObject *result =
-        callmethod(callback, "straight_feed", "fffffffff",
+        callmethod(CALLBACK, "straight_feed", "fffffffff",
                             x, y, z, a, b, c, u, v, w);
-    if(result == NULL) interp_error ++;
+    if(result == NULL) INTERP_ERR ++;
     Py_XDECREF(result);
 }
 
@@ -239,16 +270,16 @@ void STRAIGHT_TRAVERSE(int line_number,
                        double x, double y, double z,
                        double a, double b, double c,
                        double u, double v, double w) {
-    _pos_x=x; _pos_y=y; _pos_z=z; 
-    _pos_a=a; _pos_b=b; _pos_c=c;
-    _pos_u=u; _pos_v=v; _pos_w=w;
-    if(metric) { x /= 25.4; y /= 25.4; z /= 25.4; u /= 25.4; v /= 25.4; w /= 25.4; }
+    POS_X=x; POS_Y=y; POS_Z=z; 
+    POS_A=a; POS_B=b; POS_C=c;
+    POS_U=u; POS_V=v; POS_W=w;
+    if(METRIC) { x /= 25.4; y /= 25.4; z /= 25.4; u /= 25.4; v /= 25.4; w /= 25.4; }
     maybe_new_line(line_number);
-    if(interp_error) return;
+    if(INTERP_ERR) return;
     PyObject *result =
-        callmethod(callback, "straight_traverse", "fffffffff",
+        callmethod(CALLBACK, "straight_traverse", "fffffffff",
                             x, y, z, a, b, c, u, v, w);
-    if(result == NULL) interp_error ++;
+    if(result == NULL) INTERP_ERR ++;
     Py_XDECREF(result);
 }
 
@@ -256,81 +287,81 @@ void SET_G5X_OFFSET(int g5x_index,
                     double x, double y, double z,
                     double a, double b, double c,
                     double u, double v, double w) {
-    if(metric) { x /= 25.4; y /= 25.4; z /= 25.4; u /= 25.4; v /= 25.4; w /= 25.4; }
+    if(METRIC) { x /= 25.4; y /= 25.4; z /= 25.4; u /= 25.4; v /= 25.4; w /= 25.4; }
     maybe_new_line();
-    if(interp_error) return;
+    if(INTERP_ERR) return;
     PyObject *result =
-        callmethod(callback, "set_g5x_offset", "ifffffffff",
+        callmethod(CALLBACK, "set_g5x_offset", "ifffffffff",
                             g5x_index, x, y, z, a, b, c, u, v, w);
-    if(result == NULL) interp_error ++;
+    if(result == NULL) INTERP_ERR ++;
     Py_XDECREF(result);
 }
 
 void SET_G92_OFFSET(double x, double y, double z,
                     double a, double b, double c,
                     double u, double v, double w) {
-    if(metric) { x /= 25.4; y /= 25.4; z /= 25.4; u /= 25.4; v /= 25.4; w /= 25.4; }
+    if(METRIC) { x /= 25.4; y /= 25.4; z /= 25.4; u /= 25.4; v /= 25.4; w /= 25.4; }
     maybe_new_line();
-    if(interp_error) return;
+    if(INTERP_ERR) return;
     PyObject *result =
-        callmethod(callback, "set_g92_offset", "fffffffff",
+        callmethod(CALLBACK, "set_g92_offset", "fffffffff",
                             x, y, z, a, b, c, u, v, w);
-    if(result == NULL) interp_error ++;
+    if(result == NULL) INTERP_ERR ++;
     Py_XDECREF(result);
 }
 
 void SET_XY_ROTATION(double t) {
     maybe_new_line();
-    if(interp_error) return;
+    if(INTERP_ERR) return;
     PyObject *result =
-        callmethod(callback, "set_xy_rotation", "f", t);
-    if(result == NULL) interp_error ++;
+        callmethod(CALLBACK, "set_xy_rotation", "f", t);
+    if(result == NULL) INTERP_ERR ++;
     Py_XDECREF(result);
 };
 
-void USE_LENGTH_UNITS(CANON_UNITS u) { metric = u == CANON_UNITS_MM; }
+void USE_LENGTH_UNITS(CANON_UNITS u) { METRIC = u == CANON_UNITS_MM; }
 
 void SELECT_PLANE(CANON_PLANE pl) {
     maybe_new_line();   
-    if(interp_error) return;
+    if(INTERP_ERR) return;
     PyObject *result =
-        callmethod(callback, "set_plane", "i", pl);
-    if(result == NULL) interp_error ++;
+        callmethod(CALLBACK, "set_plane", "i", pl);
+    if(result == NULL) INTERP_ERR ++;
     Py_XDECREF(result);
 }
 
 void SET_TRAVERSE_RATE(double rate) {
     maybe_new_line();   
-    if(interp_error) return;
+    if(INTERP_ERR) return;
     PyObject *result =
-        callmethod(callback, "set_traverse_rate", "f", rate);
-    if(result == NULL) interp_error ++;
+        callmethod(CALLBACK, "set_traverse_rate", "f", rate);
+    if(result == NULL) INTERP_ERR ++;
     Py_XDECREF(result);
 }
 
 void SET_FEED_MODE(int spindle, int mode) {
 #if 0
     maybe_new_line();   
-    if(interp_error) return;
+    if(INTERP_ERR) return;
     PyObject *result =
-        callmethod(callback, "set_feed_mode", "i", mode);
-    if(result == NULL) interp_error ++;
+        callmethod(CALLBACK, "set_feed_mode", "i", mode);
+    if(result == NULL) INTERP_ERR ++;
     Py_XDECREF(result);
 #endif
 }
 
 void CHANGE_TOOL(int pocket) {
     maybe_new_line();
-    if(interp_error) return;
+    if(INTERP_ERR) return;
     PyObject *result = 
-        callmethod(callback, "change_tool", "i", pocket);
-    if(result == NULL) interp_error ++;
+        callmethod(CALLBACK, "change_tool", "i", pocket);
+    if(result == NULL) INTERP_ERR ++;
     Py_XDECREF(result);
 }
 
 void CHANGE_TOOL_NUMBER(int pocket) {
     maybe_new_line();
-    if(interp_error) return;
+    if(INTERP_ERR) return;
 }
 
 void RELOAD_TOOLDATA(void) {
@@ -344,29 +375,29 @@ void RELOAD_TOOLDATA(void) {
  */
 void SET_FEED_RATE(double rate) {
     maybe_new_line();   
-    if(interp_error) return;
-    if(metric) rate /= 25.4;
+    if(INTERP_ERR) return;
+    if(METRIC) rate /= 25.4;
     PyObject *result =
-        callmethod(callback, "set_feed_rate", "f", rate);
-    if(result == NULL) interp_error ++;
+        callmethod(CALLBACK, "set_feed_rate", "f", rate);
+    if(result == NULL) INTERP_ERR ++;
     Py_XDECREF(result);
 }
 
 void DWELL(double time) {
     maybe_new_line();   
-    if(interp_error) return;
+    if(INTERP_ERR) return;
     PyObject *result =
-        callmethod(callback, "dwell", "f", time);
-    if(result == NULL) interp_error ++;
+        callmethod(CALLBACK, "dwell", "f", time);
+    if(result == NULL) INTERP_ERR ++;
     Py_XDECREF(result);
 }
 
 void MESSAGE(char *comment) {
     maybe_new_line();   
-    if(interp_error) return;
+    if(INTERP_ERR) return;
     PyObject *result =
-        callmethod(callback, "message", "s", comment);
-    if(result == NULL) interp_error ++;
+        callmethod(CALLBACK, "message", "s", comment);
+    if(result == NULL) INTERP_ERR ++;
     Py_XDECREF(result);
 }
 
@@ -377,10 +408,10 @@ void LOGCLOSE() {}
 
 void COMMENT(const char *comment) {
     maybe_new_line();   
-    if(interp_error) return;
+    if(INTERP_ERR) return;
     PyObject *result =
-        callmethod(callback, "comment", "s", comment);
-    if(result == NULL) interp_error ++;
+        callmethod(CALLBACK, "comment", "s", comment);
+    if(result == NULL) INTERP_ERR ++;
     Py_XDECREF(result);
 }
 
@@ -389,15 +420,15 @@ void SET_TOOL_TABLE_ENTRY(int pocket, int toolno, EmcPose offset, double diamete
 }
 
 void USE_TOOL_LENGTH_OFFSET(EmcPose offset) {
-    tool_offset = offset;
+    TOOL_OFFSET = offset;
     maybe_new_line();
-    if(interp_error) return;
-    if(metric) {
+    if(INTERP_ERR) return;
+    if(METRIC) {
         offset.tran.x /= 25.4; offset.tran.y /= 25.4; offset.tran.z /= 25.4;
         offset.u /= 25.4; offset.v /= 25.4; offset.w /= 25.4; }
-    PyObject *result = callmethod(callback, "tool_offset", "ddddddddd", offset.tran.x, offset.tran.y, offset.tran.z,
+    PyObject *result = callmethod(CALLBACK, "tool_offset", "ddddddddd", offset.tran.x, offset.tran.y, offset.tran.z,
         offset.a, offset.b, offset.c, offset.u, offset.v, offset.w);
-    if(result == NULL) interp_error ++;
+    if(result == NULL) INTERP_ERR ++;
     Py_XDECREF(result);
 }
 
@@ -430,11 +461,11 @@ int  GET_EXTERNAL_TC_REASON() {return 0;}
 
 extern bool GET_BLOCK_DELETE(void) { 
     int bd = 0;
-    if(interp_error) return 0;
+    if(INTERP_ERR) return 0;
     PyObject *result =
-        callmethod(callback, "get_block_delete", "");
+        callmethod(CALLBACK, "get_block_delete", "");
     if(result == NULL) {
-        interp_error++;
+        INTERP_ERR++;
     } else {
         bd = PyObject_IsTrue(result);
     }
@@ -475,52 +506,52 @@ void STRAIGHT_PROBE(int line_number,
                     double x, double y, double z, 
                     double a, double b, double c,
                     double u, double v, double w, unsigned char probe_type) {
-    _pos_x=x; _pos_y=y; _pos_z=z; 
-    _pos_a=a; _pos_b=b; _pos_c=c;
-    _pos_u=u; _pos_v=v; _pos_w=w;
-    if(metric) { x /= 25.4; y /= 25.4; z /= 25.4; u /= 25.4; v /= 25.4; w /= 25.4; }
+    POS_X=x; POS_Y=y; POS_Z=z; 
+    POS_A=a; POS_B=b; POS_C=c;
+    POS_U=u; POS_V=v; POS_W=w;
+    if(METRIC) { x /= 25.4; y /= 25.4; z /= 25.4; u /= 25.4; v /= 25.4; w /= 25.4; }
     maybe_new_line(line_number);
-    if(interp_error) return;
+    if(INTERP_ERR) return;
     PyObject *result =
-        callmethod(callback, "straight_probe", "fffffffff",
+        callmethod(CALLBACK, "straight_probe", "fffffffff",
                             x, y, z, a, b, c, u, v, w);
-    if(result == NULL) interp_error ++;
+    if(result == NULL) INTERP_ERR ++;
     Py_XDECREF(result);
 
 }
 void RIGID_TAP(int line_number,
                double x, double y, double z, double scale) {
-    if(metric) { x /= 25.4; y /= 25.4; z /= 25.4; }
+    if(METRIC) { x /= 25.4; y /= 25.4; z /= 25.4; }
     maybe_new_line(line_number);
-    if(interp_error) return;
+    if(INTERP_ERR) return;
     PyObject *result =
-        callmethod(callback, "rigid_tap", "fff",
+        callmethod(CALLBACK, "rigid_tap", "fff",
             x, y, z);
-    if(result == NULL) interp_error ++;
+    if(result == NULL) INTERP_ERR ++;
     Py_XDECREF(result);
 }
 double GET_EXTERNAL_MOTION_CONTROL_TOLERANCE() { return 0.1; }
 double GET_EXTERNAL_MOTION_CONTROL_NAIVECAM_TOLERANCE() { return 0.1; }
-double GET_EXTERNAL_PROBE_POSITION_X() { return _pos_x; }
-double GET_EXTERNAL_PROBE_POSITION_Y() { return _pos_y; }
-double GET_EXTERNAL_PROBE_POSITION_Z() { return _pos_z; }
-double GET_EXTERNAL_PROBE_POSITION_A() { return _pos_a; }
-double GET_EXTERNAL_PROBE_POSITION_B() { return _pos_b; }
-double GET_EXTERNAL_PROBE_POSITION_C() { return _pos_c; }
-double GET_EXTERNAL_PROBE_POSITION_U() { return _pos_u; }
-double GET_EXTERNAL_PROBE_POSITION_V() { return _pos_v; }
-double GET_EXTERNAL_PROBE_POSITION_W() { return _pos_w; }
+double GET_EXTERNAL_PROBE_POSITION_X() { return POS_X; }
+double GET_EXTERNAL_PROBE_POSITION_Y() { return POS_Y; }
+double GET_EXTERNAL_PROBE_POSITION_Z() { return POS_Z; }
+double GET_EXTERNAL_PROBE_POSITION_A() { return POS_A; }
+double GET_EXTERNAL_PROBE_POSITION_B() { return POS_B; }
+double GET_EXTERNAL_PROBE_POSITION_C() { return POS_C; }
+double GET_EXTERNAL_PROBE_POSITION_U() { return POS_U; }
+double GET_EXTERNAL_PROBE_POSITION_V() { return POS_V; }
+double GET_EXTERNAL_PROBE_POSITION_W() { return POS_W; }
 double GET_EXTERNAL_PROBE_VALUE() { return 0.0; }
 int GET_EXTERNAL_PROBE_TRIPPED_VALUE() { return 0; }
-double GET_EXTERNAL_POSITION_X() { return _pos_x; }
-double GET_EXTERNAL_POSITION_Y() { return _pos_y; }
-double GET_EXTERNAL_POSITION_Z() { return _pos_z; }
-double GET_EXTERNAL_POSITION_A() { return _pos_a; }
-double GET_EXTERNAL_POSITION_B() { return _pos_b; }
-double GET_EXTERNAL_POSITION_C() { return _pos_c; }
-double GET_EXTERNAL_POSITION_U() { return _pos_u; }
-double GET_EXTERNAL_POSITION_V() { return _pos_v; }
-double GET_EXTERNAL_POSITION_W() { return _pos_w; }
+double GET_EXTERNAL_POSITION_X() { return POS_X; }
+double GET_EXTERNAL_POSITION_Y() { return POS_Y; }
+double GET_EXTERNAL_POSITION_Z() { return POS_Z; }
+double GET_EXTERNAL_POSITION_A() { return POS_A; }
+double GET_EXTERNAL_POSITION_B() { return POS_B; }
+double GET_EXTERNAL_POSITION_C() { return POS_C; }
+double GET_EXTERNAL_POSITION_U() { return POS_U; }
+double GET_EXTERNAL_POSITION_V() { return POS_V; }
+double GET_EXTERNAL_POSITION_W() { return POS_W; }
 void INIT_CANON() {}
 
 void SET_PARAMETER_FILE_NAME(const char *name)
@@ -529,7 +560,7 @@ void SET_PARAMETER_FILE_NAME(const char *name)
 }
 
 void GET_EXTERNAL_PARAMETER_FILE_NAME(char *name, int max_size) {
-    PyObject *result = PyObject_GetAttrString(callback, "parameter_file");
+    PyObject *result = PyObject_GetAttrString(CALLBACK, "parameter_file");
     if(!result) { name[0] = 0; return; }
     char *s = (char*)PyUnicode_AsUTF8(result);
     if(!s) { name[0] = 0; return; }
@@ -539,9 +570,9 @@ void GET_EXTERNAL_PARAMETER_FILE_NAME(char *name, int max_size) {
 CANON_UNITS GET_EXTERNAL_LENGTH_UNIT_TYPE() { return CANON_UNITS_INCHES; }
 CANON_TOOL_TABLE GET_EXTERNAL_TOOL_TABLE(int pocket) {
     CANON_TOOL_TABLE tdata = {-1,-1,{{0,0,0},0,0,0,0,0,0},0,0,0,0};
-    if(interp_error) return tdata;
+    if(INTERP_ERR) return tdata;
     PyObject *result =
-        callmethod(callback, "get_tool", "i", pocket);
+        callmethod(CALLBACK, "get_tool", "i", pocket);
     if(result == NULL ||
        !PyArg_ParseTuple(result, "iddddddddddddi",
              &tdata.toolno,
@@ -550,7 +581,7 @@ CANON_TOOL_TABLE GET_EXTERNAL_TOOL_TABLE(int pocket) {
              &tdata.offset.u,      &tdata.offset.v,      &tdata.offset.w,
              &tdata.diameter,      &tdata.frontangle,    &tdata.backangle,
              &tdata.orientation)) {
-       interp_error ++;
+       INTERP_ERR ++;
     }
     Py_XDECREF(result);
     return tdata;
@@ -561,12 +592,12 @@ double GET_EXTERNAL_ANALOG_INPUT(int index, double def) { return def; }
 int WAIT(int index, int input_type, int wait_type, double timeout) { return 0;}
 
 static void user_defined_function(int num, double arg1, double arg2) {
-    if(interp_error) return;
+    if(INTERP_ERR) return;
     maybe_new_line();
     PyObject *result =
-        callmethod(callback, "user_defined_function",
+        callmethod(CALLBACK, "user_defined_function",
                             "idd", num, arg1, arg2);
-    if(result == NULL) interp_error++;
+    if(result == NULL) INTERP_ERR++;
     Py_XDECREF(result);
 }
 
@@ -605,42 +636,42 @@ EmcPose GET_EXTERNAL_OFFSETS() {
 };
 
 int GET_EXTERNAL_AXIS_MASK() {
-    if(interp_error) return 7;
+    if(INTERP_ERR) return 7;
     PyObject *result =
-        callmethod(callback, "get_axis_mask", "");
-    if(!result) { interp_error ++; return 7 /* XYZABC */; }
-    if(!PyLong_Check(result)) { interp_error ++; return 7 /* XYZABC */; }
+        callmethod(CALLBACK, "get_axis_mask", "");
+    if(!result) { INTERP_ERR ++; return 7 /* XYZABC */; }
+    if(!PyLong_Check(result)) { INTERP_ERR ++; return 7 /* XYZABC */; }
     int mask = PyLong_AsLong(result);
     Py_DECREF(result);
     return mask;
 }
 
 double GET_EXTERNAL_TOOL_LENGTH_XOFFSET() {
-    return tool_offset.tran.x;
+    return TOOL_OFFSET.tran.x;
 }
 double GET_EXTERNAL_TOOL_LENGTH_YOFFSET() {
-    return tool_offset.tran.y;
+    return TOOL_OFFSET.tran.y;
 }
 double GET_EXTERNAL_TOOL_LENGTH_ZOFFSET() {
-    return tool_offset.tran.z;
+    return TOOL_OFFSET.tran.z;
 }
 double GET_EXTERNAL_TOOL_LENGTH_AOFFSET() {
-    return tool_offset.a;
+    return TOOL_OFFSET.a;
 }
 double GET_EXTERNAL_TOOL_LENGTH_BOFFSET() {
-    return tool_offset.b;
+    return TOOL_OFFSET.b;
 }
 double GET_EXTERNAL_TOOL_LENGTH_COFFSET() {
-    return tool_offset.c;
+    return TOOL_OFFSET.c;
 }
 double GET_EXTERNAL_TOOL_LENGTH_UOFFSET() {
-    return tool_offset.u;
+    return TOOL_OFFSET.u;
 }
 double GET_EXTERNAL_TOOL_LENGTH_VOFFSET() {
-    return tool_offset.v;
+    return TOOL_OFFSET.v;
 }
 double GET_EXTERNAL_TOOL_LENGTH_WOFFSET() {
-    return tool_offset.w;
+    return TOOL_OFFSET.w;
 }
 
 static bool PyLong_CheckAndError(const char *func, PyObject *p)  {
@@ -659,12 +690,12 @@ static bool PyFloat_CheckAndError(const char *func, PyObject *p)  {
 
 double GET_EXTERNAL_ANGLE_UNITS() {
     PyObject *result =
-        callmethod(callback, "get_external_angular_units", "");
-    if(result == NULL) interp_error++;
+        callmethod(CALLBACK, "get_external_angular_units", "");
+    if(result == NULL) INTERP_ERR++;
 
     double dresult = 1.0;
     if(!result || !PyFloat_CheckAndError("get_external_angle_units", result)) {
-        interp_error++;
+        INTERP_ERR++;
     } else {
         dresult = PyFloat_AsDouble(result);
     }
@@ -674,12 +705,12 @@ double GET_EXTERNAL_ANGLE_UNITS() {
 
 double GET_EXTERNAL_LENGTH_UNITS() {
     PyObject *result =
-        callmethod(callback, "get_external_length_units", "");
-    if(result == NULL) interp_error++;
+        callmethod(CALLBACK, "get_external_length_units", "");
+    if(result == NULL) INTERP_ERR++;
 
     double dresult = 0.03937007874016;
     if(!result || !PyFloat_CheckAndError("get_external_length_units", result)) {
-        interp_error++;
+        INTERP_ERR++;
     } else {
         dresult = PyFloat_AsDouble(result);
     }
@@ -689,7 +720,7 @@ double GET_EXTERNAL_LENGTH_UNITS() {
 
 static bool check_abort() {
     PyObject *result =
-        callmethod(callback, "check_abort", "");
+        callmethod(CALLBACK, "check_abort", "");
     if(!result) return 1;
     if(PyObject_IsTrue(result)) {
         Py_DECREF(result);
@@ -710,8 +741,8 @@ void SET_MOTION_CONTROL_MODE(CANON_MOTION_MODE mode) { motion_mode = mode; }
 CANON_MOTION_MODE GET_EXTERNAL_MOTION_CONTROL_MODE() { return motion_mode; }
 void SET_NAIVECAM_TOLERANCE(double tolerance) { }
 
-// ---- Canon callback table for gcode preview ----
-// Wraps the local preview canon functions into the generated callback struct.
+// ---- Canon CALLBACK table for gcode preview ----
+// Wraps the local preview canon functions into the generated CALLBACK struct.
 
 #define CANON_API_CGO
 #include "gomc/generated/gmi/canon/canon_api.h"
@@ -722,7 +753,7 @@ static void gc_set_g5x_offset(void *ctx, int32_t origin, double x, double y, dou
 static void gc_set_g92_offset(void *ctx, double x, double y, double z, double a, double b, double c, double u, double v, double w) { SET_G92_OFFSET(x, y, z, a, b, c, u, v, w); }
 static void gc_set_xy_rotation(void *ctx, double t) { SET_XY_ROTATION(t); }
 static void gc_update_end_point(void *ctx, double x, double y, double z, double a, double b, double c, double u, double v, double w) {
-    _pos_x=x; _pos_y=y; _pos_z=z; _pos_a=a; _pos_b=b; _pos_c=c; _pos_u=u; _pos_v=v; _pos_w=w;
+    POS_X=x; POS_Y=y; POS_Z=z; POS_A=a; POS_B=b; POS_C=c; POS_U=u; POS_V=v; POS_W=w;
 }
 static void gc_use_length_units(void *ctx, int32_t u) { USE_LENGTH_UNITS((CANON_UNITS)u); }
 static void gc_select_plane(void *ctx, int32_t pl) { SELECT_PLANE((CANON_PLANE)pl); }
@@ -898,6 +929,7 @@ static void gc_get_external_offsets(void *ctx, double offsets[9]) {
 }
 
 static const canon_callbacks_t gcodemodule_canon_table = {
+    .ctx = &_gps,
     .init_canon = gc_init_canon,
     .set_g5x_offset = gc_set_g5x_offset,
     .set_g92_offset = gc_set_g92_offset,
@@ -1061,39 +1093,39 @@ static PyObject *parse_file(PyObject *self, PyObject *args) {
     }
 
     if(!PyArg_ParseTuple(args, "sOO!|s:new-parse",
-            &f, &callback, &PyList_Type, &initcodes, &interpname))
+            &f, &CALLBACK, &PyList_Type, &initcodes, &interpname))
     {
         initcodes = nullptr;
         PyErr_Clear();
         if(!PyArg_ParseTuple(args, "sO|sss:parse",
-                &f, &callback, &unitcode, &initcode, &interpname))
+                &f, &CALLBACK, &unitcode, &initcode, &interpname))
             return NULL;
     }
 
-    if(pinterp) {
-        delete pinterp;
-        pinterp = 0;
+    if(PINTERP) {
+        delete PINTERP;
+        PINTERP = 0;
     }
     if(interpname && *interpname)
-        pinterp = interp_from_shlib(interpname);
-    if(!pinterp)
-        pinterp = new Interp;
+        PINTERP = interp_from_shlib(interpname);
+    if(!PINTERP)
+        PINTERP = new Interp;
 
     for(int i=0; i<USER_DEFINED_FUNCTION_NUM; i++) 
         USER_DEFINED_FUNCTION[i] = user_defined_function;
 
     gettimeofday(&t0, NULL);
 
-    metric=false;
-    interp_error = 0;
-    last_sequence_number = -1;
+    METRIC=false;
+    INTERP_ERR = 0;
+    LAST_SEQ = -1;
 
-    _pos_x = _pos_y = _pos_z = _pos_a = _pos_b = _pos_c = 0;
-    _pos_u = _pos_v = _pos_w = 0;
+    POS_X = POS_Y = POS_Z = POS_A = POS_B = POS_C = 0;
+    POS_U = POS_V = POS_W = 0;
 
-    pinterp->set_canon_callbacks(&gcodemodule_canon_table);
-    pinterp->init();
-    pinterp->open(f);
+    PINTERP->set_canon_callbacks(&gcodemodule_canon_table);
+    PINTERP->init();
+    PINTERP->open(f);
 
     maybe_new_line();
 
@@ -1105,26 +1137,26 @@ static PyObject *parse_file(PyObject *self, PyObject *args) {
             if(!item) return NULL;
             const char *code = PyUnicode_AsUTF8(item);
             if(!code) return NULL;
-            result = pinterp->read(code);
+            result = PINTERP->read(code);
             if(!RESULT_OK) goto out_error;
-            result = pinterp->execute();
+            result = PINTERP->execute();
         }
     }
     if(unitcode && RESULT_OK) {
-        result = pinterp->read(unitcode);
+        result = PINTERP->read(unitcode);
         if(!RESULT_OK) goto out_error;
-        result = pinterp->execute();
+        result = PINTERP->execute();
     }
 
     if(initcode && RESULT_OK) {
-        result = pinterp->read(initcode);
+        result = PINTERP->read(initcode);
         if(!RESULT_OK) goto out_error;
-        result = pinterp->execute();
+        result = PINTERP->execute();
     }
 
-    while(!interp_error && RESULT_OK) {
+    while(!INTERP_ERR && RESULT_OK) {
         error_line_offset = 1;
-        result = pinterp->read();
+        result = PINTERP->read();
         gettimeofday(&t1, NULL);
         if(t1.tv_sec > t0.tv_sec + wait) {
             if(check_abort()) return NULL;
@@ -1132,40 +1164,40 @@ static PyObject *parse_file(PyObject *self, PyObject *args) {
         }
         if(!RESULT_OK) break;
         error_line_offset = 0;
-        result = pinterp->execute();
+        result = PINTERP->execute();
     }
 out_error:
-    if(pinterp && !interp_error)
+    if(PINTERP && !INTERP_ERR)
     {
         // Emit a final next_line before closing — must happen while
         // the interpreter is still open so sequence_number() is valid.
         PyErr_Clear();
         maybe_new_line();
-        if(PyErr_Occurred()) { interp_error = 1; }
+        if(PyErr_Occurred()) { INTERP_ERR = 1; }
     }
-    if(pinterp)
+    if(PINTERP)
     {
-        auto interp = dynamic_cast<Interp*>(pinterp);
+        auto interp = dynamic_cast<Interp*>(PINTERP);
         if(interp) interp->_setup.use_lazy_close = false;
-        pinterp->close();
+        PINTERP->close();
     }
-    if(interp_error) {
+    if(INTERP_ERR) {
         if(!PyErr_Occurred()) {
             PyErr_Format(PyExc_RuntimeError,
-                    "interp_error > 0 but no Python exception set");
+                    "INTERP_ERR > 0 but no Python exception set");
         } else {
             // seems a PyErr_Ocurred(), but no exception was set ?
             // so return error info that can be caught and handled
-            PyErr_Format(PyExc_RuntimeError,"parse_file interp_error");
+            PyErr_Format(PyExc_RuntimeError,"parse_file INTERP_ERR");
             fprintf(stderr,"!!!%s: parse_file() f=%s\n"
-                    "!!!interp_error=%d result=%d last_sequence_number=%d\n",
-                    __FILE__,f,interp_error,result,last_sequence_number);
+                    "!!!INTERP_ERR=%d result=%d LAST_SEQ=%d\n",
+                    __FILE__,f,INTERP_ERR,result,LAST_SEQ);
         }
         return NULL;
     }
     PyObject *retval = PyTuple_New(2);
     PyTuple_SetItem(retval, 0, PyLong_FromLong(result));
-    PyTuple_SetItem(retval, 1, PyLong_FromLong(last_sequence_number + error_line_offset));
+    PyTuple_SetItem(retval, 1, PyLong_FromLong(LAST_SEQ + error_line_offset));
     return retval;
 }
 
@@ -1176,7 +1208,7 @@ static char savedError[LINELEN+1];
 static PyObject *rs274_strerror(PyObject *s, PyObject *o) {
     int err;
     if(!PyArg_ParseTuple(o, "i", &err)) return nullptr;
-    pinterp->error_text(err, savedError, LINELEN);
+    PINTERP->error_text(err, savedError, LINELEN);
     return PyUnicode_FromString(savedError);
 }
 

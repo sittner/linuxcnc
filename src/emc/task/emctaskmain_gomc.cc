@@ -3285,6 +3285,8 @@ static int emctask_startup()
     }
     // now the interpreter
 
+    emccanon_init_context(emcStatus, &interp_list);
+
     if (0 != emcTaskPlanInit()) {
 	rcs_print_error("can't initialize interpreter\n");
 	return -1;
