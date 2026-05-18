@@ -46,7 +46,8 @@ int interp_shim_close(interp_handle_t *h);
 void interp_shim_destroy(interp_handle_t *h);
 
 // Get the error text for the last error. Returns pointer to internal buffer.
-const char *interp_shim_error_text(interp_handle_t *h, int error_code);
+void interp_shim_error_text(interp_handle_t *h, int error_code,
+                            char *buf, int buf_size);
 
 // Interpreter return codes
 #define INTERP_SHIM_OK       0

@@ -595,6 +595,12 @@ func sanitize(v float64) float64 {
 	return v
 }
 
+func shimErrorText(h *C.interp_handle_t, rc C.int) string {
+	var buf [256]C.char
+	C.interp_shim_error_text(h, rc, &buf[0], 256)
+	return C.GoString(&buf[0])
+}
+
 // GenPreview implements ngcpreviewapi.NgcpreviewCallbacks.
 func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode string) (*ngcpreviewapi.PreviewResult, error) {
 	// Create a fresh interpreter
@@ -628,7 +634,7 @@ func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode stri
 	// Initialize interpreter
 	rc := C.interp_shim_init(h)
 	if rc != C.INTERP_SHIM_OK {
-		errText := C.GoString(C.interp_shim_error_text(h, rc))
+		errText := shimErrorText(h, rc)
 		return &ngcpreviewapi.PreviewResult{
 			Error: fmt.Sprintf("interpreter init failed: %d (%s)", rc, errText),
 		}, nil
@@ -639,7 +645,7 @@ func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode stri
 	rc = C.interp_shim_open(h, cFile)
 	C.free(unsafe.Pointer(cFile))
 	if rc != C.INTERP_SHIM_OK {
-		errText := C.GoString(C.interp_shim_error_text(h, rc))
+		errText := shimErrorText(h, rc)
 		return &ngcpreviewapi.PreviewResult{
 			Error: fmt.Sprintf("open failed: %d (%s)", rc, errText),
 		}, nil
@@ -716,10 +722,10 @@ func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode stri
 	// Convert C results to Go types
 	var errMsg string
 	if lastExecRC > C.INTERP_SHIM_ENDFILE {
-		errText := C.GoString(C.interp_shim_error_text(h, lastExecRC))
+		errText := shimErrorText(h, lastExecRC)
 		errMsg = fmt.Sprintf("line %d: execute error %d: %s", maxLine+1, lastExecRC, errText)
 	} else if lastReadRC != C.INTERP_SHIM_OK && lastReadRC != C.INTERP_SHIM_ENDFILE {
-		errText := C.GoString(C.interp_shim_error_text(h, lastReadRC))
+		errText := shimErrorText(h, lastReadRC)
 		errMsg = fmt.Sprintf("line %d: read error %d: %s", maxLine+1, lastReadRC, errText)
 	}
 	result := &ngcpreviewapi.PreviewResult{

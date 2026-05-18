@@ -1618,7 +1618,7 @@ int Interp::unwind_call(int status, const char *file, int line, const char *func
     _setup.offset_map.clear();
     _setup.mdi_interrupt = false;
 
-    qc_reset();
+    qc_reset(&_setup);
     return INTERP_OK;
 }
 
@@ -1809,6 +1809,8 @@ complain, but does write it in the output file.
 int Interp::save_parameters(const char *filename,      //!< name of file to write
                              const double parameters[]) //!< parameters to save   
 {
+  if (!_setup.task_mode)
+    return INTERP_OK;
   FORCE_LC_NUMERIC_C;
   FILE *infile;
   FILE *outfile;

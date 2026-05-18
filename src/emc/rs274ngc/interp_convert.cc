@@ -727,7 +727,7 @@ int Interp::convert_arc_comp1(int move,  //!< either G_2 (cw arc) or G_3 (ccw ar
                               0, 0, 0,
                               cx, cy, cz,
                               AA_end, BB_end, CC_end, u_end, v_end, w_end);
-        set_endpoint(cx, cy);
+        set_endpoint(settings, cx, cy);
     }
 
     enqueue_ARC_FEED(settings, block->line_number,
@@ -869,7 +869,7 @@ int Interp::convert_arc_comp2(int move,  //!< either G_2 (cw arc) or G_3 (ccw ar
         (fabs(beta - M_PIl) < small && !TOOL_INSIDE_ARC(side, turn))
         ) {
         // concave
-        if (qc().front().type != QARC_FEED) {
+        if (qc(settings).front().type != QARC_FEED) {
             // line->arc
             double cy = arc_radius * sin(beta - M_PI_2l);
             double toward_nominal;
@@ -905,7 +905,7 @@ int Interp::convert_arc_comp2(int move,  //!< either G_2 (cw arc) or G_3 (ccw ar
             CHP(move_endpoint_and_flush(settings, midx, midy));
         } else {
             // arc->arc
-            struct arc_feed &prev = qc().front().data.arc_feed;
+            struct arc_feed &prev = qc(settings).front().data.arc_feed;
             double oldrad = hypot(prev.center2 - prev.end2, prev.center1 - prev.end1);
             double newrad;
             if TOOL_INSIDE_ARC(side, turn) {
@@ -956,14 +956,14 @@ int Interp::convert_arc_comp2(int move,  //!< either G_2 (cw arc) or G_3 (ccw ar
                          cz,
                          AA_end, BB_end, CC_end, u, v, w);
         dequeue_canons(settings);
-        set_endpoint(midx, midy);
+        set_endpoint(settings, midx, midy);
         enqueue_ARC_FEED(settings, block->line_number,
                          find_turn(opx, opy, centerx, centery, turn, end_x, end_y),
                          new_end_x, new_end_y, centerx, centery, turn, end_z,
                          AA_end, BB_end, CC_end, u, v, w);
     } else {                      /* convex, one arc needed */
         dequeue_canons(settings);
-        set_endpoint(cx, cy);
+        set_endpoint(settings, cx, cy);
         enqueue_ARC_FEED(settings, block->line_number,
                          find_turn(opx, opy, centerx, centery, turn, end_x, end_y),
                          new_end_x, new_end_y, centerx, centery, turn, end_z,
@@ -2715,7 +2715,7 @@ int Interp::convert_length_units(int g_code,     //!< g_code being executed (mus
       settings->program_x = (settings->program_x * INCH_PER_MM);
       settings->program_y = (settings->program_y * INCH_PER_MM);
       settings->program_z = (settings->program_z * INCH_PER_MM);
-      qc_scale(INCH_PER_MM);
+      qc_scale(settings, INCH_PER_MM);
       settings->cutter_comp_radius *= INCH_PER_MM;
       settings->axis_offset_x = (settings->axis_offset_x * INCH_PER_MM);
       settings->axis_offset_y = (settings->axis_offset_y * INCH_PER_MM);
@@ -2758,7 +2758,7 @@ int Interp::convert_length_units(int g_code,     //!< g_code being executed (mus
       settings->program_x = (settings->program_x * MM_PER_INCH);
       settings->program_y = (settings->program_y * MM_PER_INCH);
       settings->program_z = (settings->program_z * MM_PER_INCH);
-      qc_scale(MM_PER_INCH);
+      qc_scale(settings, MM_PER_INCH);
       settings->cutter_comp_radius *= MM_PER_INCH;
       settings->axis_offset_x = (settings->axis_offset_x * MM_PER_INCH);
       settings->axis_offset_y = (settings->axis_offset_y * MM_PER_INCH);
@@ -5185,7 +5185,7 @@ int Interp::convert_straight_comp1(int move,     //!< either G_0 or G_1
     // they cannot get reversed because they are guaranteed to be long
     // enough.
 
-    set_endpoint(cx, cy);
+    set_endpoint(settings, cx, cy);
 
     if (move == G_0) {
         enqueue_STRAIGHT_TRAVERSE(settings, block->line_number,
@@ -5348,9 +5348,9 @@ int Interp::convert_straight_comp2(int move,     //!< either G_0 or G_1
         if ((beta < -small) || (beta > (M_PIl + small))) {
             concave = 1;
         } else if (beta > (M_PIl - small) &&
-                   (!qc().empty() && qc().front().type == QARC_FEED &&
-                    ((side == RIGHT && qc().front().data.arc_feed.turn > 0) ||
-                     (side == LEFT && qc().front().data.arc_feed.turn < 0)))) {
+                   (!qc(settings).empty() && qc(settings).front().type == QARC_FEED &&
+                    ((side == RIGHT && qc(settings).front().data.arc_feed.turn > 0) ||
+                     (side == LEFT && qc(settings).front().data.arc_feed.turn < 0)))) {
             // this is an "h" shape, tool on right, going right to left
             // over the hemispherical round part, then up next to the
             // vertical part (or, the mirror case).  there are two ways
@@ -5372,7 +5372,7 @@ int Interp::convert_straight_comp2(int move,     //!< either G_0 or G_1
                                  ((side == LEFT) ? -1 : 1), cz,
                                  AA_end, BB_end, CC_end, u_end, v_end, w_end);
                 dequeue_canons(settings);
-                set_endpoint(mid_x, mid_y);
+                set_endpoint(settings, mid_x, mid_y);
             } else if(move == G_0) {
                 // we can't go around the corner because there is no
                 // arc traverse.  but, if we do this anyway, at least
@@ -5385,10 +5385,10 @@ int Interp::convert_straight_comp2(int move,     //!< either G_0 or G_1
                                           AA_end, BB_end, CC_end,
                                           u_end, v_end, w_end);
                 dequeue_canons(settings);
-                set_endpoint(mid_x, mid_y);
+                set_endpoint(settings, mid_x, mid_y);
             } else ERS(NCE_BUG_CODE_NOT_G0_OR_G1);
         } else if (concave) {
-            if (qc().front().type != QARC_FEED) {
+            if (qc(settings).front().type != QARC_FEED) {
                 // line->line
                 double retreat;
                 // half the angle of the inside corner
@@ -5405,7 +5405,7 @@ int Interp::convert_straight_comp2(int move,     //!< either G_0 or G_1
             } else {
                 // arc->line
                 // beware: the arc we saved is the compensated one.
-                arc_feed prev = qc().front().data.arc_feed;
+                arc_feed prev = qc(settings).front().data.arc_feed;
                 double oldrad = hypot(prev.center2 - prev.end2, prev.center1 - prev.end1);
                 double oldrad_uncomp;
 
@@ -5452,7 +5452,7 @@ int Interp::convert_straight_comp2(int move,     //!< either G_0 or G_1
         } else {
             // no arc needed, also not concave (colinear lines or tangent arc->line)
             dequeue_canons(settings);
-            set_endpoint(cx, cy);
+            set_endpoint(settings, cx, cy);
         }
         (move == G_0? enqueue_STRAIGHT_TRAVERSE: enqueue_STRAIGHT_FEED)
             (settings, block->line_number,

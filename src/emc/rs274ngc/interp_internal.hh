@@ -829,6 +829,15 @@ struct setup
     char savedError[LINELEN+1];
     int trace;
 
+    // Per-call ext handler state (moved from file-scope statics in interp_ext.cc)
+    int ext_phase;
+    void *ext_user;
+
+    // Cutter compensation queue state (moved from file-scope statics in interp_queue.cc)
+    double qc_endpoint[2];
+    int qc_endpoint_valid;
+    void *qc_queue;  // opaque, actually std::vector<queued_canon>*
+
     // Per-instance task/preview mode and M100-M199 handlers
     // (moved from globals to support multiple Interp instances)
     int task_mode;  // 0 = preview, 1 = task (replaces global _task)

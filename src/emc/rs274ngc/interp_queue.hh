@@ -104,7 +104,7 @@ struct queued_canon {
     } data;
 };
 
-std::vector<queued_canon>& qc(void);
+std::vector<queued_canon>& qc(setup_pointer settings);
 
 void enqueue_SET_FEED_RATE(setup_pointer settings, double feed);
 void enqueue_DWELL(setup_pointer settings, double time);
@@ -141,10 +141,9 @@ void enqueue_START_CHANGE(setup_pointer settings);
 void enqueue_ORIENT_SPINDLE(setup_pointer settings, int spindle, double orientation, int mode);
 void enqueue_WAIT_ORIENT_SPINDLE_COMPLETE(setup_pointer settings, int spindle, double timeout);
 void dequeue_canons(setup_pointer settings);
-void set_endpoint(double x, double y);
-void set_endpoint_zx(double z, double x);
+void set_endpoint(setup_pointer settings, double x, double y);
 int move_endpoint_and_flush(setup_pointer settings, double x, double y);
-void qc_reset(void);
-void qc_scale(double scale);
+void qc_reset(setup_pointer settings);
+void qc_scale(setup_pointer settings, double scale);
 
 #endif

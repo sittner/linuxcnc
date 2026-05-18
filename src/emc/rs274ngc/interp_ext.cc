@@ -131,19 +131,17 @@ static void ctx_canon_enqueue_set_feed_rate(void *interp, double rate) {
 #undef RBLOCK
 #undef IP
 
-// Per-call state for get_phase/get_user (interpreter is single-threaded)
-static int current_phase;
-static void *current_user;
+// Per-call state for get_phase/get_user (stored in _setup for multi-instance safety)
 
-static int32_t ctx_get_phase(void *interp) { return current_phase; }
-static void *ctx_get_user(void *interp) { return current_user; }
+static int32_t ctx_get_phase(void *interp) { return static_cast<Interp*>(interp)->_setup.ext_phase; }
+static void *ctx_get_user(void *interp) { return static_cast<Interp*>(interp)->_setup.ext_user; }
 
 static void fill_ctx(interp_ctx_callbacks_t *ctx, Interp *ip, void *user, int phase)
 {
     ctx->ctx = ip;
 
-    current_phase = phase;
-    current_user = user;
+    ip->_setup.ext_phase = phase;
+    ip->_setup.ext_user = user;
 
     // Named parameters
     ctx->get_param = ctx_get_param;

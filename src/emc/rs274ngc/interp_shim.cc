@@ -65,11 +65,13 @@ void interp_shim_destroy(interp_handle_t *h) {
     }
 }
 
-const char *interp_shim_error_text(interp_handle_t *h, int error_code) {
-    static char buf[256];
-    if (!h || !h->interp) return "no interpreter";
-    h->interp->error_text(error_code, buf, sizeof(buf));
-    return buf;
+void interp_shim_error_text(interp_handle_t *h, int error_code,
+                            char *buf, int buf_size) {
+    if (!h || !h->interp) {
+        snprintf(buf, buf_size, "no interpreter");
+        return;
+    }
+    h->interp->error_text(error_code, buf, buf_size);
 }
 
 } // extern "C"

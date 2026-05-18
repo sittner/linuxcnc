@@ -19,6 +19,7 @@
  */
 #include <string.h>
 #include "rs274ngc_interp.hh"
+#include "interp_queue.hh"
 
 #pragma GCC diagnostic error "-Wmissing-field-initializers"
 setup::setup() :
@@ -177,12 +178,21 @@ setup::setup() :
     on_abort_command(NULL),
     init_once(CANON_STOPPED),
     task_mode(0),
+    ext_phase(0),
+    ext_user(nullptr),
+    qc_endpoint{},
+    qc_endpoint_valid(0),
+    qc_queue(nullptr),
     user_defined_function{}
 {
   std::fill(parameters, parameters + interp_param_global::RS274NGC_MAX_PARAMETERS, 0);
 }
 
 setup::~setup() {
+    if (qc_queue) {
+        delete static_cast<std::vector<queued_canon>*>(qc_queue);
+        qc_queue = nullptr;
+    }
 }
 
 block_struct::block_struct ()

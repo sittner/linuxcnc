@@ -641,8 +641,9 @@ No behavior change — pure refactoring.
 6. Move `static CanonConfig_t canon` and related statics into a struct allocated
    per-instance by `emccanon_make_table()`.
 7. Remove the free-function declarations from `canon.hh`.
-8. SAI (`saicanon.cc`) and gcodemodule (`gcodemodule.cc`) get their own table
-   implementations — they already have their own canon function bodies.
+8. SAI (`saicanon.cc`) gets its own table implementation — it already has
+   its own canon function bodies. gcodemodule.cc is replaced entirely by
+   server-side ngcpreview (see Phase 5).
 
 **Validation:** All existing configs work unchanged. Two Interp instances can
 coexist (tested with preview + execution).
@@ -677,7 +678,7 @@ The registration API lives in **librs274.so** as part of the Interp class.
 This is natural because:
 - The Interp owns the dispatch (it replaces pycall)
 - The registry is per-instance (multi-instance ready)
-- Non-milltask consumers (gcode.so/SAI) get an empty registry — handlers
+- Non-milltask consumers (SAI) get an empty registry — handlers
   are never registered there, dispatch returns error, which is correct
   (preview doesn't need prolog/epilog side effects)
 
@@ -767,7 +768,7 @@ Custom remap prologs/epilogs can be written as cmods/gomods.
 **Validation:** M1xx codes work via registered gomods.
 Default tool change (iocontrol-based) works without Python.
 
-### Phase 5: Multi-Instance Interpreter + Server-Side Preview
+### Phase 5: Multi-Instance Interpreter + Server-Side Preview — Done
 
 **Goal:** Enable multiple concurrent Interp instances. Primary driver:
 server-side G-code preview that runs concurrently with execution.
@@ -779,22 +780,45 @@ server-side G-code preview that runs concurrently with execution.
 3. Each `interp_canon_t` instance has its own CanonConfig, interp\_list,
    and status reference.
 4. Tool table access goes through canon getters (already done in Phase 1).
-5. Implement **preview canon** (`preview_canon_t`): a `interp_canon_t`
-   implementation that records geometry as JSON (line segments, arcs,
-   rapid/feed classification, tool changes, coordinate system). No NML,
-   no HAL, no interp\_list — pure data recording.
+5. ~~Implement **preview canon**~~ — **Done.** `ngcpreview` gomod in
+   `src/gomc/internal/ngcpreview/module.go` implements a recording canon
+   (C callbacks via `canon_callbacks_t`) that stores segments (traverse,
+   feed, arc+center+rotation, probe), dwells, and tool changes. Returns
+   JSON via REST endpoint `POST /api/v1/ngcpreview/file`.
 6. Preview Interp instance runs with `interp_ext = NULL`. Extensions are
    skipped entirely — remapped codes that have `ngc=` subs still execute
    (normal NGC sub call, correct geometry), but prolog/epilog/body
    extension callbacks are not invoked. This is correct because preview
    doesn't need side effects, only geometry.
-7. gomc-server exposes preview via REST/WebSocket endpoint. Client sends
-   file path (or G-code text), server creates preview Interp + preview
-   canon, runs interpretation, streams JSON geometry to client. Client
-   is a pure renderer — no G-code parsing needed.
-8. Test: create two Interp instances — one for execution, one for preview.
+7. ~~gomc-server exposes preview via REST endpoint~~ — **Done.** Client
+   sends `{filename, initcodes, unitcode}`, server creates preview Interp
+   + preview canon, runs interpretation, returns JSON geometry.
+8. ~~Python client module~~ — **Done.** `lib/python/gcode.py` is a pure
+   Python REST client that replaces the old `gcodemodule.cc` C extension.
+   Provides `parse()`, `strerror()`, `MIN_ERROR`, `arc_to_segments()`,
+   `calc_extents()`. All existing `import gcode` consumers (glcanon,
+   gremlin, qt5_graphics, qtvcp, axis) work unchanged.
+9. Test: create two Interp instances — one for execution, one for preview.
    They must not interfere. Preview must produce identical geometry to
    execution canon for the same program (modulo side-effect-only codes).
+
+**Completed items:**
+- `src/gomc/internal/ngcpreview/module.go` — ngcpreview gomod with preview
+  canon, metric→inches conversion (USE_LENGTH_UNITS callback), arc center
+  storage, NaN sanitization, initcodes split-by-newline execution
+- `lib/python/gcode.py` — REST client replacing gcodemodule.cc
+- `src/emc/rs274ngc/gcodemodule.cc` — **deleted** (source removed)
+- `lib/python/gcode.so` — **deleted** (build target removed from Submakefile)
+- All `import gcode` consumers work via the new Python module without changes
+- File-scope statics eliminated from interpreter:
+  - `current_phase`, `current_user` → `_setup.ext_phase`, `_setup.ext_user`
+  - `endpoint[2]`, `endpoint_valid` → `_setup.qc_endpoint[2]`, `_setup.qc_endpoint_valid`
+  - `qc()` function-local static vector → `_setup.qc_queue` (opaque pointer)
+  - `nurbs_order`, `nurbs_control_points`, `savedError` — already in `_setup`
+  - `qc_reset()`, `qc_scale()`, `set_endpoint()` — signatures updated to take `setup_pointer`
+
+**Remaining:**
+- Item 9 (concurrent execution test) — not yet tested
 
 ### Phase 6: Cleanup
 
@@ -820,7 +844,6 @@ server-side G-code preview that runs concurrently with execution.
 - `src/emc/rs274ngc/interp_base.hh` — added `set_canon_callbacks()` pure virtual, `canon_callbacks_t` forward decl
 - `src/emc/rs274ngc/rs274ngc_interp.hh` — added `set_canon_callbacks()` override, CanonInterface member
 - `src/emc/rs274ngc/rs274ngc_pre.cc` — `set_canon_callbacks()` implementation
-- `src/emc/rs274ngc/gcodemodule.cc` — own `gcodemodule_canon_table` for preview/gcode module
 - `src/emc/sai/saicanon.cc` — own `saicanon_table` for standalone interpreter
 - `src/emc/task/emctask.cc` — calls `set_canon_callbacks(emccanon_get_callbacks())`
 
@@ -845,8 +868,7 @@ server-side G-code preview that runs concurrently with execution.
 - `src/emc/rs274ngc/interp_remap.cc` — python= → error, prolog/epilog accepted, removed pydict
 - `src/emc/rs274ngc/interp_namedparams.cc` — PA\_PYTHON → error
 - `src/emc/rs274ngc/interp_setup.cc` — removed pythis init/destructor
-- `src/emc/rs274ngc/gcodemodule.cc` — removed PyInit\_interpreter/emccanon from builtin\_modules
-- `src/emc/rs274ngc/Submakefile` — removed py\*.cc, Boost/Python link deps
+- `src/emc/rs274ngc/Submakefile` — removed py\*.cc, Boost/Python link deps, gcodemodule build target
 - `src/emc/task/taskclass.cc` — removed PyInit\_interpreter/emccanon from builtin\_modules
 - `src/emc/task/emctask.cc` — removed python\_plugin.hh include
 
@@ -908,7 +930,7 @@ server-side G-code preview that runs concurrently with execution.
 - `src/emc/rs274ngc/rs274ngc_interp.hh` — updated callback type names
 - `src/emc/task/stdglue.c` — renamed types, ctx->get_phase(ctx->ctx), ctx->ctx
 - `src/emc/task/emctaskmain_gomc.cc` — renamed types
-- `src/emc/rs274ngc/Submakefile` — -I paths for generated headers (librs274, gcodemodule)
+- `src/emc/rs274ngc/Submakefile` — -I paths for generated headers (librs274)
 - `src/emc/task/Submakefile` — -Igomc/pkg/cmodule for gomc_api.h
 - `src/emc/sai/Submakefile` — -I paths for generated headers
 - `src/gmi/codegen/Submakefile` — codegen rules for mcode_handler, interp_ctx, interp_ext
@@ -919,6 +941,9 @@ server-side G-code preview that runs concurrently with execution.
 - `src/emc/pythonplugin/python_plugin.cc`
 - `src/emc/pythonplugin/python_plugin.hh`
 - `src/emc/task/taskmodule.cc`
+
+**Already deleted:**
+- `src/emc/rs274ngc/gcodemodule.cc` — replaced by `lib/python/gcode.py` + server-side ngcpreview
 
 All functional items complete:
 - M100-M199 threaded handler dispatch with abort_fd — done (emctaskmain_gomc.cc)
