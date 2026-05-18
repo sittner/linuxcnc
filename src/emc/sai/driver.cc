@@ -534,8 +534,6 @@ instructions are printed to stdout (with printf), the instructions get
 redirected and the user does not see them.
 
 */
-int _task = 0; // control preview behaviour when remapping
-
 int main (int argc, char ** argv)
 {
   int status;
@@ -544,6 +542,7 @@ int main (int argc, char ** argv)
   int block_delete;
   char buffer[80];
   int tool_flag;
+  int task_flag;
   int gees[ACTIVE_G_CODES];
   int ems[ACTIVE_M_CODES];
   double sets[ACTIVE_SETTINGS];
@@ -561,6 +560,7 @@ int main (int argc, char ** argv)
   block_delete = OFF;
   print_stack = OFF;
   tool_flag = 0;
+  task_flag = 0;
   saicanon_get_callbacks()->set_parameter_file_name(NULL, default_name);
   _outfile = stdout; /* may be reset below */
   go_flag = 0;
@@ -590,7 +590,7 @@ int main (int argc, char ** argv)
           case 'l': log_level = atoi(optarg); break;
           case 'g': go_flag = !go_flag; break;
           case 'i': inifile = optarg; break;
-          case 'T': _task = 1; break;
+          case 'T': task_flag = 1; break;
           case '?': default: goto usage;
       }
   }
@@ -624,6 +624,10 @@ usage:
   }
   if(!pinterp) pinterp = new Interp;
   pinterp->set_canon_callbacks(saicanon_get_callbacks());
+  {
+      Interp *ip = dynamic_cast<Interp*>(pinterp);
+      if (ip) ip->_setup.task_mode = task_flag;
+  }
 
   for(; !go_flag ;)
     {

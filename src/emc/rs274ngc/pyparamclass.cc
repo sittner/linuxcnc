@@ -25,7 +25,6 @@
 #include <map>
 
 namespace bp = boost::python;
-extern int _task;  // zero in gcodemodule, 1 in milltask
 
 #include <stdio.h>
 #include <string.h>

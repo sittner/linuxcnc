@@ -36,7 +36,6 @@
 #include <map>
 
 namespace bp = boost::python;
-extern int _task;  // zero in gcodemodule, 1 in milltask
 
 #include <stdio.h>
 #include <string.h>
@@ -133,7 +132,7 @@ static  ParamClass param_wrapper ( Interp & inst) {
     return ParamClass(inst);
 }
 
-static int get_task(Interp &i) { return _task; };
+static int get_task(Interp &i) { return i._setup.task_mode; };
 static const char *get_filename(Interp &i) { return i._setup.filename; };
 static const char *get_linetext(Interp &i) { return i._setup.linetext; };
 

@@ -29,8 +29,6 @@
 #include "units.h"
 #include "tooldata.hh"
 
-int _task = 0; // control preview behaviour when remapping
-
 char _parameter_file_name[LINELEN];
 
 extern "C" struct _inittab builtin_modules[];
@@ -731,7 +729,6 @@ static bool check_abort() {
     return 0;
 }
 
-USER_DEFINED_FUNCTION_TYPE USER_DEFINED_FUNCTION[USER_DEFINED_FUNCTION_NUM];
 double GET_USER_DEFINED_RESULT() { return 0.0; }
 
 CANON_MOTION_MODE motion_mode;
@@ -1111,8 +1108,13 @@ static PyObject *parse_file(PyObject *self, PyObject *args) {
     if(!PINTERP)
         PINTERP = new Interp;
 
-    for(int i=0; i<USER_DEFINED_FUNCTION_NUM; i++) 
-        USER_DEFINED_FUNCTION[i] = user_defined_function;
+    {
+        Interp *ip = dynamic_cast<Interp*>(PINTERP);
+        if (ip) {
+            for(int i=0; i<USER_DEFINED_FUNCTION_NUM; i++)
+                ip->_setup.user_defined_function[i] = user_defined_function;
+        }
+    }
 
     gettimeofday(&t0, NULL);
 

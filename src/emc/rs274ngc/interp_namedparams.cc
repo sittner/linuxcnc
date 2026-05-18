@@ -740,8 +740,7 @@ int Interp::lookup_named_param(const char *nameBuf,
 	break;
 	
     case NP_TASK:
-	extern int _task;  // zero in gcodemodule, 1 in milltask
-	*value = _task;
+	*value = _setup.task_mode;
 	break;
 
     default:

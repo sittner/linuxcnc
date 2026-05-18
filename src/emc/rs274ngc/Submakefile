@@ -24,7 +24,8 @@ LIBRS274SRCS := $(addprefix emc/rs274ngc/, \
 	interp_remap.cc \
 	interp_setup.cc \
 	rs274ngc_pre.cc \
-	interp_inspection.cc)
+	interp_inspection.cc \
+	interp_shim.cc)
 USERSRCS += $(LIBRS274SRCS)
 
 $(call TOOBJSDEPS, $(LIBRS274SRCS)) : EXTRAFLAGS+=-fPIC

@@ -500,6 +500,23 @@ $(GMI_MOTSTAT_GEN)/motstat_cgo.go: $(GMI_MOTSTAT_GEN)/motstat_api.h
 
 TARGETS += $(GMI_MOTSTAT_GEN)/motstat_api.h
 
+# --- ngcpreview API (server-go + client-python) ---
+
+GMI_NGCPREVIEW_IDL := gmi/idl/ngcpreview.gmi
+GMI_NGCPREVIEW_SERVER_GO := gomc/generated/gmi/ngcpreviewapi/ngcpreview_server.go
+GMI_NGCPREVIEW_PY := ../lib/python/gmi/ngcpreview.py
+
+$(GMI_NGCPREVIEW_SERVER_GO): $(GMI_NGCPREVIEW_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI ngcpreview Go server from $(GMI_NGCPREVIEW_IDL)"
+	@mkdir -p $(dir $(GMI_NGCPREVIEW_SERVER_GO))
+	$(Q)$(GMICOMPILE) --server-go $(GMI_NGCPREVIEW_IDL) -o $(GMI_NGCPREVIEW_SERVER_GO)
+
+$(GMI_NGCPREVIEW_PY): $(GMI_NGCPREVIEW_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI ngcpreview Python client from $(GMI_NGCPREVIEW_IDL)"
+	$(Q)$(GMICOMPILE) --client-python $(GMI_NGCPREVIEW_IDL) -o $(GMI_NGCPREVIEW_PY)
+
+TARGETS += $(GMI_NGCPREVIEW_SERVER_GO) $(GMI_NGCPREVIEW_PY)
+
 clean: gmi-codegen-clean
 .PHONY: gmi-codegen-clean
 gmi-codegen-clean:

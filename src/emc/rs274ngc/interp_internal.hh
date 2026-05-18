@@ -828,6 +828,11 @@ struct setup
     std::vector<CONTROL_POINT> nurbs_control_points;
     char savedError[LINELEN+1];
     int trace;
+
+    // Per-instance task/preview mode and M100-M199 handlers
+    // (moved from globals to support multiple Interp instances)
+    int task_mode;  // 0 = preview, 1 = task (replaces global _task)
+    USER_DEFINED_FUNCTION_TYPE user_defined_function[USER_DEFINED_FUNCTION_NUM];
 };
 
 inline bool is_a_cycle(int motion) {

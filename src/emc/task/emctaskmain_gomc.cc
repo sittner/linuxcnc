@@ -89,6 +89,7 @@ fpu_control_t __fpu_control = _FPU_IEEE & ~(_FPU_MASK_IM | _FPU_MASK_ZM | _FPU_M
 #include "gomc/pkg/cmodule/gomc_log.h"
 #include "interp_ext_api.h"
 #include "interp_ext.h"
+#include "rs274ngc_interp.hh"	// Interp class (must come after interp_ext_api.h)
 #include "mcode_handler_api.h"
 #include "emccmd_slot.hh"
 
@@ -550,7 +551,13 @@ static int mcode_api_register_handler(void *ctx, int mcode,
     mcode_handlers[idx].user_data = user_data;
 
     // Register the interpreter callback so it accepts this M-code.
-    USER_DEFINED_FUNCTION_ADD(user_defined_add_m_code, idx);
+    {
+        extern InterpBase *pinterp;
+        Interp *ip = dynamic_cast<Interp*>(pinterp);
+        if (ip && idx >= 0 && idx < USER_DEFINED_FUNCTION_NUM) {
+            ip->_setup.user_defined_function[idx] = user_defined_add_m_code;
+        }
+    }
 
     if (emc_debug & EMC_DEBUG_CONFIG) {
         rcs_print("mcode_handler: registered handler for M%d\n", mcode);
@@ -602,7 +609,6 @@ NMLmsg *emcTaskCommand = 0;
 int done;
 static int emctask_shutdown(void);
 extern void backtrace(int signo);
-int _task = 1; // control preview behaviour when remapping
 
 // for operator display on iocontrol signalling a toolchanger fault if io.fault is set
 // %d receives io.reason

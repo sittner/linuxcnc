@@ -741,10 +741,5 @@ int GET_EXTERNAL_TC_REASON();
 #define USER_DEFINED_FUNCTION_NUM 100
 typedef void (*USER_DEFINED_FUNCTION_TYPE) (int num, double arg1,
 					    double arg2);
-extern int USER_DEFINED_FUNCTION_ADD(USER_DEFINED_FUNCTION_TYPE func,
-				     int num);
-
-extern USER_DEFINED_FUNCTION_TYPE
-    USER_DEFINED_FUNCTION[USER_DEFINED_FUNCTION_NUM];
 
 #endif				/* ifndef CANON_HH */

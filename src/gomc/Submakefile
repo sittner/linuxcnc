@@ -90,6 +90,7 @@ define filter_packages_conf
 	$(if $(filter yes,$(BUILD_HALSCOPE)),-e 's/ @GOMOD:HALSCOPE@//',-e '/@GOMOD:HALSCOPE@/d') \
 	$(if $(filter yes,$(BUILD_EMCCALIB)),-e 's/ @GOMOD:EMCCALIB@//',-e '/@GOMOD:EMCCALIB@/d') \
 	$(if $(filter yes,$(BUILD_HALJSON)),-e 's/ @GOMOD:HALJSON@//',-e '/@GOMOD:HALJSON@/d') \
+	$(if $(filter yes,$(BUILD_NGCPREVIEW)),-e 's/ @GOMOD:NGCPREVIEW@//',-e '/@GOMOD:NGCPREVIEW@/d') \
 	$< > $@.tmp && mv $@.tmp $@
 endef
 
@@ -112,7 +113,7 @@ $(IMPORTS_GENERATED): gomc/packages.conf ../bin/modcompile
 # --disable-new-dtags forces DT_RPATH instead of DT_RUNPATH; RUNPATH is
 # ignored by the dynamic linker when the binary has file capabilities (setcap).
 # LIB_DIR is $(EMC2_HOME)/lib, defined in Makefile.inc.
-../bin/gomc-server: $(GOMC_SRC) $(GMI_KINS_GEN_GO) $(GMI_AXISUI_GEN_GO) $(GMI_AXISUI_WS_GO) $(GMI_TOOLS_GEN_GO) $(GMI_EMCSTAT_PUSH_GO) $(IMPORTS_GENERATED) gomc/packages.conf gomc/go.sum ../lib/liblinuxcnchal.so ../lib/liblinuxcnc.a ../lib/libposemath.so ../lib/libtooldata.so.0 Makefile.inc
+../bin/gomc-server: $(GOMC_SRC) $(GMI_KINS_GEN_GO) $(GMI_AXISUI_GEN_GO) $(GMI_AXISUI_WS_GO) $(GMI_TOOLS_GEN_GO) $(GMI_EMCSTAT_PUSH_GO) $(IMPORTS_GENERATED) gomc/packages.conf gomc/go.sum ../lib/liblinuxcnchal.so ../lib/liblinuxcnc.a ../lib/libposemath.so ../lib/libtooldata.so.0 ../lib/librs274.so ../lib/liblinuxcncini.so Makefile.inc
 	$(ECHO) Building gomc-server
 	$(Q)cd gomc && CGO_LDFLAGS="-Wl,-rpath,$(LIB_DIR) -Wl,--disable-new-dtags" $(GO) build -ldflags "$(GOMC_LDFLAGS)" -o $(TOP)/bin/gomc-server ./cmd/gomc-server
 

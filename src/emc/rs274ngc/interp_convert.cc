@@ -3648,7 +3648,7 @@ if (IS_USER_MCODE(block,settings,10) && ONCE_M(10)) {
  } else if ((block->m_modes[10] != -1)  && ONCE_M(10)){
      /* user-defined M codes */
     int index = block->m_modes[10];
-    if (USER_DEFINED_FUNCTION[index - 100] == 0) {
+    if (settings->user_defined_function[index - 100] == 0) {
       CHKS(1, NCE_UNKNOWN_M_CODE_USED,index);
     }
     enqueue_M_USER_COMMAND(settings, index,block->p_number,block->q_number);

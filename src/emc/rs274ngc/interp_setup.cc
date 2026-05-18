@@ -175,7 +175,9 @@ setup::setup() :
     loop_on_main_m99(false),
     disable_g92_persistence(0),
     on_abort_command(NULL),
-    init_once(CANON_STOPPED)
+    init_once(CANON_STOPPED),
+    task_mode(0),
+    user_defined_function{}
 {
   std::fill(parameters, parameters + interp_param_global::RS274NGC_MAX_PARAMETERS, 0);
 }

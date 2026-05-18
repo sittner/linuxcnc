@@ -373,7 +373,7 @@ void enqueue_M_USER_COMMAND(setup_pointer settings, int index, double p_number, 
     if(qc().empty()) {
         if(debug_qc) printf("immediate M_USER_COMMAND index=%d p=%f q=%f\n",
                            index,p_number,q_number);
-        (*(USER_DEFINED_FUNCTION[index - 100])) (index - 100,p_number,q_number);
+        (*(settings->user_defined_function[index - 100])) (index - 100,p_number,q_number);
         return;
     }
     queued_canon q;
@@ -542,7 +542,7 @@ void dequeue_canons(setup_pointer settings) {
         case QM_USER_COMMAND:
             if(debug_qc) printf("issuing mcommand\n");
             {int index=q.data.mcommand.index;
-              (*(USER_DEFINED_FUNCTION[index - 100])) (index -100,
+              (*(settings->user_defined_function[index - 100])) (index -100,
                                                     q.data.mcommand.p_number,
                                                     q.data.mcommand.q_number);
             }

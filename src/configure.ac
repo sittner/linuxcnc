@@ -1555,6 +1555,7 @@ HAVE_EMCGATEWAY=no
 HAVE_HALSCOPE=no
 HAVE_EMCCALIB=no
 HAVE_HALJSON=no
+HAVE_NGCPREVIEW=no
 
 if test "x$HAVE_GOLANG" = "xyes"; then
     AC_ARG_ENABLE([adsserver],
@@ -1596,6 +1597,14 @@ if test "x$HAVE_GOLANG" = "xyes"; then
     if test "x$enable_haljson" = "xyes"; then
         HAVE_HALJSON=yes
     fi
+
+    AC_ARG_ENABLE([ngcpreview],
+        AS_HELP_STRING([--enable-ngcpreview], [Build NGC preview Go module (default: yes)]),
+        [enable_ngcpreview=$enableval],
+        [enable_ngcpreview=yes])
+    if test "x$enable_ngcpreview" = "xyes"; then
+        HAVE_NGCPREVIEW=yes
+    fi
 fi
 
 AC_SUBST([HAVE_ADSSERVER])
@@ -1603,6 +1612,7 @@ AC_SUBST([HAVE_EMCGATEWAY])
 AC_SUBST([HAVE_HALSCOPE])
 AC_SUBST([HAVE_EMCCALIB])
 AC_SUBST([HAVE_HALJSON])
+AC_SUBST([HAVE_NGCPREVIEW])
 
 # Web application build dependencies (Node.js for Vite/Vue webapp builds)
 HAVE_NODEJS=no

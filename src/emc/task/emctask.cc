@@ -350,6 +350,7 @@ int emcTaskPlanCreate()
     if(i) {
         _is = &i->_setup; // FIXME
         i->set_canon_callbacks(emccanon_get_callbacks());
+        i->_setup.task_mode = 1;
     }
     else  _is = 0;
     interp.ini_load(emc_inifile);

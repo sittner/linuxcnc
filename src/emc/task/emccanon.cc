@@ -3276,21 +3276,6 @@ static double GET_EXTERNAL_ANALOG_INPUT(void *ctx, int32_t index, double def)
     return STAT->motion.analog_input[index];
 }
 
-
-USER_DEFINED_FUNCTION_TYPE USER_DEFINED_FUNCTION[USER_DEFINED_FUNCTION_NUM]
-    = { 0 };
-
-int USER_DEFINED_FUNCTION_ADD(USER_DEFINED_FUNCTION_TYPE func, int num)
-{
-    if (num < 0 || num >= USER_DEFINED_FUNCTION_NUM) {
-	return -1;
-    }
-
-    USER_DEFINED_FUNCTION[num] = func;
-
-    return 0;
-}
-
 static double GET_USER_DEFINED_RESULT(void *ctx)
 {
     CANON_CTX;
