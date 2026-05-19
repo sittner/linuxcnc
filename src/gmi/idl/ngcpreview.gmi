@@ -72,6 +72,10 @@ type PreviewResult {
     g5x_offset: Position
     # Active G92 offset for coordinate display
     g92_offset: Position
+    # XY rotation angle (radians) for rotated coordinate systems
+    xy_rotation: f64
+    # Active plane (1=XY, 2=XZ, 3=YZ) for arc linearization
+    plane: i32
 }
 
 # ─── Functions ───

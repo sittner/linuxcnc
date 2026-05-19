@@ -105,6 +105,16 @@ def parse(filename, canon, *args):
             canon.set_g92_offset(g92.x, g92.y, g92.z, g92.a, g92.b, g92.c,
                                  g92.u, g92.v, g92.w)
 
+    # Set XY rotation and plane on the canon for arc linearization
+    import math
+    xy_rot = getattr(result, 'xy_rotation', 0.0) or 0.0
+    if hasattr(canon, 'rotation_cos'):
+        canon.rotation_cos = math.cos(xy_rot)
+        canon.rotation_sin = math.sin(xy_rot)
+    plane = getattr(result, 'plane', 1) or 1
+    if hasattr(canon, 'plane'):
+        canon.plane = plane
+
     # Replay segments through canon
     for seg in result.segments or []:
         end = seg["end"] if isinstance(seg, dict) else seg.end

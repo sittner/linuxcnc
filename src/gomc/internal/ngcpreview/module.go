@@ -32,14 +32,23 @@ typedef struct {
     int tc_cap;
     struct preview_tool_change *tool_changes;
 
-    // Current position (updated by traverses/feeds)
+    // Current position in display units (inches) for segment starts
     double pos[9];
+
+    // Current position in program units (for get_external_position_*)
+    double prog_pos[9];
 
     // Current tool offset
     double tool_offset[9];
 
-    // Current feedrate
+    // Current feedrate (in inches/min for display)
     double feedrate;
+
+    // XY rotation angle (radians)
+    double xy_rotation;
+
+    // Active plane (1=XY, 2=XZ, 3=YZ)
+    int plane;
 
     // Current line number
     int line_no;
@@ -116,6 +125,10 @@ static void ctx_ensure_tc_cap(preview_ctx_t *ctx) {
 static void add_segment(preview_ctx_t *ctx, int type,
     double x, double y, double z, double a, double b, double c,
     double u, double v, double w) {
+    // Store program-unit position for get_external_position_* (interpreter feedback)
+    ctx->prog_pos[0] = x; ctx->prog_pos[1] = y; ctx->prog_pos[2] = z;
+    ctx->prog_pos[3] = a; ctx->prog_pos[4] = b; ctx->prog_pos[5] = c;
+    ctx->prog_pos[6] = u; ctx->prog_pos[7] = v; ctx->prog_pos[8] = w;
     // AXIS GL display uses inches internally (see to_internal_units in bin/axis).
     // Convert from program units to inches:
     //   G21 (metric=1): positions in mm → divide by 25.4 → inches
@@ -192,6 +205,8 @@ static void pc_straight_probe(void *vctx, int32_t ln,
 
 static void pc_set_feed_rate(void *vctx, double rate) {
     preview_ctx_t *ctx = (preview_ctx_t*)vctx;
+    // Feed rate comes in program units/min. Convert to inches/min for display.
+    if (ctx->metric) { rate /= 25.4; }
     ctx->feedrate = rate;
 }
 
@@ -223,6 +238,11 @@ static void pc_use_tool_length_offset(void *vctx,
     double x, double y, double z, double a, double b, double c,
     double u, double v, double w) {
     preview_ctx_t *ctx = (preview_ctx_t*)vctx;
+    // Convert linear axes to inches for display (angular axes stay as-is)
+    if (ctx->metric) {
+        x /= 25.4; y /= 25.4; z /= 25.4;
+        u /= 25.4; v /= 25.4; w /= 25.4;
+    }
     ctx->tool_offset[0] = x; ctx->tool_offset[1] = y; ctx->tool_offset[2] = z;
     ctx->tool_offset[3] = a; ctx->tool_offset[4] = b; ctx->tool_offset[5] = c;
     ctx->tool_offset[6] = u; ctx->tool_offset[7] = v; ctx->tool_offset[8] = w;
@@ -232,6 +252,15 @@ static void pc_update_end_point(void *vctx,
     double x, double y, double z, double a, double b, double c,
     double u, double v, double w) {
     preview_ctx_t *ctx = (preview_ctx_t*)vctx;
+    // Store program-unit position for interpreter feedback
+    ctx->prog_pos[0] = x; ctx->prog_pos[1] = y; ctx->prog_pos[2] = z;
+    ctx->prog_pos[3] = a; ctx->prog_pos[4] = b; ctx->prog_pos[5] = c;
+    ctx->prog_pos[6] = u; ctx->prog_pos[7] = v; ctx->prog_pos[8] = w;
+    // Also update display position (in inches)
+    if (ctx->metric) {
+        x /= 25.4; y /= 25.4; z /= 25.4;
+        u /= 25.4; v /= 25.4; w /= 25.4;
+    }
     ctx->pos[0] = x; ctx->pos[1] = y; ctx->pos[2] = z;
     ctx->pos[3] = a; ctx->pos[4] = b; ctx->pos[5] = c;
     ctx->pos[6] = u; ctx->pos[7] = v; ctx->pos[8] = w;
@@ -255,6 +284,27 @@ static int32_t pc_nop_riid(void *ctx, int32_t a, int32_t b) { (void)ctx; (void)a
 static void pc_get_position(void *vctx, double pos[9]) {
     preview_ctx_t *ctx = (preview_ctx_t*)vctx;
     memcpy(pos, ctx->pos, 9 * sizeof(double));
+}
+
+// Per-axis position getters return program-unit values (what the interpreter expects)
+static double pc_get_ext_pos_x(void *vctx) { return ((preview_ctx_t*)vctx)->prog_pos[0]; }
+static double pc_get_ext_pos_y(void *vctx) { return ((preview_ctx_t*)vctx)->prog_pos[1]; }
+static double pc_get_ext_pos_z(void *vctx) { return ((preview_ctx_t*)vctx)->prog_pos[2]; }
+static double pc_get_ext_pos_a(void *vctx) { return ((preview_ctx_t*)vctx)->prog_pos[3]; }
+static double pc_get_ext_pos_b(void *vctx) { return ((preview_ctx_t*)vctx)->prog_pos[4]; }
+static double pc_get_ext_pos_c(void *vctx) { return ((preview_ctx_t*)vctx)->prog_pos[5]; }
+static double pc_get_ext_pos_u(void *vctx) { return ((preview_ctx_t*)vctx)->prog_pos[6]; }
+static double pc_get_ext_pos_v(void *vctx) { return ((preview_ctx_t*)vctx)->prog_pos[7]; }
+static double pc_get_ext_pos_w(void *vctx) { return ((preview_ctx_t*)vctx)->prog_pos[8]; }
+
+static void pc_set_xy_rotation(void *vctx, double r) {
+    preview_ctx_t *ctx = (preview_ctx_t*)vctx;
+    ctx->xy_rotation = r;
+}
+
+static void pc_select_plane(void *vctx, int32_t plane) {
+    preview_ctx_t *ctx = (preview_ctx_t*)vctx;
+    ctx->plane = plane;
 }
 
 static void pc_get_probe_position(void *ctx, double pos[9]) {
@@ -428,9 +478,9 @@ static canon_callbacks_t make_preview_canon(preview_ctx_t *ctx) {
     // Coordinate/state setters — no-ops for preview
     cb.set_g5x_offset = pc_set_g5x_offset;
     cb.set_g92_offset = pc_set_g92_offset;
-    cb.set_xy_rotation = (void (*)(void*, double))pc_nop_vd;
+    cb.set_xy_rotation = pc_set_xy_rotation;
     cb.use_length_units = pc_use_length_units;
-    cb.select_plane = (void (*)(void*, int32_t))pc_nop_vi;
+    cb.select_plane = pc_select_plane;
     cb.set_traverse_rate = (void (*)(void*, double))pc_nop_vd;
     cb.set_feed_reference = (void (*)(void*, int32_t))pc_nop_vi;
     cb.set_feed_mode = (void (*)(void*, int32_t, int32_t))pc_nop_vii;
@@ -530,15 +580,15 @@ static canon_callbacks_t make_preview_canon(preview_ctx_t *ctx) {
     cb.get_external_motion_control_naivecam_tolerance = pc_nop_rd;
     cb.get_external_flood = pc_nop_ri;
     cb.get_external_mist = pc_nop_ri;
-    cb.get_external_position_x = pc_nop_rd;
-    cb.get_external_position_y = pc_nop_rd;
-    cb.get_external_position_z = pc_nop_rd;
-    cb.get_external_position_a = pc_nop_rd;
-    cb.get_external_position_b = pc_nop_rd;
-    cb.get_external_position_c = pc_nop_rd;
-    cb.get_external_position_u = pc_nop_rd;
-    cb.get_external_position_v = pc_nop_rd;
-    cb.get_external_position_w = pc_nop_rd;
+    cb.get_external_position_x = pc_get_ext_pos_x;
+    cb.get_external_position_y = pc_get_ext_pos_y;
+    cb.get_external_position_z = pc_get_ext_pos_z;
+    cb.get_external_position_a = pc_get_ext_pos_a;
+    cb.get_external_position_b = pc_get_ext_pos_b;
+    cb.get_external_position_c = pc_get_ext_pos_c;
+    cb.get_external_position_u = pc_get_ext_pos_u;
+    cb.get_external_position_v = pc_get_ext_pos_v;
+    cb.get_external_position_w = pc_get_ext_pos_w;
     cb.get_external_probe_position_x = pc_nop_rd;
     cb.get_external_probe_position_y = pc_nop_rd;
     cb.get_external_probe_position_z = pc_nop_rd;
@@ -662,7 +712,6 @@ func shimErrorText(h *C.interp_handle_t, rc C.int) string {
 
 // GenPreview implements ngcpreviewapi.NgcpreviewCallbacks.
 func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode string) (*ngcpreviewapi.PreviewResult, error) {
-	m.logger.Info("GenPreview called", "filename", filename, "initcodes", initcodes, "unitcode", unitcode)
 	// Create a fresh interpreter
 	h := C.interp_shim_new()
 	if h == nil {
@@ -679,6 +728,7 @@ func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode stri
 		C.free(unsafe.Pointer(cPF))
 	}
 	ctx.linear_units = C.double(m.linearUnits)
+	ctx.plane = 1 // default XY plane
 	defer func() {
 		C.free(unsafe.Pointer(ctx.segments))
 		C.free(unsafe.Pointer(ctx.dwells))
@@ -700,12 +750,6 @@ func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode stri
 			Error: fmt.Sprintf("interpreter init failed: %d (%s)", rc, errText),
 		}, nil
 	}
-	// Debug: log G54 offsets from parameter file
-	m.logger.Info("G54 offsets after init",
-		"p5220_origin_index", C.interp_shim_get_parameter(h, 5220),
-		"p5221_x", C.interp_shim_get_parameter(h, 5221),
-		"p5222_y", C.interp_shim_get_parameter(h, 5222),
-		"p5223_z", C.interp_shim_get_parameter(h, 5223))
 
 	// Open file first (sets up parameter file, subroutine paths, etc.)
 	cFile := C.CString(filename)
@@ -879,6 +923,8 @@ func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode stri
 		A: sanitize(float64(ctx.g92_offset[3])), B: sanitize(float64(ctx.g92_offset[4])), C: sanitize(float64(ctx.g92_offset[5])),
 		U: sanitize(float64(ctx.g92_offset[6])), V: sanitize(float64(ctx.g92_offset[7])), W: sanitize(float64(ctx.g92_offset[8])),
 	}
+	result.XyRotation = float64(ctx.xy_rotation)
+	result.Plane = int32(ctx.plane)
 
 	return result, nil
 }
