@@ -42,6 +42,9 @@ int interp_shim_sequence_number(interp_handle_t *h);
 // Close the file and finalize.
 int interp_shim_close(interp_handle_t *h);
 
+// Get a numbered parameter value (for debugging).
+double interp_shim_get_parameter(interp_handle_t *h, int index);
+
 // Destroy the interpreter instance.
 void interp_shim_destroy(interp_handle_t *h);
 
@@ -52,7 +55,8 @@ void interp_shim_error_text(interp_handle_t *h, int error_code,
 // Interpreter return codes
 #define INTERP_SHIM_OK       0
 #define INTERP_SHIM_EXIT     1
-#define INTERP_SHIM_ENDFILE  2
+#define INTERP_SHIM_EXECUTE_FINISH 2
+#define INTERP_SHIM_ENDFILE  3
 #define INTERP_SHIM_ERROR   -1
 
 #ifdef __cplusplus

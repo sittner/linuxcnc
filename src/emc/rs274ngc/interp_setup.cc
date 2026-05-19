@@ -177,12 +177,12 @@ setup::setup() :
     disable_g92_persistence(0),
     on_abort_command(NULL),
     init_once(CANON_STOPPED),
-    task_mode(0),
     ext_phase(0),
     ext_user(nullptr),
     qc_endpoint{},
     qc_endpoint_valid(0),
     qc_queue(nullptr),
+    task_mode(0),
     user_defined_function{}
 {
   std::fill(parameters, parameters + interp_param_global::RS274NGC_MAX_PARAMETERS, 0);

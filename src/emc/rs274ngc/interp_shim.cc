@@ -58,6 +58,11 @@ int interp_shim_close(interp_handle_t *h) {
     return h->interp->close();
 }
 
+double interp_shim_get_parameter(interp_handle_t *h, int index) {
+    if (!h || !h->interp || index < 0 || index >= 5602) return 0.0;
+    return h->interp->_setup.parameters[index];
+}
+
 void interp_shim_destroy(interp_handle_t *h) {
     if (h) {
         delete h->interp;

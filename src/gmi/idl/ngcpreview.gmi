@@ -67,6 +67,11 @@ type PreviewResult {
     tool_changes: []ToolChange
     error: string
     max_line: i32
+    # Active G5x offset (index + 9-axis values) for coordinate display
+    g5x_index: i32
+    g5x_offset: Position
+    # Active G92 offset for coordinate display
+    g92_offset: Position
 }
 
 # ─── Functions ───

@@ -81,6 +81,30 @@ def parse(filename, canon, *args):
         print(f"gcode_rest: {result.error}", file=sys.stderr)
         return 5, result.max_line
 
+    # Set active G5x and G92 offsets in the canon so that
+    # rotate_and_translate converts program coords to machine coords
+    # (matching what the old in-process interpreter did).
+    g5x = result.g5x_offset
+    if g5x:
+        idx = getattr(result, 'g5x_index', 1) or 1
+        if isinstance(g5x, dict):
+            canon.set_g5x_offset(idx, g5x["x"], g5x["y"], g5x["z"],
+                                 g5x["a"], g5x["b"], g5x["c"],
+                                 g5x["u"], g5x["v"], g5x["w"])
+        else:
+            canon.set_g5x_offset(idx, g5x.x, g5x.y, g5x.z,
+                                 g5x.a, g5x.b, g5x.c, g5x.u, g5x.v, g5x.w)
+
+    g92 = result.g92_offset
+    if g92:
+        if isinstance(g92, dict):
+            canon.set_g92_offset(g92["x"], g92["y"], g92["z"],
+                                 g92["a"], g92["b"], g92["c"],
+                                 g92["u"], g92["v"], g92["w"])
+        else:
+            canon.set_g92_offset(g92.x, g92.y, g92.z, g92.a, g92.b, g92.c,
+                                 g92.u, g92.v, g92.w)
+
     # Replay segments through canon
     for seg in result.segments or []:
         end = seg["end"] if isinstance(seg, dict) else seg.end

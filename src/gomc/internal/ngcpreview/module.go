@@ -47,8 +47,18 @@ typedef struct {
     // Parameter file name (stored by set_parameter_file_name)
     char param_file[1024];
 
-    // Metric flag: when true, divide linear axes by 25.4 (matches gcodemodule.cc)
+    // Metric flag: true when G21 active (program units = mm)
     int metric;
+
+    // Active G5x offset (set by SET_G5X_OFFSET canon call)
+    int g5x_index;
+    double g5x_offset[9];
+
+    // Active G92 offset (set by SET_G92_OFFSET canon call)
+    double g92_offset[9];
+
+    // Machine linear units (from [TRAJ]LINEAR_UNITS): 1.0 for mm, 1/25.4 for inch
+    double linear_units;
 } preview_ctx_t;
 
 typedef struct preview_segment {
@@ -106,7 +116,10 @@ static void ctx_ensure_tc_cap(preview_ctx_t *ctx) {
 static void add_segment(preview_ctx_t *ctx, int type,
     double x, double y, double z, double a, double b, double c,
     double u, double v, double w) {
-    // Convert mm to inches when in metric mode (matches gcodemodule.cc)
+    // AXIS GL display uses inches internally (see to_internal_units in bin/axis).
+    // Convert from program units to inches:
+    //   G21 (metric=1): positions in mm → divide by 25.4 → inches
+    //   G20 (metric=0): positions already in inches → no conversion
     if (ctx->metric) {
         x /= 25.4; y /= 25.4; z /= 25.4;
         u /= 25.4; v /= 25.4; w /= 25.4;
@@ -122,7 +135,7 @@ static void add_segment(preview_ctx_t *ctx, int type,
     s->end[6] = u; s->end[7] = v; s->end[8] = w;
     s->feedrate = ctx->feedrate;
     memcpy(s->tool_offset, ctx->tool_offset, sizeof(s->tool_offset));
-    // Update current position (stored in internal units = inches)
+    // Update current position (in inches — AXIS internal unit)
     ctx->pos[0] = x; ctx->pos[1] = y; ctx->pos[2] = z;
     ctx->pos[3] = a; ctx->pos[4] = b; ctx->pos[5] = c;
     ctx->pos[6] = u; ctx->pos[7] = v; ctx->pos[8] = w;
@@ -297,25 +310,48 @@ static int32_t pc_get_length_unit_type(void *vctx) {
     return 1; // CANON_UNITS_INCHES — matches gcodemodule.cc; G20/G21 in initcodes handles unit switching
 }
 
+static double pc_get_external_length_units(void *vctx) {
+    preview_ctx_t *ctx = (preview_ctx_t*)vctx;
+    return ctx->linear_units;
+}
+
+static double pc_get_external_angle_units(void *vctx) {
+    (void)vctx;
+    return 1.0; // degrees
+}
+
 static int32_t pc_get_plane(void *ctx) {
     (void)ctx;
     return 1; // CANON_PLANE_XY
 }
 
-static void pc_set_g5x_offset(void *ctx, int32_t o,
+static void pc_set_g5x_offset(void *vctx, int32_t o,
     double x, double y, double z, double a, double b, double c,
     double u, double v, double w) {
-    (void)ctx; (void)o;
-    (void)x; (void)y; (void)z; (void)a; (void)b; (void)c;
-    (void)u; (void)v; (void)w;
+    preview_ctx_t *ctx = (preview_ctx_t*)vctx;
+    // Convert to inches (AXIS internal unit), same as segments
+    if (ctx->metric) {
+        x /= 25.4; y /= 25.4; z /= 25.4;
+        u /= 25.4; v /= 25.4; w /= 25.4;
+    }
+    ctx->g5x_index = o;
+    ctx->g5x_offset[0] = x; ctx->g5x_offset[1] = y; ctx->g5x_offset[2] = z;
+    ctx->g5x_offset[3] = a; ctx->g5x_offset[4] = b; ctx->g5x_offset[5] = c;
+    ctx->g5x_offset[6] = u; ctx->g5x_offset[7] = v; ctx->g5x_offset[8] = w;
 }
 
-static void pc_set_g92_offset(void *ctx,
+static void pc_set_g92_offset(void *vctx,
     double x, double y, double z, double a, double b, double c,
     double u, double v, double w) {
-    (void)ctx;
-    (void)x; (void)y; (void)z; (void)a; (void)b; (void)c;
-    (void)u; (void)v; (void)w;
+    preview_ctx_t *ctx = (preview_ctx_t*)vctx;
+    // Convert to inches (AXIS internal unit), same as segments
+    if (ctx->metric) {
+        x /= 25.4; y /= 25.4; z /= 25.4;
+        u /= 25.4; v /= 25.4; w /= 25.4;
+    }
+    ctx->g92_offset[0] = x; ctx->g92_offset[1] = y; ctx->g92_offset[2] = z;
+    ctx->g92_offset[3] = a; ctx->g92_offset[4] = b; ctx->g92_offset[5] = c;
+    ctx->g92_offset[6] = u; ctx->g92_offset[7] = v; ctx->g92_offset[8] = w;
 }
 
 static void pc_nurbs_feed(void *ctx, int32_t ln,
@@ -487,8 +523,8 @@ static canon_callbacks_t make_preview_canon(preview_ctx_t *ctx) {
     cb.get_external_feed_rate = pc_nop_rd;
     cb.get_external_traverse_rate = pc_nop_rd;
     cb.get_external_length_unit_type = pc_get_length_unit_type;
-    cb.get_external_length_units = pc_nop_rd;
-    cb.get_external_angle_units = pc_nop_rd;
+    cb.get_external_length_units = pc_get_external_length_units;
+    cb.get_external_angle_units = pc_get_external_angle_units;
     cb.get_external_motion_control_mode = pc_nop_ri;
     cb.get_external_motion_control_tolerance = pc_nop_rd;
     cb.get_external_motion_control_naivecam_tolerance = pc_nop_rd;
@@ -553,6 +589,8 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"unsafe"
 
@@ -569,12 +607,33 @@ func init() {
 
 type ngcPreview struct {
 	logger        *slog.Logger
-	parameterFile string // from [RS274NGC]PARAMETER_FILE
+	parameterFile string  // from [RS274NGC]PARAMETER_FILE
+	linearUnits   float64 // from [TRAJ]LINEAR_UNITS: 1.0 for mm, 1/25.4 for inch
+}
+
+func parseLinearUnits(s string) float64 {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "mm", "metric":
+		return 1.0
+	case "in", "inch", "imperial":
+		return 1.0 / 25.4
+	default:
+		if v, err := strconv.ParseFloat(s, 64); err == nil && v != 0 {
+			return v
+		}
+		return 1.0
+	}
 }
 
 func newNgcPreview(ini *inifile.IniFile, logger *slog.Logger, name string, args []string) (gomc.Module, error) {
 	paramFile := ini.Get("RS274NGC", "PARAMETER_FILE")
-	m := &ngcPreview{logger: logger, parameterFile: paramFile}
+	// Resolve relative parameter file path against the INI file's directory
+	if paramFile != "" && !filepath.IsAbs(paramFile) {
+		iniDir := filepath.Dir(ini.SourceFile())
+		paramFile = filepath.Join(iniDir, paramFile)
+	}
+	linearUnits := parseLinearUnits(ini.Get("TRAJ", "LINEAR_UNITS"))
+	m := &ngcPreview{logger: logger, parameterFile: paramFile, linearUnits: linearUnits}
 	ngcpreviewapi.RegisterNgcpreviewAPI(apiserver.DefaultRegistry(), "ngcpreview", m)
 	logger.Info("ngcpreview module loaded and API registered", "parameterFile", paramFile)
 	return m, nil
@@ -603,6 +662,7 @@ func shimErrorText(h *C.interp_handle_t, rc C.int) string {
 
 // GenPreview implements ngcpreviewapi.NgcpreviewCallbacks.
 func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode string) (*ngcpreviewapi.PreviewResult, error) {
+	m.logger.Info("GenPreview called", "filename", filename, "initcodes", initcodes, "unitcode", unitcode)
 	// Create a fresh interpreter
 	h := C.interp_shim_new()
 	if h == nil {
@@ -618,6 +678,7 @@ func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode stri
 		C.strncpy(&ctx.param_file[0], cPF, 1023)
 		C.free(unsafe.Pointer(cPF))
 	}
+	ctx.linear_units = C.double(m.linearUnits)
 	defer func() {
 		C.free(unsafe.Pointer(ctx.segments))
 		C.free(unsafe.Pointer(ctx.dwells))
@@ -639,6 +700,12 @@ func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode stri
 			Error: fmt.Sprintf("interpreter init failed: %d (%s)", rc, errText),
 		}, nil
 	}
+	// Debug: log G54 offsets from parameter file
+	m.logger.Info("G54 offsets after init",
+		"p5220_origin_index", C.interp_shim_get_parameter(h, 5220),
+		"p5221_x", C.interp_shim_get_parameter(h, 5221),
+		"p5222_y", C.interp_shim_get_parameter(h, 5222),
+		"p5223_z", C.interp_shim_get_parameter(h, 5223))
 
 	// Open file first (sets up parameter file, subroutine paths, etc.)
 	cFile := C.CString(filename)
@@ -798,6 +865,19 @@ func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode stri
 				ToolNo: int32(tc.tool_no),
 			}
 		}
+	}
+
+	// Set active offsets (captured from SET_G5X_OFFSET / SET_G92_OFFSET canon calls)
+	result.G5xIndex = int32(ctx.g5x_index)
+	result.G5xOffset = ngcpreviewapi.Position{
+		X: sanitize(float64(ctx.g5x_offset[0])), Y: sanitize(float64(ctx.g5x_offset[1])), Z: sanitize(float64(ctx.g5x_offset[2])),
+		A: sanitize(float64(ctx.g5x_offset[3])), B: sanitize(float64(ctx.g5x_offset[4])), C: sanitize(float64(ctx.g5x_offset[5])),
+		U: sanitize(float64(ctx.g5x_offset[6])), V: sanitize(float64(ctx.g5x_offset[7])), W: sanitize(float64(ctx.g5x_offset[8])),
+	}
+	result.G92Offset = ngcpreviewapi.Position{
+		X: sanitize(float64(ctx.g92_offset[0])), Y: sanitize(float64(ctx.g92_offset[1])), Z: sanitize(float64(ctx.g92_offset[2])),
+		A: sanitize(float64(ctx.g92_offset[3])), B: sanitize(float64(ctx.g92_offset[4])), C: sanitize(float64(ctx.g92_offset[5])),
+		U: sanitize(float64(ctx.g92_offset[6])), V: sanitize(float64(ctx.g92_offset[7])), W: sanitize(float64(ctx.g92_offset[8])),
 	}
 
 	return result, nil
