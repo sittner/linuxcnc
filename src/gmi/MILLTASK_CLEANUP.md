@@ -833,14 +833,42 @@ server-side G-code preview that runs concurrently with execution.
 - None — Phase 5 complete. Concurrent multi-instance validated by
   ngcpreview creating a fresh Interp per request while milltask runs its own.
 
-### Phase 6: Cleanup
+### Phase 6: Cleanup — Done
 
-1. Remove `#include <Python.h>` and `#include <boost/python.hpp>` throughout.
-2. Remove `python3-embed` from `packages.conf`.
-3. Remove `libboost_python` from link flags.
-4. Remove `src/emc/pythonplugin/` directory.
-5. Remove `emccanon.cc` Boost.Python canon bindings (`canonmodule.cc`).
-6. Update documentation.
+1. ~~Remove `#include <Python.h>` and `#include <boost/python.hpp>` throughout.~~
+   Removed by deleting all dead source files below. Python/Boost remain only
+   in active UI components (emcmodule.so, delta kins, HAL components).
+2. ~~Remove `python3-embed` from `packages.conf`.~~ N/A — gomc packages.conf
+   never had it. System-level Python/Boost deps stay for UI components.
+3. ~~Remove `libboost_python` from link flags.~~ Already removed from
+   librs274 and milltask Submakefiles in Phase 2. Remains only for
+   kinematics Python wrappers and HAL components.
+4. ~~Remove `src/emc/pythonplugin/` directory.~~ Done — deleted entirely,
+   removed from Makefile Submakefile includes, removed `libpyplugin.so.0`.
+5. ~~Remove `emccanon.cc` Boost.Python canon bindings (`canonmodule.cc`).~~
+   Done — `canonmodule.cc` deleted.
+6. Documentation: this file.
+
+**Deleted files:**
+- `src/emc/pythonplugin/` (entire directory: python_plugin.cc, .hh, testpp.cc, Submakefile)
+- `src/emc/task/taskmodule.cc`
+- `src/emc/rs274ngc/canonmodule.cc`
+- `src/emc/rs274ngc/interpmodule.cc`
+- `src/emc/rs274ngc/pyblock.cc`
+- `src/emc/rs274ngc/pyarrays.cc`
+- `src/emc/rs274ngc/pyinterp1.cc`
+- `src/emc/rs274ngc/pyemctypes.cc`
+- `src/emc/rs274ngc/pyparamclass.cc`
+- `src/emc/rs274ngc/interp_python.hh`
+- `src/emc/rs274ngc/boost_pyenum_macros.hh`
+- `src/emc/rs274ngc/paramclass.hh`
+- `src/emc/rs274ngc/array1.hh`
+- `src/emc/rs274ngc/interp_array_types.hh`
+- `src/emc/rs274ngc/gcodemodule.cc` (was untracked; old reference copy)
+- `lib/libpyplugin.so.0` (stale build artifact)
+
+**Build modified:**
+- `src/Makefile` — removed `emc/pythonplugin` from Submakefile include list
 
 ## Files Modified/Removed
 
@@ -948,12 +976,12 @@ server-side G-code preview that runs concurrently with execution.
 - `src/emc/sai/Submakefile` — -I paths for generated headers
 - `src/gmi/codegen/Submakefile` — codegen rules for mcode_handler, interp_ctx, interp_ext
 
-### Phase 4 remaining
+### Phase 4 remaining — Done
 
-**Dead files to delete (already excluded from build):**
-- `src/emc/pythonplugin/python_plugin.cc`
-- `src/emc/pythonplugin/python_plugin.hh`
-- `src/emc/task/taskmodule.cc`
+**Dead files deleted (were already excluded from build, now removed from tree):**
+- `src/emc/pythonplugin/python_plugin.cc` — deleted (Phase 6)
+- `src/emc/pythonplugin/python_plugin.hh` — deleted (Phase 6)
+- `src/emc/task/taskmodule.cc` — deleted (Phase 6)
 
 **Already deleted:**
 - `src/emc/rs274ngc/gcodemodule.cc` — replaced by `lib/python/gcode.py` + server-side ngcpreview
