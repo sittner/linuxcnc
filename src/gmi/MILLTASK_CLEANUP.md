@@ -804,9 +804,21 @@ server-side G-code preview that runs concurrently with execution.
 
 **Completed items:**
 - `src/gomc/internal/ngcpreview/module.go` — ngcpreview gomod with preview
-  canon, metric→inches conversion (USE_LENGTH_UNITS callback), arc center
-  storage, NaN sanitization, initcodes split-by-newline execution
-- `lib/python/gcode.py` — REST client replacing gcodemodule.cc
+  canon (C callbacks via `canon_callbacks_t`). Features:
+  - Segment storage: traverse, feed, arc (center+rotation), probe
+  - Metric→inches conversion for all linear quantities (positions,
+    feedrate, tool offset, g5x/g92 offsets, arc centers)
+  - Per-axis `get_external_position_*` returning program-unit values
+    (separate `prog_pos[9]` for interpreter feedback vs `pos[9]` in inches)
+  - XY rotation capture (`set_xy_rotation` callback → PreviewResult field)
+  - Plane tracking (`select_plane` callback → PreviewResult field)
+  - G5x/G92 offset capture (passed to Python canon for rotate\_and\_translate)
+  - NaN/Inf sanitization, initcodes split-by-newline execution
+- `src/gmi/idl/ngcpreview.gmi` — IDL with PreviewResult containing segments,
+  dwells, tool\_changes, g5x\_index, g5x\_offset, g92\_offset, xy\_rotation, plane
+- `lib/python/gcode.py` — REST client replacing gcodemodule.cc. Sets g5x/g92
+  offsets, rotation\_cos/sin, and plane on the Python canon before replaying
+  segments. Includes pure-Python `arc_to_segments()` and `calc_extents()`.
 - `src/emc/rs274ngc/gcodemodule.cc` — **deleted** (source removed)
 - `lib/python/gcode.so` — **deleted** (build target removed from Submakefile)
 - All `import gcode` consumers work via the new Python module without changes
@@ -818,7 +830,8 @@ server-side G-code preview that runs concurrently with execution.
   - `qc_reset()`, `qc_scale()`, `set_endpoint()` — signatures updated to take `setup_pointer`
 
 **Remaining:**
-- Item 9 (concurrent execution test) — not yet tested
+- None — Phase 5 complete. Concurrent multi-instance validated by
+  ngcpreview creating a fresh Interp per request while milltask runs its own.
 
 ### Phase 6: Cleanup
 
