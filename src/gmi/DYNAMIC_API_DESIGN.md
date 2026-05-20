@@ -171,6 +171,11 @@ func pin_read(name: string) -> PinInfo
 - `@prefix "str"` — C/REST prefix
 - `@rest_export true/false` — Enable REST exposure
 - `@rt_safe "true"` — Mark function as RT-safe
+- `@publish true` — Mark function as a publish producer (C → ring → Go drain)
+- `@publish_ring_size N` — Ring buffer slot count (default 64)
+- `@watch true` — Mark function as a WebSocket watch endpoint
+- `@watch_source "func_name"` — Link watch to a publish function (drain feeds watch)
+- `@watch_default_rate 200ms` — Default push interval for WS subscribers
 
 ## Code Generation (gmicompile)
 
@@ -497,6 +502,73 @@ func GetAPI(apiName, instance string, requiredVersion int) (unsafe.Pointer, erro
 // The cmod casts the result to kins_callbacks_t* and calls members directly.
 ```
 
+### Registry Event Hooks
+
+The registry supports event-driven callbacks for deferred initialization:
+
+```go
+// OnRegister subscribes to new API registrations. The callback fires
+// immediately for already-registered APIs, then for each future Register().
+func (r *Registry) OnRegister(fn func(*RegisteredAPI))
+
+// OnDefaultRegistryReady queues a callback that fires when SetDefaultRegistry()
+// is called. Used by generated package init() functions that need the registry
+// (which is created later during launcher startup).
+func OnDefaultRegistryReady(fn func(*Registry))
+```
+
+These hooks enable the auto-drain pattern: generated code subscribes in `init()`,
+and when the C module eventually registers its publish ring, the Go drain starts
+automatically without any launcher knowledge.
+
+### Publish Ring Pattern (C → Go)
+
+For high-frequency C → Go data streams (e.g., operator messages), the system uses
+lock-free SPSC (single-producer, single-consumer) ring buffers:
+
+```
+┌─────────────┐     ring buffer      ┌─────────────────────┐     WebSocket
+│   C module  │ ──── (lock-free) ────▶│  Go drain goroutine │ ──────────────▶ clients
+│  (milltask) │     64 slots SPSC     │  (auto-started)     │   (via watch)
+└─────────────┘                       └─────────────────────┘
+```
+
+**IDL declaration:**
+
+```
+@publish true
+@publish_ring_size 64
+func publish_error(kind: ErrorKind, text: string)
+
+@watch true
+@watch_source "publish_error"
+@watch_default_rate 200ms
+func get_errors() -> []ErrorMessage
+```
+
+**Generated artifacts (by `gmicompile --server-c`):**
+
+1. **`<api>_pub.h`** — C producer API:
+   - `ring_init(api, instance)` — allocates ring, registers with API registry
+   - `ring_write(ring, ...)` — lock-free slot write (returns -1 if full)
+
+2. **`<api>_pub.go`** — Go drain type:
+   - `NewPublishErrorDrain(callbacks)` — creates drain from callbacks pointer
+   - `drain.Start()` / `drain.Stop()` — goroutine lifecycle
+   - `drain.WatchFunc()` — returns function compatible with WS watch
+
+3. **`<api>_drain_hook.go`** — Auto-start glue (via `init()`):
+   - Subscribes to `OnDefaultRegistryReady` → `OnRegister`
+   - When the matching API name appears, starts drain + registers WS watch
+   - No launcher code required — fully self-contained
+
+**Lifecycle:**
+1. Package `init()` registers callback via `OnDefaultRegistryReady`
+2. Launcher calls `SetDefaultRegistry()` → pending callbacks fire
+3. C module loads, calls `ring_init()` → `Register()` in registry
+4. `OnRegister` fires → drain starts → WS watch registered
+5. Clients subscribe to watch endpoint, receive messages at configured rate
+
 ### REST Dispatch (HTTP server)
 
 The HTTP server is completely generic — no per-API code:
@@ -676,7 +748,10 @@ src/gomc/                   # Go module: github.com/sittner/linuxcnc/src/gomc
 │       ├── kins/            # kins_api.h, kins_cgo.go
 │       ├── mot/             # mot_api.h, mot_cgo.go
 │       ├── manualtoolchange/ # manualtoolchange_api.h, manualtoolchange_cgo.go
-│       └── tp/              # tp_api.h, tp_cgo.go
+│       ├── tp/              # tp_api.h, tp_cgo.go
+│       ├── emcerror/        # emcerror_pub.h, emcerror_pub.go, emcerror_drain_hook.go
+│       ├── emcstat/         # emcstat_api.h, emcstat_cgo.go
+│       └── emccmd/          # emccmd_api.h, emccmd_cgo.go
 ├── external/                # Installed external Go packages (gitignored)
 │   └── <name>/              # Copied source + .origin marker file
 ├── internal/
@@ -686,8 +761,8 @@ src/gomc/                   # Go module: github.com/sittner/linuxcnc/src/gomc
 │   ├── adsmodule/           # init() registers "ads-server" with gomc registry
 │   ├── apiserver/           # REST server (Step 1)
 │   │   ├── types.go         # DispatchFunc, FuncMeta, APIMeta, RegisteredAPI
-│   │   ├── registry.go      # Register(), GetAPI(), thread-safe map
-│   │   ├── server.go        # HTTP handler, path matching
+│   │   ├── registry.go      # Register(), GetAPI(), OnRegister(), OnDefaultRegistryReady()
+│   │   ├── server.go        # HTTP handler, path matching, _registry introspection
 │   │   ├── *_test.go        # 37 tests
 │   │   └── directtest/      # cmod direct-call simulation tests
 │   ├── config/              # Compile-time config (paths injected via -ldflags)
@@ -717,12 +792,14 @@ src/gomc/                   # Go module: github.com/sittner/linuxcnc/src/gomc
 │       ├── ast/             # AST types
 │       ├── parser/          # IDL parser (8 tests)
 │       └── cgen/            # Code generators
-│           ├── server.go        # --server-c: C header generation
-│           ├── dispatch_c.go    # --server-c: Go cgo dispatch wrappers
-│           ├── server_go.go     # --server-go: Go server generation
-│           ├── client.go        # --client-c: C REST client generation
-│           ├── client_go.go     # --client-go: Go REST client generation
-│           └── client_py.go     # --client-python: Python REST client generation
+│           ├── server.go            # --server-c: C header generation
+│           ├── dispatch_c.go        # --server-c: Go cgo dispatch wrappers
+│           ├── publish_c.go         # --server-c: C ring producer + Go drain
+│           ├── publish_drain_hook.go # --server-c: Go auto-drain init() hook
+│           ├── server_go.go         # --server-go: Go server generation
+│           ├── client.go            # --client-c: C REST client generation
+│           ├── client_go.go         # --client-go: Go REST client generation
+│           └── client_py.go         # --client-python: Python REST client generation
 ├── pkg/
 │   ├── cmodule/             # C module headers (gomc_*.h)
 │   ├── gomc/                # Public registration interface for external packages
