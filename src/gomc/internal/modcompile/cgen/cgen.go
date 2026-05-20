@@ -307,8 +307,8 @@ func (g *generator) emitHeader() {
 	for _, api := range g.comp.GMIProvide {
 		g.printf("#include \"%s_api.h\"\n", api)
 	}
-	for _, api := range g.comp.GMIConsume {
-		g.printf("#include \"%s_api.h\"\n", api)
+	for _, entry := range g.comp.GMIConsume {
+		g.printf("#include \"%s_api.h\"\n", entry.API)
 	}
 	g.printf("\n")
 }
@@ -399,8 +399,9 @@ func (g *generator) emitInstanceStruct() {
 	}
 
 	// GMI consumed API pointers (populated during Start via api_get).
-	for _, api := range g.comp.GMIConsume {
-		g.printf("    const %s_callbacks_t *__gmi_%s;\n", api, api)
+	for _, entry := range g.comp.GMIConsume {
+		g.printf("    const %s_callbacks_t *__gmi_%s;\n", entry.API, entry.API)
+		g.printf("    const char *__gmi_%s_instance;\n", entry.API)
 	}
 
 	// GMI provided API callbacks (per-instance, with ctx set to this inst).
@@ -652,10 +653,10 @@ func (g *generator) emitUndefConvenience() {
 // Called from inst_init() so that all providers have completed New()
 // (and thus api_register) before any consumer looks them up.
 func (g *generator) emitConsumeAPILookups() {
-	for _, api := range g.comp.GMIConsume {
-		g.printf("    /* gmi_consume %s */\n", api)
-		g.printf("    inst->__gmi_%s = %s_api_get(inst->env->api, inst->name);\n", api, api)
-		g.printf("    if (!inst->__gmi_%s) return -1;\n", api)
+	for _, entry := range g.comp.GMIConsume {
+		g.printf("    /* gmi_consume %s */\n", entry.API)
+		g.printf("    inst->__gmi_%s = %s_api_get(inst->env->api, inst->__gmi_%s_instance);\n", entry.API, entry.API, entry.API)
+		g.printf("    if (!inst->__gmi_%s) return -1;\n", entry.API)
 	}
 }
 
@@ -809,6 +810,21 @@ func (g *generator) emitNew() {
 			g.printf("            inst->_mp_%s = atoi(argv[i] + %d);\n", mp.Name, len(mp.Name)+1)
 			g.printf("    }\n\n")
 		}
+	}
+
+	// GMI consume instance parameters: <api>_instance=<name> (default from "from" clause or API name).
+	for _, entry := range g.comp.GMIConsume {
+		paramName := entry.API + "_instance"
+		defaultInstance := entry.From
+		if defaultInstance == "" {
+			defaultInstance = entry.API
+		}
+		g.printf("    /* gmi_consume %s from %s: instance parameter */\n", entry.API, defaultInstance)
+		g.printf("    inst->__gmi_%s_instance = \"%s\";\n", entry.API, defaultInstance)
+		g.printf("    for (int i = 0; i < argc; i++) {\n")
+		g.printf("        if (strncmp(argv[i], \"%s=\", %d) == 0)\n", paramName, len(paramName)+1)
+		g.printf("            inst->__gmi_%s_instance = argv[i] + %d;\n", entry.API, len(paramName)+1)
+		g.printf("    }\n\n")
 	}
 
 	// HAL init.

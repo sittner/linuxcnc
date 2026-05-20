@@ -113,6 +113,9 @@ extern const emccmd_callbacks_t emccmd_handler_table;
 // Non-static: also used by taskclass_gmi.cc (extern).
 const gomc_api_t *gomc_api_ptr;
 
+// Instance name of this module, set in New(). Used by stat publisher push_watch.
+static const char *milltask_instance_name = "milltask";
+
 // Emcerror publish ring — replaces NML error buffer.
 static emcerror_publish_error_ring_t *emcerror_ring;
 
@@ -378,7 +381,7 @@ static void publish_stat(const EMC_STAT *st) {
         pthread_mutex_unlock(&stat_mutex);
         if (gomc_api_ptr) {
             gomc_api_ptr->push_watch(gomc_api_ptr->ctx,
-                "emcstat", "emcstat", "get_stat",
+                "emcstat", milltask_instance_name, "get_stat",
                 &stat_push, sizeof(stat_push));
         }
     }
@@ -3701,11 +3704,22 @@ static void milltask_destroy(cmod_t *self)
 extern "C" int New(const cmod_env_t *env, const char *name,
                    int argc, const char **argv, cmod_t **out)
 {
+    // Parse module parameters.
+    extern const char *taskintf_motion_instance;
+    extern const char *taskclass_iocontrol_instance;
+    for (int i = 0; i < argc; i++) {
+        if (strncmp(argv[i], "motion_instance=", 16) == 0)
+            taskintf_motion_instance = argv[i] + 16;
+        else if (strncmp(argv[i], "iocontrol_instance=", 19) == 0)
+            taskclass_iocontrol_instance = argv[i] + 19;
+    }
+
     milltask_module *m = new milltask_module();
     m->env = env;
     m->thread_started = 0;
     the_module = m;
     gomc_api_ptr = env->api;
+    milltask_instance_name = name;
 
     // Look up the emcerror publish ring (allocated by Go launcher).
     if (gomc_api_ptr) {
@@ -3766,7 +3780,7 @@ extern "C" int New(const cmod_env_t *env, const char *name,
             .register_remap_prolog = interp_ext_register_remap_prolog,
             .register_remap_epilog = interp_ext_register_remap_epilog,
         };
-        interp_ext_api_register(gomc_api_ptr, "milltask",
+        interp_ext_api_register(gomc_api_ptr, name,
                                 &interp_ext_table);
 
         // Register the mcode_handler API
@@ -3774,13 +3788,12 @@ extern "C" int New(const cmod_env_t *env, const char *name,
             .ctx = NULL,
             .register_handler = mcode_api_register_handler,
         };
-        mcode_handler_api_register(gomc_api_ptr, "milltask",
+        mcode_handler_api_register(gomc_api_ptr, name,
                                    &mcode_api_table);
 
         // Register the emccmd API — provides command dispatch to UIs.
-        // Instance name "emccmd" matches the REST URL path prefix.
         emccmd_slot_init();
-        emccmd_api_register(gomc_api_ptr, "emccmd",
+        emccmd_api_register(gomc_api_ptr, name,
                             &emccmd_handler_table);
 
         // Register the emcstat API — provides status to in-process consumers
@@ -3789,7 +3802,7 @@ extern "C" int New(const cmod_env_t *env, const char *name,
             .ctx = NULL,
             .get_stat = gmi_emcstat_get_stat,
         };
-        emcstat_api_register(gomc_api_ptr, "milltask",
+        emcstat_api_register(gomc_api_ptr, name,
                              &emcstat_table);
     }
 

@@ -23,7 +23,7 @@ func setupPuma(t *testing.T) {
 
 func TestPumakinsLoadAndRegister(t *testing.T) {
 	setupPuma(t)
-	cbs := getKinsCallbacks()
+	cbs := getKinsCallbacksFor("pumakins")
 	if cbs == nil {
 		t.Fatal("kins_api_get returned nil — pumakins registration failed")
 	}
@@ -31,7 +31,7 @@ func TestPumakinsLoadAndRegister(t *testing.T) {
 
 func TestPumakinsRoundTrip(t *testing.T) {
 	setupPuma(t)
-	cbs := getKinsCallbacks()
+	cbs := getKinsCallbacksFor("pumakins")
 	if cbs == nil {
 		t.Fatal("kins_api_get returned nil")
 	}
@@ -80,7 +80,7 @@ func TestPumakinsRoundTrip(t *testing.T) {
 // When j1 (base Z rotation) changes, only C (yaw) should change significantly.
 func TestPumakinsRPYConvention(t *testing.T) {
 	setupPuma(t)
-	cbs := getKinsCallbacks()
+	cbs := getKinsCallbacksFor("pumakins")
 	if cbs == nil {
 		t.Fatal("kins_api_get returned nil")
 	}

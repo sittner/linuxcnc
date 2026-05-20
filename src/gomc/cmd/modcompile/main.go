@@ -383,8 +383,8 @@ func compileComp(compPath string, pkg *ast.Package, outDir string) error {
 	for _, api := range pkg.Component.GMIProvide {
 		gmiAPIs[api] = true
 	}
-	for _, api := range pkg.Component.GMIConsume {
-		gmiAPIs[api] = true
+	for _, entry := range pkg.Component.GMIConsume {
+		gmiAPIs[entry.API] = true
 	}
 	for api := range gmiAPIs {
 		apiIncDir := filepath.Join(config.EMC2GomcDir, "generated", "gmi", api)

@@ -13,8 +13,8 @@ class ToolTable:
     GET/PUT/DELETE /api/v1/tools/* endpoints served by emcgateway.
     """
 
-    def __init__(self):
-        self._base = gmi.rest_url() + "/api/v1/tools"
+    def __init__(self, instance: str = "emcgateway"):
+        self._base = gmi.rest_url() + "/api/v1/" + instance
 
     def list(self):
         """Return all tools as a list of dicts."""

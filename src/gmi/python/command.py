@@ -25,8 +25,8 @@ class Command:
     All methods correspond to REST calls to the emccmd API.
     """
 
-    def __init__(self):
-        self._base = rest_url() + "/api/v1/emccmd"
+    def __init__(self, instance: str = "milltask"):
+        self._base = rest_url() + "/api/v1/" + instance
 
     def _post(self, path: str, data: dict = None) -> dict:
         """Send POST request to the emccmd REST endpoint."""

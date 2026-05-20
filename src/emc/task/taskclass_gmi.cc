@@ -24,6 +24,9 @@
 // The GMI callback table — obtained from iocontrol via api registry
 static const emcio_callbacks_t *emcio = NULL;
 
+// IO instance name for lookup (set from milltask parameter).
+const char *taskclass_iocontrol_instance = "iocontrol";
+
 // gomc API pointer — set in emctaskmain_gomc.cc
 extern const gomc_api_t *gomc_api_ptr;
 
@@ -121,9 +124,9 @@ int emcIoInit()
     }
 
     // Look up the emcio API registered by iocontrol
-    emcio = emcio_api_get(gomc_api_ptr, "iocontrol");
+    emcio = emcio_api_get(gomc_api_ptr, taskclass_iocontrol_instance);
     if (!emcio) {
-	rcs_print_error("emcIoInit: emcio API not available (iocontrol not started?)\n");
+	rcs_print_error("emcIoInit: emcio API not available (instance '%s', iocontrol not started?)\n", taskclass_iocontrol_instance);
 	return -1;
     }
 

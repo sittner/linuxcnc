@@ -166,7 +166,7 @@ int New(const cmod_env_t *env, const char *name,
 
     env->hal->ready(env->hal->ctx, g_comp_id);
 
-    rc = kins_api_register(env->api, "kinematics", &lineardelta_callbacks);
+    rc = kins_api_register(env->api, name, &lineardelta_callbacks);
     if (rc != 0) {
         gomc_log_errorf(env->log, name,
             "failed to register kinematics API: %d", rc);

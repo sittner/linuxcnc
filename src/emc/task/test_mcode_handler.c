@@ -17,6 +17,7 @@
 typedef struct {
     cmod_t base;
     const cmod_env_t *env;
+    const char *milltask_instance;
 } test_mcode_module;
 
 static int my_m101_handler(const mcode_handler_mcode_call_t *call, void *user_data)
@@ -47,9 +48,9 @@ static int test_mcode_start(cmod_t *self)
     }
 
     const mcode_handler_callbacks_t *mapi =
-        mcode_handler_api_get(m->env->api, "milltask");
+        mcode_handler_api_get(m->env->api, m->milltask_instance);
     if (!mapi) {
-        fprintf(stderr, "test_mcode_handler: mcode_handler API not found\n");
+        fprintf(stderr, "test_mcode_handler: mcode_handler API not found (instance '%s')\n", m->milltask_instance);
         return -1;
     }
 
@@ -74,6 +75,11 @@ int New(const cmod_env_t *env, const char *name,
     if (!m)
         return -1;
     m->env = env;
+    m->milltask_instance = "milltask";
+    for (int i = 0; i < argc; i++) {
+        if (strncmp(argv[i], "milltask_instance=", 18) == 0)
+            m->milltask_instance = argv[i] + 18;
+    }
     m->base.Start   = test_mcode_start;
     m->base.Destroy = test_mcode_destroy;
     m->base.priv    = m;

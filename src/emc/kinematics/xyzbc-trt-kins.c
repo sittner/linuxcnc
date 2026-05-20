@@ -226,7 +226,7 @@ int New(const cmod_env_t *env, const char *name,
 
     env->hal->ready(env->hal->ctx, g_comp_id);
 
-    rc = kins_api_register(env->api, "kinematics", &xyzbc_callbacks);
+    rc = kins_api_register(env->api, name, &xyzbc_callbacks);
     if (rc != 0) {
         gomc_log_errorf(env->log, name, "kins_api_register failed: %d", rc);
         goto fail;

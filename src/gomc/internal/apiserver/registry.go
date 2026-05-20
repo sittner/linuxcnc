@@ -91,6 +91,27 @@ func (r *Registry) Get(instance string) *RegisteredAPI {
 	return nil
 }
 
+// GetAll returns all RegisteredAPIs matching the given instance name.
+func (r *Registry) GetAll(instance string) []*RegisteredAPI {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var result []*RegisteredAPI
+	for _, api := range r.instances {
+		if api.Instance == instance {
+			result = append(result, api)
+		}
+	}
+	return result
+}
+
+// GetByAPI returns the RegisteredAPI for the given apiName:instance pair, or nil.
+func (r *Registry) GetByAPI(apiName, instance string) *RegisteredAPI {
+	key := registryKey(apiName, instance)
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.instances[key]
+}
+
 // Instances returns all registered instance names (without the api: prefix).
 func (r *Registry) Instances() []string {
 	r.mu.RLock()

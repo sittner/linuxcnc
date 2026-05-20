@@ -1469,13 +1469,14 @@ static const home_callbacks_t home_cmod_callbacks = GMI_HOME_CALLBACKS;
 
 static cmod_t home_cmod;
 static const gomc_api_t *home_cmod_api;
+static const char *home_mot_instance = "motmod";
 
 static void home_cmod_destroy(cmod_t *self) { (void)self; }
 
 static int home_cmod_init(cmod_t *self)
 {
     (void)self;
-    const mot_callbacks_t *mot = mot_api_get(home_cmod_api, "default");
+    const mot_callbacks_t *mot = mot_api_get(home_cmod_api, home_mot_instance);
     if (!mot) return -1;
     _mot = mot;
     return 0;
@@ -1484,10 +1485,15 @@ static int home_cmod_init(cmod_t *self)
 int New(const cmod_env_t *env, const char *name,
         int argc, const char **argv, cmod_t **out)
 {
-    (void)argc; (void)argv;
     home_cmod_api = env->api;
 
-    int rc = home_api_register(env->api, "default", &home_cmod_callbacks);
+    /* Parse mot_instance parameter */
+    for (int i = 0; i < argc; i++) {
+        if (strncmp(argv[i], "mot_instance=", 13) == 0)
+            home_mot_instance = argv[i] + 13;
+    }
+
+    int rc = home_api_register(env->api, name, &home_cmod_callbacks);
     if (rc != 0) {
         gomc_log_errorf(env->log, name,
             "failed to register home API: %d", rc);

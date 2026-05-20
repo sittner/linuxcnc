@@ -214,7 +214,7 @@ int New(
     g_trivkins = tk;
 
     // Register with the GMI kinematics API
-    int rc = kins_api_register(env->api, "kinematics", &trivkins_callbacks);
+    int rc = kins_api_register(env->api, name, &trivkins_callbacks);
     if (rc != 0) {
         gomc_log_errorf(env->log, name,
             "failed to register kinematics API: %d", rc);

@@ -91,20 +91,28 @@ func (s *Server) handleAPIRequest(w http.ResponseWriter, r *http.Request) {
 	instance, funcPath, _ := strings.Cut(path, "/")
 	funcPath = "/" + funcPath // normalize: "" → "/", "pin/x" → "/pin/x"
 
-	// Look up registered API
-	api := s.registry.Get(instance)
-	if api == nil {
+	// Look up registered API(s)
+	apis := s.registry.GetAll(instance)
+	if len(apis) == 0 {
 		writeErrorJSON(w, http.StatusNotFound, "unknown API instance: "+instance)
 		return
 	}
-	if api.Meta == nil || !api.Meta.RESTExport {
-		writeErrorJSON(w, http.StatusNotFound, "API not REST-exported: "+instance)
-		return
-	}
 
-	// Match request against FuncMeta entries
-	funcIndex := matchFunc(api.Meta, r.Method, funcPath)
-	if funcIndex < 0 {
+	// Try each registered API for a function match
+	var api *RegisteredAPI
+	var funcIndex int
+	for _, candidate := range apis {
+		if candidate.Meta == nil || !candidate.Meta.RESTExport {
+			continue
+		}
+		idx := matchFunc(candidate.Meta, r.Method, funcPath)
+		if idx >= 0 {
+			api = candidate
+			funcIndex = idx
+			break
+		}
+	}
+	if api == nil {
 		writeErrorJSON(w, http.StatusNotFound, "no matching function")
 		return
 	}

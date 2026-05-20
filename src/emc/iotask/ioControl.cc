@@ -834,7 +834,7 @@ static int iocontrol_start(cmod_t *self)
     // Register GMI emcio API so milltask can call us via function pointers.
     m->emcio_cb = emcio_table;
     m->emcio_cb.ctx = m;
-    emcio_api_register(m->env->api, "iocontrol", &m->emcio_cb);
+    emcio_api_register(m->env->api, m->name, &m->emcio_cb);
 
     m->done = 0;
     return 0;

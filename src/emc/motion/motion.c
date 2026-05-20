@@ -70,6 +70,11 @@ static int num_misc_error = -1;   /* To check use of num_misc_error modparam */
 static char *names_misc_errors[MAX_IO] = {0,};
 
 static int unlock_joints_mask = 0;/* mask to select joints for unlock pins */
+
+/* GMI API instance names for consumer lookups (overridable via parameters) */
+static const char *kins_instance = "trivkins";
+static const char *tp_instance = "tpmod";
+static const char *home_instance = "homemod";
 /***********************************************************************
 *                  GLOBAL VARIABLE DEFINITIONS                         *
 ************************************************************************/
@@ -624,6 +629,9 @@ static int parse_argv(int argc, const char **argv)
         else if (strncmp(a, "num_aio=", 8) == 0)          num_aio = atoi(a + 8);
         else if (strncmp(a, "num_misc_error=", 15) == 0)  num_misc_error = atoi(a + 15);
         else if (strncmp(a, "unlock_joints_mask=", 19) == 0) unlock_joints_mask = atoi(a + 19);
+        else if (strncmp(a, "kins_instance=", 14) == 0) kins_instance = a + 14;
+        else if (strncmp(a, "tp_instance=", 12) == 0) tp_instance = a + 12;
+        else if (strncmp(a, "home_instance=", 14) == 0) home_instance = a + 14;
         /* Array-of-string params: names_din=foo,bar,baz */
         else if (strncmp(a, "names_din=", 10) == 0) {
             const char *p = a + 10;
@@ -729,7 +737,7 @@ int New(const cmod_env_t *env, const char *name,
 
     /* Register the mot reverse-callback API so tpmod/homemod can look it up
        in their Init() functions. */
-    retval = mot_api_register(env->api, "default", &motmod_mot_callbacks);
+    retval = mot_api_register(env->api, name, &motmod_mot_callbacks);
     if (retval != 0) {
 	rtapi_print_msg(RTAPI_MSG_ERR,
 	    _("MOTION: failed to register mot API: %d\n"), retval);
@@ -746,7 +754,7 @@ int New(const cmod_env_t *env, const char *name,
            in Init().  The struct addresses are stable (static), so
            consumers can stash the pointer during their own New(). */
         motctl_cb = motctl_get_callbacks();
-        retval = motctl_api_register(env->api, "default", &motctl_cb);
+        retval = motctl_api_register(env->api, name, &motctl_cb);
         if (retval != 0) {
             rtapi_print_msg(RTAPI_MSG_ERR,
                 _("MOTION: failed to register motctl API: %d\n"), retval);
@@ -755,7 +763,7 @@ int New(const cmod_env_t *env, const char *name,
         }
 
         motstat_cb = motstat_get_callbacks();
-        retval = motstat_api_register(env->api, "default", &motstat_cb);
+        retval = motstat_api_register(env->api, name, &motstat_cb);
         if (retval != 0) {
             rtapi_print_msg(RTAPI_MSG_ERR,
                 _("MOTION: failed to register motstat API: %d\n"), retval);
@@ -880,26 +888,26 @@ static int motmod_init(cmod_t *self)
     /* --- Cross-module API lookups (must come first) --- */
 
     /* Look up the kinematics API registered by the kins module */
-    motmod_kins = kins_api_get(motmod_env->api, "kinematics");
+    motmod_kins = kins_api_get(motmod_env->api, kins_instance);
     if (!motmod_kins) {
 	rtapi_print_msg(RTAPI_MSG_ERR,
-	    _("MOTION: kinematics API not registered (is kins module loaded?)\n"));
+	    _("MOTION: kinematics API not registered (instance '%s', is kins module loaded?)\n"), kins_instance);
 	return -1;
     }
 
     /* Look up the trajectory planner API registered by the tp module */
-    motmod_tp_api = tp_api_get(motmod_env->api, "default");
+    motmod_tp_api = tp_api_get(motmod_env->api, tp_instance);
     if (!motmod_tp_api) {
 	rtapi_print_msg(RTAPI_MSG_ERR,
-	    _("MOTION: tp API not registered (is tp module loaded?)\n"));
+	    _("MOTION: tp API not registered (instance '%s', is tp module loaded?)\n"), tp_instance);
 	return -1;
     }
 
     /* Look up the homing API registered by the home module */
-    motmod_home_api = home_api_get(motmod_env->api, "default");
+    motmod_home_api = home_api_get(motmod_env->api, home_instance);
     if (!motmod_home_api) {
 	rtapi_print_msg(RTAPI_MSG_ERR,
-	    _("MOTION: home API not registered (is home module loaded?)\n"));
+	    _("MOTION: home API not registered (instance '%s', is home module loaded?)\n"), home_instance);
 	return -1;
     }
 

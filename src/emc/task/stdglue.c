@@ -322,6 +322,7 @@ static int cycle_epilog(interp_ctx_callbacks_t *ctx, const char *name)
 typedef struct {
     cmod_t base;
     const cmod_env_t *env;
+    const char *milltask_instance;
 } stdglue_module;
 
 static int stdglue_start(cmod_t *self)
@@ -333,10 +334,10 @@ static int stdglue_start(cmod_t *self)
         fprintf(stderr, "stdglue: no API registry available\n");
         return -1;
     }
-    const interp_ext_callbacks_t *ext = interp_ext_api_get(m->env->api, "milltask");
+    const interp_ext_callbacks_t *ext = interp_ext_api_get(m->env->api, m->milltask_instance);
     if (!ext) {
         fprintf(stderr, "stdglue: interp_ext API not found "
-                "(milltask must be started first)\n");
+                "(instance '%s', milltask must be started first)\n", m->milltask_instance);
         return -1;
     }
 
@@ -368,6 +369,11 @@ int New(const cmod_env_t *env, const char *name,
     if (!m)
         return -1;
     m->env = env;
+    m->milltask_instance = "milltask";
+    for (int i = 0; i < argc; i++) {
+        if (strncmp(argv[i], "milltask_instance=", 18) == 0)
+            m->milltask_instance = argv[i] + 18;
+    }
 
     m->base.Init    = NULL;
     m->base.Start   = stdglue_start;

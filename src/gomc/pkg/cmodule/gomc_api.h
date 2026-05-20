@@ -7,10 +7,10 @@
 // Usage (provider — e.g. trivkins.c):
 //   #include "kins_api.h"
 //   static kins_callbacks_t my_callbacks = { ... };
-//   kins_api_register(env->api, "kinematics", &my_callbacks);
+//   kins_api_register(env->api, name, &my_callbacks);  // name = component instance name
 //
 // Usage (consumer):
-//   const kins_callbacks_t *k = kins_api_get(env->api, "kinematics");
+//   const kins_callbacks_t *k = kins_api_get(env->api, "trivkins");  // target instance name
 //
 // The generated *_api.h headers provide typed static inline wrappers
 // around the generic register/get callbacks below.

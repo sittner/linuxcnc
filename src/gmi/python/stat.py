@@ -133,7 +133,8 @@ class Stat:
     All attributes from the stat struct are accessible as properties.
     """
 
-    def __init__(self):
+    def __init__(self, instance: str = "emcgateway"):
+        self._instance = instance
         self._data = {}
         self._lock = threading.Lock()
         self._connected = threading.Event()
@@ -177,7 +178,7 @@ class Stat:
         msg = {
             "action": "subscribe",
             "api": "emcstat",
-            "instance": "emcstat",
+            "instance": self._instance,
             "func": "get_stat",
             "rate_ms": 50,
         }

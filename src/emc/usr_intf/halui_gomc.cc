@@ -2017,6 +2017,9 @@ static void modify_hal_pins()
 
 
 
+// GMI API instance name for milltask lookup (overridable via parameter).
+static const char *halui_milltask_instance = "milltask";
+
 // ---------------------------------------------------------------------------
 // cmod lifecycle
 // ---------------------------------------------------------------------------
@@ -2060,16 +2063,16 @@ static int halui_start(cmod_t *self)
 	gomc_log_errorf(the_log, "halui", "no API registry available");
 	return -1;
     }
-    emccmd = emccmd_api_get(the_env->api, "emccmd");
+    emccmd = emccmd_api_get(the_env->api, halui_milltask_instance);
     if (!emccmd) {
-	gomc_log_errorf(the_log, "halui", "emccmd API not registered (milltask not loaded?)");
+	gomc_log_errorf(the_log, "halui", "emccmd API not registered (instance '%s', is milltask loaded?)", halui_milltask_instance);
 	return -1;
     }
 
     // Get the emcstat API for reading machine status.
-    emcstat_cb = emcstat_api_get(the_env->api, "milltask");
+    emcstat_cb = emcstat_api_get(the_env->api, halui_milltask_instance);
     if (!emcstat_cb) {
-	gomc_log_errorf(the_log, "halui", "emcstat API not registered (milltask not loaded?)");
+	gomc_log_errorf(the_log, "halui", "emcstat API not registered (instance '%s', is milltask loaded?)", halui_milltask_instance);
 	return -1;
     }
 
@@ -2115,6 +2118,12 @@ static void halui_destroy(cmod_t *self)
 extern "C" int New(const cmod_env_t *env, const char *name,
                    int argc, const char **argv, cmod_t **out)
 {
+    // Parse module parameters.
+    for (int i = 0; i < argc; i++) {
+        if (strncmp(argv[i], "milltask_instance=", 18) == 0)
+            halui_milltask_instance = argv[i] + 18;
+    }
+
     halui_module *m = new halui_module();
     m->env = env;
     m->thread_started = 0;

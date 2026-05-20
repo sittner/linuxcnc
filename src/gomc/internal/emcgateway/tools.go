@@ -21,8 +21,9 @@ import (
 
 // toolsImpl implements toolsapi.ToolsCallbacks via the tool_shim C interface.
 type toolsImpl struct {
-	toolTableFile string
-	emccmd        unsafe.Pointer // *C.emccmd_callbacks_t, fetched lazily from registry
+	toolTableFile    string
+	milltaskInstance string
+	emccmd           unsafe.Pointer // *C.emccmd_callbacks_t, fetched lazily from registry
 }
 
 func init() {
@@ -170,7 +171,7 @@ func (t *toolsImpl) DeleteTool(toolno int32) (*toolsapi.CmdResult, error) {
 
 func (t *toolsImpl) ReloadTools() (*toolsapi.CmdResult, error) {
 	if t.emccmd == nil {
-		ptr, err := apiserver.DefaultRegistry().GetAPI("emccmd", "emccmd", 1)
+		ptr, err := apiserver.DefaultRegistry().GetAPI("emccmd", t.milltaskInstance, 1)
 		if err != nil {
 			return nil, fmt.Errorf("emccmd API not available: %v", err)
 		}

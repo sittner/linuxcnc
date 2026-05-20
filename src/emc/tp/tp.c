@@ -3859,6 +3859,7 @@ static const tp_callbacks_t tp_cmod_callbacks = GMI_TP_CALLBACKS;
 
 static cmod_t tp_cmod;
 static const gomc_api_t *tp_cmod_api;
+static const char *tp_mot_instance = "motmod";
 
 static void tp_cmod_destroy(cmod_t *self) {
     (void)self;
@@ -3869,7 +3870,7 @@ static void tp_cmod_destroy(cmod_t *self) {
 static int tp_cmod_init(cmod_t *self)
 {
     (void)self;
-    const mot_callbacks_t *mot = mot_api_get(tp_cmod_api, "default");
+    const mot_callbacks_t *mot = mot_api_get(tp_cmod_api, tp_mot_instance);
     if (!mot) return -1;
     _mot = mot;
     return 0;
@@ -3878,10 +3879,15 @@ static int tp_cmod_init(cmod_t *self)
 int New(const cmod_env_t *env, const char *name,
         int argc, const char **argv, cmod_t **out)
 {
-    (void)argc; (void)argv;
     tp_cmod_api = env->api;
 
-    int rc = tp_api_register(env->api, "default", &tp_cmod_callbacks);
+    /* Parse mot_instance parameter */
+    for (int i = 0; i < argc; i++) {
+        if (strncmp(argv[i], "mot_instance=", 13) == 0)
+            tp_mot_instance = argv[i] + 13;
+    }
+
+    int rc = tp_api_register(env->api, name, &tp_cmod_callbacks);
     if (rc != 0) {
         gomc_log_errorf(env->log, name,
             "failed to register tp API: %d", rc);

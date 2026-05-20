@@ -351,7 +351,7 @@ class PositionLogger:
         msg = {
             "action": "subscribe",
             "api": "emcstat",
-            "instance": "emcstat",
+            "instance": "emcgateway",
             "func": "get_positions",
             "rate_ms": 200,
         }
@@ -364,7 +364,7 @@ class PositionLogger:
         msg = {
             "action": "call",
             "api": "emcstat",
-            "instance": "emcstat",
+            "instance": "emcgateway",
             "func": func,
             "id": 0,
         }

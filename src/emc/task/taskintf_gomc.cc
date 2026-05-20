@@ -49,6 +49,9 @@ static const gomc_log_t *the_log;
 static const motctl_callbacks_t *motctl;
 static const motstat_callbacks_t *motstat;
 
+// Instance name for motion controller lookup (default: "motmod").
+const char *taskintf_motion_instance = "motmod";
+
 // Log subscription for forwarding RTAPI_MSG_ERR to OPERATOR_ERROR.
 static gomc_log_sub_t *log_error_sub;
 
@@ -70,14 +73,14 @@ static int taskintf_lookup_apis(void)
         rcs_print_error("taskintf: gomc_api_ptr is NULL\n");
         return -1;
     }
-    motctl = motctl_api_get(gomc_api_ptr, "default");
+    motctl = motctl_api_get(gomc_api_ptr, taskintf_motion_instance);
     if (!motctl) {
-        rcs_print_error("taskintf: motctl API not registered (is motmod loaded?)\n");
+        rcs_print_error("taskintf: motctl API not registered (instance '%s', is motmod loaded?)\n", taskintf_motion_instance);
         return -1;
     }
-    motstat = motstat_api_get(gomc_api_ptr, "default");
+    motstat = motstat_api_get(gomc_api_ptr, taskintf_motion_instance);
     if (!motstat) {
-        rcs_print_error("taskintf: motstat API not registered (is motmod loaded?)\n");
+        rcs_print_error("taskintf: motstat API not registered (instance '%s', is motmod loaded?)\n", taskintf_motion_instance);
         return -1;
     }
     return 0;

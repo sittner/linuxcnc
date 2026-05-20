@@ -72,13 +72,19 @@ type Component struct {
 
 	// GMI API bindings.
 	// GMIProvide lists API names this component provides (server side).
-	// GMIConsume lists API names this component consumes (client side).
+	// GMIConsume lists APIs this component consumes (client side).
 	GMIProvide []string
-	GMIConsume []string
+	GMIConsume []GMIConsumeEntry
 
 	// VerbatimC holds the raw C code from after the ";;" separator
 	// in .comp files.  Empty for ST modules.
 	VerbatimC string
+}
+
+// GMIConsumeEntry describes a consumed API with an optional default provider instance.
+type GMIConsumeEntry struct {
+	API  string // API name (e.g. "mot")
+	From string // Default provider instance name (e.g. "motmod"); empty means use API name
 }
 
 // ---------------------------------------------------------------------------

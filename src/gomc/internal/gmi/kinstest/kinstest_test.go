@@ -17,7 +17,7 @@ func TestTrivkinsLoadAndRegister(t *testing.T) {
 	}
 	defer unloadTrivkins(mod)
 
-	// The .so's New() should have called kins_api_register("kinematics", ...).
+	// The .so's New() should have called kins_api_register(name, ...) with name="trivkins".
 	cbs := getKinsCallbacks()
 	if cbs == nil {
 		t.Fatal("kins_api_get returned nil — registration failed")

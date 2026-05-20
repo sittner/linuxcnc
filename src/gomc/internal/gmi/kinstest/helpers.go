@@ -274,16 +274,21 @@ func unloadTrivkins(mod *C.cmod_t) {
 }
 
 // getKinsCallbacks retrieves the kins callbacks from the Go registry.
-func getKinsCallbacks() *C.kins_callbacks_t {
+func getKinsCallbacksFor(instance string) *C.kins_callbacks_t {
 	reg := apiserver.DefaultRegistry()
 	if reg == nil {
 		return nil
 	}
-	cbs, err := reg.GetAPI("kins", "kinematics", 1)
+	cbs, err := reg.GetAPI("kins", instance, 1)
 	if err != nil {
 		return nil
 	}
 	return (*C.kins_callbacks_t)(cbs)
+}
+
+// getKinsCallbacks retrieves the kins callbacks for "trivkins" (legacy helper).
+func getKinsCallbacks() *C.kins_callbacks_t {
+	return getKinsCallbacksFor("trivkins")
 }
 
 // --- API registry callback implementations (exported to C for test stub) ---

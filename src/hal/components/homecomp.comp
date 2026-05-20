@@ -37,7 +37,7 @@ option  extra_setup;
 modparam string home_parms;
 
 gmi_provide home;
-gmi_consume mot;
+gmi_consume mot from motmod;
 ;;
 
 #define MAX_JOINTS 16

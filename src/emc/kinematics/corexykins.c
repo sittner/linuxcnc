@@ -78,7 +78,7 @@ int New(const cmod_env_t *env, const char *name,
 {
     (void)argc; (void)argv;
 
-    int rc = kins_api_register(env->api, "kinematics", &corexykins_callbacks);
+    int rc = kins_api_register(env->api, name, &corexykins_callbacks);
     if (rc != 0) {
         gomc_log_errorf(env->log, name,
             "failed to register kinematics API: %d", rc);

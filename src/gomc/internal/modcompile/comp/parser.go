@@ -494,11 +494,25 @@ func (p *parser) parseGMIConsume() error {
 	if err != nil {
 		return err
 	}
+
+	// Optional "from <module>" clause for default provider instance.
+	var from string
+	if p.cur.Kind == TokIdent && p.cur.Val == "from" {
+		p.next() // skip "from"
+		from, err = p.expectName()
+		if err != nil {
+			return err
+		}
+	}
+
 	if err := p.expectSemi(); err != nil {
 		return err
 	}
 
-	p.pkg.Component.GMIConsume = append(p.pkg.Component.GMIConsume, name)
+	p.pkg.Component.GMIConsume = append(p.pkg.Component.GMIConsume, ast.GMIConsumeEntry{
+		API:  name,
+		From: from,
+	})
 	return nil
 }
 

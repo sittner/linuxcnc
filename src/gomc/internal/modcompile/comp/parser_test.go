@@ -357,7 +357,35 @@ license "GPL";
 	if len(c.GMIProvide) != 1 || c.GMIProvide[0] != "kins" {
 		t.Errorf("GMIProvide = %v, want [kins]", c.GMIProvide)
 	}
-	if len(c.GMIConsume) != 1 || c.GMIConsume[0] != "tp" {
-		t.Errorf("GMIConsume = %v, want [tp]", c.GMIConsume)
+	if len(c.GMIConsume) != 1 || c.GMIConsume[0].API != "tp" {
+		t.Errorf("GMIConsume = %v, want [{tp }]", c.GMIConsume)
+	}
+	if c.GMIConsume[0].From != "" {
+		t.Errorf("GMIConsume[0].From = %q, want empty", c.GMIConsume[0].From)
+	}
+}
+
+func TestParseGMIConsumeFrom(t *testing.T) {
+	src := `component homecomp "Homing";
+pin out s32 fpin;
+function fdemo;
+gmi_provide home;
+gmi_consume mot from motmod;
+license "GPL";
+;;
+`
+	pkg, err := Parse("homecomp.comp", src)
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+	c := pkg.Component
+	if len(c.GMIConsume) != 1 {
+		t.Fatalf("GMIConsume length = %d, want 1", len(c.GMIConsume))
+	}
+	if c.GMIConsume[0].API != "mot" {
+		t.Errorf("GMIConsume[0].API = %q, want \"mot\"", c.GMIConsume[0].API)
+	}
+	if c.GMIConsume[0].From != "motmod" {
+		t.Errorf("GMIConsume[0].From = %q, want \"motmod\"", c.GMIConsume[0].From)
 	}
 }

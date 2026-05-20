@@ -58,19 +58,27 @@ func (m *emcGateway) Destroy() {}
 func newEmcGateway(ini *inifile.IniFile, logger *slog.Logger, name string, args []string) (gomc.Module, error) {
 	logger = logger.With("module", "emcgateway")
 
+	// Parse milltask instance name from args (default: "milltask").
+	milltaskInstance := "milltask"
+	for _, a := range args {
+		if len(a) > 18 && a[:18] == "milltask_instance=" {
+			milltaskInstance = a[18:]
+		}
+	}
+
 	gw := &emcGateway{
 		logger: logger,
 	}
 
 	// Get or create the PushWatch that milltask will push stat data into.
 	// The PushConverter was registered by emcstat package's init().
-	gw.pw = apiserver.GetOrCreatePushWatch("emcstat", "emcstat", "get_stat")
+	gw.pw = apiserver.GetOrCreatePushWatch("emcstat", milltaskInstance, "get_stat")
 	if gw.pw == nil {
 		return nil, fmt.Errorf("emcgateway: no push converter registered for emcstat")
 	}
 
 	// Register REST API backed by PushWatch.
-	if err := emcstatapi.RegisterEmcstatAPI(apiserver.DefaultRegistry(), "emcstat", gw); err != nil {
+	if err := emcstatapi.RegisterEmcstatAPI(apiserver.DefaultRegistry(), name, gw); err != nil {
 		return nil, fmt.Errorf("emcgateway: register emcstat: %w", err)
 	}
 
@@ -81,8 +89,9 @@ func newEmcGateway(ini *inifile.IniFile, logger *slog.Logger, name string, args 
 		C.tool_shim_load(cFile)
 		C.free(unsafe.Pointer(cFile))
 	}
-	if err := toolsapi.RegisterToolsAPI(apiserver.DefaultRegistry(), "tools", &toolsImpl{
-		toolTableFile: toolFile,
+	if err := toolsapi.RegisterToolsAPI(apiserver.DefaultRegistry(), name, &toolsImpl{
+		toolTableFile:    toolFile,
+		milltaskInstance: milltaskInstance,
 	}); err != nil {
 		return nil, fmt.Errorf("emcgateway: register tools: %w", err)
 	}
@@ -96,7 +105,7 @@ func newEmcGateway(ini *inifile.IniFile, logger *slog.Logger, name string, args 
 	// emcstat: get_stat (push-backed) + get_positions (drain-style) + poslogger commands.
 	wreg.Register(&apiserver.WatchAPI{
 		APIName:  "emcstat",
-		Instance: "emcstat",
+		Instance: name,
 		Watches: []apiserver.WatchFuncMeta{
 			{
 				Name:        "get_stat",
@@ -117,7 +126,7 @@ func newEmcGateway(ini *inifile.IniFile, logger *slog.Logger, name string, args 
 	})
 
 	// Register command handlers on the watch WebSocket too.
-	emccmdAPI := apiserver.DefaultRegistry().Get("emccmd")
+	emccmdAPI := apiserver.DefaultRegistry().GetByAPI("emccmd", milltaskInstance)
 	if emccmdAPI != nil && emccmdAPI.Meta != nil {
 		cmds := make([]apiserver.CommandMeta, 0, len(emccmdAPI.Meta.Funcs))
 		for _, fn := range emccmdAPI.Meta.Funcs {
@@ -133,7 +142,7 @@ func newEmcGateway(ini *inifile.IniFile, logger *slog.Logger, name string, args 
 		}
 		wreg.Register(&apiserver.WatchAPI{
 			APIName:  "emccmd",
-			Instance: "emccmd",
+			Instance: milltaskInstance,
 			Commands: cmds,
 		})
 	}
