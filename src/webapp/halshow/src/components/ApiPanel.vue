@@ -45,6 +45,7 @@ function isSelected(api: ApiInfo): boolean {
           >
             <span class="api-name">{{ api.api_name }}</span>
             <span class="api-badge" v-if="api.rest">REST</span>
+            <span class="api-badge ws" v-if="api.watches && api.watches.length">WS</span>
             <span class="api-version">v{{ api.version }}</span>
           </div>
         </div>
@@ -185,6 +186,11 @@ function isSelected(api: ApiInfo): boolean {
   padding: 1px 4px;
   border-radius: 3px;
   font-weight: 600;
+}
+
+.api-badge.ws {
+  background: #2a3a4a;
+  color: #8cf;
 }
 
 .api-version {
