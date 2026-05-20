@@ -34,4 +34,10 @@ TARGETS += ../bin/halshow
 	$(Q)ln -sf gmcui $@
 TARGETS += ../bin/tooledit
 
+# Symlink: emccalib -> gmcui
+../bin/emccalib: ../bin/gmcui
+	$(ECHO) Creating symlink $(notdir $@)
+	$(Q)ln -sf gmcui $@
+TARGETS += ../bin/emccalib
+
 endif
