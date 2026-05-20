@@ -22,7 +22,7 @@ export interface TreeNode {
   expanded?: boolean;
 }
 
-export type TabId = 'show' | 'watch' | 'cmd' | 'api';
+export type TabId = 'show' | 'watch' | 'cmd';
 
 export interface WatchValueItem {
   name: string;
@@ -40,7 +40,7 @@ export interface CmdHistoryEntry {
   error?: string;
 }
 
-export type TreeCategory = 'pins' | 'params' | 'signals' | 'components' | 'functions' | 'threads';
+export type TreeCategory = 'pins' | 'params' | 'signals' | 'components' | 'functions' | 'threads' | 'api';
 
 export interface ApiFuncInfo {
   name: string;
@@ -282,6 +282,7 @@ export const halshowStore = {
       case 'components': return state.components;
       case 'functions': return state.functions;
       case 'threads': return state.threads;
+      case 'api': return [];
     }
   },
 
@@ -290,7 +291,11 @@ export const halshowStore = {
     state.selectedNode = null;
     state.selectedItem = null;
     state.selectedItemKind = null;
-    this.rebuildTree();
+    if (cat === 'api') {
+      this.refreshApiRegistry();
+    } else {
+      this.rebuildTree();
+    }
   },
 
   setFilter(filter: string) {
@@ -680,9 +685,6 @@ export const halshowStore = {
 
   setActiveTab(tab: TabId) {
     state.activeTab = tab;
-    if (tab === 'api') {
-      this.refreshApiRegistry();
-    }
   },
 
   async refreshApiRegistry() {

@@ -72,6 +72,14 @@ function cancelEdit() {
     </div>
 
     <table v-else class="watch-table">
+      <colgroup>
+        <col />
+        <col style="width: 140px" />
+        <col style="width: 50px" />
+        <col style="width: 40px" />
+        <col style="width: 40px" />
+        <col style="width: 30px" />
+      </colgroup>
       <thead>
         <tr>
           <th>Name</th>
@@ -170,6 +178,7 @@ function cancelEdit() {
 .watch-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 .watch-table th {
@@ -188,7 +197,6 @@ function cancelEdit() {
 .watch-table .name {
   font-family: monospace;
   color: #ccc;
-  max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -198,6 +206,9 @@ function cancelEdit() {
   font-family: monospace;
   color: #4f4;
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .watch-table .type {

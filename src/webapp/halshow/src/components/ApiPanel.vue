@@ -58,12 +58,13 @@ function isSelected(api: ApiInfo): boolean {
         <template v-else>
           <div class="detail-header">{{ selectedApi.api_name }} @ {{ selectedApi.instance }}</div>
 
-          <!-- Consumers -->
-          <div class="detail-section" v-if="selectedApi.consumers && selectedApi.consumers.length">
+          <!-- Consumers (always first) -->
+          <div class="detail-section">
             <div class="section-title">Consumers</div>
-            <div class="consumer-list">
+            <div class="consumer-list" v-if="selectedApi.consumers && selectedApi.consumers.length">
               <span v-for="c in selectedApi.consumers" :key="c" class="consumer-tag">{{ c }}</span>
             </div>
+            <div v-else class="empty-note">No recorded consumers</div>
           </div>
 
           <!-- REST endpoints -->
@@ -106,12 +107,6 @@ function isSelected(api: ApiInfo): boolean {
               <span v-for="cmd in selectedApi.commands" :key="cmd" class="command-tag">{{ cmd }}</span>
             </div>
           </div>
-
-          <!-- No consumers -->
-          <div class="detail-section" v-if="!selectedApi.consumers || selectedApi.consumers.length === 0">
-            <div class="section-title">Consumers</div>
-            <div class="empty-note">No recorded consumers</div>
-          </div>
         </template>
       </div>
     </div>
@@ -120,21 +115,23 @@ function isSelected(api: ApiInfo): boolean {
 
 <style scoped>
 .api-panel {
-  height: 100%;
+  display: flex;
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 
 .api-layout {
   display: flex;
-  height: 100%;
-  gap: 1px;
-  background: #333;
+  flex: 1;
+  min-height: 0;
 }
 
 .api-tree {
-  width: 240px;
-  min-width: 180px;
+  width: 300px;
+  flex-shrink: 0;
   overflow-y: auto;
+  border-right: 1px solid #333;
   background: #151515;
   padding: 4px 0;
   font-size: 12px;
@@ -143,6 +140,7 @@ function isSelected(api: ApiInfo): boolean {
 .api-detail {
   flex: 1;
   overflow-y: auto;
+  min-height: 0;
   background: #1a1a1a;
   padding: 12px;
 }

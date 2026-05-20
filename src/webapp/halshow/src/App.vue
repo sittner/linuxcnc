@@ -16,6 +16,7 @@ const categories: { id: TreeCategory; label: string }[] = [
   { id: 'components', label: 'Components' },
   { id: 'functions', label: 'Functions' },
   { id: 'threads', label: 'Threads' },
+  { id: 'api', label: 'API' },
 ];
 
 function onFilterInput(e: Event) {
@@ -43,7 +44,10 @@ function onFilterInput(e: Event) {
       />
       <button class="refresh-btn" @click="halshowStore.refresh()">Refresh</button>
     </div>
-    <div class="main-area">
+    <div class="main-area" v-if="halshowStore.state.treeCategory === 'api'">
+      <ApiPanel />
+    </div>
+    <div class="main-area" v-else>
       <div class="tree-panel">
         <HalTree />
       </div>
@@ -61,10 +65,6 @@ function onFilterInput(e: Event) {
             :class="{ active: halshowStore.state.activeTab === 'cmd' }"
             @click="halshowStore.setActiveTab('cmd')"
           >Cmd</button>
-          <button
-            :class="{ active: halshowStore.state.activeTab === 'api' }"
-            @click="halshowStore.setActiveTab('api')"
-          >API</button>
         </div>
         <div class="tab-content">
           <template v-if="halshowStore.state.activeTab === 'show'">
@@ -73,7 +73,6 @@ function onFilterInput(e: Event) {
           </template>
           <WatchPanel v-if="halshowStore.state.activeTab === 'watch'" />
           <HalcmdPanel v-if="halshowStore.state.activeTab === 'cmd'" />
-          <ApiPanel v-if="halshowStore.state.activeTab === 'api'" />
         </div>
       </div>
     </div>
