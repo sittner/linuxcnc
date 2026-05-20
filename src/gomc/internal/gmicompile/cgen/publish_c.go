@@ -182,16 +182,19 @@ func (g *publishCGen) emitRingCreate(fn ast.Func) {
 	g.printf("    free(r);\n")
 	g.printf("}\n\n")
 
-	// Emit ring lookup helper for consumers (via gomc_api_t).
-	// This helper is only available when NOT compiling from cgo context
-	// (i.e., when gomc_api.h is reachable). The _pub.h itself defines
-	// the CGO guard to suppress the gomc_api.h section in _api.h,
-	// so we use a separate guard here.
-	lookupName := fmt.Sprintf("%s_%s_ring_get", g.api.Name, fn.Name)
+	// Emit ring_init helper: allocates ring + registers it via gomc_api_t.
+	// The cmod calls this in New() to own the ring.
+	initName := fmt.Sprintf("%s_%s_ring_init", g.api.Name, fn.Name)
 	apiRegName := fmt.Sprintf("%s_%s", g.api.Name, fn.Name)
 	g.printf("#ifdef GOMC_API_H\n")
-	g.printf("static inline %s *%s(const gomc_api_t *api) {\n", ringType, lookupName)
-	g.printf("    return (%s *)api->get_api(api->ctx, \"%s\", 1, \"default\");\n", ringType, apiRegName)
+	g.printf("static inline %s *%s(const gomc_api_t *api, const char *instance) {\n", ringType, initName)
+	g.printf("    %s *ring = %s();\n", ringType, funcName)
+	g.printf("    if (!ring) return NULL;\n")
+	g.printf("    if (api->register_api(api->ctx, \"%s\", 1, instance, (void *)ring) != 0) {\n", apiRegName)
+	g.printf("        free(ring);\n")
+	g.printf("        return NULL;\n")
+	g.printf("    }\n")
+	g.printf("    return ring;\n")
 	g.printf("}\n")
 	g.printf("#endif\n\n")
 }

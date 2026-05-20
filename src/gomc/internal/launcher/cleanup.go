@@ -76,12 +76,6 @@ func (l *Launcher) doCleanup() {
 	l.logger.Debug("stopping Go plugin modules")
 	l.stopGoModules()
 
-	// Step 2c — Stop emcerror drain (no more events after milltask stops).
-	if l.emcerrorDrain != nil {
-		l.logger.Debug("stopping emcerror drain")
-		l.emcerrorDrain.Stop()
-	}
-
 	// Step 2d — Stop retain goroutine (final sync runs while RT is still active).
 	l.logger.Debug("stopping retain")
 	l.stopRetain()

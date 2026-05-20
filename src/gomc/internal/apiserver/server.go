@@ -421,6 +421,31 @@ func (s *Server) handleRegistryRequest(w http.ResponseWriter, r *http.Request) {
 		result = append(result, info)
 	}
 
+	// Include watch-only entries (watches without a matching registry API)
+	matched := make(map[string]bool)
+	for _, api := range apis {
+		matched[api.APIName+"/"+api.Instance] = true
+	}
+	for key, wa := range watchMap {
+		if matched[key] {
+			continue
+		}
+		info := registryAPIInfo{
+			APIName:  wa.APIName,
+			Instance: wa.Instance,
+		}
+		for _, w := range wa.Watches {
+			info.Watches = append(info.Watches, registryWatchInfo{
+				Name:        w.Name,
+				DefaultRate: int(w.DefaultRate / time.Millisecond),
+			})
+		}
+		for _, cmd := range wa.Commands {
+			info.Commands = append(info.Commands, cmd.Name)
+		}
+		result = append(result, info)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
 }

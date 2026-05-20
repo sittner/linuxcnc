@@ -14,12 +14,17 @@ type ConsumerRecord struct {
 	ProviderInstance string // from which provider
 }
 
+// OnRegisterFunc is a callback invoked after a new API is registered.
+// Called with the lock released — may safely call back into the registry.
+type OnRegisterFunc func(api *RegisteredAPI)
+
 // Registry stores registered API instances. Thread-safe for concurrent reads
 // after startup. Writes (Register) happen during module init only.
 type Registry struct {
 	mu        sync.RWMutex
 	instances map[string]*RegisteredAPI
 	consumers []ConsumerRecord
+	listeners []OnRegisterFunc
 }
 
 // NewRegistry creates an empty registry.
@@ -47,9 +52,9 @@ func (r *Registry) Register(apiName string, version int, instance string, callba
 	key := registryKey(apiName, instance)
 
 	r.mu.Lock()
-	defer r.mu.Unlock()
 
 	if _, exists := r.instances[key]; exists {
+		r.mu.Unlock()
 		return syscall.EEXIST
 	}
 
@@ -63,7 +68,36 @@ func (r *Registry) Register(apiName string, version int, instance string, callba
 		Instance:  instance,
 		Callbacks: callbacks,
 	}
+
+	// Copy listeners under the lock so we can fire them after unlocking.
+	listeners := make([]OnRegisterFunc, len(r.listeners))
+	copy(listeners, r.listeners)
+	api := r.instances[key]
+	r.mu.Unlock()
+
+	// Fire OnRegister callbacks outside the lock.
+	for _, fn := range listeners {
+		fn(api)
+	}
 	return nil
+}
+
+// OnRegister adds a listener that is called after each successful Register.
+// Listeners are also called for APIs already registered at the time of this call.
+func (r *Registry) OnRegister(fn OnRegisterFunc) {
+	r.mu.Lock()
+	r.listeners = append(r.listeners, fn)
+	// Snapshot existing APIs to notify the new listener.
+	existing := make([]*RegisteredAPI, 0, len(r.instances))
+	for _, api := range r.instances {
+		existing = append(existing, api)
+	}
+	r.mu.Unlock()
+
+	// Fire for already-registered APIs.
+	for _, api := range existing {
+		fn(api)
+	}
 }
 
 // GetAPI returns the callbacks pointer for direct inter-module calls.
@@ -172,16 +206,33 @@ func (r *Registry) All() []*RegisteredAPI {
 // defaultRegistry is the package-level registry used by cgo-exported register
 // functions. Set by the launcher before loading any modules.
 var defaultRegistry *Registry
+var registryReadyCallbacks []func(*Registry)
 
 // SetDefaultRegistry sets the package-level registry. Must be called before
 // any cmod calls Register via cgo export.
 func SetDefaultRegistry(r *Registry) {
 	defaultRegistry = r
+	// Fire any pending ready callbacks.
+	for _, fn := range registryReadyCallbacks {
+		fn(r)
+	}
+	registryReadyCallbacks = nil
 }
 
 // DefaultRegistry returns the package-level registry.
 func DefaultRegistry() *Registry {
 	return defaultRegistry
+}
+
+// OnDefaultRegistryReady registers a callback that fires when the default
+// registry becomes available. If already set, fires immediately.
+// Used by generated publish drain hooks in their init().
+func OnDefaultRegistryReady(fn func(*Registry)) {
+	if defaultRegistry != nil {
+		fn(defaultRegistry)
+		return
+	}
+	registryReadyCallbacks = append(registryReadyCallbacks, fn)
 }
 
 // defaultWatchRegistry is the package-level watch registry for WebSocket subscriptions.

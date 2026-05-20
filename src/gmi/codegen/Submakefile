@@ -325,6 +325,7 @@ $(GMI_EMCERROR_API_H): $(GMI_EMCERROR_IDL) $(GMICOMPILE_BIN)
 	$(ECHO) "Generating GMI emcerror C API from $(GMI_EMCERROR_IDL)"
 	@mkdir -p $(GMI_EMCERROR_GEN)
 	$(Q)$(GMICOMPILE) --server-c $(GMI_EMCERROR_IDL) -o $(GMI_EMCERROR_API_H)
+	$(Q)$(GMICOMPILE_BIN) add-gmi generated/gmi/emcerror
 
 $(GMI_EMCERROR_GEN)/emcerror_cgo.go: $(GMI_EMCERROR_API_H)
 $(GMI_EMCERROR_GEN)/emcerror_pub.h: $(GMI_EMCERROR_API_H)

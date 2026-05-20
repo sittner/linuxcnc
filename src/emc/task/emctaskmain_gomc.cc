@@ -3722,9 +3722,9 @@ extern "C" int New(const cmod_env_t *env, const char *name,
     gomc_api_ptr = env->api;
     milltask_instance_name = name;
 
-    // Look up the emcerror publish ring (allocated by Go launcher).
+    // Allocate and register the emcerror publish ring (milltask owns it).
     if (gomc_api_ptr) {
-	emcerror_ring = emcerror_publish_error_ring_get(gomc_api_ptr);
+	emcerror_ring = emcerror_publish_error_ring_init(gomc_api_ptr, name);
     }
 
     bindtextdomain("linuxcnc", EMC2_PO_DIR);

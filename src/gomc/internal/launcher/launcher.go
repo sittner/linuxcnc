@@ -58,22 +58,21 @@ type Options struct {
 
 // Launcher orchestrates the LinuxCNC startup and shutdown sequence.
 type Launcher struct {
-	opts          Options
-	ini           *inifile.IniFile
-	logger        *slog.Logger
-	lock          *lockfile.LockFile  // flock-based instance lock
-	rtMgr         *realtime.Manager   // realtime environment manager
-	cleanupOnce   sync.Once           // ensures cleanup runs exactly once
-	appProcesses  []*exec.Cmd         // [APPLICATIONS]APP background processes
-	halComp       *hal.Component      // launcher's HAL component (like halcmd's hal_init)
-	goModules     []*goModule         // Go modules loaded via "load" command (compiled-in)
-	cModules      []*cModule          // C plugin modules loaded via "load" command
-	cModArena     []unsafe.Pointer    // arena-tracked C strings freed in destroyCModules
-	logRing       *gomcLogRing        // shared log ring buffer for C module FIFO logging
-	emcerrorDrain interface{ Stop() } // emcerror publish ring drain (nil if no task)
-	retain        *retainInstance     // integrated retain subsystem (nil if unused)
-	apiServer     *apiserver.Server   // REST API server for halcmd and external tools
-	shutdownCh    chan struct{}       // closed by signal handler to unblock wait
+	opts         Options
+	ini          *inifile.IniFile
+	logger       *slog.Logger
+	lock         *lockfile.LockFile // flock-based instance lock
+	rtMgr        *realtime.Manager  // realtime environment manager
+	cleanupOnce  sync.Once          // ensures cleanup runs exactly once
+	appProcesses []*exec.Cmd        // [APPLICATIONS]APP background processes
+	halComp      *hal.Component     // launcher's HAL component (like halcmd's hal_init)
+	goModules    []*goModule        // Go modules loaded via "load" command (compiled-in)
+	cModules     []*cModule         // C plugin modules loaded via "load" command
+	cModArena    []unsafe.Pointer   // arena-tracked C strings freed in destroyCModules
+	logRing      *gomcLogRing       // shared log ring buffer for C module FIFO logging
+	retain       *retainInstance    // integrated retain subsystem (nil if unused)
+	apiServer    *apiserver.Server  // REST API server for halcmd and external tools
+	shutdownCh   chan struct{}      // closed by signal handler to unblock wait
 }
 
 // New creates a new Launcher with the given options and logger.
@@ -383,10 +382,6 @@ func (l *Launcher) Run() (runErr error) {
 	// configured.  New() reads INI config; Start() is deferred to
 	// startCModules() (step 6d.4) which runs after startHalThreads().
 	if hasTask {
-		// Pre-register the emcerror publish ring so milltask can look it up
-		// via gomc_api_t during New().
-		l.initEmcerrorRing()
-
 		if err := l.startTask(); err != nil {
 			return fmt.Errorf("starting task: %w", err)
 		}

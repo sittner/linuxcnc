@@ -1163,6 +1163,19 @@ func gmiGenerateServerC(api *gmiast.API, outputPath string) error {
 			return err
 		}
 		fmt.Fprintf(os.Stderr, "generated %s\n", pubGoPath)
+
+		// Generate drain hook (auto-starts drain on ring registration).
+		drainHookPath := filepath.Join(dir, api.Name+"_drain_hook.go")
+		dhf, err := os.Create(drainHookPath)
+		if err != nil {
+			return err
+		}
+		defer dhf.Close()
+
+		if _, err := gmicgen.GeneratePublishDrainHook(dhf, api, pkgName); err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "generated %s\n", drainHookPath)
 	} else {
 		// No publish functions — remove empty file.
 		pf.Close()
