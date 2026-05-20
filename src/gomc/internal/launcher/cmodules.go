@@ -30,6 +30,8 @@ extern void *gomc_api_get_cb(void *ctx, char *api_name, int version,
                              char *instance_name);
 extern int gomc_watch_push_cb(void *ctx, char *api_name, char *instance_name,
                               char *func_name, void *data, int data_len);
+extern void gomc_record_consumer_cb(void *ctx, char *consumer_instance,
+                                    char *api_name, char *provider_instance);
 
 // --- RT module handle tracking ---
 //
@@ -177,10 +179,11 @@ static void gomc_rtapi_init_struct(gomc_rtapi_t *rtapi) {
 }
 
 static void gomc_api_init_struct(gomc_api_t *api) {
-    api->ctx          = NULL;
-    api->register_api = (int(*)(void*,const char*,int,const char*,const void*))gomc_api_register_cb;
-    api->get_api      = (const void*(*)(void*,const char*,int,const char*))gomc_api_get_cb;
-    api->push_watch   = (int(*)(void*,const char*,const char*,const char*,const void*,int))gomc_watch_push_cb;
+    api->ctx              = NULL;
+    api->register_api     = (int(*)(void*,const char*,int,const char*,const void*))gomc_api_register_cb;
+    api->get_api          = (const void*(*)(void*,const char*,int,const char*))gomc_api_get_cb;
+    api->push_watch       = (int(*)(void*,const char*,const char*,const char*,const void*,int))gomc_watch_push_cb;
+    api->record_consumer  = (void(*)(void*,const char*,const char*,const char*))gomc_record_consumer_cb;
 }
 
 static cmod_env_t *gomc_env_create(gomc_log_ring_t *ring, void *log_ctx,

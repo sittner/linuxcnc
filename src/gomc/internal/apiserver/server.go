@@ -34,6 +34,7 @@ func NewServer(registry *Registry, addr string) *Server {
 	}
 
 	s.mux.HandleFunc(s.prefix+"/", s.handleAPIRequest)
+	s.mux.HandleFunc(s.prefix+"/_registry", s.handleRegistryRequest)
 
 	// pprof profiling endpoints — always available for diagnostics.
 	s.mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -324,4 +325,102 @@ func writeDispatchError(w http.ResponseWriter, err error) {
 		code = http.StatusBadRequest
 	}
 	writeErrorJSON(w, code, err.Error())
+}
+
+// --- Registry introspection endpoint ---
+
+// registryAPIInfo is the JSON representation of a registered API.
+type registryAPIInfo struct {
+	APIName   string              `json:"api_name"`
+	Instance  string              `json:"instance"`
+	Version   int                 `json:"version"`
+	REST      bool                `json:"rest"`
+	Functions []registryFuncInfo  `json:"functions,omitempty"`
+	Watches   []registryWatchInfo `json:"watches,omitempty"`
+	Commands  []string            `json:"commands,omitempty"`
+	Consumers []string            `json:"consumers,omitempty"`
+}
+
+type registryFuncInfo struct {
+	Name   string `json:"name"`
+	Method string `json:"method,omitempty"`
+	Path   string `json:"path,omitempty"`
+}
+
+type registryWatchInfo struct {
+	Name        string `json:"name"`
+	DefaultRate int    `json:"default_rate_ms"`
+}
+
+func (s *Server) handleRegistryRequest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeErrorJSON(w, http.StatusMethodNotAllowed, "GET only")
+		return
+	}
+
+	apis := s.registry.All()
+	consumers := s.registry.Consumers()
+
+	// Build consumer map: apiName:providerInstance → []consumerInstance
+	consumerMap := make(map[string][]string)
+	for _, c := range consumers {
+		key := c.APIName + ":" + c.ProviderInstance
+		consumerMap[key] = append(consumerMap[key], c.ConsumerInstance)
+	}
+
+	// Build watch info map
+	var watchApis []*WatchAPI
+	if DefaultWatchRegistry() != nil {
+		watchApis = DefaultWatchRegistry().All()
+	}
+	watchMap := make(map[string]*WatchAPI) // key: apiName+"/"+instance
+	for _, wa := range watchApis {
+		watchMap[wa.APIName+"/"+wa.Instance] = wa
+	}
+
+	result := make([]registryAPIInfo, 0, len(apis))
+	for _, api := range apis {
+		info := registryAPIInfo{
+			APIName:  api.APIName,
+			Instance: api.Instance,
+			Version:  api.Version,
+			REST:     api.Meta != nil && api.Meta.RESTExport,
+		}
+
+		// Functions from APIMeta
+		if api.Meta != nil {
+			for _, fn := range api.Meta.Funcs {
+				info.Functions = append(info.Functions, registryFuncInfo{
+					Name:   fn.Name,
+					Method: fn.Method,
+					Path:   fn.Path,
+				})
+			}
+		}
+
+		// Watch/commands from WatchRegistry
+		wa := watchMap[api.APIName+"/"+api.Instance]
+		if wa != nil {
+			for _, w := range wa.Watches {
+				info.Watches = append(info.Watches, registryWatchInfo{
+					Name:        w.Name,
+					DefaultRate: int(w.DefaultRate / time.Millisecond),
+				})
+			}
+			for _, cmd := range wa.Commands {
+				info.Commands = append(info.Commands, cmd.Name)
+			}
+		}
+
+		// Consumers
+		key := api.APIName + ":" + api.Instance
+		if cs, ok := consumerMap[key]; ok {
+			info.Consumers = cs
+		}
+
+		result = append(result, info)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }

@@ -83,6 +83,9 @@ static int taskintf_lookup_apis(void)
         rcs_print_error("taskintf: motstat API not registered (instance '%s', is motmod loaded?)\n", taskintf_motion_instance);
         return -1;
     }
+    extern const char *milltask_instance_name;
+    gomc_api_ptr->record_consumer(gomc_api_ptr->ctx, milltask_instance_name, "motctl", taskintf_motion_instance);
+    gomc_api_ptr->record_consumer(gomc_api_ptr->ctx, milltask_instance_name, "motstat", taskintf_motion_instance);
     return 0;
 }
 

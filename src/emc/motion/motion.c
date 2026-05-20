@@ -706,6 +706,7 @@ static cmod_t motmod_cmod;
 
 /* Store the env pointer for Destroy(). */
 static const cmod_env_t *motmod_env;
+static const char *motmod_name;
 
 /* GMI API pointers — set in Init(), used by bridge inlines */
 const tp_callbacks_t   *motmod_tp_api;
@@ -719,6 +720,7 @@ int New(const cmod_env_t *env, const char *name,
     int retval;
 
     motmod_env = env;
+    motmod_name = name;
 
     rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: New() starting...\n");
 
@@ -910,6 +912,11 @@ static int motmod_init(cmod_t *self)
 	    _("MOTION: home API not registered (instance '%s', is home module loaded?)\n"), home_instance);
 	return -1;
     }
+
+    /* Record consumer relationships for introspection */
+    motmod_env->api->record_consumer(motmod_env->api->ctx, motmod_name, "kins", kins_instance);
+    motmod_env->api->record_consumer(motmod_env->api->ctx, motmod_name, "tp", tp_instance);
+    motmod_env->api->record_consumer(motmod_env->api->ctx, motmod_name, "home", home_instance);
 
     /* --- Validation (depends on kins) --- */
 

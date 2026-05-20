@@ -356,6 +356,17 @@ func gomc_api_get_cb(ctx unsafe.Pointer, apiName *C.char, version C.int,
 	return cbs
 }
 
+//export gomc_record_consumer_cb
+func gomc_record_consumer_cb(ctx unsafe.Pointer, consumerInstance *C.char,
+	apiName *C.char, providerInstance *C.char) {
+
+	reg := apiserver.DefaultRegistry()
+	if reg == nil {
+		return
+	}
+	reg.RecordConsumer(C.GoString(consumerInstance), C.GoString(apiName), C.GoString(providerInstance))
+}
+
 //export gomc_watch_push_cb
 func gomc_watch_push_cb(ctx unsafe.Pointer, apiName *C.char, instanceName *C.char,
 	funcName *C.char, data unsafe.Pointer, dataLen C.int) C.int {

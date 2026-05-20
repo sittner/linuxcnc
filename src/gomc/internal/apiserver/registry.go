@@ -7,11 +7,19 @@ import (
 	"unsafe"
 )
 
+// ConsumerRecord tracks who looked up an API.
+type ConsumerRecord struct {
+	ConsumerInstance string // who called GetAPI
+	APIName          string // which API was looked up
+	ProviderInstance string // from which provider
+}
+
 // Registry stores registered API instances. Thread-safe for concurrent reads
 // after startup. Writes (Register) happen during module init only.
 type Registry struct {
 	mu        sync.RWMutex
 	instances map[string]*RegisteredAPI
+	consumers []ConsumerRecord
 }
 
 // NewRegistry creates an empty registry.
@@ -76,6 +84,32 @@ func (r *Registry) GetAPI(apiName string, instance string, requiredVersion int) 
 	return api.Callbacks, nil
 }
 
+// RecordConsumer records that a consumer looked up an API from a provider.
+func (r *Registry) RecordConsumer(consumerInstance, apiName, providerInstance string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	// Avoid duplicates.
+	for _, c := range r.consumers {
+		if c.ConsumerInstance == consumerInstance && c.APIName == apiName && c.ProviderInstance == providerInstance {
+			return
+		}
+	}
+	r.consumers = append(r.consumers, ConsumerRecord{
+		ConsumerInstance: consumerInstance,
+		APIName:          apiName,
+		ProviderInstance: providerInstance,
+	})
+}
+
+// Consumers returns all recorded consumer lookups.
+func (r *Registry) Consumers() []ConsumerRecord {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]ConsumerRecord, len(r.consumers))
+	copy(out, r.consumers)
+	return out
+}
+
 // Get returns the full RegisteredAPI matching the given instance name, or nil
 // if not found.  This performs a linear scan because the internal map is keyed
 // by api:instance.  Used by the REST server where the URL path contains only
@@ -122,6 +156,17 @@ func (r *Registry) Instances() []string {
 		names = append(names, api.Instance)
 	}
 	return names
+}
+
+// All returns all registered APIs.
+func (r *Registry) All() []*RegisteredAPI {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	result := make([]*RegisteredAPI, 0, len(r.instances))
+	for _, api := range r.instances {
+		result = append(result, api)
+	}
+	return result
 }
 
 // defaultRegistry is the package-level registry used by cgo-exported register

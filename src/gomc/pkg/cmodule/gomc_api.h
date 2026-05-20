@@ -64,6 +64,15 @@ typedef struct {
         const void *data,
         int data_len
     );
+
+    // record_consumer: record that consumer_instance looked up api_name
+    // from provider_instance.  Used for introspection/debugging.
+    void (*record_consumer)(
+        void *ctx,
+        const char *consumer_instance,
+        const char *api_name,
+        const char *provider_instance
+    );
 } gomc_api_t;
 
 #ifdef __cplusplus

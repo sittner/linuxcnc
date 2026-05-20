@@ -128,6 +128,7 @@ func newEmcGateway(ini *inifile.IniFile, logger *slog.Logger, name string, args 
 	// Register command handlers on the watch WebSocket too.
 	emccmdAPI := apiserver.DefaultRegistry().GetByAPI("emccmd", milltaskInstance)
 	if emccmdAPI != nil && emccmdAPI.Meta != nil {
+		apiserver.DefaultRegistry().RecordConsumer(name, "emccmd", milltaskInstance)
 		cmds := make([]apiserver.CommandMeta, 0, len(emccmdAPI.Meta.Funcs))
 		for _, fn := range emccmdAPI.Meta.Funcs {
 			fn := fn // capture

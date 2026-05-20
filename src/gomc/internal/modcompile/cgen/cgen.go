@@ -657,6 +657,7 @@ func (g *generator) emitConsumeAPILookups() {
 		g.printf("    /* gmi_consume %s */\n", entry.API)
 		g.printf("    inst->__gmi_%s = %s_api_get(inst->env->api, inst->__gmi_%s_instance);\n", entry.API, entry.API, entry.API)
 		g.printf("    if (!inst->__gmi_%s) return -1;\n", entry.API)
+		g.printf("    inst->env->api->record_consumer(inst->env->api->ctx, inst->name, \"%s\", inst->__gmi_%s_instance);\n", entry.API, entry.API)
 	}
 }
 

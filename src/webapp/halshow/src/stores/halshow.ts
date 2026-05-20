@@ -22,7 +22,7 @@ export interface TreeNode {
   expanded?: boolean;
 }
 
-export type TabId = 'show' | 'watch' | 'cmd';
+export type TabId = 'show' | 'watch' | 'cmd' | 'api';
 
 export interface WatchValueItem {
   name: string;
@@ -41,6 +41,28 @@ export interface CmdHistoryEntry {
 }
 
 export type TreeCategory = 'pins' | 'params' | 'signals' | 'components' | 'functions' | 'threads';
+
+export interface ApiFuncInfo {
+  name: string;
+  method?: string;
+  path?: string;
+}
+
+export interface ApiWatchInfo {
+  name: string;
+  default_rate_ms: number;
+}
+
+export interface ApiInfo {
+  api_name: string;
+  instance: string;
+  version: number;
+  rest: boolean;
+  functions?: ApiFuncInfo[];
+  watches?: ApiWatchInfo[];
+  commands?: string[];
+  consumers?: string[];
+}
 
 interface HalshowState {
   // Connection
@@ -77,6 +99,10 @@ interface HalshowState {
   // Node overview
   nodeOverviewPins: PinInfo[];
 
+  // API registry
+  apiRegistry: ApiInfo[];
+  selectedApi: ApiInfo | null;
+
   // Active tab
   activeTab: TabId;
 }
@@ -107,6 +133,9 @@ const state = reactive<HalshowState>({
 
   cmdHistory: [],
   nodeOverviewPins: [],
+
+  apiRegistry: [],
+  selectedApi: null,
 
   activeTab: 'show',
 });
@@ -651,5 +680,24 @@ export const halshowStore = {
 
   setActiveTab(tab: TabId) {
     state.activeTab = tab;
+    if (tab === 'api') {
+      this.refreshApiRegistry();
+    }
+  },
+
+  async refreshApiRegistry() {
+    try {
+      const origin = window.location.origin;
+      const resp = await fetch(origin + '/api/v1/_registry');
+      if (resp.ok) {
+        state.apiRegistry = await resp.json();
+      }
+    } catch {
+      // Silently ignore — API tab shows empty
+    }
+  },
+
+  selectApi(api: ApiInfo) {
+    state.selectedApi = api;
   },
 };

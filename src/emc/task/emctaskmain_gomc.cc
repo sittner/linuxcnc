@@ -113,8 +113,9 @@ extern const emccmd_callbacks_t emccmd_handler_table;
 // Non-static: also used by taskclass_gmi.cc (extern).
 const gomc_api_t *gomc_api_ptr;
 
-// Instance name of this module, set in New(). Used by stat publisher push_watch.
-static const char *milltask_instance_name = "milltask";
+// Instance name of this module, set in New(). Used by stat publisher push_watch
+// and referenced externally by taskintf_gomc.cc and taskclass_gmi.cc.
+const char *milltask_instance_name = "milltask";
 
 // Emcerror publish ring — replaces NML error buffer.
 static emcerror_publish_error_ring_t *emcerror_ring;

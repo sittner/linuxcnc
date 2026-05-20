@@ -85,6 +85,17 @@ func (r *WatchRegistry) Get(apiName, instance string) *WatchAPI {
 	return r.apis[apiName+"/"+instance]
 }
 
+// All returns all registered watch APIs.
+func (r *WatchRegistry) All() []*WatchAPI {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	result := make([]*WatchAPI, 0, len(r.apis))
+	for _, api := range r.apis {
+		result = append(result, api)
+	}
+	return result
+}
+
 // --- WebSocket protocol messages ---
 
 // wsSubscribe is sent by the client to start receiving updates.

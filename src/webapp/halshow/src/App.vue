@@ -4,6 +4,7 @@ import DetailPanel from './components/DetailPanel.vue';
 import NodeOverview from './components/NodeOverview.vue';
 import WatchPanel from './components/WatchPanel.vue';
 import HalcmdPanel from './components/HalcmdPanel.vue';
+import ApiPanel from './components/ApiPanel.vue';
 import StatusBar from './components/StatusBar.vue';
 import { halshowStore } from './stores/halshow';
 import type { TreeCategory } from './stores/halshow';
@@ -60,6 +61,10 @@ function onFilterInput(e: Event) {
             :class="{ active: halshowStore.state.activeTab === 'cmd' }"
             @click="halshowStore.setActiveTab('cmd')"
           >Cmd</button>
+          <button
+            :class="{ active: halshowStore.state.activeTab === 'api' }"
+            @click="halshowStore.setActiveTab('api')"
+          >API</button>
         </div>
         <div class="tab-content">
           <template v-if="halshowStore.state.activeTab === 'show'">
@@ -68,6 +73,7 @@ function onFilterInput(e: Event) {
           </template>
           <WatchPanel v-if="halshowStore.state.activeTab === 'watch'" />
           <HalcmdPanel v-if="halshowStore.state.activeTab === 'cmd'" />
+          <ApiPanel v-if="halshowStore.state.activeTab === 'api'" />
         </div>
       </div>
     </div>

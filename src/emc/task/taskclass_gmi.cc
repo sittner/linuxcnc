@@ -129,6 +129,8 @@ int emcIoInit()
 	rcs_print_error("emcIoInit: emcio API not available (instance '%s', iocontrol not started?)\n", taskclass_iocontrol_instance);
 	return -1;
     }
+    extern const char *milltask_instance_name;
+    gomc_api_ptr->record_consumer(gomc_api_ptr->ctx, milltask_instance_name, "emcio", taskclass_iocontrol_instance);
 
     return 0;
 }
