@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"os"
 	"testing"
+
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/motstat"
 )
 
 // mockMotion implements MotionController for testing.
@@ -89,28 +91,37 @@ type mockIO struct {
 	lastCall string
 }
 
-func (m *mockIO) FloodOn() error             { m.lastCall = "FloodOn"; return nil }
-func (m *mockIO) FloodOff() error            { m.lastCall = "FloodOff"; return nil }
-func (m *mockIO) MistOn() error              { m.lastCall = "MistOn"; return nil }
-func (m *mockIO) MistOff() error             { m.lastCall = "MistOff"; return nil }
-func (m *mockIO) LubeOn() error              { m.lastCall = "LubeOn"; return nil }
-func (m *mockIO) LubeOff() error             { m.lastCall = "LubeOff"; return nil }
-func (m *mockIO) ToolPrepare(int, int) error { return nil }
-func (m *mockIO) ToolChange() error          { return nil }
-func (m *mockIO) Estop() error               { m.lastCall = "Estop"; return nil }
-func (m *mockIO) EstopReset() error          { m.lastCall = "EstopReset"; return nil }
+func (m *mockIO) CoolantFloodOn() error              { m.lastCall = "FloodOn"; return nil }
+func (m *mockIO) CoolantFloodOff() error             { m.lastCall = "FloodOff"; return nil }
+func (m *mockIO) CoolantMistOn() error               { m.lastCall = "MistOn"; return nil }
+func (m *mockIO) CoolantMistOff() error              { m.lastCall = "MistOff"; return nil }
+func (m *mockIO) LubeOn() error                      { m.lastCall = "LubeOn"; return nil }
+func (m *mockIO) LubeOff() error                     { m.lastCall = "LubeOff"; return nil }
+func (m *mockIO) ToolPrepare(int32) error            { return nil }
+func (m *mockIO) ToolLoad() error                    { return nil }
+func (m *mockIO) ToolUnload() error                  { return nil }
+func (m *mockIO) ToolStartChange() error             { return nil }
+func (m *mockIO) ToolSetNumber(int32) error          { return nil }
+func (m *mockIO) ToolSetOffset(int32, int32, float64, float64, float64, float64, float64, float64, float64, float64, float64, float64, float64, float64, int32) error {
+	return nil
+}
+func (m *mockIO) ToolLoadTable(string) error { return nil }
+func (m *mockIO) EstopOn() error             { m.lastCall = "Estop"; return nil }
+func (m *mockIO) EstopOff() error            { m.lastCall = "EstopReset"; return nil }
+func (m *mockIO) IoAbort(int32) error        { return nil }
+func (m *mockIO) SetDebug(int32) error       { return nil }
 
-// mockStatus implements MotionStatus for testing.
+// mockStatus implements MotionStatusReader for testing.
 type mockStatus struct{}
 
-func (m *mockStatus) Enabled() bool       { return true }
-func (m *mockStatus) InPosition() bool    { return true }
-func (m *mockStatus) Paused() bool        { return false }
-func (m *mockStatus) MotionType() int32   { return 0 }
-func (m *mockStatus) CurrentVel() float64 { return 0 }
-func (m *mockStatus) AxisMask() int32     { return 7 }
-func (m *mockStatus) JointCount() int32   { return 3 }
-func (m *mockStatus) SpindleCount() int32 { return 1 }
+func (m *mockStatus) GetStatus() (motstat.MotionStatus, error) { return motstat.MotionStatus{}, nil }
+func (m *mockStatus) GetPosCmd() (motstat.Pose, error)         { return motstat.Pose{}, nil }
+func (m *mockStatus) GetPosFb() (motstat.Pose, error)          { return motstat.Pose{}, nil }
+func (m *mockStatus) GetInpos() (int32, error)                 { return 1, nil }
+func (m *mockStatus) GetExecId() (int32, error)                { return 0, nil }
+func (m *mockStatus) GetQueueDepth() (int32, error)            { return 0, nil }
+func (m *mockStatus) GetCommandNumEcho() (int32, error)        { return 0, nil }
+func (m *mockStatus) GetCommandStatus() (int32, error)         { return 0, nil }
 
 func newTestTask() (*Task, *mockMotion, *mockIO) {
 	mot := &mockMotion{}

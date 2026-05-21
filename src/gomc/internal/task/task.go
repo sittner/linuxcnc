@@ -9,6 +9,9 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/motctl"
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/motstat"
 )
 
 // TaskState represents the machine state (estop, on, etc.)
@@ -148,48 +151,48 @@ type MotionController interface {
 
 // IOController is the interface to iocontrol (emcio GMI API).
 type IOController interface {
-	FloodOn() error
-	FloodOff() error
-	MistOn() error
-	MistOff() error
+	CoolantFloodOn() error
+	CoolantFloodOff() error
+	CoolantMistOn() error
+	CoolantMistOff() error
 	LubeOn() error
 	LubeOff() error
-	ToolPrepare(pocket, tool int) error
-	ToolChange() error
-	Estop() error
-	EstopReset() error
+	ToolPrepare(tool int32) error
+	ToolLoad() error
+	ToolUnload() error
+	ToolStartChange() error
+	ToolSetNumber(tool int32) error
+	ToolSetOffset(pocket, toolno int32, x, y, z, a, b, c, u, v, w, diameter, frontangle, backangle float64, orientation int32) error
+	ToolLoadTable(file string) error
+	EstopOn() error
+	EstopOff() error
+	IoAbort(reason int32) error
+	SetDebug(debug int32) error
 }
 
-// MotionStatus provides read access to motion state (motstat GMI API).
-type MotionStatus interface {
-	Enabled() bool
-	InPosition() bool
-	Paused() bool
-	MotionType() int32
-	CurrentVel() float64
-	AxisMask() int32
-	JointCount() int32
-	SpindleCount() int32
+// MotionStatusReader provides read access to motion state (motstat GMI API).
+type MotionStatusReader interface {
+	GetStatus() (motstat.MotionStatus, error)
+	GetPosCmd() (motstat.Pose, error)
+	GetPosFb() (motstat.Pose, error)
+	GetInpos() (int32, error)
+	GetExecId() (int32, error)
+	GetQueueDepth() (int32, error)
+	GetCommandNumEcho() (int32, error)
+	GetCommandStatus() (int32, error)
 }
 
 // Pose represents a 9-axis position.
-type Pose struct {
-	X, Y, Z float64
-	A, B, C float64
-	U, V, W float64
-}
+// Type alias for the generated motctl.Pose.
+type Pose = motctl.Pose
 
 // Cartesian represents a 3D vector.
-type Cartesian struct {
-	X, Y, Z float64
-}
+// Type alias for the generated motctl.Cartesian.
+type Cartesian = motctl.Cartesian
 
 // StateTag carries interpreter state for motion segments.
-type StateTag struct {
-	FieldsFloat [5]float32
-	Fields      [8]int32
-	PackedFlags uint64
-}
+// Type alias for the generated motctl.StateTag.
+type StateTag = motctl.StateTag
 
 // Task is the central controller state. One instance per machine.
 type Task struct {
@@ -209,7 +212,7 @@ type Task struct {
 	// Dependencies (injected, mockable for tests)
 	motion MotionController
 	io     IOController
-	status MotionStatus
+	status MotionStatusReader
 	interp Interpreter
 	logger *slog.Logger
 
@@ -227,7 +230,7 @@ type Task struct {
 }
 
 // NewTask creates a new Task with dependencies injected.
-func NewTask(motion MotionController, io IOController, status MotionStatus, logger *slog.Logger) *Task {
+func NewTask(motion MotionController, io IOController, status MotionStatusReader, logger *slog.Logger) *Task {
 	t := &Task{
 		state:       StateEstop,
 		mode:        ModeManual,

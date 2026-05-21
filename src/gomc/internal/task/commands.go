@@ -39,7 +39,7 @@ func (t *Task) SetState(state int32) error {
 	case StateEstop:
 		t.state = StateEstop
 		_ = t.motion.Disable()
-		_ = t.io.Estop()
+		_ = t.io.EstopOn()
 		return nil
 
 	case StateEstopReset:
@@ -47,7 +47,7 @@ func (t *Task) SetState(state int32) error {
 			return ErrEstop
 		}
 		t.state = StateEstopReset
-		_ = t.io.EstopReset()
+		_ = t.io.EstopOff()
 		return nil
 
 	case StateOff:
@@ -323,9 +323,9 @@ func (t *Task) Flood(on bool) error {
 		return err
 	}
 	if on {
-		return t.io.FloodOn()
+		return t.io.CoolantFloodOn()
 	}
-	return t.io.FloodOff()
+	return t.io.CoolantFloodOff()
 }
 
 // Mist turns mist coolant on or off.
@@ -337,9 +337,9 @@ func (t *Task) Mist(on bool) error {
 		return err
 	}
 	if on {
-		return t.io.MistOn()
+		return t.io.CoolantMistOn()
 	}
-	return t.io.MistOff()
+	return t.io.CoolantMistOff()
 }
 
 // Brake engages/disengages spindle brake.

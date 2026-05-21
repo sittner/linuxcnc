@@ -328,7 +328,7 @@ func (g *serverGen) paramDecl(p ast.Param) string {
 			// ptr is void* — no pointer-to-pointer with byref, just void*
 			return fmt.Sprintf("void *%s", name)
 		}
-		if p.ByRef {
+		if p.ByRef || p.IsOut {
 			return fmt.Sprintf("%s *%s", cType, name)
 		}
 		return fmt.Sprintf("%s %s", cType, name)
@@ -338,14 +338,14 @@ func (g *serverGen) paramDecl(p ast.Param) string {
 
 	case ast.TypeImport:
 		cType := g.toCType(p.Type)
-		if p.IsPtr || p.ByRef {
+		if p.IsPtr || p.ByRef || p.IsOut {
 			return fmt.Sprintf("%s *%s", cType, name)
 		}
 		return fmt.Sprintf("const %s *%s", cType, name)
 
 	case ast.TypeNamed:
 		cType := g.toCType(p.Type)
-		if p.ByRef {
+		if p.ByRef || p.IsOut {
 			return fmt.Sprintf("%s *%s", cType, name)
 		}
 		if g.isEnum(p.Type.Name) {
@@ -355,7 +355,7 @@ func (g *serverGen) paramDecl(p ast.Param) string {
 
 	case ast.TypeSlice:
 		elemType := g.toCType(*p.Type.Elem)
-		if p.ByRef {
+		if p.ByRef || p.IsOut {
 			return fmt.Sprintf("%s *%s, size_t %s_len", elemType, name, name)
 		}
 		return fmt.Sprintf("const %s *%s, size_t %s_len", elemType, name, name)
@@ -363,7 +363,7 @@ func (g *serverGen) paramDecl(p ast.Param) string {
 	case ast.TypeArray:
 		elemType := g.toCType(*p.Type.Elem)
 		sizeStr := g.arraySizeStr(p.Type)
-		if p.ByRef {
+		if p.ByRef || p.IsOut {
 			return fmt.Sprintf("%s %s[%s]", elemType, name, sizeStr)
 		}
 		return fmt.Sprintf("const %s %s[%s]", elemType, name, sizeStr)

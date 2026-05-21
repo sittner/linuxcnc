@@ -198,15 +198,15 @@ type trackingIO struct {
 	calls []string
 }
 
-func (m *trackingIO) FloodOn() error  { m.calls = append(m.calls, "FloodOn"); return nil }
-func (m *trackingIO) FloodOff() error { m.calls = append(m.calls, "FloodOff"); return nil }
-func (m *trackingIO) MistOn() error   { m.calls = append(m.calls, "MistOn"); return nil }
-func (m *trackingIO) MistOff() error  { m.calls = append(m.calls, "MistOff"); return nil }
-func (m *trackingIO) ToolPrepare(p, t int) error {
+func (m *trackingIO) CoolantFloodOn() error  { m.calls = append(m.calls, "FloodOn"); return nil }
+func (m *trackingIO) CoolantFloodOff() error { m.calls = append(m.calls, "FloodOff"); return nil }
+func (m *trackingIO) CoolantMistOn() error   { m.calls = append(m.calls, "MistOn"); return nil }
+func (m *trackingIO) CoolantMistOff() error  { m.calls = append(m.calls, "MistOff"); return nil }
+func (m *trackingIO) ToolPrepare(t int32) error {
 	m.calls = append(m.calls, "ToolPrepare")
 	return nil
 }
-func (m *trackingIO) ToolChange() error { m.calls = append(m.calls, "ToolChange"); return nil }
+func (m *trackingIO) ToolLoad() error { m.calls = append(m.calls, "ToolChange"); return nil }
 
 func TestCanon_Getters(t *testing.T) {
 	task, _, _ := newCanonTestTask()

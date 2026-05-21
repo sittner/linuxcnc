@@ -225,13 +225,15 @@ type Func struct {
 	Publish          bool   // true if this is a publish (event producer) function
 	PublishRingSize  int    // ring buffer slot count (default 64)
 	WatchSource      string // name of @publish function that feeds this watch
+	ReturnsValue     bool   // true if i32 return is a value, not an error code (@returns_value)
 }
 
 // Param represents a function parameter.
 type Param struct {
 	Name  string
 	Type  TypeRef
-	ByRef bool // passed as mutable pointer (byref keyword)
+	ByRef bool // passed as mutable pointer (byref keyword) — in/out
+	IsOut bool // output-only parameter (out keyword) — caller receives value
 	IsPtr bool // passed as opaque typed pointer (ptr keyword) — no marshaling
 	Pos   Pos
 }

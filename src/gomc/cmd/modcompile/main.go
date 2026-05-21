@@ -974,6 +974,7 @@ const (
 	gmiModeClientPythonWS
 	gmiModeClientTS
 	gmiModeClientTSWS
+	gmiModeClientCgo
 )
 
 func cmdGMI(args []string) {
@@ -1012,6 +1013,8 @@ func cmdGMI(args []string) {
 			m = gmiModeClientTS
 		case "--client-ts-ws":
 			m = gmiModeClientTSWS
+		case "--client-cgo":
+			m = gmiModeClientCgo
 		case "-o":
 			if i+1 < len(args) {
 				i++
@@ -1070,6 +1073,8 @@ func processGMIFile(file string, m gmiMode, outputPath string) error {
 			return fmt.Errorf("%s: --client-go requires @rest_export true", file)
 		}
 		return gmiGenerateClientGo(api, outputPath)
+	case gmiModeClientCgo:
+		return gmiGenerateClientCgo(api, outputPath)
 	case gmiModeClientPython:
 		if !api.RestExport {
 			return fmt.Errorf("%s: --client-python requires @rest_export true", file)
@@ -1380,6 +1385,30 @@ func gmiGenerateClientTSWS(api *gmiast.API, outputPath string) error {
 	defer f.Close()
 
 	if err := gmicgen.GenerateClientTSWS(f, api); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stderr, "generated %s\n", outputPath)
+	return nil
+}
+
+func gmiGenerateClientCgo(api *gmiast.API, outputPath string) error {
+	if outputPath == "" {
+		outputPath = api.Name + "_client_cgo.go"
+	}
+
+	pkgName := api.Name + "client"
+	if dir := filepath.Dir(outputPath); dir != "." && dir != "" {
+		pkgName = filepath.Base(dir)
+	}
+
+	f, err := os.Create(outputPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if err := gmicgen.GenerateClientCgo(f, api, pkgName); err != nil {
 		return err
 	}
 

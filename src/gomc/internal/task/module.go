@@ -1,9 +1,15 @@
 package task
 
 import (
+	"fmt"
 	"log/slog"
 	"strconv"
+	"unsafe"
 
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcio"
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/motctl"
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/motstat"
+	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
 	"github.com/sittner/linuxcnc/src/gomc/pkg/gomc"
 	"github.com/sittner/linuxcnc/src/gomc/pkg/inifile"
 )
@@ -15,10 +21,40 @@ func init() {
 func factory(ini *inifile.IniFile, logger *slog.Logger, name string, args []string) (gomc.Module, error) {
 	logger = logger.With("module", name)
 
-	// TODO: look up motctl/emcio/motstat GMI client handles from the
-	// gomc registry once those bindings exist. For now we store nil and
-	// will wire them in a follow-up commit.
-	t := NewTask(nil, nil, nil, logger)
+	reg := apiserver.DefaultRegistry()
+	if reg == nil {
+		return nil, fmt.Errorf("milltask: no API registry available")
+	}
+
+	// Determine motion module instance name from INI (default "motmod").
+	motInstance := ini.Get("EMCMOT", "EMCMOT")
+	if motInstance == "" {
+		motInstance = "motmod"
+	}
+
+	// Determine IO controller instance name (always "iocontrol").
+	ioInstance := "iocontrol"
+
+	// Look up registered GMI callbacks.
+	motctlCbs, err := reg.GetAPI("motctl", motInstance, 1)
+	if err != nil {
+		return nil, fmt.Errorf("milltask: motctl API lookup (%s): %w", motInstance, err)
+	}
+	motstatCbs, err := reg.GetAPI("motstat", motInstance, 1)
+	if err != nil {
+		return nil, fmt.Errorf("milltask: motstat API lookup (%s): %w", motInstance, err)
+	}
+	emcioCbs, err := reg.GetAPI("emcio", ioInstance, 1)
+	if err != nil {
+		return nil, fmt.Errorf("milltask: emcio API lookup (%s): %w", ioInstance, err)
+	}
+
+	// Wrap C callback pointers in typed Go clients.
+	mc := motctl.NewMotctlClient(unsafe.Pointer(motctlCbs))
+	ms := motstat.NewMotstatClient(unsafe.Pointer(motstatCbs))
+	io := emcio.NewEmcioClient(unsafe.Pointer(emcioCbs))
+
+	t := NewTask(mc, io, ms, logger)
 
 	// Load configuration from INI
 	t.numJoints = getIntOr(ini, "KINS", "JOINTS", 3)

@@ -441,7 +441,7 @@ func (c *Canon) WaitSpindleOrientComplete(spindle int32, timeout float64) {
 
 func (c *Canon) SelectTool(tool int32) {
 	// T word — record selected tool for subsequent M6
-	c.enqueue(&ToolPrepareCmd{Tool: int(tool), Pocket: int(tool)})
+	c.enqueue(&ToolPrepareCmd{Tool: tool})
 }
 
 func (c *Canon) StartChange() {
@@ -737,14 +737,14 @@ func (c *WaitSpindleOrientedCmd) String() string        { return "WaitSpindleOri
 // MistOnCmd turns mist on.
 type MistOnCmd struct{}
 
-func (c *MistOnCmd) Execute(t *Task) error { return t.io.MistOn() }
+func (c *MistOnCmd) Execute(t *Task) error { return t.io.CoolantMistOn() }
 func (c *MistOnCmd) Wait() WaitType        { return WaitNone }
 func (c *MistOnCmd) String() string        { return "MistOn" }
 
 // MistOffCmd turns mist off.
 type MistOffCmd struct{}
 
-func (c *MistOffCmd) Execute(t *Task) error { return t.io.MistOff() }
+func (c *MistOffCmd) Execute(t *Task) error { return t.io.CoolantMistOff() }
 func (c *MistOffCmd) Wait() WaitType        { return WaitNone }
 func (c *MistOffCmd) String() string        { return "MistOff" }
 

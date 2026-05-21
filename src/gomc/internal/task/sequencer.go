@@ -206,7 +206,11 @@ func (t *Task) waitForCompletion(wt WaitType) error {
 func (t *Task) waitMotionDone() error {
 	t.setExecState(ExecWaitingForMotion)
 	return t.pollUntil(func() bool {
-		return t.status.InPosition()
+		if t.status == nil {
+			return true
+		}
+		v, err := t.status.GetInpos()
+		return err == nil && v != 0
 	})
 }
 
@@ -345,12 +349,11 @@ func (c *SpindleOffCmd) String() string { return fmt.Sprintf("SpindleOff(s=%d)",
 
 // ToolPrepareCmd prepares a tool (T word).
 type ToolPrepareCmd struct {
-	Pocket int
-	Tool   int
+	Tool int32
 }
 
 func (c *ToolPrepareCmd) Execute(t *Task) error {
-	return t.io.ToolPrepare(c.Pocket, c.Tool)
+	return t.io.ToolPrepare(c.Tool)
 }
 func (c *ToolPrepareCmd) Wait() WaitType { return WaitIO }
 func (c *ToolPrepareCmd) String() string { return fmt.Sprintf("ToolPrepare(T%d)", c.Tool) }
@@ -359,7 +362,7 @@ func (c *ToolPrepareCmd) String() string { return fmt.Sprintf("ToolPrepare(T%d)"
 type ToolChangeCmd struct{}
 
 func (c *ToolChangeCmd) Execute(t *Task) error {
-	return t.io.ToolChange()
+	return t.io.ToolLoad()
 }
 func (c *ToolChangeCmd) Wait() WaitType { return WaitIO }
 func (c *ToolChangeCmd) String() string { return "ToolChange" }
@@ -367,14 +370,14 @@ func (c *ToolChangeCmd) String() string { return "ToolChange" }
 // FloodOnCmd turns flood coolant on (M8).
 type FloodOnCmd struct{}
 
-func (c *FloodOnCmd) Execute(t *Task) error { return t.io.FloodOn() }
+func (c *FloodOnCmd) Execute(t *Task) error { return t.io.CoolantFloodOn() }
 func (c *FloodOnCmd) Wait() WaitType        { return WaitNone }
 func (c *FloodOnCmd) String() string        { return "FloodOn" }
 
 // FloodOffCmd turns flood coolant off (M9).
 type FloodOffCmd struct{}
 
-func (c *FloodOffCmd) Execute(t *Task) error { return t.io.FloodOff() }
+func (c *FloodOffCmd) Execute(t *Task) error { return t.io.CoolantFloodOff() }
 func (c *FloodOffCmd) Wait() WaitType        { return WaitNone }
 func (c *FloodOffCmd) String() string        { return "FloodOff" }
 

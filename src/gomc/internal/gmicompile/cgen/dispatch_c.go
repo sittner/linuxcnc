@@ -147,14 +147,14 @@ func (g *dispatchCGen) cgoParamDecl(apiName string, p ast.Param) string {
 	switch p.Type.Kind {
 	case ast.TypePrimitive:
 		cType := primitiveToCType(p.Type.Name)
-		if p.ByRef {
+		if p.ByRef || p.IsOut {
 			return fmt.Sprintf("%s *%s", cType, name)
 		}
 		return fmt.Sprintf("%s %s", cType, name)
 
 	case ast.TypeNamed:
 		cType := fmt.Sprintf("%s_%s_t", apiName, toSnakeCase(p.Type.Name))
-		if p.ByRef {
+		if p.ByRef || p.IsOut {
 			return fmt.Sprintf("%s *%s", cType, name)
 		}
 		if g.isEnum(p.Type.Name) {
@@ -164,7 +164,7 @@ func (g *dispatchCGen) cgoParamDecl(apiName string, p ast.Param) string {
 
 	case ast.TypeSlice:
 		elemCType := toCTypeForAPI(apiName, *p.Type.Elem)
-		if p.ByRef {
+		if p.ByRef || p.IsOut {
 			return fmt.Sprintf("%s *%s, size_t %s_len", elemCType, name, name)
 		}
 		return fmt.Sprintf("const %s *%s, size_t %s_len", elemCType, name, name)
@@ -172,7 +172,7 @@ func (g *dispatchCGen) cgoParamDecl(apiName string, p ast.Param) string {
 	case ast.TypeArray:
 		elemCType := toCTypeForAPI(apiName, *p.Type.Elem)
 		sizeStr := cgoArraySizeStr(apiName, p.Type)
-		if p.ByRef {
+		if p.ByRef || p.IsOut {
 			return fmt.Sprintf("%s %s[%s]", elemCType, name, sizeStr)
 		}
 		return fmt.Sprintf("const %s %s[%s]", elemCType, name, sizeStr)
@@ -757,7 +757,7 @@ func (g *dispatchCGen) emitParamGoToC(cVar, goVar string, p ast.Param) {
 }
 
 // paramCallArg returns the C call arguments for a parameter.
-// Handles byref (pass pointer), arrays (pass pointer to first element), etc.
+// Handles byref/out (pass pointer), arrays (pass pointer to first element), etc.
 func (g *dispatchCGen) paramCallArg(cVar string, p ast.Param) []string {
 	// ptr qualifier: cVar is already a pointer, pass directly.
 	if p.IsPtr {
@@ -765,14 +765,14 @@ func (g *dispatchCGen) paramCallArg(cVar string, p ast.Param) []string {
 	}
 	switch p.Type.Kind {
 	case ast.TypePrimitive:
-		if p.ByRef {
+		if p.ByRef || p.IsOut {
 			return []string{"&" + cVar}
 		}
 		return []string{cVar}
 	case ast.TypeNamed:
 		// Enums pass by value; structs pass by pointer (const or mutable).
 		if g.isEnum(p.Type.Name) {
-			if p.ByRef {
+			if p.ByRef || p.IsOut {
 				return []string{"&" + cVar}
 			}
 			return []string{cVar}

@@ -245,14 +245,18 @@ func (p *Parser) parseCallback() ast.Callback {
 		ptype := p.parseTypeRef()
 		byref := false
 		isPtr := false
+		isOut := false
 		if p.cur.Type == IDENT && p.cur.Text == "byref" {
 			byref = true
+			p.advance()
+		} else if p.cur.Type == IDENT && p.cur.Text == "out" {
+			isOut = true
 			p.advance()
 		} else if p.cur.Type == IDENT && p.cur.Text == "ptr" {
 			isPtr = true
 			p.advance()
 		}
-		cb.Params = append(cb.Params, ast.Param{Name: pname, Type: ptype, ByRef: byref, IsPtr: isPtr, Pos: ppos})
+		cb.Params = append(cb.Params, ast.Param{Name: pname, Type: ptype, ByRef: byref, IsOut: isOut, IsPtr: isPtr, Pos: ppos})
 		if p.cur.Type == COMMA {
 			p.advance()
 		}
@@ -287,14 +291,18 @@ func (p *Parser) parseFunc(anns []annotation) ast.Func {
 		ptype := p.parseTypeRef()
 		byref := false
 		isPtr := false
+		isOut := false
 		if p.cur.Type == IDENT && p.cur.Text == "byref" {
 			byref = true
+			p.advance()
+		} else if p.cur.Type == IDENT && p.cur.Text == "out" {
+			isOut = true
 			p.advance()
 		} else if p.cur.Type == IDENT && p.cur.Text == "ptr" {
 			isPtr = true
 			p.advance()
 		}
-		fn.Params = append(fn.Params, ast.Param{Name: pname, Type: ptype, ByRef: byref, IsPtr: isPtr, Pos: ppos})
+		fn.Params = append(fn.Params, ast.Param{Name: pname, Type: ptype, ByRef: byref, IsOut: isOut, IsPtr: isPtr, Pos: ppos})
 		if p.cur.Type == COMMA {
 			p.advance()
 		}
@@ -333,6 +341,8 @@ func (p *Parser) parseFunc(anns []annotation) ast.Func {
 			}
 		case "watch_source":
 			fn.WatchSource = ann.value
+		case "returns_value":
+			fn.ReturnsValue = true
 		}
 	}
 

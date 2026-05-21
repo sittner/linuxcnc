@@ -212,27 +212,32 @@ type MotionStatus {
 # ─── Read Functions ───
 
 @doc "Read a consistent snapshot of the full motion controller status"
-func get_status(status: MotionStatus byref) -> i32
+func get_status(status: MotionStatus out) -> i32
 
 # ─── Hot-path accessors (avoid full status copy) ───
 
 @doc "Get commanded Cartesian position"
-func get_pos_cmd(pos: Pose byref) -> i32
+func get_pos_cmd(pos: Pose out) -> i32
 
 @doc "Get actual (feedback) Cartesian position"
-func get_pos_fb(pos: Pose byref) -> i32
+func get_pos_fb(pos: Pose out) -> i32
 
 @doc "Get the currently executing motion ID"
+@returns_value
 func get_exec_id() -> i32
 
 @doc "Get motion queue depth"
+@returns_value
 func get_queue_depth() -> i32
 
 @doc "Check if motion is in position (all queues empty, motion done)"
+@returns_value
 func get_inpos() -> i32
 
 @doc "Get command echo number (for verifying command receipt)"
+@returns_value
 func get_command_num_echo() -> i32
 
 @doc "Get command status (CMD_OK, CMD_INVALID, etc.)"
+@returns_value
 func get_command_status() -> i32

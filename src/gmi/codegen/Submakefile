@@ -354,7 +354,11 @@ $(GMI_EMCIO_API_H): $(GMI_EMCIO_IDL) $(GMICOMPILE_BIN)
 
 $(GMI_EMCIO_GEN)/emcio_cgo.go: $(GMI_EMCIO_API_H)
 
-TARGETS += $(GMI_EMCIO_API_H)
+$(GMI_EMCIO_GEN)/emcio_client_cgo.go: $(GMI_EMCIO_IDL) $(GMI_EMCIO_GEN)/emcio_cgo.go $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI emcio cgo client from $(GMI_EMCIO_IDL)"
+	$(Q)$(GMICOMPILE) --client-cgo $(GMI_EMCIO_IDL) -o $(GMI_EMCIO_GEN)/emcio_client_cgo.go
+
+TARGETS += $(GMI_EMCIO_API_H) $(GMI_EMCIO_GEN)/emcio_client_cgo.go
 
 # --- ini API (server-go + Python client) ---
 
@@ -484,7 +488,11 @@ $(GMI_MOTCTL_GEN)/motctl_api.h: $(GMI_MOTCTL_IDL) $(GMICOMPILE_BIN)
 
 $(GMI_MOTCTL_GEN)/motctl_cgo.go: $(GMI_MOTCTL_GEN)/motctl_api.h
 
-TARGETS += $(GMI_MOTCTL_GEN)/motctl_api.h
+$(GMI_MOTCTL_GEN)/motctl_client_cgo.go: $(GMI_MOTCTL_IDL) $(GMI_MOTCTL_GEN)/motctl_cgo.go $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI motctl cgo client from $(GMI_MOTCTL_IDL)"
+	$(Q)$(GMICOMPILE) --client-cgo $(GMI_MOTCTL_IDL) -o $(GMI_MOTCTL_GEN)/motctl_client_cgo.go
+
+TARGETS += $(GMI_MOTCTL_GEN)/motctl_api.h $(GMI_MOTCTL_GEN)/motctl_client_cgo.go
 
 # --- motstat API (motion controller status interface) ---
 
@@ -499,7 +507,11 @@ $(GMI_MOTSTAT_GEN)/motstat_api.h: $(GMI_MOTSTAT_IDL) $(GMICOMPILE_BIN)
 
 $(GMI_MOTSTAT_GEN)/motstat_cgo.go: $(GMI_MOTSTAT_GEN)/motstat_api.h
 
-TARGETS += $(GMI_MOTSTAT_GEN)/motstat_api.h
+$(GMI_MOTSTAT_GEN)/motstat_client_cgo.go: $(GMI_MOTSTAT_IDL) $(GMI_MOTSTAT_GEN)/motstat_cgo.go $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI motstat cgo client from $(GMI_MOTSTAT_IDL)"
+	$(Q)$(GMICOMPILE) --client-cgo $(GMI_MOTSTAT_IDL) -o $(GMI_MOTSTAT_GEN)/motstat_client_cgo.go
+
+TARGETS += $(GMI_MOTSTAT_GEN)/motstat_api.h $(GMI_MOTSTAT_GEN)/motstat_client_cgo.go
 
 # --- ngcpreview API (server-go + client-python) ---
 

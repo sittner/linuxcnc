@@ -151,17 +151,17 @@ func (c *Canon) GetExternalTcReason() int32 { return 0 }
 // Queue/status getters.
 
 func (c *Canon) GetExternalQueueEmpty() int32 {
-	if c.task.status != nil && c.task.status.InPosition() {
-		return 1
+	if c.task.status != nil {
+		v, err := c.task.status.GetInpos()
+		if err == nil && v != 0 {
+			return 1
+		}
 	}
 	return 0
 }
 
 func (c *Canon) GetExternalAxisMask() int32 {
-	if c.task.status != nil {
-		return c.task.status.AxisMask()
-	}
-	return 7 // XYZ default
+	return c.task.axisMask
 }
 
 func (c *Canon) GetExternalDigitalInput(index, def int32) int32 {

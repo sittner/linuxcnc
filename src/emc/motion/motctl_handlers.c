@@ -100,9 +100,9 @@ static inline struct state_tag_t tag_from_motctl(const motctl_state_tag_t *t)
  * Motion Queue
  * ================================================================ */
 
-static int32_t h_set_line(void *ctx, motctl_pose_t *pos,
+static int32_t h_set_line(void *ctx, const motctl_pose_t *pos,
     double vel, double ini_maxvel, double acc,
-    int32_t motion_type, int32_t id, motctl_state_tag_t *tag,
+    int32_t motion_type, int32_t id, const motctl_state_tag_t *tag,
     int32_t indexer_jnum)
 {
     CTX; emcmot_command_t cmd;
@@ -118,10 +118,10 @@ static int32_t h_set_line(void *ctx, motctl_pose_t *pos,
     return send_command(mc, &cmd);
 }
 
-static int32_t h_set_circle(void *ctx, motctl_pose_t *pos,
-    motctl_cartesian_t *center, motctl_cartesian_t *normal,
+static int32_t h_set_circle(void *ctx, const motctl_pose_t *pos,
+    const motctl_cartesian_t *center, const motctl_cartesian_t *normal,
     int32_t turn, double vel, double ini_maxvel, double acc,
-    int32_t motion_type, int32_t id, motctl_state_tag_t *tag)
+    int32_t motion_type, int32_t id, const motctl_state_tag_t *tag)
 {
     CTX; emcmot_command_t cmd;
     cmd_init(&cmd, EMCMOT_SET_CIRCLE);
@@ -142,10 +142,10 @@ static int32_t h_set_circle(void *ctx, motctl_pose_t *pos,
     return send_command(mc, &cmd);
 }
 
-static int32_t h_probe(void *ctx, motctl_pose_t *pos,
+static int32_t h_probe(void *ctx, const motctl_pose_t *pos,
     double vel, double ini_maxvel, double acc,
     int32_t motion_type, uint8_t probe_type, int32_t id,
-    motctl_state_tag_t *tag)
+    const motctl_state_tag_t *tag)
 {
     CTX; emcmot_command_t cmd;
     cmd_init(&cmd, EMCMOT_PROBE);
@@ -160,9 +160,9 @@ static int32_t h_probe(void *ctx, motctl_pose_t *pos,
     return send_command(mc, &cmd);
 }
 
-static int32_t h_rigid_tap(void *ctx, motctl_pose_t *pos,
+static int32_t h_rigid_tap(void *ctx, const motctl_pose_t *pos,
     double vel, double ini_maxvel, double acc,
-    double scale, int32_t id, motctl_state_tag_t *tag)
+    double scale, int32_t id, const motctl_state_tag_t *tag)
 {
     CTX; emcmot_command_t cmd;
     cmd_init(&cmd, EMCMOT_RIGID_TAP);
@@ -222,7 +222,7 @@ static int32_t h_set_spindlesync(void *ctx, double sync, int32_t motion_type)
     return send_command(mc, &cmd);
 }
 
-static int32_t h_set_offset(void *ctx, motctl_pose_t *offset)
+static int32_t h_set_offset(void *ctx, const motctl_pose_t *offset)
 {
     CTX; emcmot_command_t cmd;
     cmd_init(&cmd, EMCMOT_SET_OFFSET);
@@ -810,7 +810,7 @@ static int32_t h_set_probe_err_inhibit(void *ctx,
  * Miscellaneous
  * ================================================================ */
 
-static int32_t h_set_world_home(void *ctx, motctl_pose_t *pos)
+static int32_t h_set_world_home(void *ctx, const motctl_pose_t *pos)
 {
     CTX; emcmot_command_t cmd;
     cmd_init(&cmd, EMCMOT_SET_WORLD_HOME);

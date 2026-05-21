@@ -44,8 +44,11 @@ type testStatus struct {
 	inPosition atomic.Bool
 }
 
-func (s *testStatus) InPosition() bool {
-	return s.inPosition.Load()
+func (s *testStatus) GetInpos() (int32, error) {
+	if s.inPosition.Load() {
+		return 1, nil
+	}
+	return 0, nil
 }
 
 func newSeqTestTask() (*Task, *testMotion, *mockIO, *testStatus) {
