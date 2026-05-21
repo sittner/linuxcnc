@@ -201,7 +201,70 @@ typedef struct {
 } emcmot_hal_data_t;
 
 /***********************************************************************
+*                   INSTANCE STRUCT (multi-instance support)            *
+************************************************************************/
+
+/*
+ * motmod_inst_t — all per-instance state for the motion controller.
+ *
+ * When motmod becomes truly multi-instance, each New() call allocates
+ * one of these and stores it in cmod->priv.  For now (Step 1) the
+ * instance is allocated alongside the legacy globals which remain as
+ * compatibility aliases.
+ *
+ * Opaque API pointers are void* here to avoid pulling in gomc/gmi
+ * headers from mot_priv.h.  motion.c casts them at assignment/use.
+ */
+typedef struct motmod_inst {
+    /* identity / environment */
+    const void *env;           /* actually cmod_env_t* */
+    const char *name;
+    int comp_id;
+
+    /* cross-module API pointers (opaque, cast at use sites) */
+    const void *kins;          /* kins_callbacks_t* */
+    const void *tp_api;        /* tp_callbacks_t* */
+    const void *home_api;      /* home_callbacks_t* */
+
+    /* HAL data */
+    emcmot_hal_data_t *hal_data;
+
+    /* core motion data */
+    emcmot_joint_t joints[EMCMOT_MAX_JOINTS];
+    struct emcmot_struct_t *emcmotStruct;
+    struct emcmot_command_t *command;
+    struct emcmot_status_t *status;
+    struct emcmot_config_t *config;
+    struct emcmot_internal_t *internal;
+
+    /* kinematics flags */
+    KINEMATICS_FORWARD_FLAGS fflags;
+    KINEMATICS_INVERSE_FLAGS iflags;
+
+    /* config (parsed from argv) */
+    int num_joints;
+    int num_extrajoints;
+    int num_spindles;
+    int num_dio;
+    int num_aio;
+    int num_misc_error;
+    int unlock_joints_mask;
+
+    /* control.c runtime state */
+    int ext_offset_teleop_limit;
+    int ext_offset_coord_limit;
+    int coord_cubic_active;
+    int switchkins_type;
+    long last_period;
+    double servo_period;
+
+    /* command.c runtime state */
+    int rehomeAll;
+} motmod_inst_t;
+
+/***********************************************************************
 *                   GLOBAL VARIABLE DECLARATIONS                       *
+*         (legacy — will be removed when migration completes)          *
 ************************************************************************/
 
 /* pointer to emcmot_hal_data_t struct in HAL shmem, with all HAL data */

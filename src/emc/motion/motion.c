@@ -718,15 +718,26 @@ int New(const cmod_env_t *env, const char *name,
         int argc, const char **argv, cmod_t **out)
 {
     int retval;
+    motmod_inst_t *inst;
 
     motmod_env = env;
     motmod_name = name;
 
     rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: New() starting...\n");
 
+    /* Allocate per-instance state (Step 1: populated alongside legacy globals) */
+    inst = calloc(1, sizeof(*inst));
+    if (!inst) {
+        rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: failed to allocate instance\n"));
+        return -1;
+    }
+    inst->env = env;
+    inst->name = name;
+
     /* Parse module arguments from argv */
     if (parse_argv(argc, argv) != 0) {
         rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: argument parsing failed\n"));
+        free(inst);
         return -1;
     }
 
@@ -734,8 +745,10 @@ int New(const cmod_env_t *env, const char *name,
     mot_comp_id = hal_init_ex(name, env->dl_handle, COMPONENT_TYPE_REALTIME);
     if (mot_comp_id < 0) {
 	rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: hal_init_ex() failed\n"));
+	free(inst);
 	return -1;
     }
+    inst->comp_id = mot_comp_id;
 
     /* Register the mot reverse-callback API so tpmod/homemod can look it up
        in their Init() functions. */
@@ -861,12 +874,21 @@ int New(const cmod_env_t *env, const char *name,
 
     rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: New() complete\n");
 
+    /* Populate instance struct (mirrors legacy globals for now) */
+    inst->num_joints = num_joints;
+    inst->num_extrajoints = num_extrajoints;
+    inst->num_spindles = num_spindles;
+    inst->num_dio = num_dio;
+    inst->num_aio = num_aio;
+    inst->num_misc_error = num_misc_error;
+    inst->unlock_joints_mask = unlock_joints_mask;
+
     /* Set up cmod interface */
     motmod_cmod.Init    = motmod_init;
     motmod_cmod.Start   = NULL;
     motmod_cmod.Stop    = NULL;
     motmod_cmod.Destroy = motmod_Destroy;
-    motmod_cmod.priv    = NULL;
+    motmod_cmod.priv    = inst;
 
     *out = &motmod_cmod;
     return 0;
@@ -883,7 +905,7 @@ int New(const cmod_env_t *env, const char *name,
 static int motmod_init(cmod_t *self)
 {
     int retval;
-    (void)self;
+    motmod_inst_t *inst = (motmod_inst_t *)self->priv;
 
     rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: Init() starting...\n");
 
@@ -918,6 +940,11 @@ static int motmod_init(cmod_t *self)
     motmod_env->api->record_consumer(motmod_env->api->ctx, motmod_name, "tp", tp_instance);
     motmod_env->api->record_consumer(motmod_env->api->ctx, motmod_name, "home", home_instance);
 
+    /* Mirror API pointers into instance struct */
+    inst->kins = motmod_kins;
+    inst->tp_api = motmod_tp_api;
+    inst->home_api = motmod_home_api;
+
     /* --- Validation (depends on kins) --- */
 
     if ( (num_extrajoints > 0) && (kinematicsType() != KINEMATICS_BOTH) ) {
@@ -938,6 +965,14 @@ static int motmod_init(cmod_t *self)
 	rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: init_comm_buffers() failed\n"));
 	return -1;
     }
+
+    /* Mirror core pointers into instance struct */
+    inst->hal_data = emcmot_hal_data;
+    inst->emcmotStruct = emcmotStruct;
+    inst->command = emcmotCommand;
+    inst->status = emcmotStatus;
+    inst->config = emcmotConfig;
+    inst->internal = emcmotInternal;
 
     /* Wire up motctl/motstat handler contexts now that emcmotStruct exists. */
     motctl_init_handlers(emcmotStruct, DEFAULT_EMCMOT_COMM_TIMEOUT);
@@ -978,7 +1013,7 @@ static int motmod_init(cmod_t *self)
 static void motmod_Destroy(cmod_t *self)
 {
     int retval;
-    (void)self;
+    motmod_inst_t *inst = (motmod_inst_t *)self->priv;
 
     rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: Destroy() started.\n");
 
@@ -995,6 +1030,10 @@ static void motmod_Destroy(cmod_t *self)
     }
 
     free_name_arrays();
+
+    /* free per-instance state */
+    free(inst);
+    self->priv = NULL;
 
     rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: Destroy() finished.\n");
 }
