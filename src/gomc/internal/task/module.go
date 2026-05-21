@@ -6,7 +6,9 @@ import (
 	"strconv"
 	"unsafe"
 
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emccmdapi"
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcio"
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcstatapi"
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/motctl"
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/motstat"
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
@@ -23,7 +25,22 @@ var _ MotionConfig = (*motctl.MotctlClient)(nil)
 
 func factory(ini *inifile.IniFile, logger *slog.Logger, name string, args []string) (gomc.Module, error) {
 	logger = logger.With("module", name)
-	return &milltaskModule{ini: ini, logger: logger}, nil
+	m := &milltaskModule{ini: ini, logger: logger}
+
+	// Register provided APIs in New (factory) phase so other modules
+	// can look them up in their Start() phase.
+	reg := apiserver.DefaultRegistry()
+	if reg == nil {
+		return nil, fmt.Errorf("milltask: no API registry available")
+	}
+	if err := emccmdapi.RegisterEmccmdAPI(reg, name, m); err != nil {
+		return nil, fmt.Errorf("milltask: register emccmd: %w", err)
+	}
+	if err := emcstatapi.RegisterEmcstatAPI(reg, name, m); err != nil {
+		return nil, fmt.Errorf("milltask: register emcstat: %w", err)
+	}
+
+	return m, nil
 }
 
 // milltaskModule wraps Task to satisfy the gomc.Module lifecycle.
