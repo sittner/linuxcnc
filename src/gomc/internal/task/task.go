@@ -205,9 +205,14 @@ type Task struct {
 	execState   ExecState
 
 	// Configuration
-	numJoints   int
-	numSpindles int
-	axisMask    int32
+	numJoints       int
+	numSpindles     int
+	axisMask        int32
+	linearUnits     float64
+	angularUnits    float64
+	maxVelocity     float64
+	maxAcceleration float64
+	startupCode     string
 
 	// Dependencies (injected, mockable for tests)
 	motion MotionController

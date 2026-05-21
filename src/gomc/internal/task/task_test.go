@@ -91,17 +91,17 @@ type mockIO struct {
 	lastCall string
 }
 
-func (m *mockIO) CoolantFloodOn() error              { m.lastCall = "FloodOn"; return nil }
-func (m *mockIO) CoolantFloodOff() error             { m.lastCall = "FloodOff"; return nil }
-func (m *mockIO) CoolantMistOn() error               { m.lastCall = "MistOn"; return nil }
-func (m *mockIO) CoolantMistOff() error              { m.lastCall = "MistOff"; return nil }
-func (m *mockIO) LubeOn() error                      { m.lastCall = "LubeOn"; return nil }
-func (m *mockIO) LubeOff() error                     { m.lastCall = "LubeOff"; return nil }
-func (m *mockIO) ToolPrepare(int32) error            { return nil }
-func (m *mockIO) ToolLoad() error                    { return nil }
-func (m *mockIO) ToolUnload() error                  { return nil }
-func (m *mockIO) ToolStartChange() error             { return nil }
-func (m *mockIO) ToolSetNumber(int32) error          { return nil }
+func (m *mockIO) CoolantFloodOn() error     { m.lastCall = "FloodOn"; return nil }
+func (m *mockIO) CoolantFloodOff() error    { m.lastCall = "FloodOff"; return nil }
+func (m *mockIO) CoolantMistOn() error      { m.lastCall = "MistOn"; return nil }
+func (m *mockIO) CoolantMistOff() error     { m.lastCall = "MistOff"; return nil }
+func (m *mockIO) LubeOn() error             { m.lastCall = "LubeOn"; return nil }
+func (m *mockIO) LubeOff() error            { m.lastCall = "LubeOff"; return nil }
+func (m *mockIO) ToolPrepare(int32) error   { return nil }
+func (m *mockIO) ToolLoad() error           { return nil }
+func (m *mockIO) ToolUnload() error         { return nil }
+func (m *mockIO) ToolStartChange() error    { return nil }
+func (m *mockIO) ToolSetNumber(int32) error { return nil }
 func (m *mockIO) ToolSetOffset(int32, int32, float64, float64, float64, float64, float64, float64, float64, float64, float64, float64, float64, float64, int32) error {
 	return nil
 }

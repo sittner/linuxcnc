@@ -18,6 +18,9 @@ func init() {
 	gomc.RegisterModule("milltask", factory)
 }
 
+// Compile-time interface checks.
+var _ MotionConfig = (*motctl.MotctlClient)(nil)
+
 func factory(ini *inifile.IniFile, logger *slog.Logger, name string, args []string) (gomc.Module, error) {
 	logger = logger.With("module", name)
 
@@ -56,9 +59,10 @@ func factory(ini *inifile.IniFile, logger *slog.Logger, name string, args []stri
 
 	t := NewTask(mc, io, ms, logger)
 
-	// Load configuration from INI
-	t.numJoints = getIntOr(ini, "KINS", "JOINTS", 3)
-	t.numSpindles = getIntOr(ini, "TRAJ", "SPINDLES", 1)
+	// Load configuration from INI and send to motion controller.
+	if err := loadConfig(ini, t, mc); err != nil {
+		return nil, fmt.Errorf("milltask: %w", err)
+	}
 
 	return &milltaskModule{task: t, logger: logger}, nil
 }
