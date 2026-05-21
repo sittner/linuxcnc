@@ -44,9 +44,6 @@ static int    ext_offset_teleop_limit = 0;
 static int    ext_offset_coord_limit  = 0;
 static bool   coord_cubic_active = 0;
 static int    switchkins_type = 0;
-/* kinematics flags */
-KINEMATICS_FORWARD_FLAGS fflags = 0;
-KINEMATICS_INVERSE_FLAGS iflags = 0;
 
 /*! \todo FIXME - debugging - uncomment the following line to log changes in
    JOINT_FLAG and MOTION_FLAG */
@@ -62,8 +59,6 @@ static long last_period = 0;
 
 /* servo cycle time */
 static double servo_period;
-
-extern struct emcmot_status_t *emcmotStatus;
 
 // *pcmd_p[0] is shorthand for emcmotStatus->carte_pos_cmd.tran.x
 // *pcmd_p[1] is shorthand for emcmotStatus->carte_pos_cmd.tran.y

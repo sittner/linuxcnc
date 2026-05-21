@@ -28,6 +28,7 @@ MOTMOD_CMOD_SRCS := \
 MOTMOD_CMOD_CFLAGS := \
     -fPIC -Os -Wall -Wextra \
     -DUSPACE -D_GNU_SOURCE -Drealtime -DSEQUENTIAL_SUPPORT \
+    -DMOTMOD_INTERNAL \
     -fno-builtin-sin -fno-builtin-cos -fno-builtin-sincos \
     -fno-strict-aliasing -fwrapv \
     -I. -I../include -Ilibnml/linklist -Igomc/pkg/cmodule -Igomc/generated/gmi/kins -Igomc/generated/gmi/tp -Igomc/generated/gmi/home -Igomc/generated/gmi/mot -Igomc/generated/gmi/motctl -Igomc/generated/gmi/motstat -Iemc/tp -Iemc/motion

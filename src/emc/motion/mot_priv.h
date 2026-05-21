@@ -264,28 +264,47 @@ typedef struct motmod_inst {
 
 /***********************************************************************
 *                   GLOBAL VARIABLE DECLARATIONS                       *
-*         (legacy — will be removed when migration completes)          *
 ************************************************************************/
 
-/* pointer to emcmot_hal_data_t struct in HAL shmem, with all HAL data */
-extern emcmot_hal_data_t *emcmot_hal_data;
+#ifdef MOTMOD_INTERNAL
+/*
+ * Multi-instance support (only active inside motmod.so build).
+ * Other consumers of mot_priv.h (motion-logger, etc.) still see
+ * the traditional extern declarations below.
+ */
 
-/* pointer to array of joint structs with all joint data */
-/* the actual array may be in shared memory or in kernel space, as
-   determined by the init code in motion.c */
-extern emcmot_joint_t joints[EMCMOT_MAX_JOINTS];
+/* Single instance pointer — set in motmod_init(), used by all code
+   that hasn't yet been converted to pass inst explicitly. */
+extern motmod_inst_t *g_inst;
 
-/* Variable defs */
+/* Compatibility aliases — old code uses these names unchanged.
+   NOTE: joints, fflags, iflags are too generic to #define safely
+   (they collide with struct members and parameter names). They remain
+   as real extern variables, migrated to inst-> access in Step 4. */
+extern emcmot_joint_t *joints;
 extern KINEMATICS_FORWARD_FLAGS fflags;
 extern KINEMATICS_INVERSE_FLAGS iflags;
-/* these variable have the 1/servo cycle time */
 
-/* Struct pointers */
+#define emcmot_hal_data  (g_inst->hal_data)
+#define emcmotStruct     (g_inst->emcmotStruct)
+#define emcmotCommand    (g_inst->command)
+#define emcmotStatus     (g_inst->status)
+#define emcmotConfig     (g_inst->config)
+#define emcmotInternal   (g_inst->internal)
+
+#else /* !MOTMOD_INTERNAL — legacy declarations for external consumers */
+
+extern emcmot_hal_data_t *emcmot_hal_data;
+extern emcmot_joint_t joints[EMCMOT_MAX_JOINTS];
+extern KINEMATICS_FORWARD_FLAGS fflags;
+extern KINEMATICS_INVERSE_FLAGS iflags;
 extern struct emcmot_struct_t *emcmotStruct;
 extern struct emcmot_command_t *emcmotCommand;
 extern struct emcmot_status_t *emcmotStatus;
 extern struct emcmot_config_t *emcmotConfig;
 extern struct emcmot_internal_t *emcmotInternal;
+
+#endif /* MOTMOD_INTERNAL */
 
 /***********************************************************************
 *                    PUBLIC FUNCTION PROTOTYPES                        *

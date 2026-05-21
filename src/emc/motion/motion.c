@@ -36,10 +36,6 @@ extern motctl_callbacks_t motctl_get_callbacks(void);
 extern void motstat_init_handlers(emcmot_struct_t *mot);
 extern motstat_callbacks_t motstat_get_callbacks(void);
 
-// Forward declarations (defined later in this file)
-extern const tp_callbacks_t   *motmod_tp_api;
-extern const home_callbacks_t *motmod_home_api;
-
 // Mark strings for translation, but defer translation to userspace
 #define _(s) (s)
 
@@ -52,7 +48,6 @@ int base_thread_fp = 0;	/* default is no floating point in base thread */
 static long servo_period_nsec = 1000000;	/* servo thread period */
 static long traj_period_nsec = 0;	/* trajectory planner period */
 static int num_spindles = 1; /* default number of spindles is 1 */
-int motion_num_spindles;
 static int num_joints = EMCMOT_MAX_JOINTS;	/* default number of joints present */
 static int num_extrajoints = 0;	/* default number of extra joints present */
 static int num_dio = 0;	/* default number of motion synched DIO */
@@ -79,29 +74,21 @@ static const char *home_instance = "homemod";
 *                  GLOBAL VARIABLE DEFINITIONS                         *
 ************************************************************************/
 
-/* pointer to emcmot_hal_data_t struct in HAL shmem, with all HAL data */
-emcmot_hal_data_t *emcmot_hal_data = 0;
+/* The single instance pointer — set in motmod_init(). */
+motmod_inst_t *g_inst = NULL;
 
-/* allocate array for joint data */
-emcmot_joint_t joints[EMCMOT_MAX_JOINTS];
+/* These cannot be #define'd (collide with struct members/params).
+   Real globals pointing into / alongside g_inst, set in motmod_init(). */
+emcmot_joint_t *joints = NULL;
+KINEMATICS_FORWARD_FLAGS fflags = 0;
+KINEMATICS_INVERSE_FLAGS iflags = 0;
 
-/*
-  Principles of communication:
+/* motion_num_spindles: still used by command.c via extern */
+int motion_num_spindles;
 
-  Data is copied in or out from the various types of comm mechanisms:
-  mbuff mapped memory for Linux/RT-Linux, or OS shared memory for Unixes.
-
-  emcmotStruct is ptr to this memory.
-
-  emcmotCommand points to emcmotStruct->command,
-  emcmotStatus points to emcmotStruct->status,
- */
-emcmot_struct_t *emcmotStruct = 0;
-/* ptrs to either buffered copies or direct memory for command and status */
-struct emcmot_command_t *emcmotCommand = 0;
-struct emcmot_status_t *emcmotStatus = 0;
-struct emcmot_config_t *emcmotConfig = 0;
-struct emcmot_internal_t *emcmotInternal = 0;
+/* motmod_tp_api / motmod_home_api: used by control.c, command.c via extern */
+const tp_callbacks_t   *motmod_tp_api;
+const home_callbacks_t *motmod_home_api;
 
 /***********************************************************************
 *                  LOCAL VARIABLE DECLARATIONS                         *
@@ -708,10 +695,6 @@ static cmod_t motmod_cmod;
 static const cmod_env_t *motmod_env;
 static const char *motmod_name;
 
-/* GMI API pointers — set in Init(), used by bridge inlines */
-const tp_callbacks_t   *motmod_tp_api;
-const home_callbacks_t *motmod_home_api;
-
 static int motmod_init(cmod_t *self);
 
 int New(const cmod_env_t *env, const char *name,
@@ -907,6 +890,10 @@ static int motmod_init(cmod_t *self)
     int retval;
     motmod_inst_t *inst = (motmod_inst_t *)self->priv;
 
+    /* Set global instance pointer so that #define aliases in mot_priv.h work */
+    g_inst = inst;
+    joints = inst->joints;
+
     rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: Init() starting...\n");
 
     /* --- Cross-module API lookups (must come first) --- */
@@ -966,14 +953,6 @@ static int motmod_init(cmod_t *self)
 	return -1;
     }
 
-    /* Mirror core pointers into instance struct */
-    inst->hal_data = emcmot_hal_data;
-    inst->emcmotStruct = emcmotStruct;
-    inst->command = emcmotCommand;
-    inst->status = emcmotStatus;
-    inst->config = emcmotConfig;
-    inst->internal = emcmotInternal;
-
     /* Wire up motctl/motstat handler contexts now that emcmotStruct exists. */
     motctl_init_handlers(emcmotStruct, DEFAULT_EMCMOT_COMM_TIMEOUT);
     motstat_init_handlers(emcmotStruct);
@@ -1031,11 +1010,12 @@ static void motmod_Destroy(cmod_t *self)
 
     free_name_arrays();
 
-    /* free per-instance state */
+    rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: Destroy() finished.\n");
+
+    /* free per-instance state (after all references through g_inst are done) */
+    g_inst = NULL;
     free(inst);
     self->priv = NULL;
-
-    rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: Destroy() finished.\n");
 }
 
 /***********************************************************************
