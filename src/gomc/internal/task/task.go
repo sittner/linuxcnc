@@ -212,6 +212,9 @@ type Task struct {
 	status MotionStatus
 	logger *slog.Logger
 
+	// Canon state (interpreter callback context)
+	canon *Canon
+
 	// Program state
 	programFile string
 	programOpen bool
@@ -224,7 +227,7 @@ type Task struct {
 
 // NewTask creates a new Task with dependencies injected.
 func NewTask(motion MotionController, io IOController, status MotionStatus, logger *slog.Logger) *Task {
-	return &Task{
+	t := &Task{
 		state:       StateEstop,
 		mode:        ModeManual,
 		interpState: InterpIdle,
@@ -234,4 +237,6 @@ func NewTask(motion MotionController, io IOController, status MotionStatus, logg
 		status:      status,
 		logger:      logger,
 	}
+	t.canon = NewCanon(t)
+	return t
 }

@@ -1,5 +1,4 @@
 package task
-package task
 
 import (
 	"errors"
@@ -26,17 +25,17 @@ func (m *mockMotion) Probe(Pose, float64, float64, float64, int32, uint8, int32,
 func (m *mockMotion) RigidTap(Pose, float64, float64, float64, float64, int32, StateTag) error {
 	return nil
 }
-func (m *mockMotion) Abort() error          { m.lastCall = "Abort"; return nil }
-func (m *mockMotion) Pause() error          { m.lastCall = "Pause"; return nil }
-func (m *mockMotion) Resume() error         { m.lastCall = "Resume"; return nil }
-func (m *mockMotion) Step(int32) error      { m.lastCall = "Step"; return nil }
-func (m *mockMotion) Reverse() error        { m.lastCall = "Reverse"; return nil }
-func (m *mockMotion) Forward() error        { m.lastCall = "Forward"; return nil }
-func (m *mockMotion) SetFree() error        { m.lastCall = "SetFree"; return nil }
-func (m *mockMotion) SetCoord() error       { m.lastCall = "SetCoord"; return nil }
-func (m *mockMotion) SetTeleop() error      { m.lastCall = "SetTeleop"; return nil }
-func (m *mockMotion) Enable() error         { m.lastCall = "Enable"; return nil }
-func (m *mockMotion) Disable() error        { m.lastCall = "Disable"; return nil }
+func (m *mockMotion) Abort() error     { m.lastCall = "Abort"; return nil }
+func (m *mockMotion) Pause() error     { m.lastCall = "Pause"; return nil }
+func (m *mockMotion) Resume() error    { m.lastCall = "Resume"; return nil }
+func (m *mockMotion) Step(int32) error { m.lastCall = "Step"; return nil }
+func (m *mockMotion) Reverse() error   { m.lastCall = "Reverse"; return nil }
+func (m *mockMotion) Forward() error   { m.lastCall = "Forward"; return nil }
+func (m *mockMotion) SetFree() error   { m.lastCall = "SetFree"; return nil }
+func (m *mockMotion) SetCoord() error  { m.lastCall = "SetCoord"; return nil }
+func (m *mockMotion) SetTeleop() error { m.lastCall = "SetTeleop"; return nil }
+func (m *mockMotion) Enable() error    { m.lastCall = "Enable"; return nil }
+func (m *mockMotion) Disable() error   { m.lastCall = "Disable"; return nil }
 func (m *mockMotion) JogCont(int32, float64, int32) error {
 	m.lastCall = "JogCont"
 	return nil
@@ -57,12 +56,12 @@ func (m *mockMotion) SpindleOn(int32, float64, float64, float64, int32) error {
 	m.lastCall = "SpindleOn"
 	return nil
 }
-func (m *mockMotion) SpindleOff(int32) error          { m.lastCall = "SpindleOff"; return nil }
+func (m *mockMotion) SpindleOff(int32) error                    { m.lastCall = "SpindleOff"; return nil }
 func (m *mockMotion) SpindleOrient(int32, float64, int32) error { return nil }
-func (m *mockMotion) SpindleIncrease(int32) error     { m.lastCall = "SpindleIncrease"; return nil }
-func (m *mockMotion) SpindleDecrease(int32) error     { m.lastCall = "SpindleDecrease"; return nil }
-func (m *mockMotion) SpindleBrakeEngage(int32) error  { m.lastCall = "SpindleBrakeEngage"; return nil }
-func (m *mockMotion) SpindleBrakeRelease(int32) error { m.lastCall = "SpindleBrakeRelease"; return nil }
+func (m *mockMotion) SpindleIncrease(int32) error               { m.lastCall = "SpindleIncrease"; return nil }
+func (m *mockMotion) SpindleDecrease(int32) error               { m.lastCall = "SpindleDecrease"; return nil }
+func (m *mockMotion) SpindleBrakeEngage(int32) error            { m.lastCall = "SpindleBrakeEngage"; return nil }
+func (m *mockMotion) SpindleBrakeRelease(int32) error           { m.lastCall = "SpindleBrakeRelease"; return nil }
 func (m *mockMotion) SetSpindleScale(int32, float64) error {
 	m.lastCall = "SetSpindleScale"
 	return nil
@@ -90,16 +89,16 @@ type mockIO struct {
 	lastCall string
 }
 
-func (m *mockIO) FloodOn() error                 { m.lastCall = "FloodOn"; return nil }
-func (m *mockIO) FloodOff() error                { m.lastCall = "FloodOff"; return nil }
-func (m *mockIO) MistOn() error                  { m.lastCall = "MistOn"; return nil }
-func (m *mockIO) MistOff() error                 { m.lastCall = "MistOff"; return nil }
-func (m *mockIO) LubeOn() error                  { m.lastCall = "LubeOn"; return nil }
-func (m *mockIO) LubeOff() error                 { m.lastCall = "LubeOff"; return nil }
-func (m *mockIO) ToolPrepare(int, int) error     { return nil }
-func (m *mockIO) ToolChange() error              { return nil }
-func (m *mockIO) Estop() error                   { m.lastCall = "Estop"; return nil }
-func (m *mockIO) EstopReset() error              { m.lastCall = "EstopReset"; return nil }
+func (m *mockIO) FloodOn() error             { m.lastCall = "FloodOn"; return nil }
+func (m *mockIO) FloodOff() error            { m.lastCall = "FloodOff"; return nil }
+func (m *mockIO) MistOn() error              { m.lastCall = "MistOn"; return nil }
+func (m *mockIO) MistOff() error             { m.lastCall = "MistOff"; return nil }
+func (m *mockIO) LubeOn() error              { m.lastCall = "LubeOn"; return nil }
+func (m *mockIO) LubeOff() error             { m.lastCall = "LubeOff"; return nil }
+func (m *mockIO) ToolPrepare(int, int) error { return nil }
+func (m *mockIO) ToolChange() error          { return nil }
+func (m *mockIO) Estop() error               { m.lastCall = "Estop"; return nil }
+func (m *mockIO) EstopReset() error          { m.lastCall = "EstopReset"; return nil }
 
 // mockStatus implements MotionStatus for testing.
 type mockStatus struct{}
