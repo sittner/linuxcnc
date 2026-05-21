@@ -831,11 +831,6 @@ static int iocontrol_start(cmod_t *self)
 {
     iocontrol_module *m = (iocontrol_module *)self->priv;
 
-    // Register GMI emcio API so milltask can call us via function pointers.
-    m->emcio_cb = emcio_table;
-    m->emcio_cb.ctx = m;
-    emcio_api_register(m->env->api, m->name, &m->emcio_cb);
-
     m->done = 0;
     return 0;
 }
@@ -955,6 +950,11 @@ extern "C" int New(const cmod_env_t *env, const char *name,
     m->emcioStatus.lube.on = 0;
     m->emcioStatus.lube.level = 1;
     *(m->hal_data->tool_number) = m->emcioStatus.tool.toolInSpindle;
+
+    // Register GMI emcio API so milltask can call us via function pointers.
+    m->emcio_cb = emcio_table;
+    m->emcio_cb.ctx = m;
+    emcio_api_register(m->env->api, m->name, &m->emcio_cb);
 
     // Wire up the cmod vtable
     m->base.Start   = iocontrol_start;

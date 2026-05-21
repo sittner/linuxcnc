@@ -54,20 +54,20 @@ type Options struct {
 
 // Launcher orchestrates the LinuxCNC startup and shutdown sequence.
 type Launcher struct {
-	opts         Options
-	ini          *inifile.IniFile
-	logger       *slog.Logger
+	opts        Options
+	ini         *inifile.IniFile
+	logger      *slog.Logger
 	lock        *lockfile.LockFile // flock-based instance lock
 	rtMgr       *realtime.Manager  // realtime environment manager
 	cleanupOnce sync.Once          // ensures cleanup runs exactly once
 	halComp     *hal.Component     // launcher's HAL component (like halcmd's hal_init)
-	goModules    []*goModule        // Go modules loaded via "load" command (compiled-in)
-	cModules     []*cModule         // C plugin modules loaded via "load" command
-	cModArena    []unsafe.Pointer   // arena-tracked C strings freed in destroyCModules
-	logRing      *gomcLogRing       // shared log ring buffer for C module FIFO logging
-	retain       *retainInstance    // integrated retain subsystem (nil if unused)
-	apiServer    *apiserver.Server  // REST API server for halcmd and external tools
-	shutdownCh   chan struct{}      // closed by signal handler to unblock wait
+	goModules   []*goModule        // Go modules loaded via "load" command (compiled-in)
+	cModules    []*cModule         // C plugin modules loaded via "load" command
+	cModArena   []unsafe.Pointer   // arena-tracked C strings freed in destroyCModules
+	logRing     *gomcLogRing       // shared log ring buffer for C module FIFO logging
+	retain      *retainInstance    // integrated retain subsystem (nil if unused)
+	apiServer   *apiserver.Server  // REST API server for halcmd and external tools
+	shutdownCh  chan struct{}      // closed by signal handler to unblock wait
 }
 
 // New creates a new Launcher with the given options and logger.
@@ -337,7 +337,7 @@ func (l *Launcher) Run() (runErr error) {
 		return fmt.Errorf("hal start threads: %w", err)
 	}
 
-	// 6d.3. Start Go plugin modules (Start() is called after HAL threads are running).
+	// 6d.3. Start Go plugin modules.
 	if err := l.startGoModules(); err != nil {
 		return fmt.Errorf("Go module start failed: %w", err)
 	}
