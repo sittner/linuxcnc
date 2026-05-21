@@ -31,38 +31,31 @@ func (l *Launcher) cleanup() {
 //  3. createThreads (hal_create_thread_cpu)
 //  4. load modules (cmod New, loadrt)
 //  5. wire HAL (addf, net, setp)
-//  6. startTask
-//  7. startThreads               <- RT functions start executing
-//  8. startGoModules, startCModules
-//  9. startApplications
+//  6. startThreads               <- RT functions start executing
+//  7. startGoModules, startCModules
 //
 // Shutdown order (strict reverse):
-//  1. stopApplications            (reverse of 9)
-//  2. stopCModules, stopGoModules (reverse of 8)
-//  3. StopThreads — SYNCHRONOUS   (reverse of 7, waits for all RT idle)
+//  1. stopCModules, stopGoModules (reverse of 7)
+//  2. StopThreads — SYNCHRONOUS   (reverse of 6, waits for all RT idle)
 //     ── barrier: no RT function executes past this point ──
-//  4. SHUTDOWN halfile
-//  5. destroyCModules             (reverse of 4, frees EC masters etc.)
-//  6. destroyGoModules            (reverse of 4)
-//  7. UnloadAll                   (reverse of 4, unloads loadrt components)
-//  8. wait for unload             (userspace processes may still be exiting)
-//  9. halComp.Exit                (reverse of 2)
+//  3. SHUTDOWN halfile
+//  4. destroyCModules             (reverse of 4, frees EC masters etc.)
+//  5. destroyGoModules            (reverse of 4)
+//  6. UnloadAll                   (reverse of 4, unloads loadrt components)
+//  7. wait for unload             (userspace processes may still be exiting)
+//  8. halComp.Exit                (reverse of 2)
 //
-// 10. RtapiAppCleanup             (reverse of 1)
-// 11. Release lock file
+//  9. RtapiAppCleanup             (reverse of 1)
+// 10. Release lock file
 //
 // All errors are logged but not returned so that every step runs even if a
 // prior step fails.
 func (l *Launcher) doCleanup() {
 	l.logger.Info("shutting down and cleaning up LinuxCNC...")
 
-	// Step 1 — Stop tracked application processes (reverse of startApplications).
 	// Step 0 — Stop REST API server (reverse of startAPIServer).
 	l.logger.Debug("stopping REST API server")
 	l.stopAPIServer()
-
-	l.logger.Debug("stopping application processes")
-	l.stopApplications()
 
 	// Step 2 — Stop C plugin modules (reverse of startCModules).
 	// Runs BEFORE StopThreads so that modules can perform graceful
