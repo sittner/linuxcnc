@@ -21,4 +21,5 @@ gomod internal/halscope @GOMOD:HALSCOPE@
 gomod internal/emccalib @GOMOD:EMCCALIB@
 gomod internal/haljson @GOMOD:HALJSON@
 gomod internal/ngcpreview @GOMOD:NGCPREVIEW@
+gomod internal/task @GOMOD:MILLTASK_GO@
 

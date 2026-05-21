@@ -1556,6 +1556,7 @@ HAVE_HALSCOPE=no
 HAVE_EMCCALIB=no
 HAVE_HALJSON=no
 HAVE_NGCPREVIEW=no
+HAVE_MILLTASK_GO=no
 
 if test "x$HAVE_GOLANG" = "xyes"; then
     AC_ARG_ENABLE([adsserver],
@@ -1605,6 +1606,14 @@ if test "x$HAVE_GOLANG" = "xyes"; then
     if test "x$enable_ngcpreview" = "xyes"; then
         HAVE_NGCPREVIEW=yes
     fi
+
+    AC_ARG_ENABLE([milltask-go],
+        AS_HELP_STRING([--enable-milltask-go], [Build Go milltask module (default: yes)]),
+        [enable_milltask_go=$enableval],
+        [enable_milltask_go=yes])
+    if test "x$enable_milltask_go" = "xyes"; then
+        HAVE_MILLTASK_GO=yes
+    fi
 fi
 
 AC_SUBST([HAVE_ADSSERVER])
@@ -1613,6 +1622,7 @@ AC_SUBST([HAVE_HALSCOPE])
 AC_SUBST([HAVE_EMCCALIB])
 AC_SUBST([HAVE_HALJSON])
 AC_SUBST([HAVE_NGCPREVIEW])
+AC_SUBST([HAVE_MILLTASK_GO])
 
 # Web application build dependencies (Node.js for Vite/Vue webapp builds)
 HAVE_NODEJS=no
@@ -1776,6 +1786,7 @@ if test "x$HAVE_GOLANG" = "xyes"; then
 echo "    ADS server module:          $HAVE_ADSSERVER"
 echo "    EMC gateway module:         $HAVE_EMCGATEWAY"
 echo "    HAL oscilloscope module:    $HAVE_HALSCOPE"
+echo "    Go milltask module:         $HAVE_MILLTASK_GO"
 echo "    Node.js (webapp build):     $HAVE_NODEJS"
 echo "    WebKit2GTK (gmcui):         $HAVE_WEBKIT2GTK"
 fi
