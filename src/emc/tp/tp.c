@@ -60,7 +60,22 @@
 #include "tp_api.h"
 #include "mot_api.h"
 
-static const mot_callbacks_t *_mot;
+/***********************************************************************
+*              PER-INSTANCE STATE (multi-instance support)             *
+************************************************************************/
+
+typedef struct {
+    const mot_callbacks_t *mot;
+    TP_STRUCT tp;
+    TC_STRUCT queueTcSpace[DEFAULT_TC_QUEUE_SIZE + 10];
+} tpmod_inst_t;
+
+static tpmod_inst_t *g_inst;
+
+/* Macros for backward compatibility — access statics through g_inst */
+#define _mot         (g_inst->mot)
+#define g_tp         (&g_inst->tp)
+#define queueTcSpace (g_inst->queueTcSpace)
 
 /** static function primitives (ugly but less of a pain than moving code around)*/
 STATIC int tpComputeBlendVelocity(
@@ -338,9 +353,7 @@ STATIC inline double tpGetSignedSpindlePosition(int spindle_num) {
  * @section tpaccess tp class-like API
  */
 
-/* space for trajectory planner queues, plus 10 more for safety */
-/*! \todo FIXME-- default is used; dynamic is not honored */
-	TC_STRUCT queueTcSpace[DEFAULT_TC_QUEUE_SIZE + 10];
+/* space for trajectory planner queues is now in tpmod_inst_t */
 
 /**
  * Create the trajectory planner structure with an empty queue.
@@ -3737,9 +3750,7 @@ _Static_assert(sizeof(tp_cartesian_t) == sizeof(PmCartesian),
 _Static_assert(sizeof(tp_state_tag_t) == sizeof(struct state_tag_t),
     "tp_state_tag_t and state_tag_t must have the same size");
 
-// ─── TP instance (owned by this module, calloc'd at create time) ────────
-
-static TP_STRUCT *g_tp;
+// ─── TP instance is now embedded in tpmod_inst_t (g_inst->tp) ────────
 
 // ─── GMI callback implementations ──────────────────────────────────────
 
@@ -3748,8 +3759,8 @@ static int32_t gmi_tp_init(void *ctx) { (void)ctx; return 0; }
 static int32_t gmi_tp_create(void *ctx, int32_t queue_size, int32_t comp_id)
 {
     (void)ctx;
-    g_tp = calloc(1, sizeof(TP_STRUCT));
-    if (!g_tp) return -1;
+    /* tp is embedded in g_inst (allocated in New()), just initialize it */
+    memset(g_tp, 0, sizeof(TP_STRUCT));
     return tpCreate(g_tp, queue_size, comp_id);
 }
 
@@ -3863,8 +3874,8 @@ static const char *tp_mot_instance = "motmod";
 
 static void tp_cmod_destroy(cmod_t *self) {
     (void)self;
-    free(g_tp);
-    g_tp = NULL;
+    free(g_inst);
+    g_inst = NULL;
 }
 
 static int tp_cmod_init(cmod_t *self)
@@ -3872,7 +3883,7 @@ static int tp_cmod_init(cmod_t *self)
     (void)self;
     const mot_callbacks_t *mot = mot_api_get(tp_cmod_api, tp_mot_instance);
     if (!mot) return -1;
-    _mot = mot;
+    g_inst->mot = mot;
     return 0;
 }
 
@@ -3880,6 +3891,10 @@ int New(const cmod_env_t *env, const char *name,
         int argc, const char **argv, cmod_t **out)
 {
     tp_cmod_api = env->api;
+
+    /* Allocate per-instance state */
+    g_inst = calloc(1, sizeof(tpmod_inst_t));
+    if (!g_inst) return -1;
 
     /* Parse mot_instance parameter */
     for (int i = 0; i < argc; i++) {
@@ -3891,6 +3906,8 @@ int New(const cmod_env_t *env, const char *name,
     if (rc != 0) {
         gomc_log_errorf(env->log, name,
             "failed to register tp API: %d", rc);
+        free(g_inst);
+        g_inst = NULL;
         return rc;
     }
 

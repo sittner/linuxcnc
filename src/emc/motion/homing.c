@@ -18,15 +18,11 @@
 #include "hal.h"
 
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include "gomc_env.h"
 #include "home_api.h"
 #include "mot_api.h"
-
-static double servo_freq;
-static const mot_callbacks_t *_mot;
-static int all_joints;     // motmod num_joints (typ ini file: [KINS]JOINTS)
-static int extra_joints;   // motmod num_extrajoints
 
 
 #define ABS(x) (((x) < 0) ? -(x) : (x))
@@ -67,10 +63,6 @@ typedef enum {
   HOME_SEQUENCE_START_JOINTS,    // internal usage
   HOME_SEQUENCE_WAIT_JOINTS,     // internal usage
 } home_sequence_state_t;
-
-static home_sequence_state_t sequence_state;
-static int  current_sequence = 0;
-static bool homing_active;
 
 /* internal states for homing */
 typedef enum {
@@ -122,8 +114,6 @@ typedef struct {
   bool         home_is_synchronized;
 } home_local_data;
 
-static  home_local_data H[EMCMOT_MAX_JOINTS];
-
 // data for per-joint homing-specific hal pins:
 typedef struct {
     hal_bit_t *home_sw;      // home switch input
@@ -138,7 +128,36 @@ typedef struct {
     one_joint_home_data_t jhd[EMCMOT_MAX_JOINTS];
 } all_joints_home_data_t;
 
-static all_joints_home_data_t *joint_home_data = 0;
+/***********************************************************************
+*              PER-INSTANCE STATE (multi-instance support)             *
+************************************************************************/
+
+typedef struct {
+    const mot_callbacks_t *mot;
+    double servo_freq;
+    int all_joints;
+    int extra_joints;
+    home_sequence_state_t sequence_state;
+    int current_sequence;
+    bool homing_active;
+    home_local_data H[EMCMOT_MAX_JOINTS];
+    all_joints_home_data_t *joint_home_data;
+    bool sync_now;
+} homemod_inst_t;
+
+static homemod_inst_t *g_inst;
+
+/* Macros for backward compatibility — access statics through g_inst */
+#define _mot            (g_inst->mot)
+#define servo_freq      (g_inst->servo_freq)
+#define all_joints      (g_inst->all_joints)
+#define extra_joints    (g_inst->extra_joints)
+#define sequence_state  (g_inst->sequence_state)
+#define current_sequence (g_inst->current_sequence)
+#define homing_active   (g_inst->homing_active)
+#define H               (g_inst->H)
+#define joint_home_data (g_inst->joint_home_data)
+#define sync_now        (g_inst->sync_now)
 
 /***********************************************************************
 *                      LOCAL FUNCTIONS                                 *
@@ -677,7 +696,6 @@ static bool base_get_homing_at_index_search_wait(int jno) {
     return H[jno].home_state == HOME_INDEX_SEARCH_WAIT ? 1 : 0;
 }
 
-static bool sync_now = 0;
 static void sync_reset(void) { sync_now=0; return; }
 
 static bool sync_ready(int joint_num)
@@ -1471,14 +1489,18 @@ static cmod_t home_cmod;
 static const gomc_api_t *home_cmod_api;
 static const char *home_mot_instance = "motmod";
 
-static void home_cmod_destroy(cmod_t *self) { (void)self; }
+static void home_cmod_destroy(cmod_t *self) {
+    (void)self;
+    free(g_inst);
+    g_inst = NULL;
+}
 
 static int home_cmod_init(cmod_t *self)
 {
     (void)self;
     const mot_callbacks_t *mot = mot_api_get(home_cmod_api, home_mot_instance);
     if (!mot) return -1;
-    _mot = mot;
+    g_inst->mot = mot;
     return 0;
 }
 
@@ -1486,6 +1508,10 @@ int New(const cmod_env_t *env, const char *name,
         int argc, const char **argv, cmod_t **out)
 {
     home_cmod_api = env->api;
+
+    /* Allocate per-instance state */
+    g_inst = calloc(1, sizeof(homemod_inst_t));
+    if (!g_inst) return -1;
 
     /* Parse mot_instance parameter */
     for (int i = 0; i < argc; i++) {
@@ -1497,6 +1523,8 @@ int New(const cmod_env_t *env, const char *name,
     if (rc != 0) {
         gomc_log_errorf(env->log, name,
             "failed to register home API: %d", rc);
+        free(g_inst);
+        g_inst = NULL;
         return rc;
     }
 
