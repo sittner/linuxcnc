@@ -1,5 +1,38 @@
 # Milltask Go Rewrite — Implementation Plan
 
+## Current Status
+
+### Done
+- ✅ Task struct + dependency interfaces (motctl, emcio, motstat clients)
+- ✅ INI config loading (loadConfig → motctl calls for traj/joint/axis/spindle)
+- ✅ HAL pins (inihal component — runtime INI parameter override)
+- ✅ Module registration (`gomc.RegisterModule("milltask", factory)`)
+- ✅ Lifecycle fix: API lookups in Start() (not factory/New)
+- ✅ Integration: loads via `load milltask` in lib/hallib/linuxcnc.hal
+- ✅ Launcher cleanup: no more hasTask special handling
+
+### In Progress — Phase 9: Provided APIs
+Milltask must register these APIs so other modules (halui, emcgateway) can call it:
+
+1. **emccmd** — 27 command methods (halui sends jog/home/mode/state/etc)
+   - Interface: `emccmdapi.EmccmdCallbacks`
+   - Register: `emccmdapi.RegisterEmccmdAPI(registry, "milltask", impl)`
+2. **emcstat** — 1 method: `GetStat() → StatFull` (full machine state)
+   - Interface: `emcstatapi.EmcstatCallbacks`
+   - Register: `emcstatapi.RegisterEmcstatAPI(registry, "milltask", impl)`
+3. **mcode_handler** — 1 method: `register_handler(mcode, fn, userdata)`
+4. **interp_ext** — 3 methods: register oword/remap_prolog/remap_epilog
+
+### Remaining — Phase 10: Core Task Loop
+5. State machine (mode/state transitions, guards)
+6. emccmd handler implementations (delegate to motctl/emcio)
+7. Interpreter integration (C shim + canon callbacks)
+8. Sequencer (readahead + execute loop)
+9. MDI queue
+10. M-code handler worker thread
+11. Status publishing (fill_stat + delta push)
+12. Servo cycle polling loop
+
 ## Overview
 
 Rewrite milltask from C++ cmod (~14,350 lines) to a Go gomod. The current
