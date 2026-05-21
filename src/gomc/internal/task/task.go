@@ -210,6 +210,7 @@ type Task struct {
 	motion MotionController
 	io     IOController
 	status MotionStatus
+	interp Interpreter
 	logger *slog.Logger
 
 	// Canon state (interpreter callback context)
@@ -239,4 +240,11 @@ func NewTask(motion MotionController, io IOController, status MotionStatus, logg
 	}
 	t.canon = NewCanon(t)
 	return t
+}
+
+// SetInterpreter sets the interpreter dependency. Must be called before
+// running G-code programs. The interpreter should already have its canon
+// callbacks wired via SetCanonCallbacks.
+func (t *Task) SetInterpreter(interp Interpreter) {
+	t.interp = interp
 }

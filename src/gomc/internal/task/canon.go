@@ -68,6 +68,7 @@ type CanonState struct {
 	// Spindle
 	spindleNum   int32 // current spindle for synch motion
 	spindleSpeed [8]float64
+	spindleMode  float64
 
 	// Flags
 	feedOverrideEnabled  bool
@@ -585,6 +586,72 @@ func (c *Canon) StartSpeedFeedSynch(spindle int32, feedPerRev float64, velocityM
 func (c *Canon) StopSpeedFeedSynch() {
 	c.state.feedMode = 0
 	c.enqueue(&SpindleSyncCmd{Sync: 0, MotionType: 0})
+}
+
+// --- Stub methods (required by canon_callbacks_t, not yet fully implemented) ---
+
+func (c *Canon) ClampAxis(axis int32)   {}
+func (c *Canon) UnclampAxis(axis int32) {}
+func (c *Canon) PalletShuttle()         {}
+
+func (c *Canon) WaitInput(index, inputType, waitType int32, timeout float64) int32 {
+	return 0
+}
+
+func (c *Canon) LockRotary(lineno, joint int32) int32 {
+	c.enqueue(&LockRotaryCmd{Lineno: lineno, Joint: joint, Lock: true})
+	return 0
+}
+
+func (c *Canon) UnlockRotary(lineno, joint int32) int32 {
+	c.enqueue(&LockRotaryCmd{Lineno: lineno, Joint: joint, Lock: false})
+	return 0
+}
+
+func (c *Canon) SetParameterFileName(name string) {}
+
+func (c *Canon) SetSpindleMode(spindle int32, mode float64) {
+	c.state.spindleMode = mode
+}
+
+func (c *Canon) SetToolTableEntry(pocket, toolno int32, ox, oy, oz, oa, ob, oc, ou, ov, ow, diameter, frontangle, backangle float64, orientation int32) {
+	// TODO: update tool table via IOController
+}
+
+func (c *Canon) ReloadTooldata() {
+	// TODO: signal tool table reload
+}
+
+func (c *Canon) ChangeToolNumber(number int32) {
+	c.enqueue(&ToolChangeCmd{})
+}
+
+func (c *Canon) NurbsFeed(lineno int32, controlPoints []ControlPoint, k uint32) {
+	// TODO: NURBS feed support
+}
+
+// ControlPoint is a NURBS control point.
+type ControlPoint struct {
+	X, Y, W float64
+}
+
+// LockRotaryCmd queues a rotary axis lock/unlock.
+type LockRotaryCmd struct {
+	Lineno int32
+	Joint  int32
+	Lock   bool
+}
+
+func (cmd *LockRotaryCmd) Execute(t *Task) error {
+	// TODO: implement via motion controller
+	return nil
+}
+func (cmd *LockRotaryCmd) Wait() WaitType { return WaitNone }
+func (cmd *LockRotaryCmd) String() string {
+	if cmd.Lock {
+		return fmt.Sprintf("LockRotary(joint=%d)", cmd.Joint)
+	}
+	return fmt.Sprintf("UnlockRotary(joint=%d)", cmd.Joint)
 }
 
 // --- Internal helpers ---
