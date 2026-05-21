@@ -25,22 +25,22 @@ type iniHal struct {
 	trajMaxAcc     *hal.Pin[float64]
 
 	// Arc blend pins
-	arcBlendEnable    *hal.Pin[bool]
-	arcBlendFallback  *hal.Pin[bool]
-	arcBlendOptDepth  *hal.Pin[int32]
-	arcBlendGapCycles *hal.Pin[float64]
-	arcBlendRampFreq  *hal.Pin[float64]
+	arcBlendEnable           *hal.Pin[bool]
+	arcBlendFallback         *hal.Pin[bool]
+	arcBlendOptDepth         *hal.Pin[int32]
+	arcBlendGapCycles        *hal.Pin[float64]
+	arcBlendRampFreq         *hal.Pin[float64]
 	arcBlendTangentKinkRatio *hal.Pin[float64]
 
 	// Joint pins (indexed)
-	jointBacklash [maxJoints]*hal.Pin[float64]
-	jointFerror   [maxJoints]*hal.Pin[float64]
-	jointMinFerror [maxJoints]*hal.Pin[float64]
-	jointMinLimit  [maxJoints]*hal.Pin[float64]
-	jointMaxLimit  [maxJoints]*hal.Pin[float64]
-	jointMaxVel    [maxJoints]*hal.Pin[float64]
-	jointMaxAcc    [maxJoints]*hal.Pin[float64]
-	jointHome      [maxJoints]*hal.Pin[float64]
+	jointBacklash   [maxJoints]*hal.Pin[float64]
+	jointFerror     [maxJoints]*hal.Pin[float64]
+	jointMinFerror  [maxJoints]*hal.Pin[float64]
+	jointMinLimit   [maxJoints]*hal.Pin[float64]
+	jointMaxLimit   [maxJoints]*hal.Pin[float64]
+	jointMaxVel     [maxJoints]*hal.Pin[float64]
+	jointMaxAcc     [maxJoints]*hal.Pin[float64]
+	jointHome       [maxJoints]*hal.Pin[float64]
 	jointHomeOffset [maxJoints]*hal.Pin[float64]
 	jointHomeSeq    [maxJoints]*hal.Pin[int32]
 
@@ -63,21 +63,21 @@ type iniHalValues struct {
 	trajDefaultAcc float64
 	trajMaxAcc     float64
 
-	arcBlendEnable    bool
-	arcBlendFallback  bool
-	arcBlendOptDepth  int32
-	arcBlendGapCycles float64
-	arcBlendRampFreq  float64
+	arcBlendEnable           bool
+	arcBlendFallback         bool
+	arcBlendOptDepth         int32
+	arcBlendGapCycles        float64
+	arcBlendRampFreq         float64
 	arcBlendTangentKinkRatio float64
 
-	jointBacklash  [maxJoints]float64
-	jointFerror    [maxJoints]float64
-	jointMinFerror [maxJoints]float64
-	jointMinLimit  [maxJoints]float64
-	jointMaxLimit  [maxJoints]float64
-	jointMaxVel    [maxJoints]float64
-	jointMaxAcc    [maxJoints]float64
-	jointHome      [maxJoints]float64
+	jointBacklash   [maxJoints]float64
+	jointFerror     [maxJoints]float64
+	jointMinFerror  [maxJoints]float64
+	jointMinLimit   [maxJoints]float64
+	jointMaxLimit   [maxJoints]float64
+	jointMaxVel     [maxJoints]float64
+	jointMaxAcc     [maxJoints]float64
+	jointHome       [maxJoints]float64
 	jointHomeOffset [maxJoints]float64
 	jointHomeSeq    [maxJoints]int32
 
