@@ -517,7 +517,7 @@ static int init_comm_buffers(void);
    is responsible for adding these functions to the appropriate threads via
    `addf` (e.g., `addf motion-command-handler servo-thread`).
 */
-static int export_functions(void);
+static int export_functions(motmod_inst_t *inst);
 
 /* functions called by export_functions() */
 static int setTrajCycleTime(double secs);
@@ -957,7 +957,7 @@ static int motmod_init(cmod_t *self)
     motctl_init_handlers(emcmotStruct, DEFAULT_EMCMOT_COMM_TIMEOUT);
     motstat_init_handlers(emcmotStruct);
 
-    retval = export_functions();
+    retval = export_functions(inst);
     if (retval != 0) {
 	rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: export_functions() failed\n"));
 	return -1;
@@ -1544,7 +1544,7 @@ static int init_comm_buffers(void)
    (e.g., `addf motion-command-handler servo-thread` and
    `addf motion-controller servo-thread`).
 */
-static int export_functions(void)
+static int export_functions(motmod_inst_t *inst)
 {
     double base_period_sec, servo_period_sec;
     int servo_base_ratio;
@@ -1573,15 +1573,15 @@ static int export_functions(void)
     /* revise desired periods to be integer multiples of each other */
     servo_period_nsec = base_period_nsec * servo_base_ratio;
     /* export realtime functions that do the real work */
-    retval = hal_export_funct("motion-controller", emcmotController, 0	/* arg
-	 */ , 1 /* uses_fp */ , 0 /* reentrant */ , mot_comp_id);
+    retval = hal_export_funct("motion-controller", emcmotController, inst
+	 /* arg */ , 1 /* uses_fp */ , 0 /* reentrant */ , mot_comp_id);
     if (retval < 0) {
 	rtapi_print_msg(RTAPI_MSG_ERR,
 	    "MOTION: failed to export controller function\n");
 	return -1;
     }
-    retval = hal_export_funct("motion-command-handler", emcmotCommandHandler, 0	/* arg
-	 */ , 1 /* uses_fp */ , 0 /* reentrant */ , mot_comp_id);
+    retval = hal_export_funct("motion-command-handler", emcmotCommandHandler, inst
+	 /* arg */ , 1 /* uses_fp */ , 0 /* reentrant */ , mot_comp_id);
     if (retval < 0) {
 	rtapi_print_msg(RTAPI_MSG_ERR,
 	    "MOTION: failed to export command handler function\n");
@@ -1591,8 +1591,8 @@ static int export_functions(void)
 #if 0
     /*! \todo FIXME - currently the traj planner is called from the controller */
     /* eventually it will be a separate function */
-    retval = hal_export_funct("motion-traj-planner", emcmotTrajPlanner, 0	/* arg
-	 */ , 1 /* uses_fp */ ,
+    retval = hal_export_funct("motion-traj-planner", emcmotTrajPlanner, inst
+	 /* arg */ , 1 /* uses_fp */ ,
 	0 /* reentrant */ , mot_comp_id);
     if (retval < 0) {
 	rtapi_print_msg(RTAPI_MSG_ERR,

@@ -204,7 +204,8 @@ static void handle_kinematicsSwitch(void);
   */
 void emcmotController(void *arg, long period)
 {
-    (void)arg;
+    motmod_inst_t *inst = (motmod_inst_t *)arg;
+    (void)inst; /* will replace g_inst usage in Step 4 */
     static int do_once = 1;
     if (do_once) {
         pcmd_p[0] = &(emcmotStatus->carte_pos_cmd.tran.x);

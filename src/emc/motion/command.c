@@ -1936,6 +1936,8 @@ void emcmotCommandHandler_locked(void *arg, long servo_period)
 
 
 void emcmotCommandHandler(void *arg, long servo_period) {
+    motmod_inst_t *inst = (motmod_inst_t *)arg;
+    (void)inst; /* will replace g_inst usage in Step 4 */
     if (rtapi_mutex_try(&emcmotStruct->command_mutex) != 0) {
         // Failed to take the mutex, because it is held by Task.
         // This means Task is in the process of updating the command.
