@@ -64,13 +64,22 @@ func factory(ini *inifile.IniFile, logger *slog.Logger, name string, args []stri
 		return nil, fmt.Errorf("milltask: %w", err)
 	}
 
-	return &milltaskModule{task: t, logger: logger}, nil
+	// Create inihal HAL component for runtime INI parameter override.
+	ih, err := newIniHal(t.numJoints)
+	if err != nil {
+		return nil, fmt.Errorf("milltask: %w", err)
+	}
+	ih.initPins(t)
+
+	return &milltaskModule{task: t, logger: logger, inihal: ih, mc: mc}, nil
 }
 
 // milltaskModule wraps Task to satisfy the gomc.Module lifecycle.
 type milltaskModule struct {
 	task   *Task
 	logger *slog.Logger
+	inihal *iniHal
+	mc     MotionConfig
 }
 
 func (m *milltaskModule) Start() error {
@@ -85,6 +94,9 @@ func (m *milltaskModule) Stop() {
 }
 
 func (m *milltaskModule) Destroy() {
+	if m.inihal != nil {
+		m.inihal.exit()
+	}
 	m.logger.Info("milltask destroyed")
 }
 
