@@ -179,6 +179,8 @@ func (t *Task) Jog(jogType int32, jjogmode bool, axisOrJoint int32, velocity, di
 	}
 
 	switch jogType {
+	case JogStop:
+		return t.motion.JogAbort(axisOrJoint, isTeleop)
 	case JogContinuous:
 		return t.motion.JogCont(axisOrJoint, velocity, isTeleop)
 	case JogIncrement:
