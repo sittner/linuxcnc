@@ -6,9 +6,7 @@ import (
 	"strconv"
 	"unsafe"
 
-	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emccmdapi"
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcio"
-	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcstatapi"
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/motctl"
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/motstat"
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
@@ -27,29 +25,29 @@ func factory(ini *inifile.IniFile, logger *slog.Logger, name string, args []stri
 	logger = logger.With("module", name)
 	m := &milltaskModule{ini: ini, logger: logger}
 
-	// Register provided APIs in New (factory) phase so other modules
-	// can look them up in their Start() phase.
+	// Register C-compatible callback structs so C modules (halui) can
+	// call emccmd/emcstat via the standard api_get mechanism.
 	reg := apiserver.DefaultRegistry()
 	if reg == nil {
 		return nil, fmt.Errorf("milltask: no API registry available")
 	}
-	if err := emccmdapi.RegisterEmccmdAPI(reg, name, m); err != nil {
-		return nil, fmt.Errorf("milltask: register emccmd: %w", err)
+	cleanup, err := m.registerCAPIs(reg, name)
+	if err != nil {
+		return nil, fmt.Errorf("milltask: %w", err)
 	}
-	if err := emcstatapi.RegisterEmcstatAPI(reg, name, m); err != nil {
-		return nil, fmt.Errorf("milltask: register emcstat: %w", err)
-	}
+	m.apiCleanup = cleanup
 
 	return m, nil
 }
 
 // milltaskModule wraps Task to satisfy the gomc.Module lifecycle.
 type milltaskModule struct {
-	ini    *inifile.IniFile
-	task   *Task
-	logger *slog.Logger
-	inihal *iniHal
-	mc     MotionConfig
+	ini        *inifile.IniFile
+	task       *Task
+	logger     *slog.Logger
+	inihal     *iniHal
+	mc         MotionConfig
+	apiCleanup func()
 }
 
 func (m *milltaskModule) Start() error {
@@ -116,6 +114,9 @@ func (m *milltaskModule) Stop() {
 func (m *milltaskModule) Destroy() {
 	if m.inihal != nil {
 		m.inihal.exit()
+	}
+	if m.apiCleanup != nil {
+		m.apiCleanup()
 	}
 	m.logger.Info("milltask destroyed")
 }
