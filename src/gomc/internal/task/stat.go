@@ -45,7 +45,8 @@ func (t *Task) BuildStat() *emcstatapi.StatFull {
 	// Read motion status (lock-free, reads from shared memory).
 	ms, err := t.status.GetStatus()
 	if err != nil {
-		// Return what we have from task state alone.
+		// Log and return what we have from task state alone.
+		t.logger.Warn("motstat GetStatus failed", "error", err)
 		return stat
 	}
 
@@ -53,6 +54,14 @@ func (t *Task) BuildStat() *emcstatapi.StatFull {
 	stat.KinematicsType = emcstatapi.KinematicsType(ms.KinType)
 
 	// Motion info.
+	switch {
+	case ms.Coord != 0:
+		stat.Motion.Mode = emcstatapi.TrajMode_COORD
+	case ms.Teleop != 0:
+		stat.Motion.Mode = emcstatapi.TrajMode_TELEOP
+	default:
+		stat.Motion.Mode = emcstatapi.TrajMode_FREE
+	}
 	stat.Motion.Enabled = ms.Enabled != 0
 	stat.Motion.InPosition = ms.Inpos != 0
 	stat.Motion.Paused = ms.Paused != 0

@@ -8,7 +8,9 @@ func (c *Canon) GetExternalFeedRate() float64 {
 }
 
 func (c *Canon) GetExternalTraverseRate() float64 {
-	return c.state.traverseRate
+	// Return in program units per minute (matching C emccanon behavior).
+	// Read from task.maxVelocity (set by loadConfig) like C reads from STAT.
+	return c.state.toProg(c.task.maxVelocity) * 60.0
 }
 
 func (c *Canon) GetExternalLengthUnitType() int32 {

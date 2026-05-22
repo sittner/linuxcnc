@@ -55,6 +55,8 @@ type milltaskModule struct {
 	mc         MotionConfig
 	apiCleanup func()
 	poslog     posLogger
+	interp     *CInterp
+	canonTable *canonCallbackTable
 }
 
 func (m *milltaskModule) Start() error {
@@ -109,6 +111,14 @@ func (m *milltaskModule) Start() error {
 	m.inihal = ih
 	m.mc = mc
 
+	// Create and configure the G-code interpreter.
+	if err := m.initInterpreter(); err != nil {
+		return fmt.Errorf("milltask: %w", err)
+	}
+
+	// Start the sequencer goroutine (executes queued motion commands).
+	t.StartSequencer()
+
 	// Register tools API (needs INI for tool table path).
 	m.registerTools()
 
@@ -118,11 +128,21 @@ func (m *milltaskModule) Start() error {
 
 func (m *milltaskModule) Stop() {
 	m.poslog.stopLogger()
+	if m.task != nil {
+		m.task.StopSequencer()
+	}
 	m.logger.Info("milltask stopping")
-	// TODO: abort interpreter, drain motion queue
 }
 
 func (m *milltaskModule) Destroy() {
+	if m.interp != nil {
+		m.interp.Destroy()
+		m.interp = nil
+	}
+	if m.canonTable != nil {
+		m.canonTable.release()
+		m.canonTable = nil
+	}
 	if m.inihal != nil {
 		m.inihal.exit()
 	}
@@ -130,6 +150,43 @@ func (m *milltaskModule) Destroy() {
 		m.apiCleanup()
 	}
 	m.logger.Info("milltask destroyed")
+}
+
+// initInterpreter creates and configures the G-code interpreter.
+func (m *milltaskModule) initInterpreter() error {
+	// Determine interpreter library (default: built-in rs274ngc).
+	interpLib := m.ini.Get("TASK", "RS274NGC_STARTUP_CODE")
+	_ = interpLib // not used for library selection
+
+	interp, err := NewCInterp()
+	if err != nil {
+		return fmt.Errorf("creating interpreter: %w", err)
+	}
+
+	// Set up canon callbacks so interpreter actions flow to the sequencer.
+	ct := newCanonCallbackTable(m.task.canon)
+	interp.SetCanonCallbacks(ct.ptr())
+
+	// Load INI configuration into interpreter.
+	if err := interp.IniLoad(m.ini.SourceFile()); err != nil {
+		interp.Destroy()
+		ct.release()
+		return fmt.Errorf("interpreter ini_load: %w", err)
+	}
+
+	// Initialize interpreter state.
+	if err := interp.Init(); err != nil {
+		interp.Destroy()
+		ct.release()
+		return fmt.Errorf("interpreter init: %w", err)
+	}
+
+	m.interp = interp
+	m.canonTable = ct
+	m.task.SetInterpreter(interp)
+
+	m.logger.Info("interpreter initialized")
+	return nil
 }
 
 func getIntOr(ini *inifile.IniFile, section, key string, def int) int {

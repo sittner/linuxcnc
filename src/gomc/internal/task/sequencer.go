@@ -121,6 +121,7 @@ func (t *Task) EnqueueCmd(cmd QueuedCmd) error {
 		return fmt.Errorf("sequencer not running")
 	}
 
+	t.logger.Info("enqueue", "cmd", cmd.String())
 	select {
 	case <-abort:
 		return fmt.Errorf("sequencer aborted")
@@ -453,3 +454,16 @@ func init() {
 // The sequencer goroutine accesses t.status directly (read-only interface, no mu needed).
 // The sequencer goroutine accesses t.seqAbort directly (immutable after StartSequencer).
 // The sequencer goroutine calls setExecState/setInterpState which lock mu.
+
+// interpDoneCmd is enqueued after interpreter execution completes,
+// to transition interp state back to idle after motion finishes.
+type interpDoneCmd struct{}
+
+func (c *interpDoneCmd) Execute(t *Task) error {
+	t.setInterpState(InterpIdle)
+	t.setExecState(ExecDone)
+	return nil
+}
+
+func (c *interpDoneCmd) Wait() WaitType { return WaitMotion }
+func (c *interpDoneCmd) String() string { return "interp_done" }

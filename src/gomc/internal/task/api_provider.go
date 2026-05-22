@@ -189,7 +189,10 @@ func (m *milltaskModule) LoadToolTable() (int32, error) {
 }
 
 func (m *milltaskModule) ProgramOpen(file string) (int32, error) {
-	return 0, errNotReady // needs interpreter
+	if err := m.ready(); err != nil {
+		return 0, err
+	}
+	return 0, m.task.ProgramOpen(file)
 }
 
 func (m *milltaskModule) WaitComplete(timeout float64) (int32, error) {

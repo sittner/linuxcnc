@@ -164,8 +164,9 @@ type Canon struct {
 
 // NewCanon creates a Canon instance tied to a Task.
 func NewCanon(t *Task) *Canon {
+	cs := NewCanonState()
 	return &Canon{
-		state: NewCanonState(),
+		state: cs,
 		task:  t,
 	}
 }
@@ -268,14 +269,16 @@ func (c *Canon) StraightTraverse(lineno int32, x, y, z, a, b, _c, u, v, w float6
 	s.endPoint = pos
 	s.lineNo = lineno
 
+	trav := c.task.maxVelocity
 	cmd := &LinearMoveCmd{
 		Pos:        pos,
-		Vel:        s.traverseRate,
-		IniMaxVel:  s.traverseRate,
-		Acc:        0, // traverse uses max accel
+		Vel:        trav,
+		IniMaxVel:  trav,
+		Acc:        c.task.maxAcceleration,
 		MotionType: 1, // EMC_MOTION_TYPE_TRAVERSE
 		ID:         lineno,
 		Tag:        s.tag,
+		IndexerJ:   -1,
 	}
 	c.enqueue(cmd)
 }
@@ -289,11 +292,12 @@ func (c *Canon) StraightFeed(lineno int32, x, y, z, a, b, _c, u, v, w float64) {
 	cmd := &LinearMoveCmd{
 		Pos:        pos,
 		Vel:        s.linearFeedRate,
-		IniMaxVel:  s.traverseRate,
-		Acc:        0, // use configured max
+		IniMaxVel:  c.task.maxVelocity,
+		Acc:        c.task.maxAcceleration,
 		MotionType: 2, // EMC_MOTION_TYPE_FEED
 		ID:         lineno,
 		Tag:        s.tag,
+		IndexerJ:   -1,
 	}
 	c.enqueue(cmd)
 
@@ -349,8 +353,8 @@ func (c *Canon) ArcFeed(lineno int32, firstEnd, secondEnd, firstAxis, secondAxis
 		Normal:     normal,
 		Turn:       rotation,
 		Vel:        s.linearFeedRate,
-		IniMaxVel:  s.traverseRate,
-		Acc:        0,
+		IniMaxVel:  c.task.maxVelocity,
+		Acc:        c.task.maxAcceleration,
 		MotionType: 3, // EMC_MOTION_TYPE_ARC
 		ID:         lineno,
 		Tag:        s.tag,
@@ -367,7 +371,7 @@ func (c *Canon) RigidTap(lineno int32, x, y, z, scale float64) {
 	cmd := &RigidTapCmd{
 		Pos:   pos,
 		Vel:   s.linearFeedRate,
-		Acc:   0,
+		Acc:   c.task.maxAcceleration,
 		Scale: scale,
 		ID:    lineno,
 		Tag:   s.tag,
@@ -383,8 +387,8 @@ func (c *Canon) StraightProbe(lineno int32, x, y, z, a, b, _c, u, v, w float64, 
 	cmd := &ProbeCmd{
 		Pos:        pos,
 		Vel:        s.linearFeedRate,
-		IniMaxVel:  s.traverseRate,
-		Acc:        0,
+		IniMaxVel:  c.task.maxVelocity,
+		Acc:        c.task.maxAcceleration,
 		MotionType: 4, // EMC_MOTION_TYPE_PROBING
 		ProbeType:  probeType,
 		ID:         lineno,
@@ -667,7 +671,7 @@ func (c *Canon) enqueueMotionParams() {
 	s := c.state
 	c.enqueue(&SetMotionParamsCmd{
 		Vel:       s.linearFeedRate,
-		Acc:       0, // 0 = use configured max
+		Acc:       c.task.maxAcceleration,
 		TermCond:  s.motionMode,
 		Tolerance: s.motionTolerance,
 	})

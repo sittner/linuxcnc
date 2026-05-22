@@ -89,8 +89,18 @@ import (
 	"unsafe"
 
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emccmdapi"
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcstatapi"
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
 )
+
+// positionGoToC converts a Go Position to a C emcstat_position_t.
+func positionGoToC(p emcstatapi.Position) C.emcstat_position_t {
+	return C.emcstat_position_t{
+		x: C.double(p.X), y: C.double(p.Y), z: C.double(p.Z),
+		a: C.double(p.A), b: C.double(p.B), c: C.double(p.C),
+		u: C.double(p.U), v: C.double(p.V), w: C.double(p.W),
+	}
+}
 
 // registerCAPIs allocates C-compatible callback structs and registers them
 // with the API registry. This allows C modules (halui) to call milltask
@@ -364,6 +374,26 @@ func goTaskGetStat(ctx unsafe.Pointer) C.emcstat_stat_full_t {
 	result.tool_in_spindle = C.int32_t(stat.ToolInSpindle)
 	result.pocket_prepped = C.int32_t(stat.PocketPrepped)
 	result.linear_units = C.double(stat.LinearUnits)
+
+	// Positions.
+	result.position = positionGoToC(stat.Position)
+	result.actual_position = positionGoToC(stat.ActualPosition)
+	for i := 0; i < 16; i++ {
+		result.joint_actual_position[i] = C.double(stat.JointActualPosition[i])
+	}
+	result.probed_position = positionGoToC(stat.ProbedPosition)
+	result.g5x_offset = positionGoToC(stat.G5xOffset)
+	result.g92_offset = positionGoToC(stat.G92Offset)
+	result.tool_offset = positionGoToC(stat.ToolOffset)
+	result.rotation_xy = C.double(stat.RotationXy)
+
+	// Motion info extended fields.
+	result.motion.distance_to_go = C.double(stat.Motion.DistanceToGo)
+	result.motion.dtg = positionGoToC(stat.Motion.Dtg)
+	result.motion.current_vel = C.double(stat.Motion.CurrentVel)
+	result.motion.motion_id = C.int32_t(stat.Motion.MotionId)
+	result.motion.motion_line = C.int32_t(stat.Motion.MotionLine)
+	result.motion.motion_type = C.int32_t(stat.Motion.MotionType)
 
 	// Joints array (C-allocated for halui's emcstat_free).
 	if n := len(stat.Joints); n > 0 {

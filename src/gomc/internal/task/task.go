@@ -240,6 +240,10 @@ type Task struct {
 	interpQueue chan QueuedCmd
 	seqDone     chan struct{} // closed when sequencer goroutine exits
 	seqAbort    chan struct{} // close to abort sequencer
+
+	// Pause/resume for interpreter goroutine
+	pauseCh  chan struct{} // closed when pause requested
+	resumeCh chan struct{} // closed when resume requested
 }
 
 // NewTask creates a new Task with dependencies injected.

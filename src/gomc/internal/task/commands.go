@@ -1,5 +1,10 @@
 package task
 
+import (
+	"fmt"
+	"time"
+)
+
 // This file implements the 27 emccmd GMI methods.
 // Each method corresponds to a UI command entry point.
 // Pattern: guard → action → state update.
@@ -101,8 +106,8 @@ func (t *Task) SetMode(mode int32) error {
 	return ErrWrongMode
 }
 
-// AutoCommand handles run/pause/resume/step/reverse in AUTO mode.
-func (t *Task) AutoCommand(cmd int32, line int32) error {
+// ProgramOpen opens a G-code file for execution.
+func (t *Task) ProgramOpen(file string) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -112,56 +117,270 @@ func (t *Task) AutoCommand(cmd int32, line int32) error {
 	if err := t.requireMode(ModeAuto); err != nil {
 		return err
 	}
+	if err := t.requireInterpIdle(); err != nil {
+		return err
+	}
+	if t.interp != nil {
+		if err := t.interp.Open(file); err != nil {
+			return err
+		}
+	}
+	t.programFile = file
+	t.programOpen = true
+	return nil
+}
+
+// AutoCommand handles run/pause/resume/step/reverse in AUTO mode.
+func (t *Task) AutoCommand(cmd int32, line int32) error {
+	t.mu.Lock()
+
+	if err := t.requireOn(); err != nil {
+		t.mu.Unlock()
+		return err
+	}
+	if err := t.requireMode(ModeAuto); err != nil {
+		t.mu.Unlock()
+		return err
+	}
 
 	switch cmd {
 	case AutoRun:
 		if err := t.requireProgram(); err != nil {
+			t.mu.Unlock()
 			return err
 		}
+		if t.interp == nil {
+			t.mu.Unlock()
+			return fmt.Errorf("no interpreter configured")
+		}
 		t.interpState = InterpReading
-		// TODO: start interpreter execution goroutine at line
+		// Set up pause/resume channels for this run
+		t.pauseCh = make(chan struct{})
+		t.resumeCh = make(chan struct{})
+		interp := t.interp
+		startLine := line
+		t.mu.Unlock()
+		// Synch interpreter with current machine position
+		if err := interp.Synch(); err != nil {
+			t.logger.Error("interp synch failed before run", "err", err)
+		}
+		go t.runProgram(interp, startLine)
 		return nil
 
 	case AutoPause:
 		t.interpState = InterpPaused
+		// Signal interpreter goroutine to pause
+		if t.pauseCh != nil {
+			select {
+			case <-t.pauseCh:
+			default:
+				close(t.pauseCh)
+			}
+		}
+		t.mu.Unlock()
 		return t.motion.Pause()
 
 	case AutoResume:
 		t.interpState = InterpReading
+		// Signal interpreter goroutine to resume
+		if t.resumeCh != nil {
+			select {
+			case <-t.resumeCh:
+			default:
+				close(t.resumeCh)
+			}
+		}
+		t.mu.Unlock()
 		return t.motion.Resume()
 
 	case AutoStep:
 		if err := t.requireProgram(); err != nil {
+			t.mu.Unlock()
 			return err
 		}
+		t.mu.Unlock()
 		// TODO: step one line
 		return t.motion.Step(line)
 
 	case AutoReverse:
+		t.mu.Unlock()
 		return t.motion.Reverse()
 	}
+	t.mu.Unlock()
 	return nil
 }
 
 // MDI executes an MDI command string.
 func (t *Task) MDI(command string) error {
 	t.mu.Lock()
-	defer t.mu.Unlock()
 
 	if err := t.requireOn(); err != nil {
+		t.mu.Unlock()
 		return err
 	}
 	if err := t.requireMode(ModeMDI); err != nil {
+		t.mu.Unlock()
 		return err
 	}
 	if err := t.requireInterpIdle(); err != nil {
+		t.mu.Unlock()
 		return err
+	}
+	if t.interp == nil {
+		t.mu.Unlock()
+		return fmt.Errorf("no interpreter configured")
 	}
 
 	t.interpState = InterpReading
-	// TODO: feed command to interpreter
-	_ = command
+	interp := t.interp
+	t.mu.Unlock()
+
+	// Synch interpreter with current machine position before MDI.
+	if err := interp.Synch(); err != nil {
+		t.logger.Error("interp synch failed before MDI", "err", err)
+	}
+
+	// Execute the MDI string — this triggers canon callbacks that enqueue
+	// motion commands to the sequencer.
+	rc, err := interp.ExecuteString(command)
+	if err != nil {
+		t.setInterpState(InterpIdle)
+		return fmt.Errorf("MDI execute: %w", err)
+	}
+
+	switch rc {
+	case InterpError:
+		t.setInterpState(InterpIdle)
+		return fmt.Errorf("MDI interpreter error")
+	case InterpExecuteFinish:
+		// MDI needs motion to finish before returning to idle
+		t.EnqueueCmd(&interpDoneCmd{})
+	default:
+		// Normal completion — still wait for queued motion
+		t.EnqueueCmd(&interpDoneCmd{})
+	}
 	return nil
+}
+
+// runProgram runs the interpreter read/execute loop for the open program.
+// Called in a goroutine from AutoRun.
+//
+// Flow control:
+// - Checks abort between lines (sequencer abort = program cancel)
+// - Checks pause between lines (blocks until resume or abort)
+// - Handles INTERP_EXECUTE_FINISH (wait for motion to drain before continuing)
+func (t *Task) runProgram(interp Interpreter, startLine int32) {
+	_ = startLine // TODO: seek to startLine
+
+	for {
+		// Check for abort and pause between interpreter lines
+		if t.checkAbortOrPause() {
+			t.setInterpState(InterpIdle)
+			return
+		}
+
+		rc, err := interp.Read()
+		if err != nil {
+			t.logger.Error("interpreter read error", "err", err)
+			t.setInterpState(InterpIdle)
+			return
+		}
+		if rc == InterpEndfile {
+			// End of file — enqueue done marker and exit.
+			t.EnqueueCmd(&interpDoneCmd{})
+			return
+		}
+
+		rc, err = interp.Execute()
+		if err != nil {
+			t.logger.Error("interpreter execute error", "err", err)
+			t.setInterpState(InterpIdle)
+			return
+		}
+
+		switch rc {
+		case InterpExecuteFinish:
+			// Interpreter says "wait for motion/IO to complete before
+			// continuing" (tool change, probe, dwell, M-code, etc.)
+			t.EnqueueCmd(waitForMotionSingleton)
+			// Also wait for the sequencer to actually drain before
+			// reading the next line (backpressure).
+			if t.waitSequencerDrain() {
+				return // aborted
+			}
+			// Synch interpreter with machine state after wait
+			if err := interp.Synch(); err != nil {
+				t.logger.Error("interp synch after execute_finish", "err", err)
+			}
+		case InterpExit, InterpError:
+			t.logger.Error("interpreter error", "rc", rc)
+			t.setInterpState(InterpIdle)
+			return
+		case InterpOK:
+			// Normal — continue reading
+		}
+	}
+}
+
+// checkAbortOrPause checks the abort channel and, if paused, blocks until
+// resumed or aborted. Returns true if aborted (caller should return).
+func (t *Task) checkAbortOrPause() bool {
+	t.mu.Lock()
+	abort := t.seqAbort
+	pauseCh := t.pauseCh
+	resumeCh := t.resumeCh
+	t.mu.Unlock()
+
+	// Check abort first
+	select {
+	case <-abort:
+		return true
+	default:
+	}
+
+	// Check if paused
+	select {
+	case <-pauseCh:
+		// We're paused — wait for resume or abort
+		select {
+		case <-abort:
+			return true
+		case <-resumeCh:
+			// Allocate fresh channels for next pause/resume cycle
+			t.mu.Lock()
+			t.pauseCh = make(chan struct{})
+			t.resumeCh = make(chan struct{})
+			t.mu.Unlock()
+			return false
+		}
+	default:
+		return false
+	}
+}
+
+// waitSequencerDrain waits until the sequencer queue is empty and the
+// sequencer is idle (ExecDone). Returns true if aborted.
+func (t *Task) waitSequencerDrain() bool {
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+
+	for {
+		t.mu.Lock()
+		abort := t.seqAbort
+		qLen := len(t.interpQueue)
+		exec := t.execState
+		t.mu.Unlock()
+
+		if qLen == 0 && exec == ExecDone {
+			return false
+		}
+
+		select {
+		case <-abort:
+			return true
+		case <-ticker.C:
+		}
+	}
 }
 
 // Jog handles continuous, incremental, and absolute jogs.
@@ -413,27 +632,6 @@ func (t *Task) LoadToolTable() error {
 	defer t.mu.Unlock()
 
 	// TODO: reload tool table and notify interpreter
-	return nil
-}
-
-// ProgramOpen opens a G-code program file.
-func (t *Task) ProgramOpen(file string) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	if err := t.requireOn(); err != nil {
-		return err
-	}
-	if err := t.requireMode(ModeAuto); err != nil {
-		return err
-	}
-	if err := t.requireInterpIdle(); err != nil {
-		return err
-	}
-
-	t.programFile = file
-	t.programOpen = true
-	// TODO: open file in interpreter
 	return nil
 }
 
