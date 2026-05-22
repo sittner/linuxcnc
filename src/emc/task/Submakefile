@@ -51,7 +51,8 @@ $(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/motstat/motstat_ap
 	$(ECHO) Linking $(notdir $@)
 	@mkdir -p ../cmod
 	@$(CXX) -shared -o $@ $^ $(LDFLAGS)
-TARGETS += ../cmod/milltask.so
+# DISABLED: milltask is now a Go module (internal/task)
+#TARGETS += ../cmod/milltask.so
 
 # stdglue.so — standard remap prolog/epilog handlers
 STDGLUE_SRCS := emc/task/stdglue.c

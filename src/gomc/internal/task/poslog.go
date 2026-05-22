@@ -1,19 +1,16 @@
-package emcgateway
+package task
 
 import (
 	"encoding/json"
 	"sync"
 	"time"
-
-	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcstat"
 )
 
 const (
-	poslogMaxPoints      = 10000
-	poslogDropFraction   = 10    // drop oldest 1/10 when full
-	poslogDefaultRateUS  = 10000 // 10ms = 100Hz
-	poslogDefaultChunk   = 100
-	poslogDefaultFlushMS = 200
+	poslogMaxPoints     = 10000
+	poslogDropFraction  = 10    // drop oldest 1/10 when full
+	poslogDefaultRateUS = 10000 // 10ms = 100Hz
+	poslogDefaultChunk  = 100
 )
 
 // posPoint is one sampled position (raw 9-axis, tool-offset subtracted).
@@ -22,13 +19,13 @@ type posPoint struct {
 	Pos        [9]float64 `json:"p"` // x,y,z,a,b,c,u,v,w
 }
 
-// posLogger samples position from NML and buffers for WS delivery.
+// posLogger samples position from milltask stat and buffers for WS delivery.
 type posLogger struct {
 	mu      sync.Mutex
 	running bool
 	stopCh  chan struct{}
 
-	// Ring buffer of sampled points (server side).
+	// Ring buffer of sampled points.
 	points []posPoint
 	npts   int
 
@@ -45,7 +42,7 @@ type posLogger struct {
 }
 
 // startLogger begins the sampling goroutine.
-func (pl *posLogger) startLogger(gw *emcGateway, intervalUS int) {
+func (pl *posLogger) startLogger(m *milltaskModule, intervalUS int) {
 	pl.mu.Lock()
 	defer pl.mu.Unlock()
 
@@ -59,7 +56,7 @@ func (pl *posLogger) startLogger(gw *emcGateway, intervalUS int) {
 	pl.running = true
 	pl.stopCh = make(chan struct{})
 
-	go pl.sampleLoop(gw)
+	go pl.sampleLoop(m)
 }
 
 // stopLogger stops the sampling goroutine.
@@ -86,7 +83,6 @@ func (pl *posLogger) clearLogger() {
 }
 
 // drainPending returns accumulated points since last drain and resets the buffer.
-// Returns nil if no new points (caller should send empty JSON array or skip).
 func (pl *posLogger) drainPending() []posPoint {
 	pl.mu.Lock()
 	defer pl.mu.Unlock()
@@ -99,7 +95,7 @@ func (pl *posLogger) drainPending() []posPoint {
 	return out
 }
 
-func (pl *posLogger) sampleLoop(gw *emcGateway) {
+func (pl *posLogger) sampleLoop(m *milltaskModule) {
 	ticker := time.NewTicker(time.Duration(pl.intervalUS) * time.Microsecond)
 	defer ticker.Stop()
 
@@ -108,15 +104,14 @@ func (pl *posLogger) sampleLoop(gw *emcGateway) {
 		case <-pl.stopCh:
 			return
 		case <-ticker.C:
-			pl.sample(gw)
+			pl.sample(m)
 		}
 	}
 }
 
-func (pl *posLogger) sample(gw *emcGateway) {
-	// Read latest stat from push_watch cache (no cgo, no NML).
-	s := emcstat.GetLatestStatFull()
-	if s == nil {
+func (pl *posLogger) sample(m *milltaskModule) {
+	s, err := m.GetStat()
+	if err != nil || s == nil {
 		return
 	}
 
@@ -171,37 +166,11 @@ func (pl *posLogger) sample(gw *emcGateway) {
 	pl.pending = append(pl.pending, pt)
 }
 
-// ─── Watch + Command handlers ───
-
 // pollPositions is the WatchFunc for "get_positions".
-// Returns new points since last poll, or null JSON ([]byte("null")) if none.
-func (gw *emcGateway) pollPositions() (json.RawMessage, error) {
-	pts := gw.poslog.drainPending()
+func (m *milltaskModule) pollPositions() (json.RawMessage, error) {
+	pts := m.poslog.drainPending()
 	if pts == nil {
-		return nil, nil // no data — pushLoop will skip this tick
+		return nil, nil
 	}
 	return json.Marshal(pts)
-}
-
-func (gw *emcGateway) cmdStartLogger(req json.RawMessage) (json.RawMessage, error) {
-	var args struct {
-		IntervalUS int `json:"interval_us"`
-	}
-	if req != nil {
-		if err := json.Unmarshal(req, &args); err != nil {
-			return nil, err
-		}
-	}
-	gw.poslog.startLogger(gw, args.IntervalUS)
-	return json.RawMessage(`{"ok":true}`), nil
-}
-
-func (gw *emcGateway) cmdStopLogger(req json.RawMessage) (json.RawMessage, error) {
-	gw.poslog.stopLogger()
-	return json.RawMessage(`{"ok":true}`), nil
-}
-
-func (gw *emcGateway) cmdClearLogger(req json.RawMessage) (json.RawMessage, error) {
-	gw.poslog.clearLogger()
-	return json.RawMessage(`{"ok":true}`), nil
 }

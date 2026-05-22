@@ -393,9 +393,7 @@ func (t *Task) TaskPlanSynch() error {
 func (t *Task) SetOptionalStop(on bool) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-
-	// TODO: store in interpreter settings
-	_ = on
+	t.optionalStop = on
 	return nil
 }
 
@@ -403,9 +401,7 @@ func (t *Task) SetOptionalStop(on bool) error {
 func (t *Task) SetBlockDelete(on bool) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-
-	// TODO: store in interpreter settings
-	_ = on
+	t.blockDelete = on
 	return nil
 }
 

@@ -133,7 +133,7 @@ class Stat:
     All attributes from the stat struct are accessible as properties.
     """
 
-    def __init__(self, instance: str = "emcgateway"):
+    def __init__(self, instance: str = "milltask"):
         self._instance = instance
         self._data = {}
         self._lock = threading.Lock()
@@ -326,31 +326,31 @@ class Stat:
 
         # joint (array of dicts) — data["joints"]
         if name == "joint":
-            return tuple(data.get("joints", []))
+            return tuple(data.get("joints") or [])
 
         # spindle (array of dicts) — data["spindle"]
         if name == "spindle":
-            return tuple(data.get("spindle", []))
+            return tuple(data.get("spindle") or [])
 
         # axis (array of dicts) — data["axis"]
         if name == "axis":
-            return tuple(data.get("axis", []))
+            return tuple(data.get("axis") or [])
 
         # gcodes, mcodes, settings
         if name == "gcodes":
-            return tuple(data.get("active_gcodes", []))
+            return tuple(data.get("active_gcodes") or [])
         if name == "mcodes":
-            return tuple(data.get("active_mcodes", []))
+            return tuple(data.get("active_mcodes") or [])
         if name == "settings":
-            return tuple(data.get("active_settings", []))
+            return tuple(data.get("active_settings") or [])
 
         # homed — tuple of booleans per joint
         if name == "homed":
-            return tuple(data.get("homed", [False] * 16))
+            return tuple(data.get("homed") or [False] * 16)
 
         # limit — tuple of bitmasks per joint
         if name == "limit":
-            return tuple(data.get("limit", [0] * 16))
+            return tuple(data.get("limit") or [0] * 16)
 
         # tool_table — not available via NML stat (uses tooldata_get shared memory).
         # Return a minimal stub so axis.py doesn't crash.

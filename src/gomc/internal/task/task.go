@@ -214,6 +214,10 @@ type Task struct {
 	maxAcceleration float64
 	startupCode     string
 
+	// Flags
+	optionalStop bool
+	blockDelete  bool
+
 	// Dependencies (injected, mockable for tests)
 	motion MotionController
 	io     IOController

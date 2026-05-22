@@ -1,13 +1,11 @@
-package emcgateway
+package task
 
 /*
-#include <stdlib.h>
-#include "tool_shim.h"
-#include "emccmd_api.h"
+#cgo CFLAGS: -I${SRCDIR}/../../../emc/nml_intf -I${SRCDIR}/../../../emc/tooldata -I${SRCDIR}/../../.. -I${SRCDIR}/../../../rtapi -I${SRCDIR}/../../../../include
+#cgo LDFLAGS: -L${SRCDIR}/../../../../lib -llinuxcnc -ltooldata -lstdc++
 
-static int32_t call_emccmd_load_tool_table(emccmd_load_tool_table_fn _fn_ptr, void *ctx) {
-    return _fn_ptr(ctx);
-}
+#include "tool_shim.h"
+#include <stdlib.h>
 */
 import "C"
 
@@ -19,15 +17,14 @@ import (
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
 )
 
-// toolsImpl implements toolsapi.ToolsCallbacks via the tool_shim C interface.
-type toolsImpl struct {
-	toolTableFile    string
-	milltaskInstance string
-	emccmd           unsafe.Pointer // *C.emccmd_callbacks_t, fetched lazily from registry
-}
-
 func init() {
 	apiserver.RegisterMeta(toolsapi.ToolsMeta)
+}
+
+// toolsImpl implements toolsapi.ToolsCallbacks via the tool_shim C interface.
+type toolsImpl struct {
+	toolTableFile string
+	module        *milltaskModule
 }
 
 func shimToToolEntry(s *C.tool_shim_entry_t) toolsapi.ToolEntry {
@@ -68,7 +65,7 @@ func toolEntryToShim(e *toolsapi.ToolEntry) C.tool_shim_entry_t {
 	s.frontangle = C.double(e.Frontangle)
 	s.backangle = C.double(e.Backangle)
 	s.orientation = C.int(e.Orientation)
-	// Copy comment string into fixed-size C array
+	// Copy comment string into fixed-size C array.
 	cComment := e.Comment
 	if len(cComment) >= C.TOOL_SHIM_COMMENT_LEN {
 		cComment = cComment[:C.TOOL_SHIM_COMMENT_LEN-1]
@@ -139,7 +136,7 @@ func (t *toolsImpl) PutTool(toolno int32, entry toolsapi.ToolEntry) (*toolsapi.P
 	if C.tool_shim_put(C.int(idx), &s) != 0 {
 		return nil, fmt.Errorf("failed to write tool at index %d", idx)
 	}
-	// Persist to file
+	// Persist to file.
 	if t.toolTableFile != "" {
 		cFile := C.CString(t.toolTableFile)
 		C.tool_shim_save(cFile)
@@ -160,7 +157,7 @@ func (t *toolsImpl) DeleteTool(toolno int32) (*toolsapi.CmdResult, error) {
 	if C.tool_shim_put(C.int(idx), &empty) != 0 {
 		return nil, fmt.Errorf("failed to clear tool at index %d", idx)
 	}
-	// Persist to file
+	// Persist to file.
 	if t.toolTableFile != "" {
 		cFile := C.CString(t.toolTableFile)
 		C.tool_shim_save(cFile)
@@ -170,23 +167,24 @@ func (t *toolsImpl) DeleteTool(toolno int32) (*toolsapi.CmdResult, error) {
 }
 
 func (t *toolsImpl) ReloadTools() (*toolsapi.CmdResult, error) {
-	if t.emccmd == nil {
-		ptr, err := apiserver.DefaultRegistry().GetAPI("emccmd", t.milltaskInstance, 1)
-		if err != nil {
-			return nil, fmt.Errorf("emccmd API not available: %v", err)
-		}
-		t.emccmd = ptr
+	_, err := t.module.LoadToolTable()
+	if err != nil {
+		return nil, fmt.Errorf("failed to reload tool table: %v", err)
 	}
-	cb := (*C.emccmd_callbacks_t)(t.emccmd)
-	rc := C.call_emccmd_load_tool_table(cb.load_tool_table, cb.ctx)
-	if rc != 0 {
-		return nil, fmt.Errorf("failed to reload tool table")
-	}
-	// Refresh comments from file
+	// Refresh comments from file.
 	if t.toolTableFile != "" {
 		cFile := C.CString(t.toolTableFile)
 		C.tool_shim_load(cFile)
 		C.free(unsafe.Pointer(cFile))
 	}
 	return &toolsapi.CmdResult{Ok: "true"}, nil
+}
+
+// loadToolShim loads the tool table from file into shared memory.
+func loadToolShim(toolFile string) {
+	if toolFile != "" {
+		cFile := C.CString(toolFile)
+		C.tool_shim_load(cFile)
+		C.free(unsafe.Pointer(cFile))
+	}
 }

@@ -99,19 +99,33 @@ func (s *Server) handleAPIRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Try each registered API for a function match
+	// Try each registered API for a function match.
+	// Prefer exact (literal) path matches over wildcard matches so that
+	// e.g. GET /stat resolves to emcstat's "/stat" rather than tools' "/{toolno}".
 	var api *RegisteredAPI
 	var funcIndex int
+	var wildcardAPI *RegisteredAPI
+	var wildcardIdx int
 	for _, candidate := range apis {
 		if candidate.Meta == nil || !candidate.Meta.RESTExport {
 			continue
 		}
 		idx := matchFunc(candidate.Meta, r.Method, funcPath)
 		if idx >= 0 {
-			api = candidate
-			funcIndex = idx
-			break
+			if isLiteralPath(candidate.Meta.Funcs[idx].Path) {
+				api = candidate
+				funcIndex = idx
+				break
+			}
+			if wildcardAPI == nil {
+				wildcardAPI = candidate
+				wildcardIdx = idx
+			}
 		}
+	}
+	if api == nil {
+		api = wildcardAPI
+		funcIndex = wildcardIdx
 	}
 	if api == nil {
 		writeErrorJSON(w, http.StatusNotFound, "no matching function")
@@ -204,6 +218,11 @@ func matchPath(pattern, requestPath string) bool {
 	}
 
 	return len(patParts) == len(reqParts)
+}
+
+// isLiteralPath returns true if the path pattern contains no {param} wildcards.
+func isLiteralPath(pattern string) bool {
+	return !strings.Contains(pattern, "{")
 }
 
 // extractPathParams extracts named parameters from a pattern and request path.

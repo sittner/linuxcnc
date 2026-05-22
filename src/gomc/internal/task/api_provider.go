@@ -14,133 +14,235 @@ var _ emcstatapi.EmcstatCallbacks = (*milltaskModule)(nil)
 // errNotReady is returned by command handlers before Start() completes.
 var errNotReady = fmt.Errorf("milltask: not ready")
 
+func (m *milltaskModule) ready() error {
+	if m.task == nil {
+		return errNotReady
+	}
+	return nil
+}
+
 // --- EmccmdCallbacks implementation ---
-// These delegate to Task methods once Start() has run.
 
 func (m *milltaskModule) SetState(state int32) (int32, error) {
-	if m.task == nil {
-		return 0, errNotReady
+	if err := m.ready(); err != nil {
+		return 0, err
 	}
 	return 0, m.task.SetState(state)
 }
 
 func (m *milltaskModule) SetMode(mode int32) (int32, error) {
-	if m.task == nil {
-		return 0, errNotReady
+	if err := m.ready(); err != nil {
+		return 0, err
 	}
 	return 0, m.task.SetMode(mode)
 }
 
 func (m *milltaskModule) AutoCmd(cmd emccmdapi.AutoCmd, line int32) (int32, error) {
-	return 0, errNotReady
+	if err := m.ready(); err != nil {
+		return 0, err
+	}
+	return 0, m.task.AutoCommand(int32(cmd), line)
 }
 
 func (m *milltaskModule) Mdi(command string) (int32, error) {
-	return 0, errNotReady
+	if err := m.ready(); err != nil {
+		return 0, err
+	}
+	return 0, m.task.MDI(command)
 }
 
 func (m *milltaskModule) Jog(jogType emccmdapi.JogType, jjogmode bool, axisOrJoint int32, velocity float64, distance float64) (int32, error) {
-	return 0, errNotReady
+	if err := m.ready(); err != nil {
+		return 0, err
+	}
+	return 0, m.task.Jog(int32(jogType), jjogmode, axisOrJoint, velocity, distance)
 }
 
 func (m *milltaskModule) JogStop(jjogmode bool, axisOrJoint int32) (int32, error) {
-	return 0, errNotReady
+	if err := m.ready(); err != nil {
+		return 0, err
+	}
+	return 0, m.task.JogStop(jjogmode, axisOrJoint)
 }
 
 func (m *milltaskModule) Spindle(cmd emccmdapi.SpindleCmd, speed float64, spindleNum int32, wait int32) (int32, error) {
-	return 0, errNotReady
+	if err := m.ready(); err != nil {
+		return 0, err
+	}
+	return 0, m.task.Spindle(int32(cmd), speed, spindleNum, wait)
 }
 
 func (m *milltaskModule) Home(joint int32) (int32, error) {
-	return 0, errNotReady
+	if err := m.ready(); err != nil {
+		return 0, err
+	}
+	return 0, m.task.Home(joint)
 }
 
 func (m *milltaskModule) Unhome(joint int32) (int32, error) {
-	return 0, errNotReady
+	if err := m.ready(); err != nil {
+		return 0, err
+	}
+	return 0, m.task.Unhome(joint)
 }
 
 func (m *milltaskModule) OverrideLimits() (int32, error) {
-	return 0, errNotReady
+	if err := m.ready(); err != nil {
+		return 0, err
+	}
+	return 0, m.task.OverrideLimits()
 }
 
 func (m *milltaskModule) TeleopEnable(enable bool) (int32, error) {
-	return 0, errNotReady
+	if err := m.ready(); err != nil {
+		return 0, err
+	}
+	return 0, m.task.TeleopEnable(enable)
 }
 
 func (m *milltaskModule) SetFeedOverride(rate float64) (int32, error) {
-	return 0, errNotReady
+	if err := m.ready(); err != nil {
+		return 0, err
+	}
+	return 0, m.task.SetFeedOverride(rate)
 }
 
 func (m *milltaskModule) SetSpindleOverride(rate float64, spindleNum int32) (int32, error) {
-	return 0, errNotReady
+	if err := m.ready(); err != nil {
+		return 0, err
+	}
+	return 0, m.task.SetSpindleOverride(rate, spindleNum)
 }
 
 func (m *milltaskModule) SetRapidOverride(rate float64) (int32, error) {
-	return 0, errNotReady
+	if err := m.ready(); err != nil {
+		return 0, err
+	}
+	return 0, m.task.SetRapidOverride(rate)
 }
 
 func (m *milltaskModule) SetMaxVelocity(velocity float64) (int32, error) {
-	return 0, errNotReady
+	if err := m.ready(); err != nil {
+		return 0, err
+	}
+	return 0, m.task.SetMaxVelocity(velocity)
 }
 
 func (m *milltaskModule) Flood(on bool) (int32, error) {
-	return 0, errNotReady
+	if err := m.ready(); err != nil {
+		return 0, err
+	}
+	return 0, m.task.Flood(on)
 }
 
 func (m *milltaskModule) Mist(on bool) (int32, error) {
-	return 0, errNotReady
+	if err := m.ready(); err != nil {
+		return 0, err
+	}
+	return 0, m.task.Mist(on)
 }
 
 func (m *milltaskModule) Brake(on bool, spindleNum int32) (int32, error) {
-	return 0, errNotReady
+	if err := m.ready(); err != nil {
+		return 0, err
+	}
+	return 0, m.task.Brake(on, spindleNum)
 }
 
 func (m *milltaskModule) Lube(on bool) (int32, error) {
-	return 0, errNotReady
+	if err := m.ready(); err != nil {
+		return 0, err
+	}
+	return 0, m.task.Lube(on)
 }
 
 func (m *milltaskModule) Abort() (int32, error) {
-	return 0, errNotReady
+	if err := m.ready(); err != nil {
+		return 0, err
+	}
+	return 0, m.task.Abort()
 }
 
 func (m *milltaskModule) TaskPlanSynch() (int32, error) {
-	return 0, errNotReady
+	if err := m.ready(); err != nil {
+		return 0, err
+	}
+	return 0, m.task.TaskPlanSynch()
 }
 
 func (m *milltaskModule) SetOptionalStop(on bool) (int32, error) {
-	return 0, errNotReady
+	if err := m.ready(); err != nil {
+		return 0, err
+	}
+	return 0, m.task.SetOptionalStop(on)
 }
 
 func (m *milltaskModule) SetBlockDelete(on bool) (int32, error) {
-	return 0, errNotReady
+	if err := m.ready(); err != nil {
+		return 0, err
+	}
+	return 0, m.task.SetBlockDelete(on)
 }
 
 func (m *milltaskModule) LoadToolTable() (int32, error) {
-	return 0, errNotReady
+	return 0, errNotReady // needs interpreter
 }
 
 func (m *milltaskModule) ProgramOpen(file string) (int32, error) {
-	return 0, errNotReady
+	return 0, errNotReady // needs interpreter
 }
 
 func (m *milltaskModule) WaitComplete(timeout float64) (int32, error) {
-	return 0, errNotReady
+	// Always report done for now (no motion queue to wait on).
+	return 0, nil
 }
 
 func (m *milltaskModule) SetDebug(debug int32) (int32, error) {
-	return 0, errNotReady
+	if err := m.ready(); err != nil {
+		return 0, err
+	}
+	return 0, m.task.SetDebug(debug)
 }
 
 // --- EmcstatCallbacks implementation ---
 
 func (m *milltaskModule) GetStat() (*emcstatapi.StatFull, error) {
-	// Return minimal valid stat — enough for halui to start polling.
-	return &emcstatapi.StatFull{
+	t := m.task
+	if t == nil {
+		return &emcstatapi.StatFull{
+			Task: emcstatapi.StatTaskInfo{
+				State:       emcstatapi.TaskState_ESTOP,
+				Mode:        emcstatapi.TaskMode_MANUAL,
+				InterpState: emcstatapi.InterpState_IDLE,
+				ExecState:   emcstatapi.ExecState_DONE,
+			},
+		}, nil
+	}
+
+	t.mu.Lock()
+	stat := &emcstatapi.StatFull{
 		Task: emcstatapi.StatTaskInfo{
-			Mode:        emcstatapi.TaskMode_MANUAL,
-			State:       emcstatapi.TaskState_ESTOP,
-			InterpState: emcstatapi.InterpState_IDLE,
-			ExecState:   emcstatapi.ExecState_DONE,
+			Mode:         emcstatapi.TaskMode(t.mode),
+			State:        emcstatapi.TaskState(t.state),
+			InterpState:  emcstatapi.InterpState(t.interpState),
+			ExecState:    emcstatapi.ExecState(t.execState),
+			OptionalStop: t.optionalStop,
+			BlockDelete:  t.blockDelete,
 		},
-	}, nil
+		Motion: emcstatapi.StatMotionInfo{
+			Enabled: t.state == StateOn,
+		},
+		JointsCount:    int32(t.numJoints),
+		AxisMask:       t.axisMask,
+		LinearUnits:    t.linearUnits,
+		KinematicsType: emcstatapi.KinematicsType_IDENTITY,
+	}
+
+	// Populate joints array so AXIS sees joints_count > 0.
+	if t.numJoints > 0 {
+		stat.Joints = make([]emcstatapi.JointInfo, t.numJoints)
+	}
+	t.mu.Unlock()
+
+	return stat, nil
 }

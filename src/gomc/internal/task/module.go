@@ -23,10 +23,12 @@ var _ MotionConfig = (*motctl.MotctlClient)(nil)
 
 func factory(ini *inifile.IniFile, logger *slog.Logger, name string, args []string) (gomc.Module, error) {
 	logger = logger.With("module", name)
-	m := &milltaskModule{ini: ini, logger: logger}
+	m := &milltaskModule{ini: ini, logger: logger, name: name}
 
 	// Register C-compatible callback structs so C modules (halui) can
 	// call emccmd/emcstat via the standard api_get mechanism.
+	// The CGO dispatch packages (emcstat, emccmd) register their metas in
+	// init() — those metas know how to dispatch through C function pointers.
 	reg := apiserver.DefaultRegistry()
 	if reg == nil {
 		return nil, fmt.Errorf("milltask: no API registry available")
@@ -37,17 +39,22 @@ func factory(ini *inifile.IniFile, logger *slog.Logger, name string, args []stri
 	}
 	m.apiCleanup = cleanup
 
+	// Register WebSocket watches and commands (direct Go path, no C thunk).
+	m.registerWatches(name)
+
 	return m, nil
 }
 
 // milltaskModule wraps Task to satisfy the gomc.Module lifecycle.
 type milltaskModule struct {
 	ini        *inifile.IniFile
+	name       string
 	task       *Task
 	logger     *slog.Logger
 	inihal     *iniHal
 	mc         MotionConfig
 	apiCleanup func()
+	poslog     posLogger
 }
 
 func (m *milltaskModule) Start() error {
@@ -102,11 +109,15 @@ func (m *milltaskModule) Start() error {
 	m.inihal = ih
 	m.mc = mc
 
+	// Register tools API (needs INI for tool table path).
+	m.registerTools()
+
 	m.logger.Info("milltask started")
 	return nil
 }
 
 func (m *milltaskModule) Stop() {
+	m.poslog.stopLogger()
 	m.logger.Info("milltask stopping")
 	// TODO: abort interpreter, drain motion queue
 }

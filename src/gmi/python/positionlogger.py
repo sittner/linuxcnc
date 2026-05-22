@@ -1,7 +1,7 @@
 """gmi.positionlogger — Drop-in replacement for linuxcnc.positionlogger.
 
 Subscribes to the emcstat WebSocket watch channel for position data
-streamed by the emcgateway poslog module. Handles vertex9 geometry
+streamed by the milltask poslog module. Handles vertex9 geometry
 transformation, colinearity reduction, color mapping, and OpenGL
 rendering client-side.
 
@@ -178,7 +178,7 @@ _MAX_POINTS = 10000
 class PositionLogger:
     """Drop-in replacement for linuxcnc.positionlogger.
 
-    Receives raw 9-axis positions from the emcgateway via WebSocket,
+    Receives raw 9-axis positions from milltask via WebSocket,
     applies geometry transformation and colinearity reduction client-side,
     and renders via OpenGL.
     """
@@ -351,7 +351,7 @@ class PositionLogger:
         msg = {
             "action": "subscribe",
             "api": "emcstat",
-            "instance": "emcgateway",
+            "instance": "milltask",
             "func": "get_positions",
             "rate_ms": 200,
         }
@@ -364,7 +364,7 @@ class PositionLogger:
         msg = {
             "action": "call",
             "api": "emcstat",
-            "instance": "emcgateway",
+            "instance": "milltask",
             "func": func,
             "id": 0,
         }

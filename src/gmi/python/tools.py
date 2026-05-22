@@ -10,10 +10,10 @@ class ToolTable:
     """REST client for the tool table API.
 
     Provides list/get/put/delete/reload operations mirroring the
-    GET/PUT/DELETE /api/v1/tools/* endpoints served by emcgateway.
+    GET/PUT/DELETE /api/v1/tools/* endpoints served by milltask.
     """
 
-    def __init__(self, instance: str = "emcgateway"):
+    def __init__(self, instance: str = "milltask"):
         self._base = gmi.rest_url() + "/api/v1/" + instance
 
     def list(self):

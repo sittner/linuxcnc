@@ -7,7 +7,6 @@ load homemod
 load io <iocontrol>
 load halui
 load milltask
-load emcgateway
 
 # load UI helper
 load ngcpreview

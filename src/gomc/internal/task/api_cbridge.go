@@ -328,9 +328,70 @@ func goTaskGetStat(ctx unsafe.Pointer) C.emcstat_stat_full_t {
 		return result
 	}
 
+	// Task info.
 	result.task.mode = C.emcstat_task_mode_t(stat.Task.Mode)
 	result.task.state = C.emcstat_task_state_t(stat.Task.State)
 	result.task.interp_state = C.emcstat_interp_state_t(stat.Task.InterpState)
 	result.task.exec_state = C.emcstat_exec_state_t(stat.Task.ExecState)
+	result.task.line = C.int32_t(stat.Task.Line)
+	result.task.motion_line = C.int32_t(stat.Task.MotionLine)
+	result.task.current_line = C.int32_t(stat.Task.CurrentLine)
+	result.task.read_line = C.int32_t(stat.Task.ReadLine)
+	result.task.optional_stop = C.bool(stat.Task.OptionalStop)
+	result.task.block_delete = C.bool(stat.Task.BlockDelete)
+	result.task.task_paused = C.bool(stat.Task.TaskPaused)
+	result.task.g5x_index = C.int32_t(stat.Task.G5xIndex)
+
+	// Motion info.
+	result.motion.mode = C.emcstat_traj_mode_t(stat.Motion.Mode)
+	result.motion.enabled = C.bool(stat.Motion.Enabled)
+	result.motion.in_position = C.bool(stat.Motion.InPosition)
+	result.motion.paused = C.bool(stat.Motion.Paused)
+	result.motion.feedrate = C.double(stat.Motion.Feedrate)
+	result.motion.rapidrate = C.double(stat.Motion.Rapidrate)
+	result.motion.max_velocity = C.double(stat.Motion.MaxVelocity)
+	result.motion.velocity = C.double(stat.Motion.Velocity)
+	result.motion.distance_to_go = C.double(stat.Motion.DistanceToGo)
+	result.motion.current_vel = C.double(stat.Motion.CurrentVel)
+
+	// Scalar fields.
+	result.kinematics_type = C.emcstat_kinematics_type_t(stat.KinematicsType)
+	result.joints_count = C.int32_t(stat.JointsCount)
+	result.axis_mask = C.int32_t(stat.AxisMask)
+	result.flood = C.bool(stat.Flood)
+	result.mist = C.bool(stat.Mist)
+	result.lube_on = C.bool(stat.LubeOn)
+	result.tool_in_spindle = C.int32_t(stat.ToolInSpindle)
+	result.pocket_prepped = C.int32_t(stat.PocketPrepped)
+	result.linear_units = C.double(stat.LinearUnits)
+
+	// Joints array (C-allocated for halui's emcstat_free).
+	if n := len(stat.Joints); n > 0 {
+		joints := (*[1 << 20]C.emcstat_joint_info_t)(C.calloc(C.size_t(n), C.size_t(unsafe.Sizeof(C.emcstat_joint_info_t{}))))
+		for i := 0; i < n; i++ {
+			j := &stat.Joints[i]
+			joints[i].homed = C.bool(j.Homed)
+			joints[i].homing = C.bool(j.Homing)
+			joints[i].enabled = C.bool(j.Enabled)
+			joints[i].fault = C.bool(j.Fault)
+			joints[i].min_soft_limit = C.double(j.MinSoftLimit)
+			joints[i].max_soft_limit = C.double(j.MaxSoftLimit)
+			joints[i].min_hard_limit = C.bool(j.MinHardLimit)
+			joints[i].max_hard_limit = C.bool(j.MaxHardLimit)
+			joints[i].override_limits = C.bool(j.OverrideLimits)
+			joints[i].velocity = C.double(j.Velocity)
+			joints[i].input = C.double(j.Input)
+			joints[i].output = C.double(j.Output)
+		}
+		result.joints = &joints[0]
+		result.joints_len = C.size_t(n)
+	}
+
+	// Homed/limit arrays.
+	for i := 0; i < int(stat.JointsCount) && i < C.EMCSTAT_MAX_JOINTS; i++ {
+		result.homed[i] = C.bool(stat.Homed[i])
+		result.limit[i] = C.int32_t(stat.Limit[i])
+	}
+
 	return result
 }
