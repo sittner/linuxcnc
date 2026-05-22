@@ -244,20 +244,27 @@ type Task struct {
 	// Pause/resume for interpreter goroutine
 	pauseCh  chan struct{} // closed when pause requested
 	resumeCh chan struct{} // closed when resume requested
+
+	// Cached motion status (used when split-read fails)
+	lastMotionStatus   motstat.MotionStatus
+	hasMotionStatus    bool
+	latencyWarnings    int
+	latencyWarningsMax int
 }
 
 // NewTask creates a new Task with dependencies injected.
 func NewTask(motion MotionController, io IOController, status MotionStatusReader, logger *slog.Logger) *Task {
 	t := &Task{
-		state:          StateEstop,
-		mode:           ModeManual,
-		interpState:    InterpIdle,
-		execState:      ExecDone,
-		motion:         motion,
-		io:             io,
-		status:         status,
-		logger:         logger,
-		activeSettings: make([]float64, 3), // [seqno, feedrate, speed]
+		state:              StateEstop,
+		mode:               ModeManual,
+		interpState:        InterpIdle,
+		execState:          ExecDone,
+		motion:             motion,
+		io:                 io,
+		status:             status,
+		logger:             logger,
+		activeSettings:     make([]float64, 3), // [seqno, feedrate, speed]
+		latencyWarningsMax: 10,
 	}
 	t.canon = NewCanon(t)
 	return t

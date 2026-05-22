@@ -45,9 +45,19 @@ func (t *Task) BuildStat() *emcstatapi.StatFull {
 	// Read motion status (lock-free, reads from shared memory).
 	ms, err := t.status.GetStatus()
 	if err != nil {
-		// Log and return what we have from task state alone.
-		t.logger.Warn("motstat GetStatus failed", "error", err)
-		return stat
+		// Split-read detected (servo thread was mid-update).
+		t.latencyWarnings++
+		if t.latencyWarnings <= t.latencyWarningsMax {
+			t.logger.Warn("task: split-read latency excursion", "count", t.latencyWarnings)
+		}
+		// Use last known good status to avoid flicker.
+		if !t.hasMotionStatus {
+			return stat
+		}
+		ms = t.lastMotionStatus
+	} else {
+		t.lastMotionStatus = ms
+		t.hasMotionStatus = true
 	}
 
 	// Kinematics type from motion module.
