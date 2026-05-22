@@ -218,6 +218,10 @@ type Task struct {
 	optionalStop bool
 	blockDelete  bool
 
+	// Interpreter active codes (updated by canon callbacks)
+	activeGcodes   []int32
+	activeSettings []float64
+
 	// Dependencies (injected, mockable for tests)
 	motion MotionController
 	io     IOController
@@ -241,14 +245,15 @@ type Task struct {
 // NewTask creates a new Task with dependencies injected.
 func NewTask(motion MotionController, io IOController, status MotionStatusReader, logger *slog.Logger) *Task {
 	t := &Task{
-		state:       StateEstop,
-		mode:        ModeManual,
-		interpState: InterpIdle,
-		execState:   ExecDone,
-		motion:      motion,
-		io:          io,
-		status:      status,
-		logger:      logger,
+		state:          StateEstop,
+		mode:           ModeManual,
+		interpState:    InterpIdle,
+		execState:      ExecDone,
+		motion:         motion,
+		io:             io,
+		status:         status,
+		logger:         logger,
+		activeSettings: make([]float64, 3), // [seqno, feedrate, speed]
 	}
 	t.canon = NewCanon(t)
 	return t

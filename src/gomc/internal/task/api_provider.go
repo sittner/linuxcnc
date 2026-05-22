@@ -218,31 +218,6 @@ func (m *milltaskModule) GetStat() (*emcstatapi.StatFull, error) {
 			},
 		}, nil
 	}
-
-	t.mu.Lock()
-	stat := &emcstatapi.StatFull{
-		Task: emcstatapi.StatTaskInfo{
-			Mode:         emcstatapi.TaskMode(t.mode),
-			State:        emcstatapi.TaskState(t.state),
-			InterpState:  emcstatapi.InterpState(t.interpState),
-			ExecState:    emcstatapi.ExecState(t.execState),
-			OptionalStop: t.optionalStop,
-			BlockDelete:  t.blockDelete,
-		},
-		Motion: emcstatapi.StatMotionInfo{
-			Enabled: t.state == StateOn,
-		},
-		JointsCount:    int32(t.numJoints),
-		AxisMask:       t.axisMask,
-		LinearUnits:    t.linearUnits,
-		KinematicsType: emcstatapi.KinematicsType_IDENTITY,
-	}
-
-	// Populate joints array so AXIS sees joints_count > 0.
-	if t.numJoints > 0 {
-		stat.Joints = make([]emcstatapi.JointInfo, t.numJoints)
-	}
-	t.mu.Unlock()
-
+	stat := t.BuildStat()
 	return stat, nil
 }
