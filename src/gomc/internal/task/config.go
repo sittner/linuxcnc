@@ -171,25 +171,28 @@ func loadJoint(ini *inifile.IniFile, joint int32, mc MotionConfig) error {
 	lockingIndexer := getIntOrSection(ini, section, "LOCKING_INDEXER", 0)
 	absoluteEncoder := getIntOrSection(ini, section, "HOME_ABSOLUTE_ENCODER", 0)
 
-	// Pack boolean flags into a single int32 (matches motctl homing_params flags field)
+	// Pack boolean flags into a single int32 (must match homing.h defines)
+	// HOME_IGNORE_LIMITS=1, HOME_USE_INDEX=2, HOME_IS_SHARED=4,
+	// HOME_UNLOCK_FIRST=8, HOME_ABSOLUTE_ENCODER=16, HOME_NO_REHOME=32,
+	// HOME_NO_FINAL_MOVE=64, HOME_INDEX_NO_ENCODER_RESET=128
 	flags := int32(0)
-	if useIndex != 0 {
-		flags |= 1 << 0
-	}
-	if noEncoderReset != 0 {
-		flags |= 1 << 1
-	}
 	if ignoreLimits != 0 {
-		flags |= 1 << 2
+		flags |= 1 // HOME_IGNORE_LIMITS
+	}
+	if useIndex != 0 {
+		flags |= 2 // HOME_USE_INDEX
 	}
 	if isShared != 0 {
-		flags |= 1 << 3
+		flags |= 4 // HOME_IS_SHARED
 	}
 	if lockingIndexer != 0 {
-		flags |= 1 << 4
+		flags |= 8 // HOME_UNLOCK_FIRST
 	}
 	if absoluteEncoder != 0 {
-		flags |= 1 << 5
+		flags |= 16 // HOME_ABSOLUTE_ENCODER
+	}
+	if noEncoderReset != 0 {
+		flags |= 128 // HOME_INDEX_NO_ENCODER_RESET
 	}
 
 	if err := mc.SetJointHomingParams(joint, offset, home, finalVel, searchVel, latchVel, flags, int32(sequence), int32(volatileHome)); err != nil {

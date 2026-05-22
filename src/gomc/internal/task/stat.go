@@ -27,7 +27,20 @@ func (t *Task) BuildStat() *emcstatapi.StatFull {
 	}
 	numJoints := t.numJoints
 	numSpindles := t.numSpindles
+	axisMask := t.axisMask
 	t.mu.Unlock()
+
+	// Always allocate axes/joints/spindle slices so consumers never see nil.
+	nAxes := countAxes(axisMask)
+	if nAxes > 0 {
+		stat.Axis = make([]emcstatapi.AxisInfo, nAxes)
+	}
+	if numJoints > 0 {
+		stat.Joints = make([]emcstatapi.JointInfo, numJoints)
+	}
+	if numSpindles > 0 {
+		stat.Spindle = make([]emcstatapi.SpindleInfo, numSpindles)
+	}
 
 	// Read motion status (lock-free, reads from shared memory).
 	ms, err := t.status.GetStatus()
@@ -69,63 +82,53 @@ func (t *Task) BuildStat() *emcstatapi.StatFull {
 	}
 
 	// Joints array.
-	if numJoints > 0 {
-		stat.Joints = make([]emcstatapi.JointInfo, numJoints)
-		for i := 0; i < numJoints; i++ {
-			j := &ms.Joints[i]
-			stat.Joints[i] = emcstatapi.JointInfo{
-				Homed:          j.Homed != 0,
-				Homing:         j.Homing != 0,
-				Enabled:        j.Enabled != 0,
-				Fault:          j.Fault != 0,
-				MinSoftLimit:   j.MinPosLimit,
-				MaxSoftLimit:   j.MaxPosLimit,
-				MinHardLimit:   j.OnNegLimit != 0,
-				MaxHardLimit:   j.OnPosLimit != 0,
-				OverrideLimits: false, // TODO: from override_limit_mask
-				Velocity:       j.VelCmd,
-				Input:          j.PosFb,
-				Output:         j.PosCmd,
-			}
-			stat.Homed[i] = j.Homed != 0
-			if j.OnPosLimit != 0 {
-				stat.Limit[i] = 1
-			} else if j.OnNegLimit != 0 {
-				stat.Limit[i] = -1
-			}
+	for i := 0; i < numJoints; i++ {
+		j := &ms.Joints[i]
+		stat.Joints[i] = emcstatapi.JointInfo{
+			Homed:          j.Homed != 0,
+			Homing:         j.Homing != 0,
+			Enabled:        j.Enabled != 0,
+			Fault:          j.Fault != 0,
+			MinSoftLimit:   j.MinPosLimit,
+			MaxSoftLimit:   j.MaxPosLimit,
+			MinHardLimit:   j.OnNegLimit != 0,
+			MaxHardLimit:   j.OnPosLimit != 0,
+			OverrideLimits: false, // TODO: from override_limit_mask
+			Velocity:       j.VelCmd,
+			Input:          j.PosFb,
+			Output:         j.PosCmd,
+		}
+		stat.Homed[i] = j.Homed != 0
+		if j.OnPosLimit != 0 {
+			stat.Limit[i] = 1
+		} else if j.OnNegLimit != 0 {
+			stat.Limit[i] = -1
 		}
 	}
 
 	// Axes array (from axis_mask).
-	nAxes := countAxes(stat.AxisMask)
-	if nAxes > 0 {
-		stat.Axis = make([]emcstatapi.AxisInfo, nAxes)
-		for i := 0; i < nAxes && i < 9; i++ {
-			ax := &ms.Axes[i]
-			stat.Axis[i] = emcstatapi.AxisInfo{
-				MinPositionLimit: ax.MinPosLimit,
-				MaxPositionLimit: ax.MaxPosLimit,
-				Velocity:         ax.VelLimit,
-			}
+	for i := 0; i < nAxes && i < 9; i++ {
+		ax := &ms.Axes[i]
+		stat.Axis[i] = emcstatapi.AxisInfo{
+			MinPositionLimit: ax.MinPosLimit,
+			MaxPositionLimit: ax.MaxPosLimit,
+			Velocity:         ax.VelLimit,
 		}
 	}
 
 	// Spindles.
-	if numSpindles > 0 {
-		stat.Spindle = make([]emcstatapi.SpindleInfo, numSpindles)
-		for i := 0; i < numSpindles && i < 8; i++ {
-			sp := &ms.Spindles[i]
-			stat.Spindle[i] = emcstatapi.SpindleInfo{
-				Speed:           sp.Speed,
-				Direction:       sp.Direction,
-				Brake:           sp.Brake != 0,
-				Enabled:         sp.State != 0,
-				Override:        sp.Scale,
-				OverrideEnabled: true, // always enabled in our implementation
-				Homed:           sp.Homed != 0,
-				OrientState:     sp.OrientState,
-				OrientFault:     sp.OrientFault,
-			}
+	for i := 0; i < numSpindles && i < 8; i++ {
+		sp := &ms.Spindles[i]
+		stat.Spindle[i] = emcstatapi.SpindleInfo{
+			Speed:           sp.Speed,
+			Direction:       sp.Direction,
+			Brake:           sp.Brake != 0,
+			Enabled:         sp.State != 0,
+			Override:        sp.Scale,
+			OverrideEnabled: true, // always enabled in our implementation
+			Homed:           sp.Homed != 0,
+			OrientState:     sp.OrientState,
+			OrientFault:     sp.OrientFault,
 		}
 	}
 
