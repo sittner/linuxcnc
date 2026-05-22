@@ -94,12 +94,17 @@ func (m *testModule) Wait() error {
 }
 
 func (m *testModule) Stop() {
-	// Wait for tests to finish and log result.
+	// Wait for tests to finish (with timeout to avoid deadlock).
 	if m.done != nil {
-		if err := <-m.done; err != nil {
-			m.logger.Error("tasktest failed", "error", err)
-		} else {
-			m.logger.Info("tasktest: all tests passed")
+		select {
+		case err := <-m.done:
+			if err != nil {
+				m.logger.Error("tasktest failed", "error", err)
+			} else {
+				m.logger.Info("tasktest: all tests passed")
+			}
+		case <-time.After(5 * time.Second):
+			m.logger.Error("tasktest: Stop() timed out waiting for tests")
 		}
 	}
 }
@@ -167,6 +172,65 @@ func (h *testHarness) spindle(cmd int32, speed float64) (int32, error) {
 
 func (h *testHarness) setFeedOverride(rate float64) (int32, error) {
 	return h.callEmccmd("set_feed_override", map[string]interface{}{"rate": rate})
+}
+
+func (h *testHarness) setRapidOverride(rate float64) (int32, error) {
+	return h.callEmccmd("set_rapid_override", map[string]interface{}{"rate": rate})
+}
+
+func (h *testHarness) setSpindleOverride(rate float64, spindle int32) (int32, error) {
+	return h.callEmccmd("set_spindle_override", map[string]interface{}{"rate": rate, "spindle_num": spindle})
+}
+
+func (h *testHarness) setMaxVelocity(vel float64) (int32, error) {
+	return h.callEmccmd("set_max_velocity", map[string]interface{}{"velocity": vel})
+}
+
+func (h *testHarness) jogStop(axisOrJoint int32) (int32, error) {
+	return h.callEmccmd("jog_stop", map[string]interface{}{
+		"jjogmode":      true,
+		"axis_or_joint": axisOrJoint,
+	})
+}
+
+func (h *testHarness) unhome(joint int32) (int32, error) {
+	return h.callEmccmd("unhome", map[string]interface{}{"joint": joint})
+}
+
+func (h *testHarness) overrideLimits(joint int32) (int32, error) {
+	return h.callEmccmd("override_limits", map[string]interface{}{"joint": joint})
+}
+
+func (h *testHarness) teleopEnable(enable bool) (int32, error) {
+	return h.callEmccmd("teleop_enable", map[string]interface{}{"enable": enable})
+}
+
+func (h *testHarness) setOptionalStop(on bool) (int32, error) {
+	return h.callEmccmd("set_optional_stop", map[string]interface{}{"on": on})
+}
+
+func (h *testHarness) setBlockDelete(on bool) (int32, error) {
+	return h.callEmccmd("set_block_delete", map[string]interface{}{"on": on})
+}
+
+func (h *testHarness) lube(on bool) (int32, error) {
+	return h.callEmccmd("lube", map[string]interface{}{"on": on})
+}
+
+func (h *testHarness) mdi(command string) (int32, error) {
+	return h.callEmccmd("mdi", map[string]interface{}{"command": command})
+}
+
+func (h *testHarness) taskPlanSynch() (int32, error) {
+	return h.callEmccmd("task_plan_synch", nil)
+}
+
+func (h *testHarness) loadToolTable(file string) (int32, error) {
+	return h.callEmccmd("load_tool_table", map[string]interface{}{"file": file})
+}
+
+func (h *testHarness) waitComplete(timeout float64) (int32, error) {
+	return h.callEmccmd("wait_complete", map[string]interface{}{"timeout": timeout})
 }
 
 // callEmccmd dispatches an emccmd method by name using the generated dispatch.
@@ -264,4 +328,77 @@ func (h *testHarness) waitForMotionMode(mode emcstat.TrajMode, timeout time.Dura
 		time.Sleep(10 * time.Millisecond)
 	}
 	return fmt.Errorf("timeout waiting for motion mode %d", mode)
+}
+
+// waitForInterpState polls until interp_state matches or timeout.
+func (h *testHarness) waitForInterpState(state emcstat.InterpState, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		stat, err := h.getStat()
+		if err != nil {
+			return err
+		}
+		if stat.Task.InterpState == state {
+			return nil
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return fmt.Errorf("timeout waiting for interp state %d", state)
+}
+
+// waitForHomed polls until the given joint is homed or timeout.
+func (h *testHarness) waitForHomed(joint int, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		stat, err := h.getStat()
+		if err != nil {
+			return err
+		}
+		if joint < len(stat.Homed) && stat.Homed[joint] {
+			return nil
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return fmt.Errorf("timeout waiting for joint %d homed", joint)
+}
+
+// waitForPosition polls until position.x is within tolerance or timeout.
+func (h *testHarness) waitForPosition(axis int, target, tol float64, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		stat, err := h.getStat()
+		if err != nil {
+			return err
+		}
+		var pos float64
+		switch axis {
+		case 0:
+			pos = stat.Position.X
+		case 1:
+			pos = stat.Position.Y
+		case 2:
+			pos = stat.Position.Z
+		}
+		if pos >= target-tol && pos <= target+tol {
+			return nil
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return fmt.Errorf("timeout waiting for axis %d at %f", axis, target)
+}
+
+// waitForInPosition polls until motion.in_position is true or timeout.
+func (h *testHarness) waitForInPosition(timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		stat, err := h.getStat()
+		if err != nil {
+			return err
+		}
+		if stat.Motion.InPosition {
+			return nil
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return fmt.Errorf("timeout waiting for in_position")
 }
