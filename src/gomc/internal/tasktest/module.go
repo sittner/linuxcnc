@@ -45,19 +45,28 @@ func (m *testModule) Start() error {
 		return fmt.Errorf("tasktest: no API registry")
 	}
 
-	// Look up emccmd and emcstat APIs registered by milltask.
-	emccmdCbs, err := reg.GetAPI("emccmd", "milltask", 1)
-	if err != nil {
-		return fmt.Errorf("tasktest: emccmd lookup: %w", err)
-	}
+	// Look up emcstat API for status queries (both C and Go milltask register this).
 	emcstatCbs, err := reg.GetAPI("emcstat", "milltask", 1)
 	if err != nil {
 		return fmt.Errorf("tasktest: emcstat lookup: %w", err)
 	}
 
+	// For emccmd: prefer WatchRegistry (Go milltask, proper error propagation),
+	// fall back to C dispatch (C milltask).
+	wreg := apiserver.DefaultWatchRegistry()
+	var emccmdCbs unsafe.Pointer
+	if wreg == nil || wreg.Get("emccmd", "milltask") == nil {
+		// C milltask path: use registry dispatch
+		emccmdCbs, err = reg.GetAPI("emccmd", "milltask", 1)
+		if err != nil {
+			return fmt.Errorf("tasktest: emccmd lookup: %w", err)
+		}
+	}
+
 	h := &testHarness{
 		emccmdCbs:  emccmdCbs,
 		emcstatCbs: emcstatCbs,
+		wreg:       wreg,
 		logger:     m.logger,
 	}
 
@@ -112,8 +121,9 @@ func (m *testModule) Destroy() {}
 
 // testHarness provides helpers for calling emccmd/emcstat.
 type testHarness struct {
-	emccmdCbs  unsafe.Pointer
+	emccmdCbs  unsafe.Pointer         // C milltask dispatch (nil for Go milltask)
 	emcstatCbs unsafe.Pointer
+	wreg       *apiserver.WatchRegistry // Go milltask commands (nil for C milltask)
 	logger     *slog.Logger
 }
 
@@ -233,9 +243,40 @@ func (h *testHarness) waitComplete(timeout float64) (int32, error) {
 	return h.callEmccmd("wait_complete", map[string]interface{}{"timeout": timeout})
 }
 
-// callEmccmd dispatches an emccmd method by name using the generated dispatch.
+// callEmccmd dispatches an emccmd method by name.
+// Uses WatchRegistry for Go milltask (proper Go dispatch), C dispatch for C milltask.
 func (h *testHarness) callEmccmd(method string, params map[string]interface{}) (int32, error) {
-	// Find the dispatch function from the meta.
+	var reqJSON []byte
+	if params != nil {
+		var err error
+		reqJSON, err = json.Marshal(params)
+		if err != nil {
+			return -1, fmt.Errorf("marshal params: %w", err)
+		}
+	}
+
+	// Try WatchRegistry path first (Go milltask).
+	if h.wreg != nil {
+		api := h.wreg.Get("emccmd", "milltask")
+		if api != nil {
+			for _, cmd := range api.Commands {
+				if cmd.Name == method {
+					resp, err := cmd.Handler(json.RawMessage(reqJSON))
+					if err != nil {
+						return -1, err
+					}
+					var result int32
+					if err := json.Unmarshal(resp, &result); err != nil {
+						return -1, fmt.Errorf("unmarshal result: %w", err)
+					}
+					return result, nil
+				}
+			}
+			return -1, fmt.Errorf("emccmd command %q not found in watch registry", method)
+		}
+	}
+
+	// Fall back to C dispatch path (C milltask).
 	var dispatch apiserver.DispatchFunc
 	for _, fn := range emccmd.EmccmdMeta.Funcs {
 		if fn.Name == method {
@@ -245,15 +286,6 @@ func (h *testHarness) callEmccmd(method string, params map[string]interface{}) (
 	}
 	if dispatch == nil {
 		return -1, fmt.Errorf("emccmd method %q not found in meta", method)
-	}
-
-	var reqJSON []byte
-	if params != nil {
-		var err error
-		reqJSON, err = json.Marshal(params)
-		if err != nil {
-			return -1, fmt.Errorf("marshal params: %w", err)
-		}
 	}
 
 	resp, err := dispatch(h.emccmdCbs, reqJSON)

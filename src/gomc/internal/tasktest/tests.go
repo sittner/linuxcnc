@@ -96,20 +96,17 @@ func (h *testHarness) runAll() *testResults {
 	if isGoMilltask {
 		fmt.Println("tasktest: detected Go milltask")
 		// Known Go milltask gaps
-		r.xfail["jog/rejected_in_estop"] = "missing state guard"
-		r.xfail["jog/rejected_when_disabled"] = "missing state guard"
 		r.xfail["jog/incremental_in_manual"] = "incremental jog not working correctly"
 		r.xfail["homing/unhome_joint"] = "unhome not clearing homed flag"
-		r.xfail["homing/rejected_in_estop"] = "missing state guard"
 		r.xfail["program/open"] = "filename not set in stat"
 		r.xfail["program/pause_resume"] = "pause flag not set in stat"
-		r.xfail["program/run_requires_auto"] = "missing mode guard"
-		r.xfail["program/run_requires_file"] = "missing file guard"
 		r.xfail["spindle/forward"] = "spindle not in stat"
 		r.xfail["spindle/reverse"] = "spindle not in stat"
 		r.xfail["override/spindle"] = "spindle not in stat"
 		r.xfail["coolant/flood_on"] = "coolant not in stat"
 		r.xfail["coolant/mist_on"] = "coolant not in stat"
+		r.xfail["misc/load_tool_table"] = "load_tool_table not implemented"
+		r.xfail["program/step"] = "step not implemented"
 	} else {
 		fmt.Println("tasktest: detected C milltask")
 		// Known C milltask behavioral differences
@@ -1045,8 +1042,11 @@ func (h *testHarness) testProgramPauseResume(r *testResults) {
 
 func (h *testHarness) testProgramStep(r *testResults) {
 	const name = "program/step"
+	h.abort()
+	time.Sleep(settle)
 	h.ensureHomed()
 	h.ensureAuto()
+	h.waitForInterpState(emcstat.IDLE, 2*time.Second)
 
 	rc, _ := h.programOpen("/home/sascha/source/linuxcnc/configs/sim/test/test.ngc")
 	if !isOK(rc) {

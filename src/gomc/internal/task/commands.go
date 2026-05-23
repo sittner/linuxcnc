@@ -48,6 +48,9 @@ func (t *Task) SetState(state int32) error {
 		return nil
 
 	case StateEstopReset:
+		if t.state == StateEstopReset {
+			return nil // idempotent
+		}
 		if t.state != StateEstop {
 			return ErrEstop
 		}
@@ -64,6 +67,9 @@ func (t *Task) SetState(state int32) error {
 		return nil
 
 	case StateOn:
+		if t.state == StateOn {
+			return nil // idempotent
+		}
 		if t.state != StateEstopReset && t.state != StateOff {
 			return ErrNotOn
 		}
@@ -121,6 +127,8 @@ func (t *Task) ProgramOpen(file string) error {
 		return err
 	}
 	if t.interp != nil {
+		// Close any previously open file before opening a new one.
+		_ = t.interp.Close()
 		if err := t.interp.Open(file); err != nil {
 			return err
 		}
