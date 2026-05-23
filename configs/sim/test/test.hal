@@ -2,7 +2,7 @@
 # Connects position commands directly to feedback (perfect following).
 
 load trivkins
-load motmod
+load motmod num_spindles=1
 
 addf motion-command-handler servo-thread
 addf motion-controller servo-thread
@@ -19,6 +19,9 @@ net z-pos joint.2.motor-pos-cmd => joint.2.motor-pos-fb
 setp joint.0.home-sw-in 1
 setp joint.1.home-sw-in 1
 setp joint.2.home-sw-in 1
+
+# Spindle: report at-speed immediately
+setp spindle.0.at-speed 1
 
 # Load the test module (must be after milltask is loaded via linuxcnc.hal)
 load tasktest

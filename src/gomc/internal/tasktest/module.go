@@ -146,7 +146,7 @@ func (h *testHarness) abort() (int32, error) {
 func (h *testHarness) jog(jogType, axisOrJoint int32, velocity, distance float64) (int32, error) {
 	return h.callEmccmd("jog", map[string]interface{}{
 		"jog_type":      jogType,
-		"jjogmode":      true,
+		"jjogmode":      false,
 		"axis_or_joint": axisOrJoint,
 		"velocity":      velocity,
 		"distance":      distance,
@@ -188,7 +188,7 @@ func (h *testHarness) setMaxVelocity(vel float64) (int32, error) {
 
 func (h *testHarness) jogStop(axisOrJoint int32) (int32, error) {
 	return h.callEmccmd("jog_stop", map[string]interface{}{
-		"jjogmode":      true,
+		"jjogmode":      false,
 		"axis_or_joint": axisOrJoint,
 	})
 }
