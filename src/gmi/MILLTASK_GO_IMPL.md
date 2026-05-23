@@ -1,6 +1,8 @@
 # Milltask Go Rewrite — Implementation Plan
 
-## Current Status
+## Current Status (2026-05-23)
+
+Integration test: **58 pass, 0 fail, 7 xfail** (configs/sim/test/tasktest.ini)
 
 ### Done
 - ✅ Task struct + dependency interfaces (motctl, emcio, motstat clients)
@@ -10,35 +12,86 @@
 - ✅ Lifecycle fix: API lookups in Start() (not factory/New)
 - ✅ Integration: loads via `load milltask` in lib/hallib/linuxcnc.hal
 - ✅ Launcher cleanup: no more hasTask special handling
+- ✅ emccmd API (27 command handlers) — registered for C callers (halui) and WS
+- ✅ emcstat API (GetStat → StatFull) — registered + WebSocket watch with delta push
+- ✅ State machine (estop/estop_reset/off/on transitions)
+- ✅ Mode switching (manual/auto/mdi) with guards
+- ✅ All 27 emccmd handlers implemented (commands.go)
+- ✅ Interpreter integration (CInterp wrapping librs274.so via C shim)
+- ✅ Canon callbacks in Go (straight_traverse, straight_feed, arc_feed, dwell, spindle, coolant, tool-length, offsets)
+- ✅ Sequencer goroutine (executes QueuedCmd from interpQueue)
+- ✅ Readahead with backpressure (waitSequencerDrain on EXECUTE_FINISH)
+- ✅ Pause/resume with channel signaling
+- ✅ Program run (goroutine reads interpreter lines, enqueues canon commands)
+- ✅ MDI execution (single command — synch, execute, interpDoneCmd)
+- ✅ Continuous jog + jog stop
+- ✅ Homing / unhoming (delegates to motctl)
+- ✅ Spindle on/off/increase/decrease
+- ✅ Coolant flood/mist on/off
+- ✅ Overrides: feed, spindle, rapid, max velocity
+- ✅ Teleop enable/disable, override limits
+- ✅ Optional stop, block delete flags
+- ✅ Position logger (poslog.go — ring buffer + WS push)
+- ✅ Tools REST API (tooldata shim + GET/PUT/DELETE endpoints)
+- ✅ CGO bridge error propagation (all exports return -1 on error)
+- ✅ ProgramOpen works in any state/mode (matches C milltask)
 
-### In Progress — Phase 9: Provided APIs
-Milltask must register these APIs so other modules (halui, emcgateway) can call it:
+### XFAILs (known issues, not regressions)
+1. **jog/incremental** — wrong distance (units/scale bug in motctl or motion)
+2. **homing/unhome** — homed flag not clearing in motstat after unhome
+3. **program/step** — not implemented (TODO in AutoCommand)
+4. **program/run_requires_file** — interpreter retains file from previous test
+5. **spindle/forward+reverse** — spindle enabled flag not reflected in motstat
+6. **misc/load_tool_table** — not implemented (returns errNotReady)
 
-1. **emccmd** — 27 command methods (halui sends jog/home/mode/state/etc)
-   - Interface: `emccmdapi.EmccmdCallbacks`
-   - Register: `emccmdapi.RegisterEmccmdAPI(registry, "milltask", impl)`
-2. **emcstat** — 1 method: `GetStat() → StatFull` (full machine state)
-   - Interface: `emcstatapi.EmcstatCallbacks`
-   - Register: `emcstatapi.RegisterEmcstatAPI(registry, "milltask", impl)`
-3. **mcode_handler** — 1 method: `register_handler(mcode, fn, userdata)`
-4. **interp_ext** — 3 methods: register oword/remap_prolog/remap_epilog
+### Pending Work — Priority Order
 
-### Remaining — Phase 10: Core Task Loop
-5. State machine (mode/state transitions, guards)
-6. emccmd handler implementations (delegate to motctl/emcio)
-7. Interpreter integration (C shim + canon callbacks)
-8. Sequencer (readahead + execute loop)
-9. MDI queue
-10. M-code handler worker thread
-11. Status publishing (fill_stat + delta push)
-12. Servo cycle polling loop
+#### Tier 1: Breaks real usage
+| # | Item | Description | Effort |
+|---|------|-------------|--------|
+| 1 | Abort cleanup | Stop spindle, coolant off, clear interp queue, IO abort | Small |
+| 2 | Tool change cycle | M6 canon → ToolPrepare → wait IO → ToolLoad → update offsets | Medium |
+| 3 | M-code handler worker | Goroutine for M100-199, abort-aware (eventfd/channel) | Medium |
+| 4 | MDI queue | Buffer multiple MDI commands, abort mid-queue | Small |
+| 5 | Load tool table | Reload from file, notify interpreter | Small |
+| 6 | NO_FORCE_HOMING | Block MDI/AUTO run if not all homed (unless INI override) | Small |
+| 7 | Single step | AutoStep reads one line, pauses before next | Small |
+
+#### Tier 2: Stat accuracy (UI shows wrong values)
+| # | Item | Description |
+|---|------|-------------|
+| 8 | Line tracking | Set currentLine/readLine/motionLine from interp + sequencer |
+| 9 | Active G/M codes | Read from interpreter after each line, publish in stat |
+| 10 | Spindle state | Read spindle direction/enabled from motstat properly |
+| 11 | Unhome flag | Ensure motstat reflects unhome (may be motion-side bug) |
+| 12 | Interp state on program end | Properly reset to IDLE after M2/M30 completes |
+
+#### Tier 3: Edge cases / advanced
+| # | Item | Description |
+|---|------|-------------|
+| 13 | Incremental jog fix | Debug units/scale in jog_incr path |
+| 14 | Task plan synch | Sync interpreter position with motion actual |
+| 15 | Wait complete | Poll execState until ExecDone or timeout |
+| 16 | Readahead exec states | WAITING_FOR_IO, WAITING_FOR_DELAY, SPINDLE_ORIENT |
+| 17 | Probe result | Publish probed_position in stat from motstat |
+| 18 | Operator error ring | Push errors to emcerror ring (not just slog) |
+| 19 | Feed hold / adaptive feed | Support motion adaptive feed override |
+| 20 | Program end rewind | Reset interpreter to line 0 on M2/M30 |
+
+### Milestone targets
+- **Tier 1 complete** → usable for basic machining with Axis UI
+- **Tier 1+2 complete** → UI shows correct state, suitable for daily use
+- **All tiers** → full parity with C milltask, can delete cmod/milltask.so
 
 ## Overview
 
-Rewrite milltask from C++ cmod (~14,350 lines) to a Go gomod. The current
-implementation routes all commands through NML message structs and three large
-switch statements. The new design eliminates NML entirely — GMI methods on
-the Task struct become the direct command handlers.
+Rewrite milltask from C++ cmod (~3,580 lines in emctaskmain_gomc.cc) to a Go
+gomod. The C version routes commands through NML message structs and three
+large switch statements. The Go design eliminates NML — GMI methods on the
+Task struct are the direct command handlers.
+
+The Go milltask is already the default (loaded via `load milltask` in
+linuxcnc.hal). The old C milltask.so exists only as fallback reference.
 
 ## Architecture
 
@@ -116,17 +169,22 @@ The shim is the ONLY C++ code in the Go milltask.
 
 ```
 src/gomc/internal/task/
-    task.go           // Task struct, state types, dependency interfaces
-    guards.go         // requireState(), requireMode(), requireHomed(), ...
-    commands.go       // GMI method implementations (27 methods)
-    sequencer.go      // interpreter queue execution loop
-    canon.go          // canon callback implementations (push QueuedCmd)
-    interp.go         // cgo wrapper for interpreter C shim
-    ini_config.go     // INI reading at startup (joints, axes, traj, spindles)
-    hal_pins.go       // HAL pin creation + periodic update
-    task_test.go      // guard + state transition tests
-    commands_test.go  // command acceptance/rejection matrix (~100 cases)
-    sequencer_test.go // queue execution, abort, error handling
+    task.go            // Task struct, state types, dependency interfaces
+    guards.go          // requireOn(), requireMode(), requireInterpIdle(), ...
+    commands.go        // 27 emccmd method implementations
+    sequencer.go       // interpreter queue execution loop (goroutine)
+    canon.go           // canon callback implementations (push QueuedCmd)
+    interp.go          // cgo wrapper for interpreter C shim (CInterp)
+    module.go          // gomc.Module lifecycle (factory, Start, Stop, Destroy)
+    api_provider.go    // EmccmdCallbacks + EmcstatCallbacks implementations
+    api_cbridge.go     // CGO //export functions for C callers (halui)
+    ini_config.go      // INI reading at startup (joints, axes, traj, spindles)
+    hal_pins.go        // inihal HAL component (runtime parameter override)
+    stat.go            // GetStat() — fills StatFull from motstat + internal state
+    watches.go         // WebSocket watch registration (emcstat, poslogger)
+    poslog.go          // Position logger (ring buffer, WS push)
+    tools.go           // Tool table REST endpoints
+    task_test.go       // Unit tests (guards, state transitions, commands)
 ```
 
 ## Dependency Interfaces (mockable for tests)
@@ -212,42 +270,47 @@ The acceptance rules extracted from the current implementation:
 
 ## Test Strategy
 
-### Phase 1: Guard matrix (table-driven)
-~100 test cases encoding state×mode×command acceptance/rejection. This is the
-safety-critical behavior — wrong guards can cause machine damage.
+### Unit tests (src/gomc/internal/task/task_test.go)
+- Guard matrix: state×mode×command acceptance/rejection
+- State transitions: estop→on sequence, idempotency
+- ProgramOpen: works in any mode/state
+- Run with mock interpreter + mock motion
 
-### Phase 2: State transitions
-- estop → estop_reset → on (must follow sequence)
-- on → estop (direct, always allowed)
-- mode switches clear interpreter queue
-- abort behavior from each state
+### Integration tests (configs/sim/test/tasktest.ini)
+Python test harness that starts the full system (gomc-server + sim HAL config)
+and exercises all commands via REST API with assertion on stat changes.
 
-### Phase 3: Sequencer
-- Queue N commands, verify sequential execution with correct waits
-- Abort clears queue and stops current wait
-- Error propagation stops execution
+Categories: state, mode, motion, jog, homing, program, mdi, spindle, coolant,
+override, option, abort, misc. Currently 65 tests (58 pass, 7 xfail).
 
-### Phase 4: Canon → QueuedCmd
-- Each canon callback produces the correct QueuedCmd type
-- Coordinate transforms (unit conversion, offsets, rotation)
-- Segment chaining for naive CAM
+### How to run
+```bash
+# Unit tests
+cd src/gomc && LD_LIBRARY_PATH=../../lib go test ./internal/task/
 
-## Effort Estimate
+# Integration tests
+./scripts/linuxcnc configs/sim/test/tasktest.ini
 
-| Subsystem | Lines (current) | Approach | Effort |
-|-----------|----------------|----------|--------|
-| State machine | 3800 | Redesign as methods | Medium |
-| Motion interface | 2032 | Direct motctl calls | Small |
-| Canon logic | 3530 | Port math to Go | Medium-Large |
-| Canon table | 607 | Eliminated (Go implements directly) | — |
-| Task utils | 659 | Thin interp cgo shim | Small |
-| IO interface | 283 | Direct emcio calls | Small |
-| Command handlers | 351 | Eliminated (methods are handlers) | — |
-| Command slot | 78 | Eliminated (direct calls) | — |
-| INI config | 631 | inifile.IniFile | Small |
-| HAL pins | 444 | gomc HAL package | Small |
-| interp_list | 204 | Go channel/slice | — |
-| rcs_shim/linklist/etc | 693 | Eliminated (Go stdlib) | — |
+# Build
+cd src && make ../bin/gomc-server
+```
+
+## Effort Estimate (remaining work)
+
+| Subsystem | Status | Effort |
+|-----------|--------|--------|
+| Abort cleanup (spindle/coolant/IO/queue) | Not started | Small |
+| Tool change cycle (M6) | Not started | Medium |
+| M-code handler worker (M100-199) | Not started | Medium |
+| MDI queue | Not started | Small |
+| Line tracking + active G/M codes | Not started | Small |
+| NO_FORCE_HOMING + load_tool_table | Not started | Small |
+| Single step | Not started | Small |
+| Stat fixes (spindle/unhome/probe) | Not started | Small |
+| Incremental jog fix | Not started | Small (debug) |
+| Operator error ring push | Not started | Small |
+
+Total remaining: ~800-1200 lines of Go code for full C milltask parity.
 
 ## What Gets Eliminated Entirely
 
