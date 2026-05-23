@@ -417,6 +417,72 @@ func goTaskGetStat(ctx unsafe.Pointer) C.emcstat_stat_full_t {
 		result.joints_len = C.size_t(n)
 	}
 
+	// Spindle array.
+	if n := len(stat.Spindle); n > 0 {
+		spindles := (*[1 << 20]C.emcstat_spindle_info_t)(C.calloc(C.size_t(n), C.size_t(unsafe.Sizeof(C.emcstat_spindle_info_t{}))))
+		for i := 0; i < n; i++ {
+			s := &stat.Spindle[i]
+			spindles[i].speed = C.double(s.Speed)
+			spindles[i].direction = C.int32_t(s.Direction)
+			spindles[i].brake = C.bool(s.Brake)
+			spindles[i].enabled = C.bool(s.Enabled)
+			spindles[i].override = C.double(s.Override)
+			spindles[i].override_enabled = C.bool(s.OverrideEnabled)
+			spindles[i].homed = C.bool(s.Homed)
+			spindles[i].orient_state = C.int32_t(s.OrientState)
+			spindles[i].orient_fault = C.int32_t(s.OrientFault)
+		}
+		result.spindle = &spindles[0]
+		result.spindle_len = C.size_t(n)
+	}
+
+	// Axis array.
+	if n := len(stat.Axis); n > 0 {
+		axes := (*[1 << 20]C.emcstat_axis_info_t)(C.calloc(C.size_t(n), C.size_t(unsafe.Sizeof(C.emcstat_axis_info_t{}))))
+		for i := 0; i < n; i++ {
+			a := &stat.Axis[i]
+			axes[i].velocity = C.double(a.Velocity)
+			axes[i].min_position_limit = C.double(a.MinPositionLimit)
+			axes[i].max_position_limit = C.double(a.MaxPositionLimit)
+		}
+		result.axis = &axes[0]
+		result.axis_len = C.size_t(n)
+	}
+
+	// Active gcodes/mcodes/settings.
+	if n := len(stat.ActiveGcodes); n > 0 {
+		gc := (*[1 << 20]C.int32_t)(C.calloc(C.size_t(n), C.size_t(unsafe.Sizeof(C.int32_t(0)))))
+		for i := 0; i < n; i++ {
+			gc[i] = C.int32_t(stat.ActiveGcodes[i])
+		}
+		result.active_gcodes = &gc[0]
+		result.active_gcodes_len = C.size_t(n)
+	}
+	if n := len(stat.ActiveMcodes); n > 0 {
+		mc := (*[1 << 20]C.int32_t)(C.calloc(C.size_t(n), C.size_t(unsafe.Sizeof(C.int32_t(0)))))
+		for i := 0; i < n; i++ {
+			mc[i] = C.int32_t(stat.ActiveMcodes[i])
+		}
+		result.active_mcodes = &mc[0]
+		result.active_mcodes_len = C.size_t(n)
+	}
+	if n := len(stat.ActiveSettings); n > 0 {
+		as := (*[1 << 20]C.double)(C.calloc(C.size_t(n), C.size_t(unsafe.Sizeof(C.double(0)))))
+		for i := 0; i < n; i++ {
+			as[i] = C.double(stat.ActiveSettings[i])
+		}
+		result.active_settings = &as[0]
+		result.active_settings_len = C.size_t(n)
+	}
+
+	// Task strings (file, command).
+	if stat.Task.File != "" {
+		result.task.file = C.CString(stat.Task.File)
+	}
+	if stat.Task.Command != "" {
+		result.task.command = C.CString(stat.Task.Command)
+	}
+
 	// Homed/limit arrays.
 	for i := 0; i < int(stat.JointsCount) && i < C.EMCSTAT_MAX_JOINTS; i++ {
 		result.homed[i] = C.bool(stat.Homed[i])

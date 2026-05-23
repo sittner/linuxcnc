@@ -552,9 +552,17 @@ func (t *Task) Flood(on bool) error {
 		return err
 	}
 	if on {
-		return t.io.CoolantFloodOn()
+		if err := t.io.CoolantFloodOn(); err != nil {
+			return err
+		}
+		t.floodOn = true
+		return nil
 	}
-	return t.io.CoolantFloodOff()
+	if err := t.io.CoolantFloodOff(); err != nil {
+		return err
+	}
+	t.floodOn = false
+	return nil
 }
 
 // Mist turns mist coolant on or off.
@@ -566,9 +574,17 @@ func (t *Task) Mist(on bool) error {
 		return err
 	}
 	if on {
-		return t.io.CoolantMistOn()
+		if err := t.io.CoolantMistOn(); err != nil {
+			return err
+		}
+		t.mistOn = true
+		return nil
 	}
-	return t.io.CoolantMistOff()
+	if err := t.io.CoolantMistOff(); err != nil {
+		return err
+	}
+	t.mistOn = false
+	return nil
 }
 
 // Brake engages/disengages spindle brake.

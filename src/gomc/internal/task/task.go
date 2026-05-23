@@ -217,6 +217,8 @@ type Task struct {
 	// Flags
 	optionalStop bool
 	blockDelete  bool
+	floodOn      bool
+	mistOn       bool
 
 	// Interpreter active codes (updated by canon callbacks)
 	activeGcodes   []int32

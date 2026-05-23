@@ -98,13 +98,8 @@ func (h *testHarness) runAll() *testResults {
 		// Known Go milltask gaps
 		r.xfail["jog/incremental_in_manual"] = "incremental jog not working correctly"
 		r.xfail["homing/unhome_joint"] = "unhome not clearing homed flag"
-		r.xfail["program/open"] = "filename not set in stat"
-		r.xfail["program/pause_resume"] = "pause flag not set in stat"
-		r.xfail["spindle/forward"] = "spindle not in stat"
-		r.xfail["spindle/reverse"] = "spindle not in stat"
-		r.xfail["override/spindle"] = "spindle not in stat"
-		r.xfail["coolant/flood_on"] = "coolant not in stat"
-		r.xfail["coolant/mist_on"] = "coolant not in stat"
+		r.xfail["spindle/forward"] = "spindle state not reflected by motion"
+		r.xfail["spindle/reverse"] = "spindle state not reflected by motion"
 		r.xfail["misc/load_tool_table"] = "load_tool_table not implemented"
 		r.xfail["program/step"] = "step not implemented"
 	} else {
@@ -1123,7 +1118,9 @@ func (h *testHarness) testProgramRunRequiresFileOpen(r *testResults) {
 func (h *testHarness) testMdiExecute(r *testResults) {
 	const name = "mdi/execute_g0"
 	h.ensureHomed()
-	h.abort() // ensure clean state
+	h.abort() // ensure clean state — cancel any in-progress motion from previous tests
+	h.waitForInterpState(emcstat.IDLE, 2*time.Second)
+	h.waitForInPosition(5 * time.Second)
 	h.ensureMdi()
 	// Wait for interpreter to be idle before sending MDI
 	h.waitForInterpState(emcstat.IDLE, 2*time.Second)
@@ -1134,9 +1131,10 @@ func (h *testHarness) testMdiExecute(r *testResults) {
 		return
 	}
 
-	// Wait for MDI to complete
+	// Wait for MDI to complete: interp idle + motion done
 	h.waitForInterpState(emcstat.IDLE, 5*time.Second)
-	h.waitForInPosition(2 * time.Second)
+	// Give motion enough time to execute and report final position
+	time.Sleep(2 * time.Second)
 
 	stat, _ := h.getStat()
 	if stat.Position.X < 4.5 || stat.Position.X > 5.5 {

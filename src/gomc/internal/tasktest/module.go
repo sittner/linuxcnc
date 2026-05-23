@@ -434,3 +434,21 @@ func (h *testHarness) waitForInPosition(timeout time.Duration) error {
 	}
 	return fmt.Errorf("timeout waiting for in_position")
 }
+
+// waitForNotInPosition polls until motion.in_position is false or timeout.
+// Used to detect that motion has actually started before waiting for completion.
+func (h *testHarness) waitForNotInPosition(timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		stat, err := h.getStat()
+		if err != nil {
+			return err
+		}
+		if !stat.Motion.InPosition {
+			return nil
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	// Not an error — motion may have started and finished very quickly.
+	return nil
+}
