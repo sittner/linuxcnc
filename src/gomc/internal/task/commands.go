@@ -168,6 +168,11 @@ func (t *Task) AutoCommand(cmd int32, line int32) error {
 		interp := t.interp
 		startLine := line
 		t.mu.Unlock()
+		// Ensure coord mode is active (may have been dropped if SetMode
+		// was called while machine was still settling from a jog/home).
+		if err := t.motion.SetCoord(); err != nil {
+			t.logger.Error("set coord before run", "err", err)
+		}
 		// Synch interpreter with current machine position
 		if err := interp.Synch(); err != nil {
 			t.logger.Error("interp synch failed before run", "err", err)
@@ -243,6 +248,11 @@ func (t *Task) MDI(command string) error {
 	interp := t.interp
 	t.mu.Unlock()
 
+	// Ensure coord mode is active before MDI motion commands.
+	if err := t.motion.SetCoord(); err != nil {
+		t.logger.Error("set coord before MDI", "err", err)
+	}
+
 	// Synch interpreter with current machine position before MDI.
 	if err := interp.Synch(); err != nil {
 		t.logger.Error("interp synch failed before MDI", "err", err)
@@ -315,6 +325,11 @@ func (t *Task) runProgram(interp Interpreter, startLine int32) {
 			// reading the next line (backpressure).
 			if t.waitSequencerDrain() {
 				return // aborted
+			}
+			// Re-establish coord mode (may have been lost during
+			// blocking IO operations like tool change).
+			if err := t.motion.SetCoord(); err != nil {
+				t.logger.Error("set coord after execute_finish", "err", err)
 			}
 			// Synch interpreter with machine state after wait
 			if err := interp.Synch(); err != nil {
