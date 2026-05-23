@@ -136,28 +136,40 @@ func (m *milltaskModule) registerCAPIs(reg *apiserver.Registry, name string) (fu
 //export goTaskSetState
 func goTaskSetState(ctx unsafe.Pointer, state C.int32_t) C.int32_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
-	r, _ := m.SetState(int32(state))
+	r, err := m.SetState(int32(state))
+	if err != nil {
+		return -1
+	}
 	return C.int32_t(r)
 }
 
 //export goTaskSetMode
 func goTaskSetMode(ctx unsafe.Pointer, mode C.int32_t) C.int32_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
-	r, _ := m.SetMode(int32(mode))
+	r, err := m.SetMode(int32(mode))
+	if err != nil {
+		return -1
+	}
 	return C.int32_t(r)
 }
 
 //export goTaskAutoCmd
 func goTaskAutoCmd(ctx unsafe.Pointer, cmd C.emccmd_auto_cmd_t, line C.int32_t) C.int32_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
-	r, _ := m.AutoCmd(emccmdapi.AutoCmd(cmd), int32(line))
+	r, err := m.AutoCmd(emccmdapi.AutoCmd(cmd), int32(line))
+	if err != nil {
+		return -1
+	}
 	return C.int32_t(r)
 }
 
 //export goTaskMdi
 func goTaskMdi(ctx unsafe.Pointer, command *C.char) C.int32_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
-	r, _ := m.Mdi(C.GoString(command))
+	r, err := m.Mdi(C.GoString(command))
+	if err != nil {
+		return -1
+	}
 	return C.int32_t(r)
 }
 
@@ -165,14 +177,20 @@ func goTaskMdi(ctx unsafe.Pointer, command *C.char) C.int32_t {
 func goTaskJog(ctx unsafe.Pointer, jogType C.emccmd_jog_type_t, jjogmode C.bool,
 	axisOrJoint C.int32_t, velocity C.double, distance C.double) C.int32_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
-	r, _ := m.Jog(emccmdapi.JogType(jogType), bool(jjogmode), int32(axisOrJoint), float64(velocity), float64(distance))
+	r, err := m.Jog(emccmdapi.JogType(jogType), bool(jjogmode), int32(axisOrJoint), float64(velocity), float64(distance))
+	if err != nil {
+		return -1
+	}
 	return C.int32_t(r)
 }
 
 //export goTaskJogStop
 func goTaskJogStop(ctx unsafe.Pointer, jjogmode C.bool, axisOrJoint C.int32_t) C.int32_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
-	r, _ := m.JogStop(bool(jjogmode), int32(axisOrJoint))
+	r, err := m.JogStop(bool(jjogmode), int32(axisOrJoint))
+	if err != nil {
+		return -1
+	}
 	return C.int32_t(r)
 }
 
@@ -180,147 +198,210 @@ func goTaskJogStop(ctx unsafe.Pointer, jjogmode C.bool, axisOrJoint C.int32_t) C
 func goTaskSpindle(ctx unsafe.Pointer, cmd C.emccmd_spindle_cmd_t, speed C.double,
 	spindleNum C.int32_t, wait C.int32_t) C.int32_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
-	r, _ := m.Spindle(emccmdapi.SpindleCmd(cmd), float64(speed), int32(spindleNum), int32(wait))
+	r, err := m.Spindle(emccmdapi.SpindleCmd(cmd), float64(speed), int32(spindleNum), int32(wait))
+	if err != nil {
+		return -1
+	}
 	return C.int32_t(r)
 }
 
 //export goTaskHome
 func goTaskHome(ctx unsafe.Pointer, joint C.int32_t) C.int32_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
-	r, _ := m.Home(int32(joint))
+	r, err := m.Home(int32(joint))
+	if err != nil {
+		return -1
+	}
 	return C.int32_t(r)
 }
 
 //export goTaskUnhome
 func goTaskUnhome(ctx unsafe.Pointer, joint C.int32_t) C.int32_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
-	r, _ := m.Unhome(int32(joint))
+	r, err := m.Unhome(int32(joint))
+	if err != nil {
+		return -1
+	}
 	return C.int32_t(r)
 }
 
 //export goTaskOverrideLimits
 func goTaskOverrideLimits(ctx unsafe.Pointer) C.int32_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
-	r, _ := m.OverrideLimits()
+	r, err := m.OverrideLimits()
+	if err != nil {
+		return -1
+	}
 	return C.int32_t(r)
 }
 
 //export goTaskTeleopEnable
 func goTaskTeleopEnable(ctx unsafe.Pointer, enable C.bool) C.int32_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
-	r, _ := m.TeleopEnable(bool(enable))
+	r, err := m.TeleopEnable(bool(enable))
+	if err != nil {
+		return -1
+	}
 	return C.int32_t(r)
 }
 
 //export goTaskSetFeedOverride
 func goTaskSetFeedOverride(ctx unsafe.Pointer, rate C.double) C.int32_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
-	r, _ := m.SetFeedOverride(float64(rate))
+	r, err := m.SetFeedOverride(float64(rate))
+	if err != nil {
+		return -1
+	}
 	return C.int32_t(r)
 }
 
 //export goTaskSetSpindleOverride
 func goTaskSetSpindleOverride(ctx unsafe.Pointer, rate C.double, spindleNum C.int32_t) C.int32_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
-	r, _ := m.SetSpindleOverride(float64(rate), int32(spindleNum))
+	r, err := m.SetSpindleOverride(float64(rate), int32(spindleNum))
+	if err != nil {
+		return -1
+	}
 	return C.int32_t(r)
 }
 
 //export goTaskSetRapidOverride
 func goTaskSetRapidOverride(ctx unsafe.Pointer, rate C.double) C.int32_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
-	r, _ := m.SetRapidOverride(float64(rate))
+	r, err := m.SetRapidOverride(float64(rate))
+	if err != nil {
+		return -1
+	}
 	return C.int32_t(r)
 }
 
 //export goTaskSetMaxVelocity
 func goTaskSetMaxVelocity(ctx unsafe.Pointer, velocity C.double) C.int32_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
-	r, _ := m.SetMaxVelocity(float64(velocity))
+	r, err := m.SetMaxVelocity(float64(velocity))
+	if err != nil {
+		return -1
+	}
 	return C.int32_t(r)
 }
 
 //export goTaskFlood
 func goTaskFlood(ctx unsafe.Pointer, on C.bool) C.int32_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
-	r, _ := m.Flood(bool(on))
+	r, err := m.Flood(bool(on))
+	if err != nil {
+		return -1
+	}
 	return C.int32_t(r)
 }
 
 //export goTaskMist
 func goTaskMist(ctx unsafe.Pointer, on C.bool) C.int32_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
-	r, _ := m.Mist(bool(on))
+	r, err := m.Mist(bool(on))
+	if err != nil {
+		return -1
+	}
 	return C.int32_t(r)
 }
 
 //export goTaskBrake
 func goTaskBrake(ctx unsafe.Pointer, on C.bool, spindleNum C.int32_t) C.int32_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
-	r, _ := m.Brake(bool(on), int32(spindleNum))
+	r, err := m.Brake(bool(on), int32(spindleNum))
+	if err != nil {
+		return -1
+	}
 	return C.int32_t(r)
 }
 
 //export goTaskLube
 func goTaskLube(ctx unsafe.Pointer, on C.bool) C.int32_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
-	r, _ := m.Lube(bool(on))
+	r, err := m.Lube(bool(on))
+	if err != nil {
+		return -1
+	}
 	return C.int32_t(r)
 }
 
 //export goTaskAbort
 func goTaskAbort(ctx unsafe.Pointer) C.int32_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
-	r, _ := m.Abort()
+	r, err := m.Abort()
+	if err != nil {
+		return -1
+	}
 	return C.int32_t(r)
 }
 
 //export goTaskTaskPlanSynch
 func goTaskTaskPlanSynch(ctx unsafe.Pointer) C.int32_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
-	r, _ := m.TaskPlanSynch()
+	r, err := m.TaskPlanSynch()
+	if err != nil {
+		return -1
+	}
 	return C.int32_t(r)
 }
 
 //export goTaskSetOptionalStop
 func goTaskSetOptionalStop(ctx unsafe.Pointer, on C.bool) C.int32_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
-	r, _ := m.SetOptionalStop(bool(on))
+	r, err := m.SetOptionalStop(bool(on))
+	if err != nil {
+		return -1
+	}
 	return C.int32_t(r)
 }
 
 //export goTaskSetBlockDelete
 func goTaskSetBlockDelete(ctx unsafe.Pointer, on C.bool) C.int32_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
-	r, _ := m.SetBlockDelete(bool(on))
+	r, err := m.SetBlockDelete(bool(on))
+	if err != nil {
+		return -1
+	}
 	return C.int32_t(r)
 }
 
 //export goTaskLoadToolTable
 func goTaskLoadToolTable(ctx unsafe.Pointer) C.int32_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
-	r, _ := m.LoadToolTable()
+	r, err := m.LoadToolTable()
+	if err != nil {
+		return -1
+	}
 	return C.int32_t(r)
 }
 
 //export goTaskProgramOpen
 func goTaskProgramOpen(ctx unsafe.Pointer, file *C.char) C.int32_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
-	r, _ := m.ProgramOpen(C.GoString(file))
+	r, err := m.ProgramOpen(C.GoString(file))
+	if err != nil {
+		return -1
+	}
 	return C.int32_t(r)
 }
 
 //export goTaskWaitComplete
 func goTaskWaitComplete(ctx unsafe.Pointer, timeout C.double) C.int32_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
-	r, _ := m.WaitComplete(float64(timeout))
+	r, err := m.WaitComplete(float64(timeout))
+	if err != nil {
+		return -1
+	}
 	return C.int32_t(r)
 }
 
 //export goTaskSetDebug
 func goTaskSetDebug(ctx unsafe.Pointer, debug C.int32_t) C.int32_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
-	r, _ := m.SetDebug(int32(debug))
+	r, err := m.SetDebug(int32(debug))
+	if err != nil {
+		return -1
+	}
 	return C.int32_t(r)
 }
 

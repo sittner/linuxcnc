@@ -117,15 +117,8 @@ func (t *Task) ProgramOpen(file string) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	if err := t.requireOn(); err != nil {
-		return err
-	}
-	if err := t.requireMode(ModeAuto); err != nil {
-		return err
-	}
-	if err := t.requireInterpIdle(); err != nil {
-		return err
-	}
+	// No state/mode guards — the C milltask allows program-open in any
+	// state (including ESTOP) and any mode. It's just loading a file.
 	if t.interp != nil {
 		// Close any previously open file before opening a new one.
 		_ = t.interp.Close()

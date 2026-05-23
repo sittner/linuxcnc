@@ -304,23 +304,22 @@ func TestSpindle_Forward(t *testing.T) {
 	}
 }
 
-func TestProgramOpen_RequiresAutoIdle(t *testing.T) {
+func TestProgramOpen_AnyModeAnyState(t *testing.T) {
 	task, _, _ := newTestTask()
 	bringUp(task)
 
-	// Wrong mode
-	err := task.ProgramOpen("test.ngc")
-	if !errors.Is(err, ErrWrongMode) {
-		t.Fatalf("expected ErrWrongMode, got %v", err)
-	}
-
-	// Correct mode
-	task.SetMode(int32(ModeAuto))
+	// Works in MANUAL mode (no mode guard)
 	if err := task.ProgramOpen("test.ngc"); err != nil {
-		t.Fatalf("program_open: %v", err)
+		t.Fatalf("program_open in MANUAL: %v", err)
 	}
 	if !task.programOpen {
 		t.Fatal("expected programOpen=true")
+	}
+
+	// Also works in AUTO
+	task.SetMode(int32(ModeAuto))
+	if err := task.ProgramOpen("test2.ngc"); err != nil {
+		t.Fatalf("program_open in AUTO: %v", err)
 	}
 }
 
