@@ -289,6 +289,9 @@ func (c *Canon) StraightFeed(lineno int32, x, y, z, a, b, _c, u, v, w float64) {
 	s.endPoint = pos
 	s.lineNo = lineno
 
+	// Set motion parameters before the move (tp uses termCond at add time)
+	c.enqueueMotionParams()
+
 	cmd := &LinearMoveCmd{
 		Pos:        pos,
 		Vel:        s.linearFeedRate,
@@ -300,9 +303,6 @@ func (c *Canon) StraightFeed(lineno int32, x, y, z, a, b, _c, u, v, w float64) {
 		IndexerJ:   -1,
 	}
 	c.enqueue(cmd)
-
-	// Set motion parameters before the move
-	c.enqueueMotionParams()
 }
 
 func (c *Canon) ArcFeed(lineno int32, firstEnd, secondEnd, firstAxis, secondAxis float64,

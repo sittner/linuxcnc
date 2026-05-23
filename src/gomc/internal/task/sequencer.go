@@ -150,6 +150,8 @@ func (t *Task) sequencerLoop() {
 				return
 			}
 
+			t.logger.Info("sequencer exec", "cmd", cmd.String())
+
 			// Execute the command
 			if err := cmd.Execute(t); err != nil {
 				t.logger.Error("sequencer command failed", "cmd", cmd.String(), "err", err)
@@ -162,6 +164,7 @@ func (t *Task) sequencerLoop() {
 			if err := t.waitForCompletion(cmd.Wait()); err != nil {
 				if errors.Is(err, context.Canceled) {
 					// Abort — not an error condition
+					t.logger.Info("sequencer aborted during wait", "cmd", cmd.String())
 					t.setExecState(ExecDone)
 					t.setInterpState(InterpIdle)
 					return
@@ -170,6 +173,11 @@ func (t *Task) sequencerLoop() {
 				t.setExecState(ExecError)
 				t.setInterpState(InterpIdle)
 				return
+			}
+
+			// Post-wait hook for commands that need state changes after motion completes
+			if pw, ok := cmd.(interface{ PostWait(*Task) }); ok {
+				pw.PostWait(t)
 			}
 		}
 	}
@@ -211,7 +219,8 @@ func (t *Task) waitMotionDone() error {
 			return true
 		}
 		v, err := t.status.GetInpos()
-		return err == nil && v != 0
+		// v must be exactly 1 (in-position). Negative values indicate read errors.
+		return err == nil && v == 1
 	})
 }
 
@@ -460,9 +469,14 @@ func init() {
 type interpDoneCmd struct{}
 
 func (c *interpDoneCmd) Execute(t *Task) error {
+	// Do NOT set InterpIdle/ExecDone here — we must wait for motion
+	// to finish first (via WaitMotion). State is set in PostWait.
+	return nil
+}
+
+func (c *interpDoneCmd) PostWait(t *Task) {
 	t.setInterpState(InterpIdle)
 	t.setExecState(ExecDone)
-	return nil
 }
 
 func (c *interpDoneCmd) Wait() WaitType { return WaitMotion }

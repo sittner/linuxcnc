@@ -72,17 +72,19 @@ const (
 )
 
 // ExecState represents the task execution state.
+// Values must match the emcstat GMI enum (emcstat.gmi ExecState).
 type ExecState int32
 
 const (
-	ExecDone                      ExecState = 1
-	ExecWaitingForMotion          ExecState = 2
-	ExecWaitingForIO              ExecState = 3
-	ExecWaitingForPause           ExecState = 4
-	ExecWaitingForDelay           ExecState = 5
-	ExecWaitingForSystemCmd       ExecState = 6
-	ExecWaitingForSpindleOriented ExecState = 7
-	ExecError                     ExecState = 8
+	ExecError                     ExecState = 1
+	ExecDone                      ExecState = 2
+	ExecWaitingForMotion          ExecState = 3
+	ExecWaitingForMotionQueue     ExecState = 4
+	ExecWaitingForIO              ExecState = 5
+	ExecWaitingForMotionAndIO     ExecState = 7
+	ExecWaitingForDelay           ExecState = 8
+	ExecWaitingForSystemCmd       ExecState = 9
+	ExecWaitingForSpindleOriented ExecState = 10
 )
 
 // MotionController is the interface to motmod (motctl GMI API).

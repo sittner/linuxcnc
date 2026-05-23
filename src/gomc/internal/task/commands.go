@@ -289,7 +289,7 @@ func (t *Task) runProgram(interp Interpreter, startLine int32) {
 
 		rc, err := interp.Read()
 		if err != nil {
-			t.logger.Error("interpreter read error", "err", err)
+			t.logger.Error("interpreter read error", "err", err, "rc", rc)
 			t.setInterpState(InterpIdle)
 			return
 		}
@@ -298,10 +298,15 @@ func (t *Task) runProgram(interp Interpreter, startLine int32) {
 			t.EnqueueCmd(&interpDoneCmd{})
 			return
 		}
+		if rc == InterpExit {
+			// M2/M30 signalled at read time — enqueue done and exit.
+			t.EnqueueCmd(&interpDoneCmd{})
+			return
+		}
 
 		rc, err = interp.Execute()
 		if err != nil {
-			t.logger.Error("interpreter execute error", "err", err)
+			t.logger.Error("interpreter execute error", "err", err, "rc", rc)
 			t.setInterpState(InterpIdle)
 			return
 		}
@@ -320,7 +325,12 @@ func (t *Task) runProgram(interp Interpreter, startLine int32) {
 			if err := interp.Synch(); err != nil {
 				t.logger.Error("interp synch after execute_finish", "err", err)
 			}
-		case InterpExit, InterpError:
+		case InterpExit:
+			// M2/M30 program end — enqueue done marker and let
+			// sequencer drain remaining motion before marking idle.
+			t.EnqueueCmd(&interpDoneCmd{})
+			return
+		case InterpError:
 			t.logger.Error("interpreter error", "rc", rc)
 			t.setInterpState(InterpIdle)
 			return
