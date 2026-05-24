@@ -110,6 +110,7 @@ func newEmcGateway(ini *inifile.IniFile, logger *slog.Logger, name string, args 
 			{
 				Name:        "get_stat",
 				DefaultRate: 50 * time.Millisecond,
+				Delta:       true,
 				Watch:       gw.pw.WatchFunc,
 			},
 			{

@@ -31,6 +31,7 @@ func (m *milltaskModule) registerWatches(name string) {
 			{
 				Name:        "get_stat",
 				DefaultRate: 50 * time.Millisecond,
+				Delta:       true,
 				Watch: func() (json.RawMessage, error) {
 					result, err := m.GetStat()
 					if err != nil {
