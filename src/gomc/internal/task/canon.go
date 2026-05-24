@@ -41,6 +41,7 @@ const (
 type CanonState struct {
 	// Coordinate offsets (stored in mm, absolute)
 	g5xOffset  Pose
+	g5xIndex   int32 // active G5x system (1=G54, 2=G55, ...)
 	g92Offset  Pose
 	xyRotation float64
 
@@ -90,6 +91,7 @@ func NewCanonState() *CanonState {
 	cs := &CanonState{
 		lengthUnits:         CanonUnitsMM,
 		activePlane:         CanonPlaneXY,
+		g5xIndex:            1, // G54 default (same as C canon)
 		motionMode:          CanonContinuous,
 		motionTolerance:     0.0254, // 0.001 inch default (same as C canon)
 		linearFeedRate:      0,     // set by SET_FEED_RATE or synch
@@ -199,8 +201,9 @@ func (cs *CanonState) toAbsoluteXYZ(x, y, z float64) Cartesian {
 // to the Task's sequencer queue. It holds the CanonState and a reference
 // to the owning Task.
 type Canon struct {
-	state *CanonState
-	task  *Task
+	state             *CanonState
+	task              *Task
+	parameterFileName string
 }
 
 // NewCanon creates a Canon instance tied to a Task.
@@ -215,11 +218,37 @@ func NewCanon(t *Task) *Canon {
 // --- State-setting callbacks (modify canon state, no queued commands) ---
 
 func (c *Canon) InitCanon() {
+	// Preserve coordinate offsets across reset — these are persistent
+	// interpreter-managed state (set during interp.init from the var file
+	// and by explicit G10/G54-G59 commands). The C canon's INIT_CANON
+	// zeros them too, but in the C milltask interp.init() is always
+	// called at startup to restore them. For the Go milltask, opening a
+	// file triggers reset→InitCanon without a subsequent init(), so we
+	// must preserve them here to avoid losing work offsets.
+	saved := struct {
+		g5xOffset  Pose
+		g5xIndex   int32
+		g92Offset  Pose
+		xyRotation float64
+		toolOffset Pose
+	}{
+		g5xOffset:  c.state.g5xOffset,
+		g5xIndex:   c.state.g5xIndex,
+		g92Offset:  c.state.g92Offset,
+		xyRotation: c.state.xyRotation,
+		toolOffset: c.state.toolOffset,
+	}
 	*c.state = *NewCanonState()
+	c.state.g5xOffset = saved.g5xOffset
+	c.state.g5xIndex = saved.g5xIndex
+	c.state.g92Offset = saved.g92Offset
+	c.state.xyRotation = saved.xyRotation
+	c.state.toolOffset = saved.toolOffset
 }
 
 func (c *Canon) SetG5xOffset(origin int32, x, y, z, a, b, _c, u, v, w float64) {
 	s := c.state
+	s.g5xIndex = origin
 	s.g5xOffset = Pose{
 		X: s.fromProg(x), Y: s.fromProg(y), Z: s.fromProg(z),
 		A: a, B: b, C: _c,
@@ -658,7 +687,9 @@ func (c *Canon) UnlockRotary(lineno, joint int32) int32 {
 	return 0
 }
 
-func (c *Canon) SetParameterFileName(name string) {}
+func (c *Canon) SetParameterFileName(name string) {
+	c.parameterFileName = name
+}
 
 func (c *Canon) SetSpindleMode(spindle int32, mode float64) {
 	c.state.spindleMode = mode
