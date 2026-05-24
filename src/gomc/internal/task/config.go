@@ -74,6 +74,9 @@ func loadTraj(ini *inifile.IniFile, t *Task, mc MotionConfig) error {
 	// Spindles
 	t.numSpindles = getIntOr(ini, "TRAJ", "SPINDLES", 1)
 
+	// Homing enforcement
+	t.noForceHoming = getIntOr(ini, "TRAJ", "NO_FORCE_HOMING", 0) != 0
+
 	// Axis mask from COORDINATES string
 	coord := ini.Get("TRAJ", "COORDINATES")
 	t.axisMask = parseAxisMask(coord)

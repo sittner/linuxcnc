@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"unsafe"
 
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcerror"
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcio"
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/motctl"
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/motstat"
@@ -111,6 +112,12 @@ func (m *milltaskModule) Start() error {
 	m.task = t
 	m.inihal = ih
 	m.mc = mc
+
+	// Wire the error publisher so operator messages reach UI clients.
+	// EnsureDrainStarted creates the ring+drain if the C milltask didn't.
+	if drain := emcerror.EnsureDrainStarted(m.name); drain != nil {
+		t.SetErrorPublisher(&drainErrorPublisher{drain: drain})
+	}
 
 	// Create and configure the G-code interpreter.
 	if err := m.initInterpreter(); err != nil {
@@ -236,4 +243,21 @@ func (a *ioAdapter) GetCmdStatus() (int32, error) {
 		return 0, err
 	}
 	return int32(st.Status), nil
+}
+
+// drainErrorPublisher implements ErrorPublisher by writing to the emcerror drain.
+type drainErrorPublisher struct {
+	drain *emcerror.PublishErrorDrain
+}
+
+func (p *drainErrorPublisher) OperatorError(text string) {
+	p.drain.PublishError(emcerror.OPERATOR_ERROR, text)
+}
+
+func (p *drainErrorPublisher) OperatorText(text string) {
+	p.drain.PublishError(emcerror.OPERATOR_TEXT, text)
+}
+
+func (p *drainErrorPublisher) OperatorDisplay(text string) {
+	p.drain.PublishError(emcerror.OPERATOR_DISPLAY, text)
 }

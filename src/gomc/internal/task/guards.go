@@ -9,6 +9,7 @@ var (
 	ErrEstop     = fmt.Errorf("machine in estop")
 	ErrBusy      = fmt.Errorf("interpreter busy")
 	ErrNoProgram = fmt.Errorf("no program loaded")
+	ErrNotHomed  = fmt.Errorf("not homed")
 )
 
 // requireState checks that the machine is in the required state.
@@ -55,6 +56,31 @@ func (t *Task) requireInterpIdle() error {
 func (t *Task) requireProgram() error {
 	if !t.programOpen {
 		return ErrNoProgram
+	}
+	return nil
+}
+
+// allHomed returns true if all joints are homed.
+func (t *Task) allHomed() bool {
+	ms, err := t.status.GetStatus()
+	if err != nil {
+		return false
+	}
+	for j := 0; j < t.numJoints; j++ {
+		if ms.Joints[j].Homed == 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// requireHomed checks that all joints are homed (unless NO_FORCE_HOMING is set).
+func (t *Task) requireHomed() error {
+	if t.noForceHoming {
+		return nil
+	}
+	if !t.allHomed() {
+		return ErrNotHomed
 	}
 	return nil
 }

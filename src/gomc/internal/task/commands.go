@@ -92,30 +92,59 @@ func (t *Task) SetState(state int32) error {
 // SetMode switches between MANUAL, MDI, and AUTO.
 func (t *Task) SetMode(mode int32) error {
 	t.mu.Lock()
-	defer t.mu.Unlock()
 
 	if err := t.requireOn(); err != nil {
+		t.mu.Unlock()
 		return err
 	}
 
 	target := TaskMode(mode)
+
+	// Reject mode switch while AUTO is running (matches C milltask behavior).
+	if t.mode == ModeAuto && t.interpState != InterpIdle && target != ModeAuto {
+		t.mu.Unlock()
+		t.operatorError("Can't switch mode while mode is AUTO and interpreter is not IDLE")
+		return ErrBusy
+	}
+
 	switch target {
 	case ModeManual:
+		if t.mode != ModeManual {
+			t.mu.Unlock()
+			t.Abort()
+			t.mu.Lock()
+		}
 		t.mode = ModeManual
+		t.mu.Unlock()
 		return t.motion.SetFree()
 	case ModeMDI:
-		if err := t.requireInterpIdle(); err != nil {
-			return err
+		if t.mode != ModeMDI {
+			t.mu.Unlock()
+			t.Abort()
+			t.mu.Lock()
 		}
 		t.mode = ModeMDI
-		return t.motion.SetCoord()
+		t.mu.Unlock()
+		_ = t.motion.SetCoord()
+		if t.interp != nil {
+			_ = t.interp.Synch()
+		}
+		return nil
 	case ModeAuto:
-		if err := t.requireInterpIdle(); err != nil {
-			return err
+		if t.mode != ModeAuto {
+			t.mu.Unlock()
+			t.Abort()
+			t.mu.Lock()
 		}
 		t.mode = ModeAuto
-		return t.motion.SetCoord()
+		t.mu.Unlock()
+		_ = t.motion.SetCoord()
+		if t.interp != nil {
+			_ = t.interp.Synch()
+		}
+		return nil
 	}
+	t.mu.Unlock()
 	return ErrWrongMode
 }
 
@@ -130,6 +159,7 @@ func (t *Task) ProgramOpen(file string) error {
 		// Close any previously open file before opening a new one.
 		_ = t.interp.Close()
 		if err := t.interp.Open(file); err != nil {
+			t.operatorError(fmt.Sprintf("can't open %s", file))
 			return err
 		}
 	}
@@ -156,6 +186,11 @@ func (t *Task) AutoCommand(cmd int32, line int32) error {
 		if err := t.requireProgram(); err != nil {
 			t.mu.Unlock()
 			return err
+		}
+		if err := t.requireHomed(); err != nil {
+			t.mu.Unlock()
+			t.operatorError("Can't run a program when not homed")
+			return fmt.Errorf("can't run program when not homed")
 		}
 		if t.interp == nil {
 			t.mu.Unlock()
@@ -228,11 +263,17 @@ func (t *Task) MDI(command string) error {
 	}
 	if err := t.requireMode(ModeMDI); err != nil {
 		t.mu.Unlock()
+		t.operatorError("Must be in MDI mode to issue MDI command")
 		return err
 	}
 	if err := t.requireInterpIdle(); err != nil {
 		t.mu.Unlock()
 		return err
+	}
+	if err := t.requireHomed(); err != nil {
+		t.mu.Unlock()
+		t.operatorError("Can't issue MDI command when not homed")
+		return fmt.Errorf("can't issue MDI command when not homed")
 	}
 	if t.interp == nil {
 		t.mu.Unlock()

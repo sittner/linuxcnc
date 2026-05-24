@@ -192,6 +192,13 @@ type MotionStatusReader interface {
 	GetCommandStatus() (int32, error)
 }
 
+// ErrorPublisher publishes operator error/text/display messages to UI clients.
+type ErrorPublisher interface {
+	OperatorError(text string)
+	OperatorText(text string)
+	OperatorDisplay(text string)
+}
+
 // Pose represents a 9-axis position.
 // Type alias for the generated motctl.Pose.
 type Pose = motctl.Pose
@@ -225,10 +232,11 @@ type Task struct {
 	startupCode     string
 
 	// Flags
-	optionalStop bool
-	blockDelete  bool
-	floodOn      bool
-	mistOn       bool
+	optionalStop   bool
+	blockDelete    bool
+	floodOn        bool
+	mistOn         bool
+	noForceHoming  bool // [TRAJ]NO_FORCE_HOMING — skip homing check before MDI/AUTO
 
 	// Interpreter active codes (updated after each execute)
 	activeGcodes   []int32
@@ -240,6 +248,7 @@ type Task struct {
 	io     IOController
 	status MotionStatusReader
 	interp Interpreter
+	errors ErrorPublisher
 	logger *slog.Logger
 
 	// Canon state (interpreter callback context)
@@ -294,6 +303,19 @@ func NewTask(motion MotionController, io IOController, status MotionStatusReader
 // callbacks wired via SetCanonCallbacks.
 func (t *Task) SetInterpreter(interp Interpreter) {
 	t.interp = interp
+}
+
+// SetErrorPublisher sets the error publisher for operator messages.
+func (t *Task) SetErrorPublisher(ep ErrorPublisher) {
+	t.errors = ep
+}
+
+// operatorError sends an operator error message to connected UIs.
+func (t *Task) operatorError(text string) {
+	if t.errors != nil {
+		t.errors.OperatorError(text)
+	}
+	t.logger.Warn("operator error", "msg", text)
 }
 
 // updateActiveCodes fetches the interpreter's active G/M codes and settings
