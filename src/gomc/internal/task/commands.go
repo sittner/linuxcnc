@@ -107,6 +107,10 @@ func (t *Task) SetMode(mode int32) error {
 		return ErrBusy
 	}
 
+	// NOTE: The unlock→Abort()→re-lock pattern below is safe because command
+	// dispatch is serialized (one WS command at a time). No concurrent SetMode
+	// can modify t.mode between Abort() and re-lock.
+
 	switch target {
 	case ModeManual:
 		if t.mode != ModeManual {

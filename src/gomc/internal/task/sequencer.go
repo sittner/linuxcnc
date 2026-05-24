@@ -44,9 +44,20 @@ func (e *SeqError) Unwrap() error { return e.Err }
 const interpQueueSize = 64
 
 // StartSequencer launches the sequencer goroutine. Must be called with mu NOT held.
+// If a previous sequencer goroutine is still winding down, StartSequencer waits
+// for it to exit before creating new channels. This prevents a race where the old
+// goroutine could pick up the new (non-closed) seqAbort channel and keep running.
 func (t *Task) StartSequencer() {
 	t.mu.Lock()
-	// Reset channels
+	oldDone := t.seqDone
+	t.mu.Unlock()
+
+	// Wait for previous goroutine to finish (if any).
+	if oldDone != nil {
+		<-oldDone
+	}
+
+	t.mu.Lock()
 	t.interpQueue = make(chan QueuedCmd, interpQueueSize)
 	t.seqDone = make(chan struct{})
 	t.seqAbort = make(chan struct{})
