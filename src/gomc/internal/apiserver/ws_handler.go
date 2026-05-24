@@ -155,11 +155,20 @@ type wsError struct {
 type WatchHandler struct {
 	registry *WatchRegistry
 	logger   *slog.Logger
+	ctx      context.Context
+	cancel   context.CancelFunc
 }
 
 // NewWatchHandler creates a new WebSocket watch handler.
 func NewWatchHandler(registry *WatchRegistry) *WatchHandler {
-	return &WatchHandler{registry: registry, logger: slog.Default()}
+	ctx, cancel := context.WithCancel(context.Background())
+	return &WatchHandler{registry: registry, logger: slog.Default(), ctx: ctx, cancel: cancel}
+}
+
+// Close cancels all active WebSocket connections managed by this handler.
+// Call this during server shutdown to ensure goroutines exit cleanly.
+func (h *WatchHandler) Close() {
+	h.cancel()
 }
 
 // SetLogger sets the logger for the watch handler.
@@ -179,7 +188,7 @@ func (h *WatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "")
 
-	ctx, cancel := context.WithCancel(r.Context())
+	ctx, cancel := context.WithCancel(h.ctx)
 	defer cancel()
 
 	c := &wsConn{
@@ -540,6 +549,7 @@ func (c *wsConn) deltaEncode(data json.RawMessage, prevMap *map[string]json.RawM
 func (s *Server) AddWatchEndpoint(registry *WatchRegistry) {
 	handler := NewWatchHandler(registry)
 	handler.SetLogger(s.logger)
+	s.watchHandler = handler
 	pattern := strings.TrimSuffix(s.prefix, "/") + "/watch"
 	s.mux.Handle(pattern, handler)
 }

@@ -16,11 +16,12 @@ import (
 
 // Server is the REST API server that dispatches to registered APIs.
 type Server struct {
-	registry *Registry
-	mux      *http.ServeMux
-	server   *http.Server
-	prefix   string // e.g. "/api/v1"
-	logger   *slog.Logger
+	registry     *Registry
+	mux          *http.ServeMux
+	server       *http.Server
+	prefix       string // e.g. "/api/v1"
+	logger       *slog.Logger
+	watchHandler *WatchHandler
 }
 
 // NewServer creates a new API server bound to the given registry.
@@ -63,6 +64,11 @@ func (s *Server) Serve(ln net.Listener) error {
 
 // Shutdown gracefully shuts down the server.
 func (s *Server) Shutdown(ctx context.Context) error {
+	// Close all active WebSocket connections first so their goroutines
+	// exit before the HTTP server finishes draining.
+	if s.watchHandler != nil {
+		s.watchHandler.Close()
+	}
 	return s.server.Shutdown(ctx)
 }
 
