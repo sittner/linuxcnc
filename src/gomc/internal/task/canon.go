@@ -24,9 +24,9 @@ const (
 
 // Canon motion modes.
 const (
-	CanonExact      = 1
-	CanonContinuous = 2
-	CanonExactPath  = 3
+	CanonExactStop  = 1
+	CanonExactPath  = 2
+	CanonContinuous = 3
 )
 
 // Canon feed reference.
@@ -90,8 +90,9 @@ func NewCanonState() *CanonState {
 	cs := &CanonState{
 		lengthUnits:         CanonUnitsMM,
 		activePlane:         CanonPlaneXY,
-		motionMode:          CanonExact,
-		linearFeedRate:      25.4, // 1 inch/sec default
+		motionMode:          CanonContinuous,
+		motionTolerance:     0.0254, // 0.001 inch default (same as C canon)
+		linearFeedRate:      0,     // set by SET_FEED_RATE or synch
 		traverseRate:        0,    // set from INI
 		feedOverrideEnabled: true,
 		feedHoldEnabled:     true,

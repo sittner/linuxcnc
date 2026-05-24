@@ -117,8 +117,16 @@ func (c *Canon) GetExternalSpeed(spindle int32) float64 {
 }
 
 func (c *Canon) GetExternalSpindle(spindle int32) int32 {
-	// TODO: read actual spindle direction from motion status
-	return 0
+	// CANON_STOPPED=1, CANON_CLOCKWISE=2, CANON_COUNTERCLOCKWISE=3
+	if int(spindle) < len(c.state.spindleSpeed) {
+		speed := c.state.spindleSpeed[spindle]
+		if speed > 0 {
+			return 2 // CANON_CLOCKWISE
+		} else if speed < 0 {
+			return 3 // CANON_COUNTERCLOCKWISE
+		}
+	}
+	return 1 // CANON_STOPPED
 }
 
 // Tool getters.
