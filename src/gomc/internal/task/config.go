@@ -64,6 +64,12 @@ func loadConfig(ini *inifile.IniFile, t *Task, mc MotionConfig) error {
 			return fmt.Errorf("spindle %d config: %w", s, err)
 		}
 	}
+
+	// MDI queue depth from [TASK] section (default 10, matching C milltask).
+	if n := getIntOr(ini, "TASK", "MDI_QUEUED_COMMANDS", t.maxMDIQueued); n > 0 {
+		t.maxMDIQueued = n
+	}
+
 	return nil
 }
 

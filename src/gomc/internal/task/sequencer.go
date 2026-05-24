@@ -513,6 +513,36 @@ func (c *interpDoneCmd) PostWait(t *Task) {
 func (c *interpDoneCmd) Wait() WaitType { return WaitMotion }
 func (c *interpDoneCmd) String() string { return "interp_done" }
 
+// mdiDoneCmd is enqueued after an MDI command's interpreter execution completes.
+// After motion drains, it transitions to idle and dequeues the next MDI command
+// if one is waiting (matching C milltask mdi_execute_hook behavior).
+type mdiDoneCmd struct{}
+
+func (c *mdiDoneCmd) Execute(t *Task) error { return nil }
+
+func (c *mdiDoneCmd) PostWait(t *Task) {
+	t.setInterpState(InterpIdle)
+	t.setExecState(ExecDone)
+
+	// Dequeue next MDI command if any are waiting.
+	t.mu.Lock()
+	if len(t.mdiQueue) > 0 {
+		next := t.mdiQueue[0]
+		t.mdiQueue = t.mdiQueue[1:]
+		t.mu.Unlock()
+		// Execute the next MDI command — this will enqueue another mdiDoneCmd.
+		if err := t.executeMDI(next); err != nil {
+			t.logger.Error("queued MDI failed", "cmd", next, "err", err)
+			t.operatorError(fmt.Sprintf("MDI error: %s", err))
+		}
+		return
+	}
+	t.mu.Unlock()
+}
+
+func (c *mdiDoneCmd) Wait() WaitType { return WaitMotion }
+func (c *mdiDoneCmd) String() string { return "mdi_done" }
+
 // McodeCmd submits an M-code (M100-M199) to the handler worker and waits
 // for completion. This blocks the sequencer until the handler finishes or abort.
 type McodeCmd struct {

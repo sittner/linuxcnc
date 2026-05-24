@@ -263,6 +263,10 @@ type Task struct {
 	seqDone     chan struct{} // closed when sequencer goroutine exits
 	seqAbort    chan struct{} // close to abort sequencer
 
+	// MDI queue — commands queued while interpreter is busy
+	mdiQueue      []string
+	maxMDIQueued  int
+
 	// Pause/resume for interpreter goroutine
 	pauseCh  chan struct{} // closed when pause requested
 	resumeCh chan struct{} // closed when resume requested
@@ -292,6 +296,7 @@ func NewTask(motion MotionController, io IOController, status MotionStatusReader
 		activeGcodes:       make([]int32, 17),  // ACTIVE_G_CODES
 		activeMcodes:       make([]int32, 10),  // ACTIVE_M_CODES
 		latencyWarningsMax: 10,
+		maxMDIQueued:       10,
 		mcode:              newMcodeHandler(),
 	}
 	t.canon = NewCanon(t)

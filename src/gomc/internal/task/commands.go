@@ -270,10 +270,6 @@ func (t *Task) MDI(command string) error {
 		t.operatorError("Must be in MDI mode to issue MDI command")
 		return err
 	}
-	if err := t.requireInterpIdle(); err != nil {
-		t.mu.Unlock()
-		return err
-	}
 	if err := t.requireHomed(); err != nil {
 		t.mu.Unlock()
 		t.operatorError("Can't issue MDI command when not homed")
@@ -284,9 +280,28 @@ func (t *Task) MDI(command string) error {
 		return fmt.Errorf("no interpreter configured")
 	}
 
-	t.interpState = InterpReading
-	interp := t.interp
+	// If interpreter is busy, queue the command for later execution.
+	if t.interpState != InterpIdle {
+		if len(t.mdiQueue) >= t.maxMDIQueued {
+			t.mu.Unlock()
+			t.operatorError("MDI queue full")
+			return ErrBusy
+		}
+		t.mdiQueue = append(t.mdiQueue, command)
+		t.mu.Unlock()
+		return nil
+	}
+
 	t.mu.Unlock()
+	return t.executeMDI(command)
+}
+
+// executeMDI runs a single MDI command through the interpreter.
+// Must be called with mu NOT held and interpState == InterpIdle.
+func (t *Task) executeMDI(command string) error {
+	t.setInterpState(InterpReading)
+
+	interp := t.interp
 
 	// Set active canon for M-code callbacks (no ctx parameter).
 	setActiveCanon(t.canon)
@@ -309,12 +324,9 @@ func (t *Task) MDI(command string) error {
 	case InterpError:
 		t.setInterpState(InterpIdle)
 		return fmt.Errorf("MDI interpreter error")
-	case InterpExecuteFinish:
-		// MDI needs motion to finish before returning to idle
-		t.EnqueueCmd(&interpDoneCmd{})
 	default:
-		// Normal completion — still wait for queued motion
-		t.EnqueueCmd(&interpDoneCmd{})
+		// Wait for queued motion to finish before going idle.
+		t.EnqueueCmd(&mdiDoneCmd{})
 	}
 	return nil
 }
@@ -687,6 +699,9 @@ func (t *Task) Abort() error {
 
 	t.interpState = InterpIdle
 	t.execState = ExecDone
+
+	// Clear MDI queue
+	t.mdiQueue = t.mdiQueue[:0]
 
 	// Capture state before unlock
 	numSpindles := t.numSpindles
