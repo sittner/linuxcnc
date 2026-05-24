@@ -9,6 +9,14 @@ import (
 // This is the single source of truth for all stat consumers (REST, WS, halui).
 func (t *Task) BuildStat() *emcstatapi.StatFull {
 	t.mu.Lock()
+	// Refresh active G/M codes from interpreter (C milltask does this every cycle).
+	if t.interp != nil {
+		t.activeGcodes = t.interp.ActiveGCodes()
+		t.activeMcodes = t.interp.ActiveMCodes()
+		t.activeSettings = t.interp.ActiveSettings()
+	}
+	// Grab canon state for offset reporting
+	cs := t.canon.state
 	stat := &emcstatapi.StatFull{
 		Task: emcstatapi.StatTaskInfo{
 			Mode:         emcstatapi.TaskMode(t.mode),
@@ -27,7 +35,19 @@ func (t *Task) BuildStat() *emcstatapi.StatFull {
 		LinearUnits:    t.linearUnits,
 		KinematicsType: emcstatapi.KinematicsType_IDENTITY,
 		ActiveGcodes:   append([]int32(nil), t.activeGcodes...),
+		ActiveMcodes:   append([]int32(nil), t.activeMcodes...),
 		ActiveSettings: append([]float64(nil), t.activeSettings...),
+		G5xOffset: emcstatapi.Position{
+			X: cs.g5xOffset.X, Y: cs.g5xOffset.Y, Z: cs.g5xOffset.Z,
+			A: cs.g5xOffset.A, B: cs.g5xOffset.B, C: cs.g5xOffset.C,
+			U: cs.g5xOffset.U, V: cs.g5xOffset.V, W: cs.g5xOffset.W,
+		},
+		G92Offset: emcstatapi.Position{
+			X: cs.g92Offset.X, Y: cs.g92Offset.Y, Z: cs.g92Offset.Z,
+			A: cs.g92Offset.A, B: cs.g92Offset.B, C: cs.g92Offset.C,
+			U: cs.g92Offset.U, V: cs.g92Offset.V, W: cs.g92Offset.W,
+		},
+		RotationXy: cs.xyRotation,
 	}
 	numJoints := t.numJoints
 	numSpindles := t.numSpindles

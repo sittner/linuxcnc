@@ -5,6 +5,13 @@ import (
 	"time"
 )
 
+// mcodeAbort signals the M-code handler worker to stop.
+func (t *Task) mcodeAbort() {
+	if t.mcode != nil {
+		t.mcode.Abort()
+	}
+}
+
 // This file implements the 27 emccmd GMI methods.
 // Each method corresponds to a UI command entry point.
 // Pattern: guard → action → state update.
@@ -236,6 +243,9 @@ func (t *Task) MDI(command string) error {
 	interp := t.interp
 	t.mu.Unlock()
 
+	// Set active canon for M-code callbacks (no ctx parameter).
+	setActiveCanon(t.canon)
+
 	// Synch interpreter with current machine position before MDI.
 	if err := interp.Synch(); err != nil {
 		t.logger.Error("interp synch failed before MDI", "err", err)
@@ -244,6 +254,7 @@ func (t *Task) MDI(command string) error {
 	// Execute the MDI string — this triggers canon callbacks that enqueue
 	// motion commands to the sequencer.
 	rc, err := interp.ExecuteString(command)
+	t.updateActiveCodes(interp)
 	if err != nil {
 		t.setInterpState(InterpIdle)
 		return fmt.Errorf("MDI execute: %w", err)
@@ -272,6 +283,10 @@ func (t *Task) MDI(command string) error {
 // - Handles INTERP_EXECUTE_FINISH (wait for motion to drain before continuing)
 func (t *Task) runProgram(interp Interpreter, startLine int32) {
 	_ = startLine // TODO: seek to startLine
+
+	// Set active canon for M-code callbacks (no ctx parameter).
+	setActiveCanon(t.canon)
+	defer clearActiveCanon()
 
 	for {
 		// Check for abort and pause between interpreter lines
@@ -303,6 +318,7 @@ func (t *Task) runProgram(interp Interpreter, startLine int32) {
 			t.setInterpState(InterpIdle)
 			return
 		}
+		t.updateActiveCodes(interp)
 
 		switch rc {
 		case InterpExecuteFinish:
@@ -619,13 +635,56 @@ func (t *Task) Lube(on bool) error {
 }
 
 // Abort aborts all motion and interpreter execution.
+// Matches C milltask emcTaskAbort behavior: abort motion, abort IO,
+// stop spindles, turn off coolant, clear interpreter queue, close program.
 func (t *Task) Abort() error {
 	t.mu.Lock()
-	defer t.mu.Unlock()
 
 	t.interpState = InterpIdle
 	t.execState = ExecDone
-	return t.motion.Abort()
+
+	// Capture state before unlock
+	numSpindles := t.numSpindles
+	interp := t.interp
+	t.mu.Unlock()
+
+	// Abort sequencer (signals goroutine, drains queue)
+	t.AbortSequencer()
+
+	// Abort M-code handler if running
+	t.mcodeAbort()
+
+	// Abort motion
+	_ = t.motion.Abort()
+
+	// Abort IO controller
+	_ = t.io.IoAbort(0)
+
+	// Stop all spindles
+	for i := 0; i < numSpindles; i++ {
+		_ = t.motion.SpindleOff(int32(i))
+	}
+
+	// Turn off coolant
+	_ = t.io.CoolantFloodOff()
+	_ = t.io.CoolantMistOff()
+
+	t.mu.Lock()
+	t.floodOn = false
+	t.mistOn = false
+	t.mu.Unlock()
+
+	// Notify interpreter of abort and close file
+	if interp != nil {
+		_ = interp.Abort(0, "user abort")
+		_ = interp.Close()
+		_ = interp.Reset()
+	}
+
+	// Restart sequencer for next operation
+	t.StartSequencer()
+
+	return nil
 }
 
 // TaskPlanSynch forces a sync between interpreter and motion.
@@ -633,8 +692,10 @@ func (t *Task) TaskPlanSynch() error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	// TODO: sync interpreter position with motion actual position
-	return nil
+	if t.interp == nil {
+		return nil
+	}
+	return t.interp.Synch()
 }
 
 // SetOptionalStop enables/disables optional stop (M1).

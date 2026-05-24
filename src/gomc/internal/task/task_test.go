@@ -110,6 +110,7 @@ func (m *mockIO) EstopOn() error             { m.lastCall = "Estop"; return nil 
 func (m *mockIO) EstopOff() error            { m.lastCall = "EstopReset"; return nil }
 func (m *mockIO) IoAbort(int32) error        { return nil }
 func (m *mockIO) SetDebug(int32) error       { return nil }
+func (m *mockIO) GetCmdStatus() (int32, error) { return IOStatusDone, nil }
 
 // mockStatus implements MotionStatusReader for testing.
 type mockStatus struct{}

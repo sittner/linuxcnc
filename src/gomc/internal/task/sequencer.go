@@ -224,11 +224,19 @@ func (t *Task) waitMotionDone() error {
 	})
 }
 
-// waitIODone polls until IO is acknowledged or abort.
+// waitIODone polls until IO command status is DONE or abort.
 func (t *Task) waitIODone() error {
 	t.setExecState(ExecWaitingForIO)
-	// TODO: check actual IO status once emcio GMI status is wired
-	return nil
+	return t.pollUntil(func() bool {
+		if t.io == nil {
+			return true
+		}
+		st, err := t.io.GetCmdStatus()
+		if err != nil {
+			return true // treat error as done
+		}
+		return st == IOStatusDone || st == IOStatusError
+	})
 }
 
 // waitSpindleOriented polls until spindle orient is complete.
@@ -372,10 +380,22 @@ func (c *ToolPrepareCmd) String() string { return fmt.Sprintf("ToolPrepare(T%d)"
 type ToolChangeCmd struct{}
 
 func (c *ToolChangeCmd) Execute(t *Task) error {
+	if err := t.io.ToolStartChange(); err != nil {
+		// ToolStartChange is optional — some IO controllers don't implement it
+		t.logger.Info("tool_start_change skipped", "err", err)
+	}
 	return t.io.ToolLoad()
 }
 func (c *ToolChangeCmd) Wait() WaitType { return WaitIO }
 func (c *ToolChangeCmd) String() string { return "ToolChange" }
+
+// PostWait updates the motion offset with the new tool's parameters.
+func (c *ToolChangeCmd) PostWait(t *Task) {
+	// After tool change completes, the IO controller has loaded the tool.
+	// The interpreter will handle applying tool length offsets via canon
+	// USE_TOOL_LENGTH_OFFSET calls, so no explicit offset update needed here.
+	t.logger.Info("tool change complete")
+}
 
 // FloodOnCmd turns flood coolant on (M8).
 type FloodOnCmd struct{}
@@ -481,3 +501,29 @@ func (c *interpDoneCmd) PostWait(t *Task) {
 
 func (c *interpDoneCmd) Wait() WaitType { return WaitMotion }
 func (c *interpDoneCmd) String() string { return "interp_done" }
+
+// McodeCmd submits an M-code (M100-M199) to the handler worker and waits
+// for completion. This blocks the sequencer until the handler finishes or abort.
+type McodeCmd struct {
+	Mcode int32
+	P     float64
+	Q     float64
+}
+
+func (c *McodeCmd) Execute(t *Task) error {
+	if t.mcode == nil {
+		return fmt.Errorf("mcode_handler: not initialized")
+	}
+	if err := t.mcode.Submit(int(c.Mcode), c.P, c.Q); err != nil {
+		return err
+	}
+	// Poll for completion (worker runs async).
+	return t.pollUntil(func() bool {
+		_, done := t.mcode.CheckDone()
+		return done
+	})
+}
+func (c *McodeCmd) Wait() WaitType { return WaitNone } // Execute handles wait internally
+func (c *McodeCmd) String() string {
+	return fmt.Sprintf("Mcode(M%d P=%.4f Q=%.4f)", c.Mcode, c.P, c.Q)
+}

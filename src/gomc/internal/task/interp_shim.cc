@@ -3,6 +3,7 @@
 
 #include "config.h"
 #include "emc/rs274ngc/interp_base.hh"
+#include "emc/rs274ngc/rs274ngc_interp.hh"  // Interp class, USER_DEFINED_FUNCTION_NUM
 
 // Include the generated canon callback table header
 #define CANON_API_CGO
@@ -138,6 +139,34 @@ void interp_set_loglevel(void *handle, int level) {
 // interp_set_loop_on_main_m99 controls M99 loop behavior.
 void interp_set_loop_on_main_m99(void *handle, int state) {
     static_cast<InterpBase*>(handle)->set_loop_on_main_m99(state != 0);
+}
+
+// interp_set_user_defined_function registers a function pointer for M(100+idx).
+void interp_set_user_defined_function(void *handle, int idx,
+    void (*fn)(int num, double arg1, double arg2)) {
+    if (idx < 0 || idx >= USER_DEFINED_FUNCTION_NUM) return;
+    Interp *ip = dynamic_cast<Interp*>(static_cast<InterpBase*>(handle));
+    if (ip) {
+        ip->_setup.user_defined_function[idx] = fn;
+    }
+}
+
+// interp_active_g_codes retrieves the active G-code array.
+void interp_active_g_codes(void *handle, int *gcodes, int max_len) {
+    static_cast<InterpBase*>(handle)->active_g_codes(gcodes);
+    (void)max_len; // array size is ACTIVE_G_CODES (17)
+}
+
+// interp_active_m_codes retrieves the active M-code array.
+void interp_active_m_codes(void *handle, int *mcodes, int max_len) {
+    static_cast<InterpBase*>(handle)->active_m_codes(mcodes);
+    (void)max_len;
+}
+
+// interp_active_settings retrieves the active settings array.
+void interp_active_settings(void *handle, double *settings, int max_len) {
+    static_cast<InterpBase*>(handle)->active_settings(settings);
+    (void)max_len;
 }
 
 } // extern "C"

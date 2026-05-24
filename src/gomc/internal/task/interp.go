@@ -1,6 +1,6 @@
 package task
 
-// #cgo CXXFLAGS: -I${SRCDIR}/../../.. -I${SRCDIR}/../../../../include -I${SRCDIR}/../../../emc/rs274ngc -std=c++17
+// #cgo CXXFLAGS: -I${SRCDIR}/../../.. -I${SRCDIR}/../../../../include -I${SRCDIR}/../../../emc/rs274ngc -I${SRCDIR}/../../../emc/tooldata -I${SRCDIR}/../../generated/gmi/interp_ext -I${SRCDIR}/../../generated/gmi/interp_ctx -I${SRCDIR}/../../generated/gmi/mcode_handler -I${SRCDIR}/../../pkg/cmodule -std=c++17
 // #cgo CFLAGS: -I${SRCDIR}/../../.. -I${SRCDIR}/../../../../include
 // #cgo LDFLAGS: -L${SRCDIR}/../../../../lib -lrs274 -lstdc++ -ldl
 // #include "interp_shim.h"
@@ -198,6 +198,42 @@ func (i *CInterp) SetLoopOnMainM99(state bool) {
 		v = 1
 	}
 	C.interp_set_loop_on_main_m99(i.handle, v)
+}
+
+const (
+	activeGCodesLen   = 17 // ACTIVE_G_CODES
+	activeMCodesLen   = 10 // ACTIVE_M_CODES
+	activeSettingsLen = 5  // ACTIVE_SETTINGS
+)
+
+func (i *CInterp) ActiveGCodes() []int32 {
+	var buf [activeGCodesLen]C.int
+	C.interp_active_g_codes(i.handle, &buf[0], C.int(activeGCodesLen))
+	out := make([]int32, activeGCodesLen)
+	for j := range buf {
+		out[j] = int32(buf[j])
+	}
+	return out
+}
+
+func (i *CInterp) ActiveMCodes() []int32 {
+	var buf [activeMCodesLen]C.int
+	C.interp_active_m_codes(i.handle, &buf[0], C.int(activeMCodesLen))
+	out := make([]int32, activeMCodesLen)
+	for j := range buf {
+		out[j] = int32(buf[j])
+	}
+	return out
+}
+
+func (i *CInterp) ActiveSettings() []float64 {
+	var buf [activeSettingsLen]C.double
+	C.interp_active_settings(i.handle, &buf[0], C.int(activeSettingsLen))
+	out := make([]float64, activeSettingsLen)
+	for j := range buf {
+		out[j] = float64(buf[j])
+	}
+	return out
 }
 
 // Verify CInterp implements Interpreter.

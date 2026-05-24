@@ -54,6 +54,18 @@ struct canon_callbacks;
 typedef struct canon_callbacks canon_callbacks_t;
 void interp_set_canon_callbacks(void *handle, const canon_callbacks_t *cb);
 
+// M-code handler registration (M100-M199)
+// Register a user-defined function slot in the interpreter.
+// The slot will call the provided function pointer when M(100+idx) is encountered.
+void interp_set_user_defined_function(void *handle, int idx,
+    void (*fn)(int num, double arg1, double arg2));
+
+// Active G/M codes and settings
+// These copy the interpreter's internal arrays into caller-provided buffers.
+void interp_active_g_codes(void *handle, int *gcodes, int max_len);
+void interp_active_m_codes(void *handle, int *mcodes, int max_len);
+void interp_active_settings(void *handle, double *settings, int max_len);
+
 #ifdef __cplusplus
 }
 #endif

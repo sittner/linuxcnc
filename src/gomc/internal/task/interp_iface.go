@@ -40,6 +40,12 @@ type Interpreter interface {
 	Command() string
 	// Destroy releases interpreter resources.
 	Destroy()
+	// ActiveGCodes retrieves the active G-code array from the interpreter.
+	ActiveGCodes() []int32
+	// ActiveMCodes retrieves the active M-code array from the interpreter.
+	ActiveMCodes() []int32
+	// ActiveSettings retrieves the active settings (feed, speed, etc).
+	ActiveSettings() []float64
 }
 
 // Interpreter return codes (from interp_return.hh).

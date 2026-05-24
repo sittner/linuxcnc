@@ -91,7 +91,8 @@ func (m *milltaskModule) Start() error {
 	// Wrap C callback pointers in typed Go clients.
 	mc := motctl.NewMotctlClient(unsafe.Pointer(motctlCbs))
 	ms := motstat.NewMotstatClient(unsafe.Pointer(motstatCbs))
-	io := emcio.NewEmcioClient(unsafe.Pointer(emcioCbs))
+	ioClient := emcio.NewEmcioClient(unsafe.Pointer(emcioCbs))
+	io := &ioAdapter{EmcioClient: ioClient}
 
 	t := NewTask(mc, io, ms, m.logger)
 
@@ -130,6 +131,9 @@ func (m *milltaskModule) Stop() {
 	m.poslog.stopLogger()
 	if m.task != nil {
 		m.task.StopSequencer()
+		if m.task.mcode != nil {
+			m.task.mcode.Stop()
+		}
 	}
 	m.logger.Info("milltask stopping")
 }
@@ -185,6 +189,18 @@ func (m *milltaskModule) initInterpreter() error {
 	m.canonTable = ct
 	m.task.SetInterpreter(interp)
 
+	// Register M-code trampoline for all M100-M199 slots so the interpreter
+	// calls back into Go when user-defined M-codes are encountered.
+	interp.RegisterAllMcodeSlots()
+
+	// Synch interpreter state with motion and populate active G/M codes.
+	// The C milltask calls emcTaskPlanSynch() at startup which does interp.synch(),
+	// then the stat update calls active_g_codes/m_codes/settings.
+	if err := interp.Synch(); err != nil {
+		m.logger.Warn("interpreter initial synch failed (no motion?)", "err", err)
+	}
+	m.task.updateActiveCodes(interp)
+
 	m.logger.Info("interpreter initialized")
 	return nil
 }
@@ -199,4 +215,18 @@ func getIntOr(ini *inifile.IniFile, section, key string, def int) int {
 		return def
 	}
 	return v
+}
+
+// ioAdapter wraps the generated EmcioClient to satisfy IOController interface.
+type ioAdapter struct {
+	*emcio.EmcioClient
+}
+
+// GetCmdStatus returns the IO command status (1=DONE, 2=EXEC, 3=ERROR).
+func (a *ioAdapter) GetCmdStatus() (int32, error) {
+	st, err := a.EmcioClient.GetStatus()
+	if err != nil {
+		return 0, err
+	}
+	return int32(st.Status), nil
 }

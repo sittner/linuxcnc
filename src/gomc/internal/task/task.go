@@ -170,7 +170,15 @@ type IOController interface {
 	EstopOff() error
 	IoAbort(reason int32) error
 	SetDebug(debug int32) error
+	GetCmdStatus() (int32, error) // 1=DONE, 2=EXEC, 3=ERROR
 }
+
+// IO CmdStatus values.
+const (
+	IOStatusDone  int32 = 1
+	IOStatusExec  int32 = 2
+	IOStatusError int32 = 3
+)
 
 // MotionStatusReader provides read access to motion state (motstat GMI API).
 type MotionStatusReader interface {
@@ -222,8 +230,9 @@ type Task struct {
 	floodOn      bool
 	mistOn       bool
 
-	// Interpreter active codes (updated by canon callbacks)
+	// Interpreter active codes (updated after each execute)
 	activeGcodes   []int32
+	activeMcodes   []int32
 	activeSettings []float64
 
 	// Dependencies (injected, mockable for tests)
@@ -249,6 +258,9 @@ type Task struct {
 	pauseCh  chan struct{} // closed when pause requested
 	resumeCh chan struct{} // closed when resume requested
 
+	// M-code handler (M100-M199)
+	mcode *mcodeHandler
+
 	// Cached motion status (used when split-read fails)
 	lastMotionStatus   motstat.MotionStatus
 	hasMotionStatus    bool
@@ -267,8 +279,11 @@ func NewTask(motion MotionController, io IOController, status MotionStatusReader
 		io:                 io,
 		status:             status,
 		logger:             logger,
-		activeSettings:     make([]float64, 3), // [seqno, feedrate, speed]
+		activeSettings:     make([]float64, 5), // ACTIVE_SETTINGS
+		activeGcodes:       make([]int32, 17),  // ACTIVE_G_CODES
+		activeMcodes:       make([]int32, 10),  // ACTIVE_M_CODES
 		latencyWarningsMax: 10,
+		mcode:              newMcodeHandler(),
 	}
 	t.canon = NewCanon(t)
 	return t
@@ -279,4 +294,17 @@ func NewTask(motion MotionController, io IOController, status MotionStatusReader
 // callbacks wired via SetCanonCallbacks.
 func (t *Task) SetInterpreter(interp Interpreter) {
 	t.interp = interp
+}
+
+// updateActiveCodes fetches the interpreter's active G/M codes and settings
+// and stores them in the task state for stat reporting.
+func (t *Task) updateActiveCodes(interp Interpreter) {
+	gc := interp.ActiveGCodes()
+	mc := interp.ActiveMCodes()
+	st := interp.ActiveSettings()
+	t.mu.Lock()
+	t.activeGcodes = gc
+	t.activeMcodes = mc
+	t.activeSettings = st
+	t.mu.Unlock()
 }

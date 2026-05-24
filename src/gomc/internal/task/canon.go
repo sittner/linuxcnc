@@ -133,25 +133,65 @@ func rotate(x, y, angle float64) (float64, float64) {
 	return x*cos - y*sin, x*sin + y*cos
 }
 
-// toAbsolute converts program coordinates to absolute mm coordinates,
-// applying G5x offset, G92 offset, and XY rotation.
+// toAbsolute converts program coordinates to absolute machine coordinates (mm),
+// applying offsets in the same order as the C canon: G92 → rotate → G5x → tool.
 func (cs *CanonState) toAbsolute(x, y, z, a, b, c, u, v, w float64) Pose {
-	// Apply rotation to the offset-subtracted position
-	rx, ry := rotate(cs.fromProg(x)-cs.g5xOffset.X-cs.g92Offset.X,
-		cs.fromProg(y)-cs.g5xOffset.Y-cs.g92Offset.Y,
-		cs.xyRotation)
+	// Convert from program units to mm
+	xm := cs.fromProg(x)
+	ym := cs.fromProg(y)
+	zm := cs.fromProg(z)
+	um := cs.fromProg(u)
+	vm := cs.fromProg(v)
+	wm := cs.fromProg(w)
+
+	// Step 1: add G92 offset
+	xm += cs.g92Offset.X
+	ym += cs.g92Offset.Y
+	zm += cs.g92Offset.Z
+	um += cs.g92Offset.U
+	vm += cs.g92Offset.V
+	wm += cs.g92Offset.W
+
+	// Step 2: apply XY rotation
+	xm, ym = rotate(xm, ym, cs.xyRotation)
+
+	// Step 3: add G5x offset
+	xm += cs.g5xOffset.X
+	ym += cs.g5xOffset.Y
+	zm += cs.g5xOffset.Z
+	um += cs.g5xOffset.U
+	vm += cs.g5xOffset.V
+	wm += cs.g5xOffset.W
+
+	// Step 4: add tool offset
+	xm += cs.toolOffset.X
+	ym += cs.toolOffset.Y
+	zm += cs.toolOffset.Z
+	um += cs.toolOffset.U
+	vm += cs.toolOffset.V
+	wm += cs.toolOffset.W
 
 	return Pose{
-		X: rx + cs.g5xOffset.X + cs.g92Offset.X,
-		Y: ry + cs.g5xOffset.Y + cs.g92Offset.Y,
-		Z: cs.fromProg(z),
-		A: a, // angles: already in degrees
-		B: b,
-		C: c,
-		U: cs.fromProg(u),
-		V: cs.fromProg(v),
-		W: cs.fromProg(w),
+		X: xm, Y: ym, Z: zm,
+		A: a + cs.g92Offset.A + cs.g5xOffset.A + cs.toolOffset.A,
+		B: b + cs.g92Offset.B + cs.g5xOffset.B + cs.toolOffset.B,
+		C: c + cs.g92Offset.C + cs.g5xOffset.C + cs.toolOffset.C,
+		U: um, V: vm, W: wm,
 	}
+}
+
+// toAbsoluteXYZ converts XYZ program coordinates to absolute machine
+// coordinates, applying the same offset chain as toAbsolute but only for XYZ.
+// Used for arc center computation.
+func (cs *CanonState) toAbsoluteXYZ(x, y, z float64) Cartesian {
+	xm := cs.fromProg(x) + cs.g92Offset.X
+	ym := cs.fromProg(y) + cs.g92Offset.Y
+	zm := cs.fromProg(z) + cs.g92Offset.Z
+	xm, ym = rotate(xm, ym, cs.xyRotation)
+	xm += cs.g5xOffset.X + cs.toolOffset.X
+	ym += cs.g5xOffset.Y + cs.toolOffset.Y
+	zm += cs.g5xOffset.Z + cs.toolOffset.Z
+	return Cartesian{X: xm, Y: ym, Z: zm}
 }
 
 // Canon is the set of canon callback implementations that push QueuedCmds
@@ -243,7 +283,14 @@ func (c *Canon) StartCutterRadiusCompensation(direction int32) {}
 func (c *Canon) StopCutterRadiusCompensation()                 {}
 
 func (c *Canon) UpdateEndPoint(x, y, z, a, b, _c, u, v, w float64) {
-	c.state.endPoint = c.state.toAbsolute(x, y, z, a, b, _c, u, v, w)
+	// C canon only does FROM_PROG_LEN here (no offsets applied).
+	// This is called by the interpreter to sync position without offset transform.
+	s := c.state
+	s.endPoint = Pose{
+		X: s.fromProg(x), Y: s.fromProg(y), Z: s.fromProg(z),
+		A: a, B: b, C: _c,
+		U: s.fromProg(u), V: s.fromProg(v), W: s.fromProg(w),
+	}
 }
 
 func (c *Canon) UpdateTag(tagPtr uint64) {
@@ -311,47 +358,45 @@ func (c *Canon) ArcFeed(lineno int32, firstEnd, secondEnd, firstAxis, secondAxis
 	s := c.state
 	s.lineNo = lineno
 
-	// Convert arc endpoints based on active plane
+	// Convert arc endpoints and center based on active plane.
+	// The interpreter passes first_axis/second_axis as ABSOLUTE center
+	// coordinates in program units (same coordinate frame as endpoints).
 	var pos Pose
-	var center, normal Cartesian
+	var center Cartesian
+	var normal Cartesian
 
 	switch s.activePlane {
 	case CanonPlaneXY:
 		pos = s.toAbsolute(firstEnd, secondEnd, axisEndPoint, a, b, _c, u, v, w)
-		center = Cartesian{
-			X: s.fromProg(firstAxis) + s.endPoint.X,
-			Y: s.fromProg(secondAxis) + s.endPoint.Y,
-			Z: 0,
-		}
+		center = s.toAbsoluteXYZ(firstAxis, secondAxis, axisEndPoint)
 		normal = Cartesian{X: 0, Y: 0, Z: 1}
 	case CanonPlaneXZ:
 		pos = s.toAbsolute(secondEnd, axisEndPoint, firstEnd, a, b, _c, u, v, w)
-		center = Cartesian{
-			X: 0,
-			Y: s.fromProg(secondAxis) + s.endPoint.Y,
-			Z: s.fromProg(firstAxis) + s.endPoint.Z,
-		}
-		normal = Cartesian{X: 0, Y: -1, Z: 0}
+		center = s.toAbsoluteXYZ(secondAxis, axisEndPoint, firstAxis)
+		normal = Cartesian{X: 0, Y: 1, Z: 0}
 	case CanonPlaneYZ:
 		pos = s.toAbsolute(axisEndPoint, firstEnd, secondEnd, a, b, _c, u, v, w)
-		center = Cartesian{
-			X: s.fromProg(secondAxis) + s.endPoint.X,
-			Y: s.fromProg(firstAxis) + s.endPoint.Y,
-			Z: 0,
-		}
-		normal = Cartesian{X: -1, Y: 0, Z: 0}
+		center = s.toAbsoluteXYZ(axisEndPoint, firstAxis, secondAxis)
+		normal = Cartesian{X: 1, Y: 0, Z: 0}
 	default:
 		pos = s.toAbsolute(firstEnd, secondEnd, axisEndPoint, a, b, _c, u, v, w)
+		center = s.toAbsoluteXYZ(firstAxis, secondAxis, axisEndPoint)
 		normal = Cartesian{X: 0, Y: 0, Z: 1}
 	}
 
 	s.endPoint = pos
 
+	// C canon: turn = rotation-1 for positive, rotation for negative.
+	turn := rotation
+	if rotation > 0 {
+		turn = rotation - 1
+	}
+
 	cmd := &CircularMoveCmd{
 		Pos:        pos,
 		Center:     center,
 		Normal:     normal,
-		Turn:       rotation,
+		Turn:       turn,
 		Vel:        s.linearFeedRate,
 		IniMaxVel:  c.task.maxVelocity,
 		Acc:        c.task.maxAcceleration,
@@ -365,7 +410,7 @@ func (c *Canon) ArcFeed(lineno int32, firstEnd, secondEnd, firstAxis, secondAxis
 
 func (c *Canon) RigidTap(lineno int32, x, y, z, scale float64) {
 	s := c.state
-	pos := Pose{X: s.fromProg(x), Y: s.fromProg(y), Z: s.fromProg(z)}
+	pos := s.toAbsolute(x, y, z, 0, 0, 0, 0, 0, 0)
 	s.lineNo = lineno
 
 	cmd := &RigidTapCmd{
