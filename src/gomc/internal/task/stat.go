@@ -27,6 +27,7 @@ func (t *Task) BuildStat() *emcstatapi.StatFull {
 			OptionalStop: t.optionalStop,
 			BlockDelete:  t.blockDelete,
 			TaskPaused:   t.interpState == InterpPaused,
+			G5xIndex:     cs.g5xIndex,
 		},
 		Flood:          t.floodOn,
 		Mist:           t.mistOn,

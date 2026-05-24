@@ -178,6 +178,13 @@ func (m *milltaskModule) initInterpreter() error {
 		return fmt.Errorf("interpreter ini_load: %w", err)
 	}
 
+	// Ensure canon knows the parameter file name so the interpreter can
+	// load it during Init(). IniLoad should set this via the callback,
+	// but we also set it explicitly as a safety net.
+	if pf := m.ini.Get("RS274NGC", "PARAMETER_FILE"); pf != "" {
+		m.task.canon.SetParameterFileName(pf)
+	}
+
 	// Initialize interpreter state.
 	if err := interp.Init(); err != nil {
 		interp.Destroy()

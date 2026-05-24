@@ -215,8 +215,7 @@ func (c *Canon) GetExternalPlane() int32 {
 }
 
 func (c *Canon) GetExternalParameterFileName(buf *string) {
-	// TODO: return INI-configured parameter file
-	*buf = ""
+	*buf = c.parameterFileName
 }
 
 func (c *Canon) GetExternalOffsetApplied() int32 {
