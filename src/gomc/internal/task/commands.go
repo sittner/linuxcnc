@@ -158,25 +158,17 @@ func (t *Task) SetMode(mode int32) error {
 		return ErrBusy
 	}
 
-	// NOTE: The unlock→Abort()→re-lock pattern below is safe because command
-	// dispatch is serialized (one WS command at a time). No concurrent SetMode
-	// can modify t.mode between Abort() and re-lock.
-
 	switch target {
 	case ModeManual:
 		if t.mode != ModeManual {
-			t.mu.Unlock()
-			t.Abort()
-			t.mu.Lock()
+			t.abortLocked() // unlocks/re-locks internally for I/O
 		}
 		t.mode = ModeManual
 		t.mu.Unlock()
 		return t.motion.SetFree()
 	case ModeMDI:
 		if t.mode != ModeMDI {
-			t.mu.Unlock()
-			t.Abort()
-			t.mu.Lock()
+			t.abortLocked()
 		}
 		t.mode = ModeMDI
 		t.mu.Unlock()
@@ -187,9 +179,7 @@ func (t *Task) SetMode(mode int32) error {
 		return nil
 	case ModeAuto:
 		if t.mode != ModeAuto {
-			t.mu.Unlock()
-			t.Abort()
-			t.mu.Lock()
+			t.abortLocked()
 		}
 		t.mode = ModeAuto
 		t.mu.Unlock()
@@ -815,61 +805,49 @@ func (t *Task) Lube(on bool) error {
 // stop spindles, turn off coolant, clear interpreter queue, close program.
 func (t *Task) Abort() error {
 	t.mu.Lock()
+	t.abortLocked()
+	t.mu.Unlock()
+	return nil
+}
 
+// abortLocked performs the full abort sequence.
+// Caller MUST hold t.mu on entry; t.mu is held on return.
+// Internally unlocks t.mu for external I/O calls to avoid blocking stat reads.
+func (t *Task) abortLocked() {
 	t.interpState = InterpIdle
 	t.execState = ExecDone
-
-	// Clear MDI queue and step mode
 	t.mdiQueue = t.mdiQueue[:0]
 	t.stepping = false
+	t.readLine = 0
+	t.currentLine = 0
 
-	// Capture state before unlock
 	numSpindles := t.numSpindles
 	interp := t.interp
 	t.mu.Unlock()
 
-	// Abort sequencer (signals goroutine, drains queue)
+	// External calls (no mutex held — won't block stat reads).
 	t.AbortSequencer()
-
-	// Abort M-code handler if running
 	t.mcodeAbort()
-
-	// Abort motion
 	_ = t.motion.Abort()
-
-	// Abort IO controller
 	_ = t.io.IoAbort(0)
-
-	// Stop all spindles
 	for i := 0; i < numSpindles; i++ {
 		_ = t.motion.SpindleOff(int32(i))
 	}
-
-	// Turn off coolant
 	_ = t.io.CoolantFloodOff()
 	_ = t.io.CoolantMistOff()
 
-	t.mu.Lock()
-	t.floodOn = false
-	t.mistOn = false
-	t.readLine = 0
-	t.currentLine = 0
-	t.mu.Unlock()
-
-	// Notify interpreter of abort and close file
 	if interp != nil {
 		_ = interp.Abort(0, "user abort")
 		_ = interp.Close()
 		_ = interp.Reset()
-		// Resync interpreter with actual machine state (positions, etc.)
-		// Matches C milltask which queues emcTaskPlanSynch after abort.
 		_ = interp.Synch()
 	}
 
-	// Restart sequencer for next operation
 	t.StartSequencer()
 
-	return nil
+	t.mu.Lock()
+	t.floodOn = false
+	t.mistOn = false
 }
 
 // TaskPlanSynch forces a sync between interpreter and motion.
