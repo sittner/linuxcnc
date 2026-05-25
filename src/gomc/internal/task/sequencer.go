@@ -875,6 +875,8 @@ func (c *mdiDoneCmd) PostWait(t *Task) {
 		}
 		return
 	}
+	// MDI queue empty — restore mode if this was a transactional switch.
+	t.restoreModeTx()
 	t.mu.Unlock()
 }
 

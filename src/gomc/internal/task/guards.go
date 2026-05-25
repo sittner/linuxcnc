@@ -36,6 +36,98 @@ func (t *Task) requireMode(required TaskMode) error {
 	return nil
 }
 
+// ensureMode switches to the required mode if safe (interpreter idle), or
+// returns nil if already in the right mode. This replaces client-side
+// ensure_mode() calls — the server decides whether a mode switch is allowed.
+// The previous mode is saved for transactional restore after command completion.
+// Must be called with t.mu held. May temporarily unlock t.mu for I/O.
+func (t *Task) ensureMode(required TaskMode) error {
+	if t.mode == required {
+		return nil
+	}
+	// Cannot switch mode while interpreter is active.
+	if t.interpState != InterpIdle {
+		return fmt.Errorf("%w: interpreter busy, cannot switch to %s", ErrBusy, required)
+	}
+	// Cannot switch mode while homing is in progress.
+	if t.anyJointHoming() {
+		return fmt.Errorf("%w: homing in progress", ErrBusy)
+	}
+	// Save previous mode for transactional restore (only first switch in a tx).
+	if !t.modeTx {
+		t.modeBeforeTx = t.mode
+		t.modeTx = true
+	}
+	// Perform the mode switch inline (same logic as SetMode but already holding mu).
+	switch required {
+	case ModeManual:
+		t.abortLocked()
+		t.mode = ModeManual
+		t.mu.Unlock()
+		_ = t.motion.SetFree()
+		t.mu.Lock()
+	case ModeMDI:
+		t.abortLocked()
+		t.mode = ModeMDI
+		t.mu.Unlock()
+		_ = t.motion.SetCoord()
+		if t.interp != nil {
+			_ = t.interp.Synch()
+		}
+		t.mu.Lock()
+	case ModeAuto:
+		t.abortLocked()
+		t.mode = ModeAuto
+		t.mu.Unlock()
+		_ = t.motion.SetCoord()
+		if t.interp != nil {
+			_ = t.interp.Synch()
+		}
+		t.mu.Lock()
+	default:
+		return fmt.Errorf("%w: unknown mode %d", ErrWrongMode, required)
+	}
+	return nil
+}
+
+// restoreModeTx restores the mode saved by ensureMode after a transactional
+// command sequence completes. Must be called with t.mu held.
+// May temporarily unlock t.mu for I/O.
+func (t *Task) restoreModeTx() {
+	if !t.modeTx {
+		return
+	}
+	t.modeTx = false
+	target := t.modeBeforeTx
+	if t.mode == target {
+		return
+	}
+	// Perform restore (same as ensureMode switch but no save).
+	switch target {
+	case ModeManual:
+		t.mode = ModeManual
+		t.mu.Unlock()
+		_ = t.motion.SetFree()
+		t.mu.Lock()
+	case ModeMDI:
+		t.mode = ModeMDI
+		t.mu.Unlock()
+		_ = t.motion.SetCoord()
+		if t.interp != nil {
+			_ = t.interp.Synch()
+		}
+		t.mu.Lock()
+	case ModeAuto:
+		t.mode = ModeAuto
+		t.mu.Unlock()
+		_ = t.motion.SetCoord()
+		if t.interp != nil {
+			_ = t.interp.Synch()
+		}
+		t.mu.Lock()
+	}
+}
+
 // requireNotEstop checks that we are not in estop.
 func (t *Task) requireNotEstop() error {
 	if t.state == StateEstop {
@@ -72,6 +164,23 @@ func (t *Task) allHomed() bool {
 		}
 	}
 	return true
+}
+
+// anyJointHoming returns true if any joint is currently in a homing sequence.
+func (t *Task) anyJointHoming() bool {
+	if t.status == nil {
+		return false
+	}
+	ms, err := t.status.GetStatus()
+	if err != nil {
+		return false
+	}
+	for j := 0; j < t.numJoints; j++ {
+		if ms.Joints[j].Homing != 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // requireHomed checks that all joints are homed (unless NO_FORCE_HOMING is set).

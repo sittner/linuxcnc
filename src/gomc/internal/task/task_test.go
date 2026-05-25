@@ -68,26 +68,26 @@ func (m *mockMotion) SetSpindleScale(int32, float64) error {
 	m.lastCall = "SetSpindleScale"
 	return nil
 }
-func (m *mockMotion) SetFeedScale(float64) error       { m.lastCall = "SetFeedScale"; return nil }
-func (m *mockMotion) SetRapidScale(float64) error      { m.lastCall = "SetRapidScale"; return nil }
-func (m *mockMotion) SetMaxFeedOverride(float64) error { return nil }
-func (m *mockMotion) FeedScaleEnable(int32) error      { return nil }
-func (m *mockMotion) AdaptiveFeedEnable(int32) error   { return nil }
-func (m *mockMotion) FeedHoldEnable(int32) error       { return nil }
-func (m *mockMotion) OverrideLimits(int32) error       { m.lastCall = "OverrideLimits"; return nil }
-func (m *mockMotion) JointHome(int32) error            { m.lastCall = "JointHome"; return nil }
-func (m *mockMotion) JointUnhome(int32) error          { m.lastCall = "JointUnhome"; return nil }
-func (m *mockMotion) SetVel(float64) error             { return nil }
-func (m *mockMotion) SetVelLimit(float64) error        { m.lastCall = "SetVelLimit"; return nil }
-func (m *mockMotion) SetAcc(float64) error             { return nil }
-func (m *mockMotion) SetTermCond(int32, float64) error { return nil }
-func (m *mockMotion) SetOffset(Pose) error             { return nil }
-func (m *mockMotion) SetDebug(int32) error             { m.lastCall = "SetDebug"; return nil }
-func (m *mockMotion) SetDout(int32, int32) error              { return nil }
-func (m *mockMotion) SetDoutSynched(int32, int32, int32) error { return nil }
-func (m *mockMotion) SetAout(int32, float64) error            { return nil }
+func (m *mockMotion) SetFeedScale(float64) error                   { m.lastCall = "SetFeedScale"; return nil }
+func (m *mockMotion) SetRapidScale(float64) error                  { m.lastCall = "SetRapidScale"; return nil }
+func (m *mockMotion) SetMaxFeedOverride(float64) error             { return nil }
+func (m *mockMotion) FeedScaleEnable(int32) error                  { return nil }
+func (m *mockMotion) AdaptiveFeedEnable(int32) error               { return nil }
+func (m *mockMotion) FeedHoldEnable(int32) error                   { return nil }
+func (m *mockMotion) OverrideLimits(int32) error                   { m.lastCall = "OverrideLimits"; return nil }
+func (m *mockMotion) JointHome(int32) error                        { m.lastCall = "JointHome"; return nil }
+func (m *mockMotion) JointUnhome(int32) error                      { m.lastCall = "JointUnhome"; return nil }
+func (m *mockMotion) SetVel(float64) error                         { return nil }
+func (m *mockMotion) SetVelLimit(float64) error                    { m.lastCall = "SetVelLimit"; return nil }
+func (m *mockMotion) SetAcc(float64) error                         { return nil }
+func (m *mockMotion) SetTermCond(int32, float64) error             { return nil }
+func (m *mockMotion) SetOffset(Pose) error                         { return nil }
+func (m *mockMotion) SetDebug(int32) error                         { m.lastCall = "SetDebug"; return nil }
+func (m *mockMotion) SetDout(int32, int32) error                   { return nil }
+func (m *mockMotion) SetDoutSynched(int32, int32, int32) error     { return nil }
+func (m *mockMotion) SetAout(int32, float64) error                 { return nil }
 func (m *mockMotion) SetAoutSynched(int32, float64, float64) error { return nil }
-func (m *mockMotion) SetSpindlesync(float64, int32) error     { return nil }
+func (m *mockMotion) SetSpindlesync(float64, int32) error          { return nil }
 
 // mockIO implements IOController for testing.
 type mockIO struct {
@@ -108,12 +108,12 @@ func (m *mockIO) ToolSetNumber(int32) error { return nil }
 func (m *mockIO) ToolSetOffset(int32, int32, float64, float64, float64, float64, float64, float64, float64, float64, float64, float64, float64, float64, int32) error {
 	return nil
 }
-func (m *mockIO) ToolLoadTable(string) error { return nil }
-func (m *mockIO) EstopOn() error             { m.lastCall = "Estop"; return nil }
-func (m *mockIO) EstopOff() error            { m.lastCall = "EstopReset"; return nil }
-func (m *mockIO) IoAbort(int32) error        { return nil }
-func (m *mockIO) SetDebug(int32) error       { return nil }
-func (m *mockIO) GetCmdStatus() (int32, error) { return IOStatusDone, nil }
+func (m *mockIO) ToolLoadTable(string) error       { return nil }
+func (m *mockIO) EstopOn() error                   { m.lastCall = "Estop"; return nil }
+func (m *mockIO) EstopOff() error                  { m.lastCall = "EstopReset"; return nil }
+func (m *mockIO) IoAbort(int32) error              { return nil }
+func (m *mockIO) SetDebug(int32) error             { return nil }
+func (m *mockIO) GetCmdStatus() (int32, error)     { return IOStatusDone, nil }
 func (m *mockIO) GetToolInSpindle() (int32, error) { return 0, nil }
 func (m *mockIO) GetPocketPrepped() (int32, error) { return 0, nil }
 
@@ -238,13 +238,32 @@ func TestJog_MDIBusyRejects(t *testing.T) {
 	}
 }
 
-func TestAutoCommand_RequiresAutoMode(t *testing.T) {
+func TestAutoCommand_EnsureModeWhenIdle(t *testing.T) {
 	task, _, _ := newTestTask()
 	bringUp(task)
 
+	// In Manual mode with idle interpreter, AutoCommand should auto-switch
+	// to AUTO mode. Since no program is loaded, we get ErrNoProgram (not ErrWrongMode).
 	err := task.AutoCommand(AutoRun, 0)
-	if !errors.Is(err, ErrWrongMode) {
-		t.Fatalf("expected ErrWrongMode, got %v", err)
+	if !errors.Is(err, ErrNoProgram) {
+		t.Fatalf("expected ErrNoProgram (mode auto-switched), got %v", err)
+	}
+}
+
+func TestEnsureMode_RejectsWhenBusy(t *testing.T) {
+	task, _, _ := newTestTask()
+	bringUp(task)
+	task.SetMode(int32(ModeAuto))
+
+	// Simulate interpreter busy.
+	task.mu.Lock()
+	task.interpState = InterpReading
+	task.mu.Unlock()
+
+	// MDI requires MDI mode; ensureMode should fail because interp is busy.
+	err := task.MDI("G0 X0")
+	if !errors.Is(err, ErrBusy) {
+		t.Fatalf("expected ErrBusy when interp active, got %v", err)
 	}
 }
 

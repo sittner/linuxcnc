@@ -143,6 +143,8 @@ func (t *Task) SetState(state int32) error {
 }
 
 // SetMode switches between MANUAL, MDI, and AUTO.
+// This is an explicit mode switch (e.g. from a mode selector or HAL pin).
+// It clears any transactional mode save — the user deliberately chose this mode.
 func (t *Task) SetMode(mode int32) error {
 	t.mu.Lock()
 
@@ -159,6 +161,9 @@ func (t *Task) SetMode(mode int32) error {
 		t.operatorError("Can't switch mode while mode is AUTO and interpreter is not IDLE")
 		return ErrBusy
 	}
+
+	// Explicit mode switch cancels any transactional save.
+	t.modeTx = false
 
 	switch target {
 	case ModeManual:
@@ -223,7 +228,7 @@ func (t *Task) AutoCommand(cmd int32, line int32) error {
 		t.mu.Unlock()
 		return err
 	}
-	if err := t.requireMode(ModeAuto); err != nil {
+	if err := t.ensureMode(ModeAuto); err != nil {
 		t.mu.Unlock()
 		return err
 	}
@@ -248,6 +253,8 @@ func (t *Task) AutoCommand(cmd int32, line int32) error {
 			t.mu.Unlock()
 			return fmt.Errorf("no interpreter configured")
 		}
+		// Running a program is a deliberate mode commitment — no restore.
+		t.modeTx = false
 		t.interpState = InterpReading
 		t.stepping = false
 		interp := t.interp
@@ -386,7 +393,7 @@ func (t *Task) MDI(command string) error {
 		t.mu.Unlock()
 		return err
 	}
-	if err := t.requireMode(ModeMDI); err != nil {
+	if err := t.ensureMode(ModeMDI); err != nil {
 		t.mu.Unlock()
 		t.operatorError("Must be in MDI mode to issue MDI command")
 		return err
@@ -729,6 +736,9 @@ func (t *Task) Home(joint int32) error {
 	if err := t.requireOn(); err != nil {
 		return err
 	}
+	if err := t.ensureMode(ModeManual); err != nil {
+		return err
+	}
 	return t.motion.JointHome(joint)
 }
 
@@ -738,6 +748,9 @@ func (t *Task) Unhome(joint int32) error {
 	defer t.mu.Unlock()
 
 	if err := t.requireOn(); err != nil {
+		return err
+	}
+	if err := t.ensureMode(ModeManual); err != nil {
 		return err
 	}
 	return t.motion.JointUnhome(joint)

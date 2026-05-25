@@ -1217,16 +1217,6 @@ This means this function returns True when the mdi tab is visible."""
     if s.task_state != STATE_ON: return False
     return s.interp_state == INTERP_IDLE or (s.task_mode == MODE_MDI and s.queued_mdi_commands < vars.max_queued_mdi_commands.get())
 
-# If LinuxCNC is not already in one of the modes given, switch it to the
-# first (task) mode MANUAL,MDI,AUTO
-def ensure_mode(m, *p):
-    s.poll()
-    if s.task_mode == m or s.task_mode in p: return True
-    c.mode(m) # task_mode
-    c.wait_complete()
-    s.poll()
-    return True
-
 class DummyProgress:
     def update(self, count): pass
     def nextphase(self, count): pass
@@ -1409,8 +1399,6 @@ def cancel_open(event=None):
 loaded_file = None
 def open_file_guts(f, filtered=False, addrecent=True):
     s.poll()
-    save_task_mode = s.task_mode
-    ensure_mode(MODE_MANUAL)
     if addrecent:
         add_recent_file(f)
     if not filtered:
@@ -1428,10 +1416,8 @@ def open_file_guts(f, filtered=False, addrecent=True):
                             % {'program': program_filter, 'code': exitcode},
                         "error",0,_("OK"))
                 return
-            ensure_mode(save_task_mode)
             return open_file_guts(tempfile, True, False)
 
-    ensure_mode(save_task_mode)
     set_first_line(0)
     t0 = time.time()
 
@@ -2273,7 +2259,6 @@ class TclCommands(nf.TclCommands):
         c.set_block_delete(vars.block_delete.get())
         ap.putpref("block_delete", vars.block_delete.get())
         c.wait_complete()
-        ensure_mode(MODE_MANUAL)
         s.poll()
         o.tkRedraw()
         reload_file(False)
@@ -2601,7 +2586,6 @@ class TclCommands(nf.TclCommands):
 
         global program_start_line, program_start_line_last
         program_start_line_last = program_start_line;
-        ensure_mode(MODE_AUTO)
         c.auto(AUTO_RUN, program_start_line)
         program_start_line = 0
         t.tag_remove("ignored", "0.0", "end")
@@ -2611,13 +2595,11 @@ class TclCommands(nf.TclCommands):
         if s.task_mode != MODE_AUTO or s.interp_state != INTERP_IDLE:
             o.set_highlight_line(None)
             if run_warn(): return
-        ensure_mode(MODE_AUTO)
         c.auto(AUTO_STEP)
 
     def task_pause(*event):
         if s.task_mode != MODE_AUTO or s.interp_state not in (INTERP_READING, INTERP_WAITING):
             return
-        ensure_mode(MODE_AUTO)
         c.auto(AUTO_PAUSE)
 
     def task_reverse(*event):
@@ -2625,7 +2607,6 @@ class TclCommands(nf.TclCommands):
         if s.task_mode != MODE_AUTO:
             return
 
-        ensure_mode(MODE_AUTO)
         c.auto(AUTO_REVERSE)
 
     def task_forward(*event):
@@ -2633,7 +2614,6 @@ class TclCommands(nf.TclCommands):
         if s.task_mode != MODE_AUTO:
             return
 
-        ensure_mode(MODE_AUTO)
         c.auto(AUTO_FORWARD)
 
     def task_resume(*event):
@@ -2642,13 +2622,11 @@ class TclCommands(nf.TclCommands):
             return
         if s.task_mode not in (MODE_AUTO, MODE_MDI):
             return
-        ensure_mode(MODE_AUTO, MODE_MDI)
         c.auto(AUTO_RESUME)
 
     def task_pauseresume(*event):
         if s.task_mode not in (MODE_AUTO, MODE_MDI):
             return
-        ensure_mode(MODE_AUTO, MODE_MDI)
         s.poll()
         if s.paused:
             global resume_inhibit
@@ -2712,7 +2690,6 @@ class TclCommands(nf.TclCommands):
         if command != "":
             command= command.lstrip().rstrip()
             vars.mdi_command.set("")
-            ensure_mode(MODE_MDI)
             widgets.mdi_history.selection_clear(0, "end")
             ## check if input is already in list. If so, then delete old element
             #idx = 0
@@ -2837,14 +2814,11 @@ class TclCommands(nf.TclCommands):
             ):
             set_motion_teleop(1)
         else:
-            ensure_mode(MODE_MANUAL)
             set_motion_teleop(0)
 
     def ensure_mdi(*event):
         # called from axis.tcl on tab raisecmd
         if not manual_ok(): return
-        set_motion_teleop(0)
-        ensure_mode(MODE_MDI)
         set_motion_teleop(1)
         s.poll()
 
@@ -2941,7 +2915,6 @@ class TclCommands(nf.TclCommands):
 
     def home_all_joints(event=None):
         if not manual_ok(): return
-        ensure_mode(MODE_MANUAL)
         isHomed = all_homed()
         doHoming=True
         if isHomed:
@@ -2950,8 +2923,6 @@ class TclCommands(nf.TclCommands):
             go_home(-1)
 
     def unhome_all_joints(event=None):
-        ensure_mode(MODE_MANUAL)
-        set_motion_teleop(0)
         c.unhome(-1)
 
     def home_joint(event=None):
@@ -2973,22 +2944,17 @@ class TclCommands(nf.TclCommands):
         if s.homed[jnum]:
             doHoming=prompt_areyousure(_("Warning"),_("This joint is already homed, are you sure you want to re-home?"))
         if doHoming:
-            ensure_mode(MODE_MANUAL)
             go_home(jnum)
 
     def home_joint_number(num):
         # invoked by machine menu/home widgets
-        ensure_mode(MODE_MANUAL)
         go_home(num)
 
     def unhome_joint_number(num):
         # invoked by machine menu/unhome widgets
-        ensure_mode(MODE_MANUAL)
-        set_motion_teleop(0)
         c.unhome(num)
 
     def clear_offset(num):
-        ensure_mode(MODE_MDI)
         s.poll()
         if num == "G92":
             clear_command = "G92.1"
@@ -2998,7 +2964,6 @@ class TclCommands(nf.TclCommands):
                 if s.axis_mask & (1<<i): clear_command += " %c0" % a
         c.mdi(clear_command)
         c.wait_complete()
-        ensure_mode(MODE_MANUAL)
         s.poll()
         o.tkRedraw()
         reload_file(False)
@@ -3019,9 +2984,7 @@ class TclCommands(nf.TclCommands):
             system = vars.touch_off_system.get()
         if new_axis_value is None: return
 
-        save_task_mode = s.task_mode
         vars.touch_off_system.set(system)
-        ensure_mode(MODE_MDI)
         s.poll()
 
         linear_axis = vars.ja_rbutton.get() in "xyzuvw"
@@ -3038,8 +3001,6 @@ class TclCommands(nf.TclCommands):
         s.poll()
         o.tkRedraw()
         reload_file(False)
-        ensure_mode(save_task_mode)
-        set_motion_teleop(1)
         o.redraw_dro()
 
     def touch_off_tool(event=None, new_axis_value = None):
@@ -3060,9 +3021,7 @@ class TclCommands(nf.TclCommands):
             system = vars.touch_off_system.get()
         if new_axis_value is None: return
 
-        save_task_mode = s.task_mode
         vars.touch_off_system.set(system)
-        ensure_mode(MODE_MDI)
         s.poll()
 
         linear_axis = vars.ja_rbutton.get() in "xyzuvw"
@@ -3082,8 +3041,6 @@ class TclCommands(nf.TclCommands):
         s.poll()
         o.tkRedraw()
         reload_file(False)
-        ensure_mode(save_task_mode)
-        set_motion_teleop(1)
         o.redraw_dro()
 
     def set_axis_offset(event=None):
@@ -3091,7 +3048,6 @@ class TclCommands(nf.TclCommands):
 
     def brake(event=None):
         if not manual_ok(): return
-        ensure_mode(MODE_MANUAL)
         c.brake(vars.brake.get())
     def flood(event=None):
         c.flood(vars.flood.get())
@@ -3099,7 +3055,6 @@ class TclCommands(nf.TclCommands):
         c.mist(vars.mist.get())
     def spindle(event=None):
         if not manual_ok(): return
-        ensure_mode(MODE_MANUAL)
         d = vars.spindledir.get()
         if d == 0:
             c.spindle(d)
@@ -3111,7 +3066,6 @@ class TclCommands(nf.TclCommands):
         c.spindle(SPINDLE_DECREASE)
     def spindle_constant(event=None):
         if not manual_ok(): return
-        ensure_mode(MODE_MANUAL)
         c.spindle(SPINDLE_CONSTANT)
     def set_first_line(lineno):
         if not manual_ok(): return
@@ -3163,10 +3117,7 @@ class TclCommands(nf.TclCommands):
     def toggle_override_limits(*args):
         s.poll()
         if s.interp_state != INTERP_IDLE: return
-        if s.joint[0]['override_limits']:
-            ensure_mode(MODE_AUTO)
-        else:
-            ensure_mode(MODE_MANUAL)
+        if not s.joint[0]['override_limits']:
             c.override_limits()
 
     def cycle_view(*args):
