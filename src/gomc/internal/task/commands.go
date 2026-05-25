@@ -109,7 +109,11 @@ func (t *Task) SetState(state int32) error {
 			t.mu.Unlock()
 			return err
 		}
-		t.state = StateOff
+		// C milltask has no explicit OFF state — determineState() returns
+		// ESTOP_RESET when traj is disabled and not in estop. Match that
+		// behavior so Axis's on/off toggle works (it only transitions
+		// from ESTOP_RESET → ON).
+		t.state = StateEstopReset
 		t.mu.Unlock()
 		_ = t.motion.Disable()
 		return nil
