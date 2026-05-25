@@ -15,7 +15,7 @@ var _ emcstatapi.EmcstatCallbacks = (*milltaskModule)(nil)
 var errNotReady = fmt.Errorf("milltask: not ready")
 
 func (m *milltaskModule) ready() error {
-	if m.task == nil {
+	if m.task == nil || m.stopped {
 		return errNotReady
 	}
 	return nil

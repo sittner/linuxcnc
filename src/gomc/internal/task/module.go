@@ -59,6 +59,7 @@ type milltaskModule struct {
 	interp     *CInterp
 	canonTable *canonCallbackTable
 	mon        *monitor
+	stopped    bool
 }
 
 func (m *milltaskModule) Start() error {
@@ -140,6 +141,7 @@ func (m *milltaskModule) Start() error {
 }
 
 func (m *milltaskModule) Stop() {
+	m.stopped = true
 	if m.mon != nil {
 		m.mon.stop()
 	}
