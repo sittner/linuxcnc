@@ -147,6 +147,7 @@ func (m *monitor) checkEstop() {
 			_ = m.task.interp.Abort(0, "external estop")
 			_ = m.task.interp.Close()
 			_ = m.task.interp.Reset()
+			_ = m.task.interp.Synch()
 		}
 
 		// Restart sequencer for clean state

@@ -76,6 +76,7 @@ func (t *Task) SetState(state int32) error {
 				_ = t.interp.Abort(0, "estop")
 				_ = t.interp.Close()
 				_ = t.interp.Reset()
+				_ = t.interp.Synch()
 			}
 			t.StartSequencer()
 		} else {
@@ -829,6 +830,9 @@ func (t *Task) Abort() error {
 		_ = interp.Abort(0, "user abort")
 		_ = interp.Close()
 		_ = interp.Reset()
+		// Resync interpreter with actual machine state (positions, etc.)
+		// Matches C milltask which queues emcTaskPlanSynch after abort.
+		_ = interp.Synch()
 	}
 
 	// Restart sequencer for next operation
