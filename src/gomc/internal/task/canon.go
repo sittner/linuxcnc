@@ -869,12 +869,181 @@ func (c *Canon) ChangeToolNumber(number int32) {
 }
 
 func (c *Canon) NurbsFeed(lineno int32, controlPoints []ControlPoint, k uint32) {
-	// TODO: NURBS feed support
+	n := uint32(len(controlPoints)) - 1
+	umax := float64(n - k + 2)
+	div := uint32(len(controlPoints)) * 4
+	knotVector := nurbsKnotVector(n, k)
+
+	p0 := nurbsPoint(0, k, controlPoints, knotVector)
+	p0t := nurbsTangent(0, k, n, controlPoints, knotVector)
+
+	for i := uint32(1); i <= div; i++ {
+		u := umax * float64(i) / float64(div)
+		p1 := nurbsPoint(u, k, controlPoints, knotVector)
+		p1t := nurbsTangent(u, k, n, controlPoints, knotVector)
+		c.nurbsBiarc(lineno, p0.X, p0.Y, p0t.X, p0t.Y, p1.X, p1.Y, p1t.X, p1t.Y)
+		p0 = p1
+		p0t = p1t
+	}
 }
 
 // ControlPoint is a NURBS control point.
 type ControlPoint struct {
 	X, Y, W float64
+}
+
+// --- NURBS helper functions ---
+
+// nurbsKnotVector creates a uniform knot vector for a B-spline of degree k-1
+// with n+1 control points.
+func nurbsKnotVector(n, k uint32) []uint32 {
+	kv := make([]uint32, 0, n+k+1)
+	for i := uint32(0); i <= n+k; i++ {
+		if i < k {
+			kv = append(kv, 0)
+		} else if i <= n {
+			kv = append(kv, i-k+1)
+		} else {
+			kv = append(kv, n-k+2)
+		}
+	}
+	return kv
+}
+
+// nurbsBasis evaluates the B-spline basis function N_{i,k}(u) recursively.
+func nurbsBasis(i, k uint32, u float64, kv []uint32) float64 {
+	if k == 1 {
+		if u >= float64(kv[i]) && u <= float64(kv[i+1]) {
+			return 1
+		}
+		return 0
+	}
+	denom1 := float64(kv[i+k-1] - kv[i])
+	denom2 := float64(kv[i+k] - kv[i+1])
+	var result float64
+	if denom1 != 0 {
+		result += (u - float64(kv[i])) * nurbsBasis(i, k-1, u, kv) / denom1
+	}
+	if denom2 != 0 {
+		result += (float64(kv[i+k]) - u) * nurbsBasis(i+1, k-1, u, kv) / denom2
+	}
+	return result
+}
+
+// nurbsRden computes the rational denominator sum(N_i * W_i).
+func nurbsRden(u float64, k uint32, pts []ControlPoint, kv []uint32) float64 {
+	var d float64
+	for i := uint32(0); i < uint32(len(pts)); i++ {
+		d += nurbsBasis(i, k, u, kv) * pts[i].W
+	}
+	return d
+}
+
+// nurbsPoint evaluates the NURBS curve at parameter u.
+func nurbsPoint(u float64, k uint32, pts []ControlPoint, kv []uint32) ControlPoint {
+	den := nurbsRden(u, k, pts, kv)
+	var p ControlPoint
+	for i := uint32(0); i < uint32(len(pts)); i++ {
+		basis := nurbsBasis(i, k, u, kv) * pts[i].W / den
+		p.X += pts[i].X * basis
+		p.Y += pts[i].Y * basis
+	}
+	return p
+}
+
+// nurbsTangent evaluates the tangent direction at parameter u using finite differences.
+func nurbsTangent(u float64, k, n uint32, pts []ControlPoint, kv []uint32) ControlPoint {
+	const du = 1e-5
+	umax := float64(n - k + 2)
+	ulo := math.Max(0, u-du)
+	uhi := math.Min(umax, u+du)
+	p1 := nurbsPoint(ulo, k, pts, kv)
+	p3 := nurbsPoint(uhi, k, pts, kv)
+	span := uhi - ulo
+	t := ControlPoint{X: (p3.X - p1.X) / span, Y: (p3.Y - p1.Y) / span}
+	h := math.Hypot(t.X, t.Y)
+	if h != 0 {
+		t.X /= h
+		t.Y /= h
+	}
+	return t
+}
+
+// nurbsBiarc approximates a curve segment between two points with known tangents
+// using a biarc (two circular arcs). Falls back to a straight line if degenerate.
+func (c *Canon) nurbsBiarc(lineno int32, p0x, p0y, tsx, tsy, p4x, p4y, tex, tey float64) {
+	// Normalize tangents
+	h := math.Hypot(tsx, tsy)
+	if h != 0 {
+		tsx /= h
+		tsy /= h
+	}
+	h = math.Hypot(tex, tey)
+	if h != 0 {
+		tex /= h
+		tey /= h
+	}
+
+	r := 1.0
+	vx := p0x - p4x
+	vy := p0y - p4y
+	cv := vx*vx + vy*vy
+	b := 2 * (vx*(r*tsx+tex) + vy*(r*tsy+tey))
+	a := 2 * r * (tsx*tex + tsy*tey - 1)
+
+	discr := b*b - 4*a*cv
+	if discr < 0 {
+		return
+	}
+	disq := math.Sqrt(discr)
+	beta1 := (-b - disq) / (2 * a)
+	beta2 := (-b + disq) / (2 * a)
+	if beta1 > 0 && beta2 > 0 {
+		return
+	}
+	beta := math.Max(beta1, beta2)
+	alpha := beta * r
+	ab := alpha + beta
+
+	p2x := (((p0x + alpha*tsx) * beta) + ((p4x - beta*tex) * alpha)) / ab
+	p2y := (((p0y + alpha*tsy) * beta) + ((p4y - beta*tey) * alpha)) / ab
+	p3x := p4x - beta*tex
+	p3y := p4y - beta*tey
+	tmx := p3x - p2x
+	tmy := p3y - p2y
+	h = math.Hypot(tmx, tmy)
+	if h != 0 {
+		tmx /= h
+		tmy /= h
+	}
+
+	c.nurbsArc(lineno, p0x, p0y, p2x, p2y, tsx, tsy)
+	c.nurbsArc(lineno, p2x, p2y, p4x, p4y, tmx, tmy)
+}
+
+// nurbsArc emits a single arc (or line) segment for NURBS approximation.
+func (c *Canon) nurbsArc(lineno int32, x0, y0, x1, y1, dx, dy float64) {
+	const small = 1e-6
+	x := x1 - x0
+	y := y1 - y0
+	den := 2 * (y*dx - x*dy)
+
+	// Get current other-axis positions in program coordinates
+	s := c.state
+	p := s.fromAbsolute(s.endPoint)
+
+	if math.Abs(den) > small {
+		r := -(x*x + y*y) / den
+		cx := x0 + dy*r
+		cy := y0 + (-dx)*r
+		rotation := int32(1)
+		if r >= 0 {
+			rotation = -1
+		}
+		c.ArcFeed(lineno, x1, y1, cx, cy, rotation, p.Z, p.A, p.B, p.C, p.U, p.V, p.W)
+	} else {
+		c.StraightFeed(lineno, x1, y1, p.Z, p.A, p.B, p.C, p.U, p.V, p.W)
+	}
 }
 
 // --- Internal helpers ---
