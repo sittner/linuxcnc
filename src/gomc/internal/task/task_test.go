@@ -114,6 +114,8 @@ func (m *mockIO) EstopOff() error            { m.lastCall = "EstopReset"; return
 func (m *mockIO) IoAbort(int32) error        { return nil }
 func (m *mockIO) SetDebug(int32) error       { return nil }
 func (m *mockIO) GetCmdStatus() (int32, error) { return IOStatusDone, nil }
+func (m *mockIO) GetToolInSpindle() (int32, error) { return 0, nil }
+func (m *mockIO) GetPocketPrepped() (int32, error) { return 0, nil }
 
 // mockStatus implements MotionStatusReader for testing.
 type mockStatus struct{}

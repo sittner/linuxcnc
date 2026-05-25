@@ -452,8 +452,6 @@ func (t *Task) executeMDI(command string) error {
 // callbacks (which enqueue commands via EnqueueCmd), and only stops on
 // abort or end-of-file. Pause and step are handled at the sequencer level.
 func (t *Task) runProgram(interp Interpreter, startLine int32) {
-	_ = startLine // TODO: seek to startLine
-
 	t.mu.Lock()
 	t.interpActive = true
 	t.mu.Unlock()
@@ -466,6 +464,14 @@ func (t *Task) runProgram(interp Interpreter, startLine int32) {
 	// Set active canon for M-code callbacks (no ctx parameter).
 	setActiveCanon(t.canon)
 	defer clearActiveCanon()
+
+	// Run-from-line: if startLine > 0, read/execute lines without enqueuing
+	// motion commands until we reach startLine (matching C milltask behavior).
+	if startLine > 0 {
+		if aborted := t.seekToLine(interp, startLine); aborted {
+			return
+		}
+	}
 
 	for {
 		// Check abort between interpreter lines
@@ -520,6 +526,75 @@ func (t *Task) runProgram(interp Interpreter, startLine int32) {
 			return
 		case InterpOK:
 			// Normal — continue reading
+		}
+	}
+}
+
+// seekToLine reads and executes interpreter lines without enqueuing motion
+// commands (they are discarded) until we reach startLine. This implements
+// "Run from line N": the interpreter processes preamble (offsets, units, tool
+// changes) so it's in the correct state, but no actual motion is queued.
+// Returns true if aborted.
+func (t *Task) seekToLine(interp Interpreter, startLine int32) bool {
+	// Temporarily redirect canon enqueue to a discard sink.
+	t.canon.setDiscard(true)
+	defer t.canon.setDiscard(false)
+
+	for {
+		select {
+		case <-t.seqAbort:
+			return true
+		default:
+		}
+
+		rc, err := interp.Read()
+		if err != nil {
+			t.logger.Error("interpreter read error during seek", "err", err)
+			t.setInterpState(InterpIdle)
+			return true
+		}
+		if rc == InterpEndfile || rc == InterpExit {
+			// Reached end before startLine — run from beginning
+			t.logger.Warn("seekToLine: reached end before target line", "target", startLine)
+			return true
+		}
+
+		lineNow := int32(interp.Line())
+
+		rc, err = interp.Execute()
+		if err != nil {
+			t.logger.Error("interpreter execute error during seek", "err", err)
+			t.setInterpState(InterpIdle)
+			return true
+		}
+		t.updateActiveCodes(interp)
+
+		// Handle EXECUTE_FINISH during seek (needed for tool changes etc.)
+		if rc == InterpExecuteFinish {
+			if err := interp.Synch(); err != nil {
+				t.logger.Error("interp synch during seek", "err", err)
+			}
+		}
+
+		// Check if we've reached the target line.
+		if lineNow >= startLine {
+			// Sync interpreter position with actual machine position
+			// so the first real move goes to the right place.
+			if t.status != nil {
+				ms, err := t.status.GetStatus()
+				if err == nil {
+					p := ms.CartePosFb
+					t.canon.UpdateEndPointFromMachine(Pose{
+						X: p.X, Y: p.Y, Z: p.Z,
+						A: p.A, B: p.B, C: p.C,
+						U: p.U, V: p.V, W: p.W,
+					})
+				}
+			}
+			if err := interp.Synch(); err != nil {
+				t.logger.Error("interp synch after seek", "err", err)
+			}
+			return false
 		}
 	}
 }
@@ -884,12 +959,22 @@ func (t *Task) LoadToolTable() error {
 
 // WaitComplete waits for motion to complete (with timeout).
 func (t *Task) WaitComplete(timeout float64) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+	deadline := time.Now().Add(time.Duration(timeout * float64(time.Second)))
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
 
-	// TODO: wait for execState == ExecDone or timeout
-	_ = timeout
-	return nil
+	for {
+		t.mu.Lock()
+		exec := t.execState
+		t.mu.Unlock()
+		if exec == ExecDone || exec == ExecError {
+			return nil
+		}
+		if timeout > 0 && time.Now().After(deadline) {
+			return fmt.Errorf("WaitComplete: timeout after %.1fs", timeout)
+		}
+		<-ticker.C
+	}
 }
 
 // SetDebug sets the debug level.

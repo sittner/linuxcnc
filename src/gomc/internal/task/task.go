@@ -176,6 +176,8 @@ type IOController interface {
 	IoAbort(reason int32) error
 	SetDebug(debug int32) error
 	GetCmdStatus() (int32, error) // 1=DONE, 2=EXEC, 3=ERROR
+	GetToolInSpindle() (int32, error)
+	GetPocketPrepped() (int32, error)
 }
 
 // IO CmdStatus values.

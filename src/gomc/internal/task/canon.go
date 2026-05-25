@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"time"
+	"unsafe"
 )
 
 // Canon unit systems.
@@ -248,6 +249,7 @@ type Canon struct {
 	state             *CanonState
 	task              *Task
 	parameterFileName string
+	discard           bool // when true, enqueue is a no-op (used during seek)
 }
 
 // NewCanon creates a Canon instance tied to a Task.
@@ -257,6 +259,18 @@ func NewCanon(t *Task) *Canon {
 		state: cs,
 		task:  t,
 	}
+}
+
+// setDiscard enables/disables discard mode for run-from-line seeking.
+// When discard is true, enqueue drops commands instead of queueing them.
+func (c *Canon) setDiscard(d bool) {
+	c.discard = d
+}
+
+// UpdateEndPointFromMachine syncs the canon endpoint with actual machine position.
+// Used after seeking to update interpreter's view of current position.
+func (c *Canon) UpdateEndPointFromMachine(pos Pose) {
+	c.state.endPoint = pos
 }
 
 // --- State-setting callbacks (modify canon state, no queued commands) ---
@@ -368,9 +382,22 @@ func (c *Canon) UpdateEndPoint(x, y, z, a, b, _c, u, v, w float64) {
 }
 
 func (c *Canon) UpdateTag(tagPtr uint64) {
-	// Tag is passed as opaque pointer from interpreter
-	// In Go milltask, we store it directly
-	_ = tagPtr // TODO: decode tag from interpreter shared memory
+	// The interpreter passes a pointer to a state_tag_t struct.
+	// We decode it into our StateTag (same memory layout: fields_float[5], fields[8], packed_flags).
+	if tagPtr == 0 {
+		return
+	}
+	type cStateTag struct {
+		FieldsFloat [5]float32
+		Fields      [8]int32
+		PackedFlags uint64
+	}
+	src := (*cStateTag)(unsafe.Pointer(uintptr(tagPtr)))
+	c.state.tag = StateTag{
+		FieldsFloat: src.FieldsFloat,
+		Fields:      src.Fields,
+		PackedFlags: src.PackedFlags,
+	}
 }
 
 func (c *Canon) UseLengthOffset(x, y, z, a, b, _c, u, v, w float64) {
@@ -853,6 +880,9 @@ func (cmd *LockRotaryCmd) String() string {
 // --- Internal helpers ---
 
 func (c *Canon) enqueue(cmd QueuedCmd) {
+	if c.discard {
+		return
+	}
 	if err := c.task.EnqueueCmd(cmd); err != nil {
 		c.task.logger.Error("canon enqueue failed", "cmd", cmd.String(), "err", err)
 	}

@@ -182,12 +182,25 @@ func (c *Canon) GetExternalToolLengthVOffset() float64 { return c.state.toolOffs
 func (c *Canon) GetExternalToolLengthWOffset() float64 { return c.state.toolOffset.W }
 
 func (c *Canon) GetExternalToolSlot() int32 {
-	// TODO: read from IO status
-	return 0
+	if c.task.io == nil {
+		return 0
+	}
+	v, err := c.task.io.GetToolInSpindle()
+	if err != nil {
+		return 0
+	}
+	return v
 }
 
 func (c *Canon) GetExternalSelectedToolSlot() int32 {
-	return 0
+	if c.task.io == nil {
+		return 0
+	}
+	v, err := c.task.io.GetPocketPrepped()
+	if err != nil {
+		return 0
+	}
+	return v
 }
 
 func (c *Canon) GetExternalToolTable(pocket int32) (toolno int32, offset [9]float64, diameter, frontangle, backangle float64, orientation int32, err int32) {

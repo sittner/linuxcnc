@@ -266,6 +266,24 @@ func (a *ioAdapter) GetIOFullStatus() (IOFullStatus, error) {
 	}, nil
 }
 
+// GetToolInSpindle returns the current tool number loaded in the spindle.
+func (a *ioAdapter) GetToolInSpindle() (int32, error) {
+	st, err := a.EmcioClient.GetStatus()
+	if err != nil {
+		return 0, err
+	}
+	return st.Tool.ToolInSpindle, nil
+}
+
+// GetPocketPrepped returns the pocket number prepared for next tool change.
+func (a *ioAdapter) GetPocketPrepped() (int32, error) {
+	st, err := a.EmcioClient.GetStatus()
+	if err != nil {
+		return 0, err
+	}
+	return st.Tool.PocketPrepped, nil
+}
+
 // drainErrorPublisher implements ErrorPublisher by writing to the emcerror drain.
 type drainErrorPublisher struct {
 	drain *emcerror.PublishErrorDrain
