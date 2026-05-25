@@ -188,3 +188,21 @@ func loadToolShim(toolFile string) {
 		C.free(unsafe.Pointer(cFile))
 	}
 }
+
+// getToolByPocket returns tool data for a given pocket index.
+// Used by the canon getter GetExternalToolTable.
+func getToolByPocket(pocket int32) (toolno int32, offset [9]float64, diameter, frontangle, backangle float64, orientation int32, err int32) {
+	if e := ensureToolMmap(); e != nil {
+		return 0, [9]float64{}, 0, 0, 0, 0, -1
+	}
+	var s C.tool_shim_entry_t
+	if C.tool_shim_get(C.int(pocket), &s) != 0 {
+		return 0, [9]float64{}, 0, 0, 0, 0, -1
+	}
+	offset = [9]float64{
+		float64(s.x_offset), float64(s.y_offset), float64(s.z_offset),
+		float64(s.a_offset), float64(s.b_offset), float64(s.c_offset),
+		float64(s.u_offset), float64(s.v_offset), float64(s.w_offset),
+	}
+	return int32(s.toolno), offset, float64(s.diameter), float64(s.frontangle), float64(s.backangle), int32(s.orientation), 0
+}

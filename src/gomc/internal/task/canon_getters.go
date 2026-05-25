@@ -45,12 +45,16 @@ func (c *Canon) GetExternalMotionControlNaivecamTolerance() float64 {
 }
 
 func (c *Canon) GetExternalFlood() int32 {
-	// TODO: read from IO status
+	if c.state.floodOn {
+		return 1
+	}
 	return 0
 }
 
 func (c *Canon) GetExternalMist() int32 {
-	// TODO: read from IO status
+	if c.state.mistOn {
+		return 1
+	}
 	return 0
 }
 
@@ -93,19 +97,55 @@ func (c *Canon) GetExternalPositionW() float64 {
 }
 
 // Probe position getters — return probe trip position in program units.
-// TODO: read actual probe position from motion status.
 
-func (c *Canon) GetExternalProbePositionX() float64  { return 0 }
-func (c *Canon) GetExternalProbePositionY() float64  { return 0 }
-func (c *Canon) GetExternalProbePositionZ() float64  { return 0 }
-func (c *Canon) GetExternalProbePositionA() float64  { return 0 }
-func (c *Canon) GetExternalProbePositionB() float64  { return 0 }
-func (c *Canon) GetExternalProbePositionC() float64  { return 0 }
-func (c *Canon) GetExternalProbePositionU() float64  { return 0 }
-func (c *Canon) GetExternalProbePositionV() float64  { return 0 }
-func (c *Canon) GetExternalProbePositionW() float64  { return 0 }
-func (c *Canon) GetExternalProbeValue() float64      { return 0 }
-func (c *Canon) GetExternalProbeTrippedValue() int32 { return 0 }
+func (c *Canon) getProbePos() Pose {
+	if c.task.status == nil {
+		return Pose{}
+	}
+	ms, err := c.task.status.GetStatus()
+	if err != nil {
+		return Pose{}
+	}
+	// Convert motstat Pose to task Pose
+	machinePos := Pose{
+		X: ms.Probe.Pos.X, Y: ms.Probe.Pos.Y, Z: ms.Probe.Pos.Z,
+		A: ms.Probe.Pos.A, B: ms.Probe.Pos.B, C: ms.Probe.Pos.C,
+		U: ms.Probe.Pos.U, V: ms.Probe.Pos.V, W: ms.Probe.Pos.W,
+	}
+	return c.state.fromAbsolute(machinePos)
+}
+
+func (c *Canon) GetExternalProbePositionX() float64 { return c.getProbePos().X }
+func (c *Canon) GetExternalProbePositionY() float64 { return c.getProbePos().Y }
+func (c *Canon) GetExternalProbePositionZ() float64 { return c.getProbePos().Z }
+func (c *Canon) GetExternalProbePositionA() float64 { return c.getProbePos().A }
+func (c *Canon) GetExternalProbePositionB() float64 { return c.getProbePos().B }
+func (c *Canon) GetExternalProbePositionC() float64 { return c.getProbePos().C }
+func (c *Canon) GetExternalProbePositionU() float64 { return c.getProbePos().U }
+func (c *Canon) GetExternalProbePositionV() float64 { return c.getProbePos().V }
+func (c *Canon) GetExternalProbePositionW() float64 { return c.getProbePos().W }
+
+func (c *Canon) GetExternalProbeValue() float64 {
+	if c.task.status == nil {
+		return 0
+	}
+	ms, err := c.task.status.GetStatus()
+	if err != nil {
+		return 0
+	}
+	return float64(ms.Probe.Val)
+}
+
+func (c *Canon) GetExternalProbeTrippedValue() int32 {
+	if c.task.status == nil {
+		return 0
+	}
+	ms, err := c.task.status.GetStatus()
+	if err != nil {
+		return 0
+	}
+	return ms.Probe.Tripped
+}
 
 // Spindle getters.
 
@@ -151,8 +191,7 @@ func (c *Canon) GetExternalSelectedToolSlot() int32 {
 }
 
 func (c *Canon) GetExternalToolTable(pocket int32) (toolno int32, offset [9]float64, diameter, frontangle, backangle float64, orientation int32, err int32) {
-	// TODO: read from tool table
-	return 0, [9]float64{}, 0, 0, 0, 0, 0
+	return getToolByPocket(pocket)
 }
 
 func (c *Canon) GetExternalTcFault() int32  { return 0 }
@@ -175,11 +214,25 @@ func (c *Canon) GetExternalAxisMask() int32 {
 }
 
 func (c *Canon) GetExternalDigitalInput(index, def int32) int32 {
-	return def
+	if c.task.status == nil {
+		return def
+	}
+	ms, err := c.task.status.GetStatus()
+	if err != nil || index < 0 || index >= 64 {
+		return def
+	}
+	return ms.SynchDi[index]
 }
 
 func (c *Canon) GetExternalAnalogInput(index int32, def float64) float64 {
-	return def
+	if c.task.status == nil {
+		return def
+	}
+	ms, err := c.task.status.GetStatus()
+	if err != nil || index < 0 || index >= 64 {
+		return def
+	}
+	return ms.AnalogInput[index]
 }
 
 func (c *Canon) GetExternalFeedOverrideEnable() int32 {
@@ -219,12 +272,31 @@ func (c *Canon) GetExternalParameterFileName(buf *string) {
 }
 
 func (c *Canon) GetExternalOffsetApplied() int32 {
-	return 0
+	if c.task.status == nil {
+		return 0
+	}
+	ms, err := c.task.status.GetStatus()
+	if err != nil {
+		return 0
+	}
+	return ms.ExternalOffsetsApplied
 }
 
 func (c *Canon) GetExternalOffsets(offsets *[9]float64) {
-	// TODO: return external offsets if applied
-	*offsets = [9]float64{}
+	if c.task.status == nil {
+		*offsets = [9]float64{}
+		return
+	}
+	ms, err := c.task.status.GetStatus()
+	if err != nil {
+		*offsets = [9]float64{}
+		return
+	}
+	*offsets = [9]float64{
+		ms.EoffsetPose.X, ms.EoffsetPose.Y, ms.EoffsetPose.Z,
+		ms.EoffsetPose.A, ms.EoffsetPose.B, ms.EoffsetPose.C,
+		ms.EoffsetPose.U, ms.EoffsetPose.V, ms.EoffsetPose.W,
+	}
 }
 
 func (c *Canon) GetUserDefinedResult() float64 {

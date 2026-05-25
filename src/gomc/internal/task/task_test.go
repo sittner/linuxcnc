@@ -83,8 +83,11 @@ func (m *mockMotion) SetAcc(float64) error             { return nil }
 func (m *mockMotion) SetTermCond(int32, float64) error { return nil }
 func (m *mockMotion) SetOffset(Pose) error             { return nil }
 func (m *mockMotion) SetDebug(int32) error             { m.lastCall = "SetDebug"; return nil }
-func (m *mockMotion) SetDout(int32, int32) error       { return nil }
-func (m *mockMotion) SetAout(int32, float64) error     { return nil }
+func (m *mockMotion) SetDout(int32, int32) error              { return nil }
+func (m *mockMotion) SetDoutSynched(int32, int32, int32) error { return nil }
+func (m *mockMotion) SetAout(int32, float64) error            { return nil }
+func (m *mockMotion) SetAoutSynched(int32, float64, float64) error { return nil }
+func (m *mockMotion) SetSpindlesync(float64, int32) error     { return nil }
 
 // mockIO implements IOController for testing.
 type mockIO struct {

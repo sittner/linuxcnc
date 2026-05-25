@@ -148,7 +148,12 @@ type MotionController interface {
 
 	// I/O
 	SetDout(index, value int32) error
+	SetDoutSynched(index, startValue, endValue int32) error
 	SetAout(index int32, value float64) error
+	SetAoutSynched(index int32, startValue, endValue float64) error
+
+	// Spindle sync
+	SetSpindlesync(sync float64, motionType int32) error
 }
 
 // IOController is the interface to iocontrol (emcio GMI API).

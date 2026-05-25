@@ -467,8 +467,52 @@ func (t *Task) waitIODone() error {
 // waitSpindleOriented polls until spindle orient is complete.
 func (t *Task) waitSpindleOriented() error {
 	t.setExecState(ExecWaitingForSpindleOriented)
-	// TODO: check spindle orient status
-	return nil
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+	commErrors := 0
+
+	for {
+		select {
+		case <-t.seqAbort:
+			return context.Canceled
+		case <-ticker.C:
+			if t.status == nil {
+				t.setExecState(ExecDone)
+				return nil
+			}
+			ms, err := t.status.GetStatus()
+			if err != nil {
+				commErrors++
+				if commErrors >= commFailureThreshold {
+					t.logger.Error("waitSpindleOriented: motion controller not responding")
+					t.setExecState(ExecError)
+					return fmt.Errorf("waitSpindleOriented: comm failure")
+				}
+				continue
+			}
+			commErrors = 0
+			// OrientState: 0=idle/complete, 1=in progress, 2=fault
+			// Check all spindles (the orient command targets one, but status is per-spindle)
+			for i := range ms.Spindles {
+				if ms.Spindles[i].OrientState == 2 {
+					t.setExecState(ExecError)
+					return fmt.Errorf("spindle orient fault")
+				}
+			}
+			// All spindles either idle or none in-progress means done
+			allDone := true
+			for i := range ms.Spindles {
+				if ms.Spindles[i].OrientState == 1 {
+					allDone = false
+					break
+				}
+			}
+			if allDone {
+				t.setExecState(ExecDone)
+				return nil
+			}
+		}
+	}
 }
 
 // pollUntil polls the condition at servo rate until true, abort, or comm failure.
@@ -626,6 +670,44 @@ func (c *ToolChangeCmd) PostWait(t *Task) {
 	t.logger.Info("tool change complete")
 }
 
+// SetToolTableEntryCmd updates a single tool table entry via IO controller.
+type SetToolTableEntryCmd struct {
+	Pocket, Toolno                                     int32
+	X, Y, Z, A, B, C, U, V, W                         float64
+	Diameter, Frontangle, Backangle                    float64
+	Orientation                                        int32
+}
+
+func (c *SetToolTableEntryCmd) Execute(t *Task) error {
+	return t.io.ToolSetOffset(c.Pocket, c.Toolno, c.X, c.Y, c.Z, c.A, c.B, c.C, c.U, c.V, c.W, c.Diameter, c.Frontangle, c.Backangle, c.Orientation)
+}
+func (c *SetToolTableEntryCmd) Wait() WaitType { return WaitIO }
+func (c *SetToolTableEntryCmd) String() string {
+	return fmt.Sprintf("SetToolTableEntry(P%d T%d)", c.Pocket, c.Toolno)
+}
+
+// ChangeToolNumberCmd tells IO to update the current tool number (G43.1 etc).
+type ChangeToolNumberCmd struct {
+	Number int32
+}
+
+func (c *ChangeToolNumberCmd) Execute(t *Task) error {
+	return t.io.ToolSetNumber(c.Number)
+}
+func (c *ChangeToolNumberCmd) Wait() WaitType { return WaitIO }
+func (c *ChangeToolNumberCmd) String() string {
+	return fmt.Sprintf("ChangeToolNumber(%d)", c.Number)
+}
+
+// ReloadTooldataCmd signals the IO controller to reload the tool table file.
+type ReloadTooldataCmd struct{}
+
+func (c *ReloadTooldataCmd) Execute(t *Task) error {
+	return t.io.ToolLoadTable("")
+}
+func (c *ReloadTooldataCmd) Wait() WaitType { return WaitIO }
+func (c *ReloadTooldataCmd) String() string { return "ReloadTooldata" }
+
 // FloodOnCmd turns flood coolant on (M8).
 type FloodOnCmd struct{}
 
@@ -648,6 +730,16 @@ var waitForMotionSingleton = &WaitForMotionCmd{}
 func (c *WaitForMotionCmd) Execute(t *Task) error { return nil }
 func (c *WaitForMotionCmd) Wait() WaitType        { return WaitMotion }
 func (c *WaitForMotionCmd) String() string        { return "WaitForMotion" }
+
+// ProgramStopCmd waits for motion to drain, then pauses the program (M0/M1).
+type ProgramStopCmd struct{}
+
+func (c *ProgramStopCmd) Execute(t *Task) error { return nil }
+func (c *ProgramStopCmd) Wait() WaitType        { return WaitMotion }
+func (c *ProgramStopCmd) String() string        { return "ProgramStop" }
+func (c *ProgramStopCmd) PostWait(t *Task) {
+	t.seqEnterPause()
+}
 
 // --- Helper: check sequencer is alive from enqueue side ---
 

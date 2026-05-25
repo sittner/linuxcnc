@@ -3,6 +3,7 @@ package task
 import (
 	"fmt"
 	"math"
+	"time"
 )
 
 // Canon unit systems.
@@ -78,6 +79,8 @@ type CanonState struct {
 	adaptiveFeedEnabled  bool
 	optionalProgramStop  bool
 	blockDelete          bool
+	floodOn              bool
+	mistOn               bool
 
 	// State tag (passed to motion segments)
 	tag StateTag
@@ -195,6 +198,47 @@ func (cs *CanonState) toAbsoluteXYZ(x, y, z float64) Cartesian {
 	ym += cs.g5xOffset.Y + cs.toolOffset.Y
 	zm += cs.g5xOffset.Z + cs.toolOffset.Z
 	return Cartesian{X: xm, Y: ym, Z: zm}
+}
+
+// fromAbsolute converts absolute machine coordinates back to program coordinates,
+// inverting toAbsolute: subtract tool → subtract G5x → unrotate → subtract G92 → toProg.
+func (cs *CanonState) fromAbsolute(p Pose) Pose {
+	// Step 1: subtract tool offset
+	x := p.X - cs.toolOffset.X
+	y := p.Y - cs.toolOffset.Y
+	z := p.Z - cs.toolOffset.Z
+	u := p.U - cs.toolOffset.U
+	v := p.V - cs.toolOffset.V
+	w := p.W - cs.toolOffset.W
+	a := p.A - cs.toolOffset.A - cs.g5xOffset.A - cs.g92Offset.A
+	b := p.B - cs.toolOffset.B - cs.g5xOffset.B - cs.g92Offset.B
+	c := p.C - cs.toolOffset.C - cs.g5xOffset.C - cs.g92Offset.C
+
+	// Step 2: subtract G5x offset
+	x -= cs.g5xOffset.X
+	y -= cs.g5xOffset.Y
+	z -= cs.g5xOffset.Z
+	u -= cs.g5xOffset.U
+	v -= cs.g5xOffset.V
+	w -= cs.g5xOffset.W
+
+	// Step 3: unrotate (negate the angle)
+	x, y = rotate(x, y, -cs.xyRotation)
+
+	// Step 4: subtract G92 offset
+	x -= cs.g92Offset.X
+	y -= cs.g92Offset.Y
+	z -= cs.g92Offset.Z
+	u -= cs.g92Offset.U
+	v -= cs.g92Offset.V
+	w -= cs.g92Offset.W
+
+	// Step 5: convert to program units
+	return Pose{
+		X: cs.toProg(x), Y: cs.toProg(y), Z: cs.toProg(z),
+		A: a, B: b, C: c,
+		U: cs.toProg(u), V: cs.toProg(v), W: cs.toProg(w),
+	}
 }
 
 // Canon is the set of canon callback implementations that push QueuedCmds
@@ -532,10 +576,10 @@ func (c *Canon) ChangeTool(slot int32) {
 	c.enqueue(&ToolChangeCmd{})
 }
 
-func (c *Canon) FloodOn()  { c.enqueue(&FloodOnCmd{}) }
-func (c *Canon) FloodOff() { c.enqueue(&FloodOffCmd{}) }
-func (c *Canon) MistOn()   { c.enqueue(&MistOnCmd{}) }
-func (c *Canon) MistOff()  { c.enqueue(&MistOffCmd{}) }
+func (c *Canon) FloodOn()  { c.state.floodOn = true; c.enqueue(&FloodOnCmd{}) }
+func (c *Canon) FloodOff() { c.state.floodOn = false; c.enqueue(&FloodOffCmd{}) }
+func (c *Canon) MistOn()   { c.state.mistOn = true; c.enqueue(&MistOnCmd{}) }
+func (c *Canon) MistOff()  { c.state.mistOn = false; c.enqueue(&MistOffCmd{}) }
 
 func (c *Canon) EnableFeedOverride() {
 	c.state.feedOverrideEnabled = true
@@ -600,12 +644,12 @@ func (c *Canon) SetAuxOutputValue(index int32, value float64) {
 }
 
 func (c *Canon) ProgramStop() {
-	c.enqueue(waitForMotionSingleton)
+	c.enqueue(&ProgramStopCmd{})
 }
 
 func (c *Canon) OptionalProgramStop() {
 	if c.state.optionalProgramStop {
-		c.enqueue(waitForMotionSingleton)
+		c.enqueue(&ProgramStopCmd{})
 	}
 }
 
@@ -674,7 +718,73 @@ func (c *Canon) UnclampAxis(axis int32) {}
 func (c *Canon) PalletShuttle()         {}
 
 func (c *Canon) WaitInput(index, inputType, waitType int32, timeout float64) int32 {
-	return 0
+	// M66: Wait for digital/analog input condition.
+	// inputType: 1=digital, 2=analog
+	// waitType: 0=immediate, 1=rise, 2=fall, 3=high, 4=low
+	// timeout: seconds (0 = immediate read)
+	// Returns: 0 on success, -1 on error/timeout
+
+	if c.task.status == nil {
+		return -1
+	}
+
+	// Immediate mode — just return, interp will read via GetExternalDigitalInput/AnalogInput
+	if timeout == 0 || waitType == 0 {
+		return 0
+	}
+
+	deadline := time.Now().Add(time.Duration(timeout * float64(time.Second)))
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-c.task.seqAbort:
+			return -1
+		case <-ticker.C:
+			ms, err := c.task.status.GetStatus()
+			if err != nil {
+				continue
+			}
+
+			var satisfied bool
+			if inputType == 1 { // digital
+				if index < 0 || index >= 64 {
+					return -1
+				}
+				val := ms.SynchDi[index]
+				switch waitType {
+				case 1: // rise (high)
+					satisfied = val != 0
+				case 2: // fall (low)
+					satisfied = val == 0
+				case 3: // high
+					satisfied = val != 0
+				case 4: // low
+					satisfied = val == 0
+				}
+			} else { // analog
+				if index < 0 || index >= 64 {
+					return -1
+				}
+				val := ms.AnalogInput[index]
+				// For analog: rise=above 0, fall=below 0, high=above 0, low=below/equal 0
+				switch waitType {
+				case 1, 3:
+					satisfied = val > 0
+				case 2, 4:
+					satisfied = val <= 0
+				}
+			}
+
+			if satisfied {
+				return 0
+			}
+			if time.Now().After(deadline) {
+				return -1
+			}
+		}
+	}
 }
 
 func (c *Canon) LockRotary(lineno, joint int32) int32 {
@@ -696,15 +806,20 @@ func (c *Canon) SetSpindleMode(spindle int32, mode float64) {
 }
 
 func (c *Canon) SetToolTableEntry(pocket, toolno int32, ox, oy, oz, oa, ob, oc, ou, ov, ow, diameter, frontangle, backangle float64, orientation int32) {
-	// TODO: update tool table via IOController
+	c.enqueue(&SetToolTableEntryCmd{
+		Pocket: pocket, Toolno: toolno,
+		X: ox, Y: oy, Z: oz, A: oa, B: ob, C: oc, U: ou, V: ov, W: ow,
+		Diameter: diameter, Frontangle: frontangle, Backangle: backangle,
+		Orientation: orientation,
+	})
 }
 
 func (c *Canon) ReloadTooldata() {
-	// TODO: signal tool table reload
+	c.enqueue(&ReloadTooldataCmd{})
 }
 
 func (c *Canon) ChangeToolNumber(number int32) {
-	c.enqueue(&ToolChangeCmd{})
+	c.enqueue(&ChangeToolNumberCmd{Number: number})
 }
 
 func (c *Canon) NurbsFeed(lineno int32, controlPoints []ControlPoint, k uint32) {
@@ -910,8 +1025,7 @@ type SetDoutSyncCmd struct {
 }
 
 func (c *SetDoutSyncCmd) Execute(t *Task) error {
-	// TODO: use SetDoutSynched when available in MotionController interface
-	return t.motion.SetDout(c.Index, c.StartValue)
+	return t.motion.SetDoutSynched(c.Index, c.StartValue, c.EndValue)
 }
 func (c *SetDoutSyncCmd) Wait() WaitType { return WaitNone }
 func (c *SetDoutSyncCmd) String() string {
@@ -936,7 +1050,7 @@ type SetAoutSyncCmd struct {
 }
 
 func (c *SetAoutSyncCmd) Execute(t *Task) error {
-	return t.motion.SetAout(c.Index, c.StartValue)
+	return t.motion.SetAoutSynched(c.Index, c.StartValue, c.EndValue)
 }
 func (c *SetAoutSyncCmd) Wait() WaitType { return WaitNone }
 func (c *SetAoutSyncCmd) String() string {
@@ -950,7 +1064,7 @@ type SpindleSyncCmd struct {
 }
 
 func (c *SpindleSyncCmd) Execute(t *Task) error {
-	return t.motion.SetVel(c.Sync) // TODO: use SetSpindlesync when wired
+	return t.motion.SetSpindlesync(c.Sync, c.MotionType)
 }
 func (c *SpindleSyncCmd) Wait() WaitType { return WaitNone }
 func (c *SpindleSyncCmd) String() string { return fmt.Sprintf("SpindleSync(%.3f)", c.Sync) }
