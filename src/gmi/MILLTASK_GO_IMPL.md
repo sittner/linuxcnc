@@ -1,6 +1,6 @@
 # Milltask Go Rewrite — Implementation Plan
 
-## Current Status (2026-05-23)
+## Current Status (2026-05-25)
 
 Integration test: **58 pass, 0 fail, 7 xfail** (configs/sim/test/tasktest.ini)
 
@@ -22,6 +22,7 @@ Integration test: **58 pass, 0 fail, 7 xfail** (configs/sim/test/tasktest.ini)
 - ✅ Sequencer goroutine (executes QueuedCmd from interpQueue)
 - ✅ Readahead with backpressure (waitSequencerDrain on EXECUTE_FINISH)
 - ✅ Pause/resume with channel signaling
+- ✅ Single step (sequencer-level pause after each motion command, waitMotionDone)
 - ✅ Program run (goroutine reads interpreter lines, enqueues canon commands)
 - ✅ MDI execution (single command — synch, execute, interpDoneCmd)
 - ✅ Continuous jog + jog stop
@@ -35,11 +36,12 @@ Integration test: **58 pass, 0 fail, 7 xfail** (configs/sim/test/tasktest.ini)
 - ✅ Tools REST API (tooldata shim + GET/PUT/DELETE endpoints)
 - ✅ CGO bridge error propagation (all exports return -1 on error)
 - ✅ ProgramOpen works in any state/mode (matches C milltask)
+- ✅ interpState race fix: sequencer abort path no longer overwrites InterpReading
 
 ### XFAILs (known issues, not regressions)
 1. **jog/incremental** — wrong distance (units/scale bug in motctl or motion)
 2. **homing/unhome** — homed flag not clearing in motstat after unhome
-3. **program/step** — not implemented (TODO in AutoCommand)
+3. ~~**program/step**~~ — FIXED (implemented sequencer-level step mode)
 4. **program/run_requires_file** — interpreter retains file from previous test
 5. **spindle/forward+reverse** — spindle enabled flag not reflected in motstat
 6. **misc/load_tool_table** — not implemented (returns errNotReady)
@@ -55,7 +57,7 @@ Integration test: **58 pass, 0 fail, 7 xfail** (configs/sim/test/tasktest.ini)
 | 4 | MDI queue | Buffer multiple MDI commands, abort mid-queue | Small |
 | 5 | Load tool table | Reload from file, notify interpreter | Small |
 | 6 | NO_FORCE_HOMING | Block MDI/AUTO run if not all homed (unless INI override) | Small |
-| 7 | Single step | AutoStep reads one line, pauses before next | Small |
+| ~~7~~ | ~~Single step~~ | ~~AutoStep reads one line, pauses before next~~ | ~~Done~~ |
 
 #### Tier 2: Stat accuracy (UI shows wrong values)
 | # | Item | Description |
@@ -64,7 +66,7 @@ Integration test: **58 pass, 0 fail, 7 xfail** (configs/sim/test/tasktest.ini)
 | 9 | Active G/M codes | Read from interpreter after each line, publish in stat |
 | 10 | Spindle state | Read spindle direction/enabled from motstat properly |
 | 11 | Unhome flag | Ensure motstat reflects unhome (may be motion-side bug) |
-| 12 | Interp state on program end | Properly reset to IDLE after M2/M30 completes |
+| ~~12~~ | ~~Interp state on program end~~ | ~~Fixed: interpDoneCmd.PostWait transitions to IDLE after motion drains~~ |
 
 #### Tier 3: Edge cases / advanced
 | # | Item | Description |
