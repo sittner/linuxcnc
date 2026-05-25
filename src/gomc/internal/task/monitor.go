@@ -173,6 +173,10 @@ func (m *monitor) checkMotionErrors(softLimitReported *bool) {
 		if !*softLimitReported {
 			*softLimitReported = true
 			m.task.operatorError("On Soft Limit")
+			// Matches C milltask: warn if identity kinematics are misconfigured.
+			if ms.KinType == 1 { // KINEMATICS_IDENTITY
+				m.task.operatorError("Identity kinematics are MISCONFIGURED")
+			}
 		}
 	} else {
 		*softLimitReported = false

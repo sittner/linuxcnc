@@ -49,6 +49,9 @@ func loadConfig(ini *inifile.IniFile, t *Task, mc MotionConfig) error {
 		if err := loadJoint(ini, j, mc); err != nil {
 			return fmt.Errorf("joint %d config: %w", j, err)
 		}
+		// Store joint max velocity for jog clamping (matches C JointConfig[].MaxVel).
+		section := fmt.Sprintf("JOINT_%d", j)
+		t.jointMaxVel[j] = getFloatOrSection(ini, section, "MAX_VELOCITY", 1.0)
 	}
 	numAxes := axisCount(t.axisMask)
 	for a := int32(0); a < int32(numAxes); a++ {
@@ -58,6 +61,9 @@ func loadConfig(ini *inifile.IniFile, t *Task, mc MotionConfig) error {
 		if err := loadAxis(ini, a, mc); err != nil {
 			return fmt.Errorf("axis %d config: %w", a, err)
 		}
+		// Store axis max velocity for jog clamping (matches C AxisConfig[].MaxVel).
+		axSection := axisSection(a)
+		t.axisMaxVel[a] = getFloatOrSection(ini, axSection, "MAX_VELOCITY", 1.0)
 	}
 	for s := int32(0); s < int32(t.numSpindles); s++ {
 		if err := loadSpindle(ini, s, mc); err != nil {

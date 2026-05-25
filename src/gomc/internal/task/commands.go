@@ -573,6 +573,9 @@ func (t *Task) Jog(jogType int32, jjogmode bool, axisOrJoint int32, velocity, di
 		isTeleop = 1
 	}
 
+	// Clamp velocity to joint/axis max (matches C milltask emcJogCont/Incr).
+	velocity = t.clampJogVel(velocity, axisOrJoint, jjogmode)
+
 	switch jogType {
 	case JogStop:
 		return t.motion.JogAbort(axisOrJoint, isTeleop)
@@ -582,6 +585,30 @@ func (t *Task) Jog(jogType int32, jjogmode bool, axisOrJoint int32, velocity, di
 		return t.motion.JogIncr(axisOrJoint, velocity, distance, isTeleop)
 	}
 	return nil
+}
+
+// clampJogVel clamps velocity to the joint or axis max velocity.
+// Must be called with t.mu held.
+func (t *Task) clampJogVel(vel float64, nr int32, jjogmode bool) float64 {
+	var maxVel float64
+	if jjogmode {
+		if nr >= 0 && int(nr) < len(t.jointMaxVel) {
+			maxVel = t.jointMaxVel[nr]
+		}
+	} else {
+		if nr >= 0 && int(nr) < len(t.axisMaxVel) {
+			maxVel = t.axisMaxVel[nr]
+		}
+	}
+	if maxVel <= 0 {
+		return vel
+	}
+	if vel > maxVel {
+		return maxVel
+	} else if vel < -maxVel {
+		return -maxVel
+	}
+	return vel
 }
 
 // JogStop stops a jog on the specified axis/joint.
