@@ -39,7 +39,6 @@ import (
 
 func init() {
 	gomc.RegisterModule("emcgateway", newEmcGateway)
-	apiserver.RegisterMeta(emcstatapi.EmcstatMeta)
 }
 
 // emcGateway implements gomc.Module.

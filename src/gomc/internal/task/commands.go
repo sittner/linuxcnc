@@ -201,13 +201,11 @@ func (t *Task) AutoCommand(cmd int32, line int32) error {
 			return fmt.Errorf("no interpreter configured")
 		}
 		t.interpState = InterpReading
-		// Set up pause/resume channels for this run
-		t.pauseCh = make(chan struct{})
-		t.resumeCh = make(chan struct{})
+		t.stepping = false
 		interp := t.interp
 		startLine := line
 		t.mu.Unlock()
-		// Synch interpreter with current machine position
+		t.StartSequencer()
 		if err := interp.Synch(); err != nil {
 			t.logger.Error("interp synch failed before run", "err", err)
 		}
@@ -216,12 +214,12 @@ func (t *Task) AutoCommand(cmd int32, line int32) error {
 
 	case AutoPause:
 		t.interpState = InterpPaused
-		// Signal interpreter goroutine to pause
-		if t.pauseCh != nil {
+		// Signal sequencer to pause
+		if t.seqPauseCh != nil {
 			select {
-			case <-t.pauseCh:
+			case <-t.seqPauseCh:
 			default:
-				close(t.pauseCh)
+				close(t.seqPauseCh)
 			}
 		}
 		t.mu.Unlock()
@@ -229,12 +227,13 @@ func (t *Task) AutoCommand(cmd int32, line int32) error {
 
 	case AutoResume:
 		t.interpState = InterpReading
-		// Signal interpreter goroutine to resume
-		if t.resumeCh != nil {
+		t.stepping = false
+		// Wake sequencer from pause
+		if t.seqResumeCh != nil {
 			select {
-			case <-t.resumeCh:
+			case <-t.seqResumeCh:
 			default:
-				close(t.resumeCh)
+				close(t.seqResumeCh)
 			}
 		}
 		t.mu.Unlock()
@@ -245,9 +244,64 @@ func (t *Task) AutoCommand(cmd int32, line int32) error {
 			t.mu.Unlock()
 			return err
 		}
+		t.stepping = true
+
+		if t.interpState == InterpIdle {
+			// Program not started yet — start it in step mode.
+			if err := t.requireHomed(); err != nil {
+				t.stepping = false
+				t.mu.Unlock()
+				t.operatorError("Can't run a program when not homed")
+				return fmt.Errorf("can't run program when not homed")
+			}
+			if t.interp == nil {
+				t.stepping = false
+				t.mu.Unlock()
+				return fmt.Errorf("no interpreter configured")
+			}
+			t.interpState = InterpReading
+			interp := t.interp
+			t.mu.Unlock()
+			t.StartSequencer()
+			if err := interp.Synch(); err != nil {
+				t.logger.Error("interp synch failed before step", "err", err)
+			}
+			go t.runProgram(interp, line)
+			return nil
+		}
+
+		// Program is paused — step one motion segment.
+		if t.interpState == InterpPaused {
+			t.mu.Unlock()
+
+			// Check if TP has queued segments from the run phase.
+			qd, _ := t.status.GetQueueDepth()
+			if qd > 0 {
+				// TP has moves — use low-level motion step to execute
+				// one segment. The TP re-pauses after the ID changes.
+				_ = t.motion.Step(0)
+				return nil
+			}
+
+			// TP is empty — wake sequencer to push more commands.
+			t.mu.Lock()
+			resumeCh := t.seqResumeCh
+			t.mu.Unlock()
+
+			if resumeCh != nil {
+				select {
+				case <-resumeCh:
+				default:
+					close(resumeCh)
+				}
+			}
+			return nil
+		}
+
+		// Already running — just enable stepping. Sequencer will pause
+		// after the current motion cmd completes.
 		t.mu.Unlock()
-		// TODO: step one line
-		return t.motion.Step(line)
+		return nil
 
 	case AutoReverse:
 		t.mu.Unlock()
@@ -332,24 +386,33 @@ func (t *Task) executeMDI(command string) error {
 }
 
 // runProgram runs the interpreter read/execute loop for the open program.
-// Called in a goroutine from AutoRun.
+// Called in a goroutine from AutoRun/AutoStep.
 //
-// Flow control:
-// - Checks abort between lines (sequencer abort = program cancel)
-// - Checks pause between lines (blocks until resume or abort)
-// - Handles INTERP_EXECUTE_FINISH (wait for motion to drain before continuing)
+// The interpreter is a "dumb producer": it reads lines, executes canon
+// callbacks (which enqueue commands via EnqueueCmd), and only stops on
+// abort or end-of-file. Pause and step are handled at the sequencer level.
 func (t *Task) runProgram(interp Interpreter, startLine int32) {
 	_ = startLine // TODO: seek to startLine
+
+	t.mu.Lock()
+	t.interpActive = true
+	t.mu.Unlock()
+	defer func() {
+		t.mu.Lock()
+		t.interpActive = false
+		t.mu.Unlock()
+	}()
 
 	// Set active canon for M-code callbacks (no ctx parameter).
 	setActiveCanon(t.canon)
 	defer clearActiveCanon()
 
 	for {
-		// Check for abort and pause between interpreter lines
-		if t.checkAbortOrPause() {
-			t.setInterpState(InterpIdle)
+		// Check abort between interpreter lines
+		select {
+		case <-t.seqAbort:
 			return
+		default:
 		}
 
 		rc, err := interp.Read()
@@ -358,13 +421,7 @@ func (t *Task) runProgram(interp Interpreter, startLine int32) {
 			t.setInterpState(InterpIdle)
 			return
 		}
-		if rc == InterpEndfile {
-			// End of file — enqueue done marker and exit.
-			t.EnqueueCmd(&interpDoneCmd{})
-			return
-		}
-		if rc == InterpExit {
-			// M2/M30 signalled at read time — enqueue done and exit.
+		if rc == InterpEndfile || rc == InterpExit {
 			t.EnqueueCmd(&interpDoneCmd{})
 			return
 		}
@@ -382,18 +439,14 @@ func (t *Task) runProgram(interp Interpreter, startLine int32) {
 			// Interpreter says "wait for motion/IO to complete before
 			// continuing" (tool change, probe, dwell, M-code, etc.)
 			t.EnqueueCmd(waitForMotionSingleton)
-			// Also wait for the sequencer to actually drain before
-			// reading the next line (backpressure).
+			// Wait for sequencer to drain before reading next line
 			if t.waitSequencerDrain() {
 				return // aborted
 			}
-			// Synch interpreter with machine state after wait
 			if err := interp.Synch(); err != nil {
 				t.logger.Error("interp synch after execute_finish", "err", err)
 			}
 		case InterpExit:
-			// M2/M30 program end — enqueue done marker and let
-			// sequencer drain remaining motion before marking idle.
 			t.EnqueueCmd(&interpDoneCmd{})
 			return
 		case InterpError:
@@ -406,42 +459,6 @@ func (t *Task) runProgram(interp Interpreter, startLine int32) {
 	}
 }
 
-// checkAbortOrPause checks the abort channel and, if paused, blocks until
-// resumed or aborted. Returns true if aborted (caller should return).
-func (t *Task) checkAbortOrPause() bool {
-	t.mu.Lock()
-	abort := t.seqAbort
-	pauseCh := t.pauseCh
-	resumeCh := t.resumeCh
-	t.mu.Unlock()
-
-	// Check abort first
-	select {
-	case <-abort:
-		return true
-	default:
-	}
-
-	// Check if paused
-	select {
-	case <-pauseCh:
-		// We're paused — wait for resume or abort
-		select {
-		case <-abort:
-			return true
-		case <-resumeCh:
-			// Allocate fresh channels for next pause/resume cycle
-			t.mu.Lock()
-			t.pauseCh = make(chan struct{})
-			t.resumeCh = make(chan struct{})
-			t.mu.Unlock()
-			return false
-		}
-	default:
-		return false
-	}
-}
-
 // waitSequencerDrain waits until the sequencer queue is empty and the
 // sequencer is idle (ExecDone). Returns true if aborted.
 func (t *Task) waitSequencerDrain() bool {
@@ -450,9 +467,9 @@ func (t *Task) waitSequencerDrain() bool {
 
 	for {
 		t.mu.Lock()
-		abort := t.seqAbort
 		qLen := len(t.interpQueue)
 		exec := t.execState
+		abort := t.seqAbort
 		t.mu.Unlock()
 
 		if qLen == 0 && exec == ExecDone {
@@ -700,8 +717,9 @@ func (t *Task) Abort() error {
 	t.interpState = InterpIdle
 	t.execState = ExecDone
 
-	// Clear MDI queue
+	// Clear MDI queue and step mode
 	t.mdiQueue = t.mdiQueue[:0]
+	t.stepping = false
 
 	// Capture state before unlock
 	numSpindles := t.numSpindles

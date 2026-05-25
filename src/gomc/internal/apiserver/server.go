@@ -167,6 +167,10 @@ func (s *Server) handleAPIRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Dispatch
+	if api.Callbacks == nil {
+		writeErrorJSON(w, http.StatusServiceUnavailable, "API not yet initialized: "+api.APIName)
+		return
+	}
 	resp, err := fn.Dispatch(api.Callbacks, body)
 	if err != nil {
 		writeDispatchError(w, err)

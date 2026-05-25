@@ -50,9 +50,19 @@ const interpQueueSize = 64
 func (t *Task) StartSequencer() {
 	t.mu.Lock()
 	oldDone := t.seqDone
+	oldAbort := t.seqAbort
 	t.mu.Unlock()
 
-	// Wait for previous goroutine to finish (if any).
+	// Abort previous sequencer if still running.
+	if oldAbort != nil {
+		select {
+		case <-oldAbort:
+		default:
+			close(oldAbort)
+		}
+	}
+
+	// Wait for previous goroutine to finish.
 	if oldDone != nil {
 		<-oldDone
 	}
@@ -61,6 +71,8 @@ func (t *Task) StartSequencer() {
 	t.interpQueue = make(chan QueuedCmd, interpQueueSize)
 	t.seqDone = make(chan struct{})
 	t.seqAbort = make(chan struct{})
+	t.seqPauseCh = make(chan struct{})
+	t.seqResumeCh = make(chan struct{})
 	t.mu.Unlock()
 
 	go t.sequencerLoop()
@@ -121,7 +133,8 @@ func (t *Task) AbortSequencer() {
 }
 
 // EnqueueCmd pushes a command to the interpreter queue.
-// Returns error if sequencer is not running or queue is full.
+// Blocks if the queue is full (backpressure from paused sequencer).
+// Unblocks on abort only.
 func (t *Task) EnqueueCmd(cmd QueuedCmd) error {
 	t.mu.Lock()
 	q := t.interpQueue
@@ -132,7 +145,7 @@ func (t *Task) EnqueueCmd(cmd QueuedCmd) error {
 		return fmt.Errorf("sequencer not running")
 	}
 
-	t.logger.Info("enqueue", "cmd", cmd.String())
+	t.logger.Debug("enqueue", "cmd", cmd.String())
 	select {
 	case <-abort:
 		return fmt.Errorf("sequencer aborted")
@@ -143,14 +156,19 @@ func (t *Task) EnqueueCmd(cmd QueuedCmd) error {
 
 // sequencerLoop is the main execution loop. It reads commands from interpQueue
 // and executes them sequentially, waiting as required between commands.
+// Pause and step are handled at this level.
 func (t *Task) sequencerLoop() {
 	defer close(t.seqDone)
 
 	for {
+		// Check if pause was requested before reading next command
+		if t.seqCheckPause() {
+			return // aborted
+		}
+
 		select {
 		case <-t.seqAbort:
 			t.setExecState(ExecDone)
-			t.setInterpState(InterpIdle)
 			return
 
 		case cmd, ok := <-t.interpQueue:
@@ -161,14 +179,65 @@ func (t *Task) sequencerLoop() {
 				return
 			}
 
-			t.logger.Info("sequencer exec", "cmd", cmd.String())
+			t.logger.Debug("sequencer exec", "cmd", cmd.String())
 
-			// Execute the command
-			if err := cmd.Execute(t); err != nil {
-				t.logger.Error("sequencer command failed", "cmd", cmd.String(), "err", err)
-				t.setExecState(ExecError)
-				t.setInterpState(InterpIdle)
-				return
+			// Execute the command, retrying motion commands on queue-full errors.
+			const maxMotionRetries = 1000 // ~10s at 10ms poll interval
+			retries := 0
+			for {
+				err := cmd.Execute(t)
+				if err == nil {
+					break
+				}
+				if errors.Is(err, context.Canceled) {
+					t.setExecState(ExecDone)
+					t.setInterpState(InterpIdle)
+					return
+				}
+				// For motion/TP commands, retry after a short wait (TP queue full)
+				switch cmd.(type) {
+				case *LinearMoveCmd, *CircularMoveCmd, *RigidTapCmd, *SetMotionParamsCmd:
+					retries++
+					if retries == 1 {
+						t.logger.Info("sequencer: TP full, retrying", "cmd", cmd.String())
+					}
+					if retries > maxMotionRetries {
+						t.logger.Error("sequencer motion cmd failed after retries", "cmd", cmd.String(), "err", err)
+						t.setExecState(ExecError)
+						t.setInterpState(InterpIdle)
+						t.mu.Lock()
+						select {
+						case <-t.seqAbort:
+						default:
+							close(t.seqAbort)
+						}
+						t.mu.Unlock()
+						return
+					}
+					// Wait for TP to drain one slot, then retry
+					select {
+					case <-t.seqAbort:
+						t.setExecState(ExecDone)
+						t.setInterpState(InterpIdle)
+						return
+					case <-time.After(pollInterval):
+						continue
+					}
+				default:
+					// Non-motion command failed — fatal
+					t.logger.Error("sequencer command failed", "cmd", cmd.String(), "err", err)
+					t.setExecState(ExecError)
+					t.setInterpState(InterpIdle)
+					// Signal abort so interpreter goroutine unblocks from EnqueueCmd
+					t.mu.Lock()
+					select {
+					case <-t.seqAbort:
+					default:
+						close(t.seqAbort)
+					}
+					t.mu.Unlock()
+					return
+				}
 			}
 
 			// Wait as required
@@ -177,7 +246,6 @@ func (t *Task) sequencerLoop() {
 					// Abort — not an error condition
 					t.logger.Info("sequencer aborted during wait", "cmd", cmd.String())
 					t.setExecState(ExecDone)
-					t.setInterpState(InterpIdle)
 					return
 				}
 				t.logger.Error("sequencer wait failed", "cmd", cmd.String(), "err", err)
@@ -190,7 +258,88 @@ func (t *Task) sequencerLoop() {
 			if pw, ok := cmd.(interface{ PostWait(*Task) }); ok {
 				pw.PostWait(t)
 			}
+
+			// In step mode: after a motion-producing command, wait for
+			// motion to complete and then enter pause.
+			if t.isSeqStepping() && isMotionCmd(cmd) {
+				if err := t.waitMotionDone(); err != nil {
+					t.setExecState(ExecDone)
+					return
+				}
+				t.seqEnterPause()
+				if t.seqCheckPause() {
+					return // aborted while paused
+				}
+			}
 		}
+	}
+}
+
+// isMotionCmd returns true for commands that produce TP motion segments.
+func isMotionCmd(cmd QueuedCmd) bool {
+	switch cmd.(type) {
+	case *LinearMoveCmd, *CircularMoveCmd, *RigidTapCmd:
+		return true
+	}
+	return false
+}
+
+// isSeqStepping returns the current stepping flag (thread-safe).
+func (t *Task) isSeqStepping() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.stepping
+}
+
+// seqEnterPause sets the sequencer into paused state and prepares
+// for the next seqCheckPause call to block.
+func (t *Task) seqEnterPause() {
+	t.setInterpState(InterpPaused)
+	t.mu.Lock()
+	// Close seqPauseCh so the next seqCheckPause detects paused state
+	select {
+	case <-t.seqPauseCh:
+		// already closed
+	default:
+		close(t.seqPauseCh)
+	}
+	t.mu.Unlock()
+}
+
+// seqCheckPause checks if the sequencer should pause. If seqPauseCh is
+// closed, blocks until seqResumeCh is closed (resume or step) or abort.
+// Returns true if aborted.
+func (t *Task) seqCheckPause() bool {
+	t.mu.Lock()
+	pauseCh := t.seqPauseCh
+	abort := t.seqAbort
+	t.mu.Unlock()
+
+	select {
+	case <-abort:
+		t.setExecState(ExecDone)
+		return true
+	case <-pauseCh:
+		// Paused — block until resumed or aborted
+		t.setInterpState(InterpPaused)
+		t.mu.Lock()
+		resumeCh := t.seqResumeCh
+		t.mu.Unlock()
+		select {
+		case <-abort:
+			t.setExecState(ExecDone)
+			return true
+		case <-resumeCh:
+			t.setInterpState(InterpReading)
+			// Allocate fresh channels for next pause/resume cycle
+			t.mu.Lock()
+			t.seqPauseCh = make(chan struct{})
+			t.seqResumeCh = make(chan struct{})
+			t.mu.Unlock()
+			return false
+		}
+	default:
+		return false
 	}
 }
 
@@ -222,17 +371,43 @@ func (t *Task) waitForCompletion(wt WaitType) error {
 	return nil
 }
 
-// waitMotionDone polls motion status until in-position or abort.
+// waitMotionDone polls motion status until in-position and queue empty, or abort.
 func (t *Task) waitMotionDone() error {
 	t.setExecState(ExecWaitingForMotion)
-	return t.pollUntil(func() bool {
-		if t.status == nil {
-			return true
+	// Skip a few poll intervals to allow the servo thread to process any
+	// recently dispatched commands and update status (avoids stale-inPos
+	// race after rapid queue fill).
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+	for i := 0; i < 5; i++ {
+		select {
+		case <-t.seqAbort:
+			return context.Canceled
+		case <-ticker.C:
 		}
-		v, err := t.status.GetInpos()
-		// v must be exactly 1 (in-position). Negative values indicate read errors.
-		return err == nil && v == 1
-	})
+	}
+	polls := 0
+	for {
+		select {
+		case <-t.seqAbort:
+			return context.Canceled
+		case <-ticker.C:
+			polls++
+			if t.status == nil {
+				t.setExecState(ExecDone)
+				return nil
+			}
+			v, err := t.status.GetInpos()
+			if err != nil || v != 1 {
+				continue
+			}
+			qd, err := t.status.GetQueueDepth()
+			if err == nil && qd == 0 {
+				t.setExecState(ExecDone)
+				return nil
+			}
+		}
+	}
 }
 
 // waitIODone polls until IO command status is DONE or abort.
@@ -506,8 +681,15 @@ func (c *interpDoneCmd) Execute(t *Task) error {
 }
 
 func (c *interpDoneCmd) PostWait(t *Task) {
-	t.setInterpState(InterpIdle)
-	t.setExecState(ExecDone)
+	// Only transition to idle if not externally paused.
+	// AutoPause may have set InterpPaused while the sequencer was
+	// still draining; we must not overwrite that.
+	t.mu.Lock()
+	if t.interpState != InterpPaused {
+		t.interpState = InterpIdle
+	}
+	t.execState = ExecDone
+	t.mu.Unlock()
 }
 
 func (c *interpDoneCmd) Wait() WaitType { return WaitMotion }

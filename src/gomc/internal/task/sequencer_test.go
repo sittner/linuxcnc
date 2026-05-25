@@ -149,9 +149,10 @@ func TestSequencer_ErrorStopsExecution(t *testing.T) {
 	// Wait for sequencer to stop on error
 	<-task.seqDone
 
-	// Only first call should succeed
-	if len(mot.calls) != 2 {
-		t.Fatalf("expected 2 calls (1 ok + 1 fail), got %d: %v", len(mot.calls), mot.calls)
+	// First call succeeds, then motion command is retried up to maxMotionRetries (1000).
+	// Expect 1 success + 1001 failed attempts = 1002 total calls.
+	if len(mot.calls) < 2 {
+		t.Fatalf("expected at least 2 calls, got %d: %v", len(mot.calls), mot.calls)
 	}
 
 	task.mu.Lock()

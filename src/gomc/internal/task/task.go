@@ -232,11 +232,13 @@ type Task struct {
 	startupCode     string
 
 	// Flags
-	optionalStop   bool
-	blockDelete    bool
-	floodOn        bool
-	mistOn         bool
-	noForceHoming  bool // [TRAJ]NO_FORCE_HOMING — skip homing check before MDI/AUTO
+	optionalStop  bool
+	blockDelete   bool
+	floodOn       bool
+	mistOn        bool
+	noForceHoming bool // [TRAJ]NO_FORCE_HOMING — skip homing check before MDI/AUTO
+	stepping      bool // single-step mode: auto-pause after each interpreter line
+	interpActive  bool // true while runProgram goroutine is executing
 
 	// Interpreter active codes (updated after each execute)
 	activeGcodes   []int32
@@ -264,12 +266,12 @@ type Task struct {
 	seqAbort    chan struct{} // close to abort sequencer
 
 	// MDI queue — commands queued while interpreter is busy
-	mdiQueue      []string
-	maxMDIQueued  int
+	mdiQueue     []string
+	maxMDIQueued int
 
-	// Pause/resume for interpreter goroutine
-	pauseCh  chan struct{} // closed when pause requested
-	resumeCh chan struct{} // closed when resume requested
+	// Sequencer-level pause/step control
+	seqPauseCh  chan struct{} // closed to request sequencer pause
+	seqResumeCh chan struct{} // closed to wake sequencer from pause
 
 	// M-code handler (M100-M199)
 	mcode *mcodeHandler

@@ -45,6 +45,17 @@ func registryKey(apiName, instance string) string {
 // generated Go package init()), it is automatically attached for REST
 // dispatch.  Returns EEXIST if the api:instance pair is taken.
 func (r *Registry) Register(apiName string, version int, instance string, callbacks unsafe.Pointer) error {
+	return r.register(apiName, version, instance, callbacks, true)
+}
+
+// RegisterNoREST registers an API instance without attaching REST metadata.
+// Used for C module registrations where the callbacks pointer is a C struct,
+// not a Go interface — the Go-generated REST dispatch functions cannot use it.
+func (r *Registry) RegisterNoREST(apiName string, version int, instance string, callbacks unsafe.Pointer) error {
+	return r.register(apiName, version, instance, callbacks, false)
+}
+
+func (r *Registry) register(apiName string, version int, instance string, callbacks unsafe.Pointer, attachMeta bool) error {
 	if apiName == "" || instance == "" {
 		return syscall.EINVAL
 	}
@@ -58,8 +69,11 @@ func (r *Registry) Register(apiName string, version int, instance string, callba
 		return syscall.EEXIST
 	}
 
-	// Attach REST metadata if available (optional — nil is fine).
-	meta := GetMeta(apiName, version)
+	// Attach REST metadata if available and requested (optional — nil is fine).
+	var meta *APIMeta
+	if attachMeta {
+		meta = GetMeta(apiName, version)
+	}
 
 	r.instances[key] = &RegisteredAPI{
 		APIName:   apiName,
@@ -79,6 +93,22 @@ func (r *Registry) Register(apiName string, version int, instance string, callba
 	for _, fn := range listeners {
 		fn(api)
 	}
+	return nil
+}
+
+// Upgrade updates an existing registration's Meta and Callbacks.
+// Used when a Go module wants to take over REST serving from a C registration.
+// Returns ENOENT if the API instance was not previously registered.
+func (r *Registry) Upgrade(apiName string, version int, instance string, callbacks unsafe.Pointer, meta *APIMeta) error {
+	key := registryKey(apiName, instance)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	api, exists := r.instances[key]
+	if !exists {
+		return syscall.ENOENT
+	}
+	api.Callbacks = callbacks
+	api.Meta = meta
 	return nil
 }
 
