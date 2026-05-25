@@ -204,8 +204,20 @@ func (t *Task) AutoCommand(cmd int32, line int32) error {
 		t.stepping = false
 		interp := t.interp
 		startLine := line
+		file := t.programFile
 		t.mu.Unlock()
 		t.StartSequencer()
+		// Ensure motion controller is in coord mode (may have been lost
+		// after abort or error — matches C milltask emcTaskSetMode AUTO).
+		_ = t.motion.SetCoord()
+		// Re-open the program file to reset the interpreter to the beginning.
+		// Without this, a second Run after completion or stop would fail with
+		// "File ended with no percent sign" because the interpreter is at EOF.
+		_ = interp.Close()
+		if err := interp.Open(file); err != nil {
+			t.setInterpState(InterpIdle)
+			return fmt.Errorf("re-open program: %w", err)
+		}
 		if err := interp.Synch(); err != nil {
 			t.logger.Error("interp synch failed before run", "err", err)
 		}
@@ -261,8 +273,15 @@ func (t *Task) AutoCommand(cmd int32, line int32) error {
 			}
 			t.interpState = InterpReading
 			interp := t.interp
+			file := t.programFile
 			t.mu.Unlock()
 			t.StartSequencer()
+			_ = t.motion.SetCoord()
+			_ = interp.Close()
+			if err := interp.Open(file); err != nil {
+				t.setInterpState(InterpIdle)
+				return fmt.Errorf("re-open program: %w", err)
+			}
 			if err := interp.Synch(); err != nil {
 				t.logger.Error("interp synch failed before step", "err", err)
 			}
