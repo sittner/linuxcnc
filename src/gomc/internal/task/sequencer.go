@@ -381,6 +381,7 @@ func (t *Task) waitForCompletion(wt WaitType) error {
 }
 
 // waitMotionDone polls motion status until in-position and queue empty, or abort.
+// A communication watchdog detects if the motion controller stops responding.
 func (t *Task) waitMotionDone() error {
 	t.setExecState(ExecWaitingForMotion)
 	// Skip a few poll intervals to allow the servo thread to process any
@@ -395,19 +396,28 @@ func (t *Task) waitMotionDone() error {
 		case <-ticker.C:
 		}
 	}
-	polls := 0
+	commErrors := 0
 	for {
 		select {
 		case <-t.seqAbort:
 			return context.Canceled
 		case <-ticker.C:
-			polls++
 			if t.status == nil {
 				t.setExecState(ExecDone)
 				return nil
 			}
 			v, err := t.status.GetInpos()
-			if err != nil || v != 1 {
+			if err != nil {
+				commErrors++
+				if commErrors >= commFailureThreshold {
+					t.logger.Error("waitMotionDone: motion controller not responding")
+					t.setExecState(ExecError)
+					return fmt.Errorf("waitMotionDone: comm failure (%d consecutive errors)", commErrors)
+				}
+				continue
+			}
+			commErrors = 0 // valid response resets counter
+			if v != 1 {
 				continue
 			}
 			qd, err := t.status.GetQueueDepth()
@@ -419,19 +429,39 @@ func (t *Task) waitMotionDone() error {
 	}
 }
 
-// waitIODone polls until IO command status is DONE or abort.
+// waitIODone polls until IO command status is DONE/ERROR, abort, or comm failure.
 func (t *Task) waitIODone() error {
 	t.setExecState(ExecWaitingForIO)
-	return t.pollUntil(func() bool {
-		if t.io == nil {
-			return true
+	commErrors := 0
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-t.seqAbort:
+			return context.Canceled
+		case <-ticker.C:
+			if t.io == nil {
+				t.setExecState(ExecDone)
+				return nil
+			}
+			st, err := t.io.GetCmdStatus()
+			if err != nil {
+				commErrors++
+				if commErrors >= commFailureThreshold {
+					t.logger.Error("waitIODone: IO controller not responding")
+					t.setExecState(ExecError)
+					return fmt.Errorf("waitIODone: comm failure (%d consecutive errors)", commErrors)
+				}
+				continue
+			}
+			commErrors = 0
+			if st == IOStatusDone || st == IOStatusError {
+				t.setExecState(ExecDone)
+				return nil
+			}
 		}
-		st, err := t.io.GetCmdStatus()
-		if err != nil {
-			return true // treat error as done
-		}
-		return st == IOStatusDone || st == IOStatusError
-	})
+	}
 }
 
 // waitSpindleOriented polls until spindle orient is complete.
@@ -441,7 +471,9 @@ func (t *Task) waitSpindleOriented() error {
 	return nil
 }
 
-// pollUntil polls the condition at servo rate until true or abort.
+// pollUntil polls the condition at servo rate until true, abort, or comm failure.
+// The condition function should return (done, commOK). If commOK is false for
+// too many consecutive polls, a comm failure is declared.
 func (t *Task) pollUntil(cond func() bool) error {
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
@@ -664,6 +696,14 @@ type waitFunc func() bool
 // Mutex-free accessors for sequencer goroutine to read status.
 // These avoid holding mu during polling.
 var pollInterval = time.Millisecond
+
+// Timeouts for wait loops — detect communication failure (controller not
+// responding), NOT slow execution. Motion moves and tool changes can take
+// arbitrarily long; what we guard against is a dead controller.
+var (
+	// If status reads fail for this many consecutive polls, declare comm failure.
+	commFailureThreshold = 100 // 100ms at 1ms poll = 100ms of no valid response
+)
 
 // SetPollInterval allows tests to speed up polling. Not thread-safe — call before StartSequencer.
 func SetPollInterval(d time.Duration) func() {
