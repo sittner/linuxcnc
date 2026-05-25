@@ -83,6 +83,9 @@ type CanonState struct {
 	floodOn              bool
 	mistOn               bool
 
+	// Rotary unlock: joint number to unlock for traverse (-1 = none)
+	rotaryUnlockForTraverse int32
+
 	// State tag (passed to motion segments)
 	tag StateTag
 
@@ -93,15 +96,16 @@ type CanonState struct {
 // NewCanonState returns a CanonState with sensible defaults.
 func NewCanonState() *CanonState {
 	cs := &CanonState{
-		lengthUnits:         CanonUnitsMM,
-		activePlane:         CanonPlaneXY,
-		g5xIndex:            1, // G54 default (same as C canon)
-		motionMode:          CanonContinuous,
-		motionTolerance:     0.0254, // 0.001 inch default (same as C canon)
-		linearFeedRate:      0,     // set by SET_FEED_RATE or synch
-		traverseRate:        0,    // set from INI
-		feedOverrideEnabled: true,
-		feedHoldEnabled:     true,
+		lengthUnits:             CanonUnitsMM,
+		activePlane:             CanonPlaneXY,
+		g5xIndex:                1, // G54 default (same as C canon)
+		motionMode:              CanonContinuous,
+		motionTolerance:         0.0254, // 0.001 inch default (same as C canon)
+		linearFeedRate:          0,      // set by SET_FEED_RATE or synch
+		traverseRate:            0,      // set from INI
+		feedOverrideEnabled:     true,
+		feedHoldEnabled:         true,
+		rotaryUnlockForTraverse: -1,
 	}
 	for i := range cs.speedOverrideEnabled {
 		cs.speedOverrideEnabled[i] = true
@@ -426,7 +430,7 @@ func (c *Canon) StraightTraverse(lineno int32, x, y, z, a, b, _c, u, v, w float6
 		MotionType: 1, // EMC_MOTION_TYPE_TRAVERSE
 		ID:         lineno,
 		Tag:        s.tag,
-		IndexerJ:   -1,
+		IndexerJ:   s.rotaryUnlockForTraverse,
 	}
 	c.enqueue(cmd)
 }
@@ -815,12 +819,27 @@ func (c *Canon) WaitInput(index, inputType, waitType int32, timeout float64) int
 }
 
 func (c *Canon) LockRotary(lineno, joint int32) int32 {
-	c.enqueue(&LockRotaryCmd{Lineno: lineno, Joint: joint, Lock: true})
+	c.state.rotaryUnlockForTraverse = -1
 	return 0
 }
 
 func (c *Canon) UnlockRotary(lineno, joint int32) int32 {
-	c.enqueue(&LockRotaryCmd{Lineno: lineno, Joint: joint, Lock: false})
+	// Enqueue a zero-length traverse to interrupt blending and reach final
+	// position before unlocking (matches C canon UNLOCK_ROTARY behavior).
+	s := c.state
+	cmd := &LinearMoveCmd{
+		Pos:        s.endPoint,
+		Vel:        1,
+		IniMaxVel:  1,
+		Acc:        1,
+		MotionType: 1, // EMC_MOTION_TYPE_TRAVERSE
+		ID:         lineno,
+		Tag:        s.tag,
+		IndexerJ:   -1,
+	}
+	c.enqueue(cmd)
+	// The next traverse will carry this joint number for unlock/lock.
+	c.state.rotaryUnlockForTraverse = joint
 	return 0
 }
 
@@ -856,25 +875,6 @@ func (c *Canon) NurbsFeed(lineno int32, controlPoints []ControlPoint, k uint32) 
 // ControlPoint is a NURBS control point.
 type ControlPoint struct {
 	X, Y, W float64
-}
-
-// LockRotaryCmd queues a rotary axis lock/unlock.
-type LockRotaryCmd struct {
-	Lineno int32
-	Joint  int32
-	Lock   bool
-}
-
-func (cmd *LockRotaryCmd) Execute(t *Task) error {
-	// TODO: implement via motion controller
-	return nil
-}
-func (cmd *LockRotaryCmd) Wait() WaitType { return WaitNone }
-func (cmd *LockRotaryCmd) String() string {
-	if cmd.Lock {
-		return fmt.Sprintf("LockRotary(joint=%d)", cmd.Joint)
-	}
-	return fmt.Sprintf("UnlockRotary(joint=%d)", cmd.Joint)
 }
 
 // --- Internal helpers ---
