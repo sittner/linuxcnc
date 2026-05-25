@@ -44,48 +44,94 @@ const (
 // SetState handles state transitions: estop, estop_reset, off, on.
 func (t *Task) SetState(state int32) error {
 	t.mu.Lock()
-	defer t.mu.Unlock()
 
 	target := TaskState(state)
 	switch target {
 	case StateEstop:
+		wasOn := t.state == StateOn
+		numSpindles := t.numSpindles
 		t.state = StateEstop
-		_ = t.motion.Disable()
+		t.interpState = InterpIdle
+		t.execState = ExecDone
+		t.mdiQueue = t.mdiQueue[:0]
+		t.stepping = false
+		t.mu.Unlock()
+
+		if wasOn {
+			// Full shutdown: abort sequencer, motion, IO, spindles, coolant.
+			t.AbortSequencer()
+			t.mcodeAbort()
+			_ = t.motion.Abort()
+			_ = t.motion.Disable()
+			_ = t.io.IoAbort(1) // EMC_ABORT_AUX_ESTOP
+			for i := 0; i < numSpindles; i++ {
+				_ = t.motion.SpindleOff(int32(i))
+			}
+			_ = t.io.CoolantFloodOff()
+			_ = t.io.CoolantMistOff()
+			// Unhome volatile joints.
+			_ = t.motion.JointUnhome(-2)
+			// Reset interpreter.
+			if t.interp != nil {
+				_ = t.interp.Abort(0, "estop")
+				_ = t.interp.Close()
+				_ = t.interp.Reset()
+			}
+			t.StartSequencer()
+		} else {
+			_ = t.motion.Disable()
+		}
 		_ = t.io.EstopOn()
+
+		t.mu.Lock()
+		t.floodOn = false
+		t.mistOn = false
+		t.mu.Unlock()
 		return nil
 
 	case StateEstopReset:
 		if t.state == StateEstopReset {
+			t.mu.Unlock()
 			return nil // idempotent
 		}
 		if t.state != StateEstop {
+			t.mu.Unlock()
 			return ErrEstop
 		}
 		t.state = StateEstopReset
+		t.mu.Unlock()
 		_ = t.io.EstopOff()
 		return nil
 
 	case StateOff:
 		if err := t.requireNotEstop(); err != nil {
+			t.mu.Unlock()
 			return err
 		}
 		t.state = StateOff
+		t.mu.Unlock()
 		_ = t.motion.Disable()
 		return nil
 
 	case StateOn:
 		if t.state == StateOn {
+			t.mu.Unlock()
 			return nil // idempotent
 		}
 		if t.state != StateEstopReset && t.state != StateOff {
+			t.mu.Unlock()
 			return ErrNotOn
 		}
+		t.mu.Unlock()
 		if err := t.motion.Enable(); err != nil {
 			return err
 		}
+		t.mu.Lock()
 		t.state = StateOn
+		t.mu.Unlock()
 		return nil
 	}
+	t.mu.Unlock()
 	return nil
 }
 

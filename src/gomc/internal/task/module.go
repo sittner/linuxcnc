@@ -58,6 +58,7 @@ type milltaskModule struct {
 	poslog     posLogger
 	interp     *CInterp
 	canonTable *canonCallbackTable
+	mon        *monitor
 }
 
 func (m *milltaskModule) Start() error {
@@ -127,6 +128,10 @@ func (m *milltaskModule) Start() error {
 	// Start the sequencer goroutine (executes queued motion commands).
 	t.StartSequencer()
 
+	// Start the monitoring goroutine (estop, errors, soft limits, inihal).
+	m.mon = newMonitor(t, mc, ih, io)
+	m.mon.start()
+
 	// Register tools API (needs INI for tool table path).
 	m.registerTools()
 
@@ -135,6 +140,9 @@ func (m *milltaskModule) Start() error {
 }
 
 func (m *milltaskModule) Stop() {
+	if m.mon != nil {
+		m.mon.stop()
+	}
 	m.poslog.stopLogger()
 	if m.task != nil {
 		m.task.StopSequencer()
@@ -243,6 +251,19 @@ func (a *ioAdapter) GetCmdStatus() (int32, error) {
 		return 0, err
 	}
 	return int32(st.Status), nil
+}
+
+// GetIOFullStatus returns the full IO status for the monitor.
+func (a *ioAdapter) GetIOFullStatus() (IOFullStatus, error) {
+	st, err := a.EmcioClient.GetStatus()
+	if err != nil {
+		return IOFullStatus{}, err
+	}
+	return IOFullStatus{
+		Estop:  st.Estop,
+		Status: int32(st.Status),
+		Reason: st.Reason,
+	}, nil
 }
 
 // drainErrorPublisher implements ErrorPublisher by writing to the emcerror drain.
