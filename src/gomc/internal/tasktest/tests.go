@@ -90,26 +90,11 @@ func (h *testHarness) runAll() *testResults {
 	// Give the system a moment to settle after Start().
 	time.Sleep(100 * time.Millisecond)
 
-	// Detect which milltask implementation is running.
-	// C milltask returns RCS_DONE(1)/RCS_EXEC(2), Go milltask returns 0.
-	isGoMilltask := h.detectGoMilltask()
-	if isGoMilltask {
-		fmt.Println("tasktest: detected Go milltask")
-		// Known Go milltask gaps
-		r.xfail["jog/incremental_in_manual"] = "incremental jog not working correctly"
-		r.xfail["homing/unhome_joint"] = "unhome not clearing homed flag"
-		r.xfail["spindle/forward"] = "spindle state not reflected by motion"
-		r.xfail["spindle/reverse"] = "spindle state not reflected by motion"
-	} else {
-		fmt.Println("tasktest: detected C milltask")
-		// Known C milltask behavioral differences
-		r.xfail["state/off_from_on"] = "C milltask goes ON→ESTOP_RESET, not ON→OFF"
-		r.xfail["jog/incremental_in_manual"] = "C milltask JOG_INCREMENT type needs different handling"
-		r.xfail["homing/unhome_joint"] = "C milltask unhome inconsistent with HOME_SEQUENCE=0"
-		r.xfail["program/run_requires_file"] = "C milltask re-runs last interpreter state"
-		r.xfail["spindle/forward"] = "C milltask stat does not populate direction field"
-		r.xfail["spindle/reverse"] = "C milltask stat does not populate direction field"
-	}
+	// Known issues (motion-module side, not task bugs)
+	r.xfail["jog/incremental_in_manual"] = "incremental jog not working correctly"
+	r.xfail["homing/unhome_joint"] = "unhome not clearing homed flag"
+	r.xfail["spindle/forward"] = "spindle state not reflected by motion"
+	r.xfail["spindle/reverse"] = "spindle state not reflected by motion"
 
 	// === STATE MACHINE ===
 	h.testInitialState(r)
@@ -203,13 +188,6 @@ func (h *testHarness) runAll() *testResults {
 	h.testLoadToolTable(r)
 
 	return r
-}
-
-// detectGoMilltask returns true if the Go milltask is running.
-// The tasktest module is only loaded in gomc configs, so if we're here,
-// we're always testing the Go milltask.
-func (h *testHarness) detectGoMilltask() bool {
-	return true
 }
 
 // ============================================================
