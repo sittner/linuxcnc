@@ -17,6 +17,16 @@ func (t *Task) BuildStat() *emcstatapi.StatFull {
 	}
 	// Grab canon state for offset reporting
 	cs := t.canon.state
+	// Compute RCS command status (matches NML stat.state: 1=DONE,2=EXEC,3=ERROR).
+	rcsStatus := int32(1) // RCS_DONE
+	switch t.execState {
+	case ExecError:
+		rcsStatus = 3 // RCS_ERROR
+	case ExecDone:
+		rcsStatus = 1 // RCS_DONE
+	default:
+		rcsStatus = 2 // RCS_EXEC (any waiting state)
+	}
 	stat := &emcstatapi.StatFull{
 		Task: emcstatapi.StatTaskInfo{
 			Mode:              emcstatapi.TaskMode(t.mode),
@@ -38,6 +48,8 @@ func (t *Task) BuildStat() *emcstatapi.StatFull {
 		JointsCount:    int32(t.numJoints),
 		AxisMask:       t.axisMask,
 		LinearUnits:    t.linearUnits,
+		State:          rcsStatus,
+		RcsStatus:      rcsStatus,
 		KinematicsType: emcstatapi.KinematicsType_IDENTITY,
 		ActiveGcodes:   append([]int32(nil), t.activeGcodes...),
 		ActiveMcodes:   append([]int32(nil), t.activeMcodes...),
