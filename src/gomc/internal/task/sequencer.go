@@ -212,6 +212,7 @@ func (t *Task) sequencerLoop() {
 					}
 					if retries > maxMotionRetries {
 						t.logger.Error("sequencer motion cmd failed after retries", "cmd", cmd.String(), "err", err)
+						t.operatorError(fmt.Sprintf("Motion command failed: %s", err))
 						t.setExecState(ExecError)
 						t.setInterpState(InterpIdle)
 						t.mu.Lock()
@@ -235,6 +236,7 @@ func (t *Task) sequencerLoop() {
 				default:
 					// Non-motion command failed — fatal
 					t.logger.Error("sequencer command failed", "cmd", cmd.String(), "err", err)
+					t.operatorError(fmt.Sprintf("Command failed: %s: %s", cmd.String(), err))
 					t.setExecState(ExecError)
 					t.setInterpState(InterpIdle)
 					// Signal abort so interpreter goroutine unblocks from EnqueueCmd
@@ -258,6 +260,7 @@ func (t *Task) sequencerLoop() {
 					return
 				}
 				t.logger.Error("sequencer wait failed", "cmd", cmd.String(), "err", err)
+				t.operatorError(fmt.Sprintf("Wait failed: %s: %s", cmd.String(), err))
 				t.setExecState(ExecError)
 				t.setInterpState(InterpIdle)
 				return
@@ -411,6 +414,7 @@ func (t *Task) waitMotionDone() error {
 				commErrors++
 				if commErrors >= commFailureThreshold {
 					t.logger.Error("waitMotionDone: motion controller not responding")
+					t.operatorError("Motion controller not responding")
 					t.setExecState(ExecError)
 					return fmt.Errorf("waitMotionDone: comm failure (%d consecutive errors)", commErrors)
 				}
@@ -450,6 +454,7 @@ func (t *Task) waitIODone() error {
 				commErrors++
 				if commErrors >= commFailureThreshold {
 					t.logger.Error("waitIODone: IO controller not responding")
+					t.operatorError("IO controller not responding")
 					t.setExecState(ExecError)
 					return fmt.Errorf("waitIODone: comm failure (%d consecutive errors)", commErrors)
 				}
@@ -662,20 +667,26 @@ func (c *ToolChangeCmd) Execute(t *Task) error {
 func (c *ToolChangeCmd) Wait() WaitType { return WaitIO }
 func (c *ToolChangeCmd) String() string { return "ToolChange" }
 
-// PostWait updates the motion offset with the new tool's parameters.
+// PostWait updates state after tool change completes.
 func (c *ToolChangeCmd) PostWait(t *Task) {
 	// After tool change completes, the IO controller has loaded the tool.
+	// Sync interpreter so it knows the new tool-in-spindle value.
 	// The interpreter will handle applying tool length offsets via canon
-	// USE_TOOL_LENGTH_OFFSET calls, so no explicit offset update needed here.
+	// USE_TOOL_LENGTH_OFFSET calls (G43/G43.1).
+	if t.interp != nil {
+		if err := t.interp.Synch(); err != nil {
+			t.logger.Warn("tool change: interpreter synch failed", "err", err)
+		}
+	}
 	t.logger.Info("tool change complete")
 }
 
 // SetToolTableEntryCmd updates a single tool table entry via IO controller.
 type SetToolTableEntryCmd struct {
-	Pocket, Toolno                                     int32
-	X, Y, Z, A, B, C, U, V, W                         float64
-	Diameter, Frontangle, Backangle                    float64
-	Orientation                                        int32
+	Pocket, Toolno                  int32
+	X, Y, Z, A, B, C, U, V, W       float64
+	Diameter, Frontangle, Backangle float64
+	Orientation                     int32
 }
 
 func (c *SetToolTableEntryCmd) Execute(t *Task) error {
@@ -787,7 +798,7 @@ type waitFunc func() bool
 
 // Mutex-free accessors for sequencer goroutine to read status.
 // These avoid holding mu during polling.
-var pollInterval = time.Millisecond
+var pollInterval = 10 * time.Millisecond
 
 // Timeouts for wait loops — detect communication failure (controller not
 // responding), NOT slow execution. Motion moves and tool changes can take

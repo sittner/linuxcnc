@@ -138,6 +138,16 @@ func (t *Task) BuildStat() *emcstatapi.StatFull {
 	stat.ToolOffset = poseToPosition(ms.ToolOffset)
 	stat.ProbedPosition = poseToPosition(ms.Probe.Pos)
 
+	// Tool info from IO controller.
+	if t.io != nil {
+		if v, err := t.io.GetToolInSpindle(); err == nil {
+			stat.ToolInSpindle = v
+		}
+		if v, err := t.io.GetPocketPrepped(); err == nil {
+			stat.PocketPrepped = v
+		}
+	}
+
 	// Joint actual positions (feedback).
 	for i := 0; i < numJoints && i < 16; i++ {
 		stat.JointActualPosition[i] = ms.Joints[i].PosFb

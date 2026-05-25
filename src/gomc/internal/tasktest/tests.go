@@ -100,9 +100,6 @@ func (h *testHarness) runAll() *testResults {
 		r.xfail["homing/unhome_joint"] = "unhome not clearing homed flag"
 		r.xfail["spindle/forward"] = "spindle state not reflected by motion"
 		r.xfail["spindle/reverse"] = "spindle state not reflected by motion"
-		r.xfail["misc/load_tool_table"] = "load_tool_table not implemented"
-		r.xfail["program/step"] = "step not implemented"
-		r.xfail["program/run_requires_file"] = "interpreter retains file from previous test"
 	} else {
 		fmt.Println("tasktest: detected C milltask")
 		// Known C milltask behavioral differences
@@ -209,10 +206,10 @@ func (h *testHarness) runAll() *testResults {
 }
 
 // detectGoMilltask returns true if the Go milltask is running.
-// The Go milltask returns rc=0 for commands; C milltask returns RCS_DONE(1)/RCS_EXEC(2).
+// The tasktest module is only loaded in gomc configs, so if we're here,
+// we're always testing the Go milltask.
 func (h *testHarness) detectGoMilltask() bool {
-	rc, _ := h.setState(int32(emcstat.ESTOP))
-	return rc == 0
+	return true
 }
 
 // ============================================================

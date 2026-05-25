@@ -101,3 +101,17 @@ func (t *Task) canJog() error {
 		return ErrWrongMode
 	}
 }
+
+// externalOffsetApplied checks if external offsets are currently applied.
+// Must be called with t.mu held (reads t.status which is immutable after init,
+// but the check itself is a motion status read).
+func (t *Task) externalOffsetApplied() bool {
+	if t.status == nil {
+		return false
+	}
+	ms, err := t.status.GetStatus()
+	if err != nil {
+		return false
+	}
+	return ms.ExternalOffsetsApplied != 0
+}

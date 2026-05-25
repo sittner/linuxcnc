@@ -55,6 +55,8 @@ func (t *Task) SetState(state int32) error {
 		t.execState = ExecDone
 		t.mdiQueue = t.mdiQueue[:0]
 		t.stepping = false
+		t.programOpen = false
+		t.programFile = ""
 		t.mu.Unlock()
 
 		if wasOn {
@@ -236,6 +238,11 @@ func (t *Task) AutoCommand(cmd int32, line int32) error {
 			t.mu.Unlock()
 			t.operatorError("Can't run a program when not homed")
 			return fmt.Errorf("can't run program when not homed")
+		}
+		if t.externalOffsetApplied() {
+			t.mu.Unlock()
+			t.operatorError("Can't run a program with external offsets applied")
+			return fmt.Errorf("can't run program with external offsets applied")
 		}
 		if t.interp == nil {
 			t.mu.Unlock()
@@ -484,6 +491,7 @@ func (t *Task) runProgram(interp Interpreter, startLine int32) {
 		rc, err := interp.Read()
 		if err != nil {
 			t.logger.Error("interpreter read error", "err", err, "rc", rc)
+			t.operatorError(fmt.Sprintf("Interpreter read error: %v", err))
 			t.setInterpState(InterpIdle)
 			return
 		}
@@ -500,6 +508,7 @@ func (t *Task) runProgram(interp Interpreter, startLine int32) {
 		rc, err = interp.Execute()
 		if err != nil {
 			t.logger.Error("interpreter execute error", "err", err, "rc", rc)
+			t.operatorError(fmt.Sprintf("Interpreter error: %v", err))
 			t.setInterpState(InterpIdle)
 			return
 		}
