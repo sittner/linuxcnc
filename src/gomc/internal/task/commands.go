@@ -491,6 +491,11 @@ func (t *Task) runProgram(interp Interpreter, startLine int32) {
 			return
 		}
 
+		// Update readLine after successful read.
+		t.mu.Lock()
+		t.readLine = int32(interp.Line())
+		t.mu.Unlock()
+
 		rc, err = interp.Execute()
 		if err != nil {
 			t.logger.Error("interpreter execute error", "err", err, "rc", rc)
@@ -815,6 +820,8 @@ func (t *Task) Abort() error {
 	t.mu.Lock()
 	t.floodOn = false
 	t.mistOn = false
+	t.readLine = 0
+	t.currentLine = 0
 	t.mu.Unlock()
 
 	// Notify interpreter of abort and close file
@@ -859,11 +866,7 @@ func (t *Task) SetBlockDelete(on bool) error {
 
 // LoadToolTable reloads the tool table from file.
 func (t *Task) LoadToolTable() error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	// TODO: reload tool table and notify interpreter
-	return nil
+	return t.io.ToolLoadTable("")
 }
 
 // WaitComplete waits for motion to complete (with timeout).

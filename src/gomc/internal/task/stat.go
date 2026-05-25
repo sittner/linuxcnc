@@ -29,6 +29,9 @@ func (t *Task) BuildStat() *emcstatapi.StatFull {
 			TaskPaused:        t.interpState == InterpPaused,
 			G5xIndex:          cs.g5xIndex,
 			QueuedMdiCommands: int32(len(t.mdiQueue)),
+			ReadLine:          t.readLine,
+			CurrentLine:       t.currentLine,
+			Line:              t.currentLine,
 		},
 		Flood:          t.floodOn,
 		Mist:           t.mistOn,
@@ -108,7 +111,9 @@ func (t *Task) BuildStat() *emcstatapi.StatFull {
 	stat.Motion.CurrentVel = ms.CurrentVel
 	stat.Motion.DistanceToGo = ms.DistanceToGo
 	stat.Motion.MotionId = ms.Id
+	stat.Motion.MotionLine = ms.Id
 	stat.Motion.MotionType = ms.MotionType
+	stat.Task.MotionLine = ms.Id
 	stat.Motion.Dtg = emcstatapi.Position{
 		X: ms.Dtg.X, Y: ms.Dtg.Y, Z: ms.Dtg.Z,
 		A: ms.Dtg.A, B: ms.Dtg.B, C: ms.Dtg.C,

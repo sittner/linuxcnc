@@ -240,6 +240,10 @@ type Task struct {
 	stepping      bool // single-step mode: auto-pause after each interpreter line
 	interpActive  bool // true while runProgram goroutine is executing
 
+	// Line tracking (for stat reporting)
+	readLine    int32 // line the interpreter has read up to
+	currentLine int32 // line currently being executed by sequencer
+
 	// Interpreter active codes (updated after each execute)
 	activeGcodes   []int32
 	activeMcodes   []int32

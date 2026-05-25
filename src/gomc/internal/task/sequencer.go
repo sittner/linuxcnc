@@ -181,6 +181,15 @@ func (t *Task) sequencerLoop() {
 
 			t.logger.Debug("sequencer exec", "cmd", cmd.String())
 
+			// Update currentLine from motion commands that carry a line ID.
+			if lc, ok := cmd.(interface{ LineID() int32 }); ok {
+				if id := lc.LineID(); id > 0 {
+					t.mu.Lock()
+					t.currentLine = id
+					t.mu.Unlock()
+				}
+			}
+
 			// Execute the command, retrying motion commands on queue-full errors.
 			const maxMotionRetries = 1000 // ~10s at 10ms poll interval
 			retries := 0
@@ -483,6 +492,7 @@ func (c *LinearMoveCmd) Execute(t *Task) error {
 }
 func (c *LinearMoveCmd) Wait() WaitType { return WaitNone } // queued, no immediate wait
 func (c *LinearMoveCmd) String() string { return fmt.Sprintf("LinearMove(id=%d)", c.ID) }
+func (c *LinearMoveCmd) LineID() int32  { return c.ID }
 
 // CircularMoveCmd queues a circular arc segment.
 type CircularMoveCmd struct {
@@ -503,6 +513,7 @@ func (c *CircularMoveCmd) Execute(t *Task) error {
 }
 func (c *CircularMoveCmd) Wait() WaitType { return WaitNone }
 func (c *CircularMoveCmd) String() string { return fmt.Sprintf("CircularMove(id=%d)", c.ID) }
+func (c *CircularMoveCmd) LineID() int32  { return c.ID }
 
 // DwellCmd implements a timed pause (G4).
 type DwellCmd struct {
@@ -689,6 +700,8 @@ func (c *interpDoneCmd) PostWait(t *Task) {
 		t.interpState = InterpIdle
 	}
 	t.execState = ExecDone
+	t.readLine = 0
+	t.currentLine = 0
 	t.mu.Unlock()
 }
 

@@ -771,6 +771,7 @@ func (c *RigidTapCmd) Execute(t *Task) error {
 }
 func (c *RigidTapCmd) Wait() WaitType { return WaitNone }
 func (c *RigidTapCmd) String() string { return fmt.Sprintf("RigidTap(id=%d)", c.ID) }
+func (c *RigidTapCmd) LineID() int32  { return c.ID }
 
 // ProbeCmd queues a probe move.
 type ProbeCmd struct {
@@ -789,6 +790,7 @@ func (c *ProbeCmd) Execute(t *Task) error {
 }
 func (c *ProbeCmd) Wait() WaitType { return WaitMotion }
 func (c *ProbeCmd) String() string { return fmt.Sprintf("Probe(id=%d)", c.ID) }
+func (c *ProbeCmd) LineID() int32  { return c.ID }
 
 // SpindleOrientCmd orients a spindle.
 type SpindleOrientCmd struct {
