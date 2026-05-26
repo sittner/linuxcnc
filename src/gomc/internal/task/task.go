@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/motctl"
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/motstat"
@@ -86,6 +87,18 @@ const (
 	ExecWaitingForSystemCmd       ExecState = 9
 	ExecWaitingForSpindleOriented ExecState = 10
 )
+
+// jogTimeout is how long a continuous jog stays active without being refreshed.
+// Clients must re-send the jog command within this interval to keep it alive.
+const jogTimeout = 2 * time.Second
+
+// activeJog tracks a single active continuous jog for the watchdog.
+type activeJog struct {
+	active   bool
+	isTeleop int32
+	fromHAL  bool      // HAL-pin-driven jogs are self-managing, skip watchdog
+	lastSeen time.Time
+}
 
 // MotionController is the interface to motmod (motctl GMI API).
 // Methods match the motctl.gmi function names.
@@ -261,6 +274,9 @@ type Task struct {
 	jogIncrement float64 // current jog increment (0 = continuous)
 	jogSpeed     float64 // linear jog speed (units/sec, from UI slider)
 	ajogSpeed    float64 // angular jog speed (deg/sec, from UI slider)
+
+	// Jog watchdog: active continuous jogs must be refreshed within jogTimeout.
+	activeJogs [maxJoints]activeJog // indexed by axis_or_joint number
 
 	// Line tracking (for stat reporting)
 	readLine    int32 // line the interpreter has read up to

@@ -291,6 +291,7 @@ mdi_history_index= -1
 resume_inhibit = 0
 continuous_jog_in_progress = False
 cjogindices = []
+_jog_refresh_counter = 0
 
 help1 = [
     ("F1", _("Emergency stop")),
@@ -935,6 +936,19 @@ class LivePlotter:
                  c.jog(JOG_STOP, jjogmode,idx)
             continuous_jog_in_progress = 0
             cjogindices = []
+
+        # Jog refresh watchdog: re-send active continuous jogs every ~1s
+        # to keep milltask's jog watchdog from timing out.
+        global _jog_refresh_counter
+        _jog_refresh_counter += 1
+        if _jog_refresh_counter >= 10 and continuous_jog_in_progress:
+            _jog_refresh_counter = 0
+            jjogmode = get_jog_mode()
+            for idx in cjogindices:
+                if jog_cont[idx] and jogging[idx] != 0:
+                    c.jog(JOG_CONTINUOUS, jjogmode, idx, jogging[idx])
+        elif _jog_refresh_counter >= 10:
+            _jog_refresh_counter = 0
 
         if  (   (self.stat.motion_mode == TRAJ_MODE_COORD)
             and (self.stat.task_mode   == MODE_MANUAL)

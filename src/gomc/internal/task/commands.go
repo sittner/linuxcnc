@@ -642,6 +642,15 @@ func (t *Task) waitSequencerDrain() bool {
 
 // Jog handles continuous, incremental, and absolute jogs.
 func (t *Task) Jog(jogType int32, jjogmode bool, axisOrJoint int32, velocity, distance float64) error {
+	return t.jogInternal(jogType, jjogmode, axisOrJoint, velocity, distance, false)
+}
+
+// JogFromHAL is like Jog but marks the jog as HAL-pin-driven (no watchdog timeout).
+func (t *Task) JogFromHAL(jogType int32, jjogmode bool, axisOrJoint int32, velocity, distance float64) error {
+	return t.jogInternal(jogType, jjogmode, axisOrJoint, velocity, distance, true)
+}
+
+func (t *Task) jogInternal(jogType int32, jjogmode bool, axisOrJoint int32, velocity, distance float64, fromHAL bool) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -659,8 +668,19 @@ func (t *Task) Jog(jogType int32, jjogmode bool, axisOrJoint int32, velocity, di
 
 	switch jogType {
 	case JogStop:
+		if axisOrJoint >= 0 && int(axisOrJoint) < len(t.activeJogs) {
+			t.activeJogs[axisOrJoint].active = false
+		}
 		return t.motion.JogAbort(axisOrJoint, isTeleop)
 	case JogContinuous:
+		if axisOrJoint >= 0 && int(axisOrJoint) < len(t.activeJogs) {
+			t.activeJogs[axisOrJoint] = activeJog{
+				active:   true,
+				isTeleop: isTeleop,
+				fromHAL:  fromHAL,
+				lastSeen: time.Now(),
+			}
+		}
 		return t.motion.JogCont(axisOrJoint, velocity, isTeleop)
 	case JogIncrement:
 		return t.motion.JogIncr(axisOrJoint, velocity, distance, isTeleop)
@@ -696,6 +716,10 @@ func (t *Task) clampJogVel(vel float64, nr int32, jjogmode bool) float64 {
 func (t *Task) JogStop(jjogmode bool, axisOrJoint int32) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+
+	if axisOrJoint >= 0 && int(axisOrJoint) < len(t.activeJogs) {
+		t.activeJogs[axisOrJoint].active = false
+	}
 
 	isTeleop := int32(0)
 	if !jjogmode {

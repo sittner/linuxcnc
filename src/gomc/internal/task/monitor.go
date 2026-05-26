@@ -75,6 +75,7 @@ func (m *monitor) loop() {
 		case <-ticker.C:
 			m.checkEstop()
 			m.checkMotionErrors(&softLimitReported)
+			m.checkJogWatchdog()
 			if m.inihal != nil {
 				m.inihal.check(m.mc)
 			}
@@ -250,4 +251,28 @@ func (m *monitor) checkMotionErrors(softLimitReported *bool) {
 
 	// Restart sequencer.
 	m.task.StartSequencer()
+}
+
+// checkJogWatchdog stops continuous jogs that haven't been refreshed
+// within jogTimeout. This prevents runaway jogs if a client disconnects.
+func (m *monitor) checkJogWatchdog() {
+	now := time.Now()
+	t := m.task
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	for i := range t.activeJogs {
+		j := &t.activeJogs[i]
+		if !j.active || j.fromHAL {
+			continue
+		}
+		if now.Sub(j.lastSeen) > jogTimeout {
+			j.active = false
+			t.mu.Unlock()
+			_ = t.motion.JogAbort(int32(i), j.isTeleop)
+			t.logger.Warn("jog watchdog: stopped expired jog", "axis_or_joint", i)
+			t.mu.Lock()
+		}
+	}
 }

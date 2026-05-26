@@ -189,6 +189,24 @@ type halUI struct {
 	axisPosFeedback  [maxAxes + 1]*hal.Pin[float64]
 	axisPosRelative  [maxAxes + 1]*hal.Pin[float64]
 
+	// Jog speed encoder
+	jsCounts      *hal.Pin[int32]
+	jsCountEnable *hal.Pin[bool]
+	jsDirectValue *hal.Pin[bool]
+	jsScale       *hal.Pin[float64]
+	jsValue       *hal.Pin[float64] // output
+	jsIncrease    *hal.Pin[bool]
+	jsDecrease    *hal.Pin[bool]
+
+	// Angular jog speed encoder
+	asCounts      *hal.Pin[int32]
+	asCountEnable *hal.Pin[bool]
+	asDirectValue *hal.Pin[bool]
+	asScale       *hal.Pin[float64]
+	asValue       *hal.Pin[float64] // output
+	asIncrease    *hal.Pin[bool]
+	asDecrease    *hal.Pin[bool]
+
 	// Misc
 	unitsPerMM      *hal.Pin[float64] // output
 	jogIncrementOut *hal.Pin[float64] // IO — current jog increment (shared state)
@@ -211,7 +229,6 @@ type halUI struct {
 	// UI status (output to HAL)
 	hasNotifications *hal.Pin[bool]
 	errorActive      *hal.Pin[bool]
-	isRunning        *hal.Pin[bool] // output: UI connected and alive
 
 	// Message list pins (driven from server-side message list)
 	msgHasAny     *hal.Pin[bool] // output: any current message present
@@ -290,6 +307,8 @@ type halUIValues struct {
 	roCounts int32
 	mvCounts int32
 	soCounts [haluiMaxSpindles + 1]int32
+	jsCounts int32
+	asCounts int32
 
 	foIncrease bool
 	foDecrease bool
@@ -299,6 +318,10 @@ type halUIValues struct {
 	roReset    bool
 	mvIncrease bool
 	mvDecrease bool
+	jsIncrease bool
+	jsDecrease bool
+	asIncrease bool
+	asDecrease bool
 	soIncrease [haluiMaxSpindles + 1]bool
 	soDecrease [haluiMaxSpindles + 1]bool
 	soReset    [haluiMaxSpindles + 1]bool
@@ -757,6 +780,52 @@ func (h *halUI) createPins() error {
 		return err
 	}
 
+	// Jog speed encoder
+	if h.jsCounts, err = hal.NewPin[int32](c, "jog-speed.counts", hal.In); err != nil {
+		return err
+	}
+	if h.jsCountEnable, err = hal.NewPin[bool](c, "jog-speed.count-enable", hal.In); err != nil {
+		return err
+	}
+	if h.jsDirectValue, err = hal.NewPin[bool](c, "jog-speed.direct-value", hal.In); err != nil {
+		return err
+	}
+	if h.jsScale, err = hal.NewPin[float64](c, "jog-speed.scale", hal.In); err != nil {
+		return err
+	}
+	if h.jsValue, err = hal.NewPin[float64](c, "jog-speed.value", hal.Out); err != nil {
+		return err
+	}
+	if h.jsIncrease, err = hal.NewPin[bool](c, "jog-speed.increase", hal.In); err != nil {
+		return err
+	}
+	if h.jsDecrease, err = hal.NewPin[bool](c, "jog-speed.decrease", hal.In); err != nil {
+		return err
+	}
+
+	// Angular jog speed encoder
+	if h.asCounts, err = hal.NewPin[int32](c, "ajog-speed.counts", hal.In); err != nil {
+		return err
+	}
+	if h.asCountEnable, err = hal.NewPin[bool](c, "ajog-speed.count-enable", hal.In); err != nil {
+		return err
+	}
+	if h.asDirectValue, err = hal.NewPin[bool](c, "ajog-speed.direct-value", hal.In); err != nil {
+		return err
+	}
+	if h.asScale, err = hal.NewPin[float64](c, "ajog-speed.scale", hal.In); err != nil {
+		return err
+	}
+	if h.asValue, err = hal.NewPin[float64](c, "ajog-speed.value", hal.Out); err != nil {
+		return err
+	}
+	if h.asIncrease, err = hal.NewPin[bool](c, "ajog-speed.increase", hal.In); err != nil {
+		return err
+	}
+	if h.asDecrease, err = hal.NewPin[bool](c, "ajog-speed.decrease", hal.In); err != nil {
+		return err
+	}
+
 	// Spindle override + control (per-spindle)
 	for i := 0; i < h.numSpindles; i++ {
 		sfx := fmt.Sprintf("spindle.%d", i)
@@ -890,10 +959,6 @@ func (h *halUI) createPins() error {
 	if h.errorActive, err = hal.NewPin[bool](c, "notifications.error", hal.Out); err != nil {
 		return err
 	}
-	if h.isRunning, err = hal.NewPin[bool](c, "is-running", hal.Out); err != nil {
-		return err
-	}
-
 	// Message list pins
 	if h.msgHasAny, err = hal.NewPin[bool](c, "messages.has-msg", hal.Out); err != nil {
 		return err
@@ -1199,6 +1264,52 @@ func (h *halUI) checkOverrides(t *Task) {
 	}
 	h.old.mvDecrease = h.mvDecrease.Get()
 
+	// Jog speed encoder
+	counts = h.jsCounts.Get()
+	if counts != h.old.jsCounts {
+		if h.jsCountEnable.Get() {
+			jsValue := h.jsValue.Get()
+			if h.jsDirectValue.Get() {
+				jsValue = float64(counts) * h.jsScale.Get()
+			} else {
+				jsValue += float64(counts-h.old.jsCounts) * h.jsScale.Get()
+			}
+			_ = t.SetJogSpeed(jsValue)
+		}
+		h.old.jsCounts = counts
+	}
+	if v := h.jsIncrease.Get(); risingEdge(v, h.old.jsIncrease) {
+		_ = t.SetJogSpeed(h.jsValue.Get() + h.jsScale.Get())
+	}
+	h.old.jsIncrease = h.jsIncrease.Get()
+	if v := h.jsDecrease.Get(); risingEdge(v, h.old.jsDecrease) {
+		_ = t.SetJogSpeed(h.jsValue.Get() - h.jsScale.Get())
+	}
+	h.old.jsDecrease = h.jsDecrease.Get()
+
+	// Angular jog speed encoder
+	counts = h.asCounts.Get()
+	if counts != h.old.asCounts {
+		if h.asCountEnable.Get() {
+			asValue := h.asValue.Get()
+			if h.asDirectValue.Get() {
+				asValue = float64(counts) * h.asScale.Get()
+			} else {
+				asValue += float64(counts-h.old.asCounts) * h.asScale.Get()
+			}
+			_ = t.SetAjogSpeed(asValue)
+		}
+		h.old.asCounts = counts
+	}
+	if v := h.asIncrease.Get(); risingEdge(v, h.old.asIncrease) {
+		_ = t.SetAjogSpeed(h.asValue.Get() + h.asScale.Get())
+	}
+	h.old.asIncrease = h.asIncrease.Get()
+	if v := h.asDecrease.Get(); risingEdge(v, h.old.asDecrease) {
+		_ = t.SetAjogSpeed(h.asValue.Get() - h.asScale.Get())
+	}
+	h.old.asDecrease = h.asDecrease.Get()
+
 	// Spindle overrides
 	for i := 0; i < h.numSpindles; i++ {
 		counts := h.soCounts[i].Get()
@@ -1291,9 +1402,9 @@ func (h *halUI) checkJointJog(t *Task) {
 		v := pinGet(h.jjogMinus[i])
 		if v != h.old.jjogMinus[i] || (v && speedChanged) {
 			if v {
-				_ = t.Jog(JogContinuous, true, joint, -jjogSpeed, 0)
+				_ = t.JogFromHAL(JogContinuous, true, joint, -jjogSpeed, 0)
 			} else {
-				_ = t.Jog(JogStop, true, joint, 0, 0)
+				_ = t.JogFromHAL(JogStop, true, joint, 0, 0)
 			}
 			h.old.jjogMinus[i] = v
 		}
@@ -1302,9 +1413,9 @@ func (h *halUI) checkJointJog(t *Task) {
 		v = pinGet(h.jjogPlus[i])
 		if v != h.old.jjogPlus[i] || (v && speedChanged) {
 			if v {
-				_ = t.Jog(JogContinuous, true, joint, jjogSpeed, 0)
+				_ = t.JogFromHAL(JogContinuous, true, joint, jjogSpeed, 0)
 			} else {
-				_ = t.Jog(JogStop, true, joint, 0, 0)
+				_ = t.JogFromHAL(JogStop, true, joint, 0, 0)
 			}
 			h.old.jjogPlus[i] = v
 		}
@@ -1315,9 +1426,9 @@ func (h *halUI) checkJointJog(t *Task) {
 		active := math.Abs(analog) > deadband
 		if analog != h.old.jjogAnalog[i] || (active && speedChanged) {
 			if active {
-				_ = t.Jog(JogContinuous, true, joint, jjogSpeed*analog, 0)
+				_ = t.JogFromHAL(JogContinuous, true, joint, jjogSpeed*analog, 0)
 			} else {
-				_ = t.Jog(JogStop, true, joint, 0, 0)
+				_ = t.JogFromHAL(JogStop, true, joint, 0, 0)
 			}
 			h.old.jjogAnalog[i] = analog
 		}
@@ -1326,7 +1437,7 @@ func (h *halUI) checkJointJog(t *Task) {
 		v = pinGet(h.jjogIncrementPlus[i])
 		if risingEdge(v, h.old.jjogIncrementPlus[i]) {
 			incr := pinGet(h.jjogIncrement[i])
-			_ = t.Jog(JogIncrement, true, joint, jjogSpeed, incr)
+			_ = t.JogFromHAL(JogIncrement, true, joint, jjogSpeed, incr)
 		}
 		h.old.jjogIncrementPlus[i] = v
 
@@ -1334,7 +1445,7 @@ func (h *halUI) checkJointJog(t *Task) {
 		v = pinGet(h.jjogIncrementMinus[i])
 		if risingEdge(v, h.old.jjogIncrementMinus[i]) {
 			incr := pinGet(h.jjogIncrement[i])
-			_ = t.Jog(JogIncrement, true, joint, jjogSpeed, -incr)
+			_ = t.JogFromHAL(JogIncrement, true, joint, jjogSpeed, -incr)
 		}
 		h.old.jjogIncrementMinus[i] = v
 
@@ -1349,18 +1460,18 @@ func (h *halUI) checkJointJog(t *Task) {
 		v = pinGet(h.jjogMinusUI[i])
 		if v != h.old.jjogMinusUI[i] {
 			if v {
-				_ = t.Jog(JogContinuous, true, joint, -uiSpeed, 0)
+				_ = t.JogFromHAL(JogContinuous, true, joint, -uiSpeed, 0)
 			} else {
-				_ = t.Jog(JogStop, true, joint, 0, 0)
+				_ = t.JogFromHAL(JogStop, true, joint, 0, 0)
 			}
 			h.old.jjogMinusUI[i] = v
 		}
 		v = pinGet(h.jjogPlusUI[i])
 		if v != h.old.jjogPlusUI[i] {
 			if v {
-				_ = t.Jog(JogContinuous, true, joint, uiSpeed, 0)
+				_ = t.JogFromHAL(JogContinuous, true, joint, uiSpeed, 0)
 			} else {
-				_ = t.Jog(JogStop, true, joint, 0, 0)
+				_ = t.JogFromHAL(JogStop, true, joint, 0, 0)
 			}
 			h.old.jjogPlusUI[i] = v
 		}
@@ -1387,9 +1498,9 @@ func (h *halUI) checkAxisJog(t *Task) {
 		v := pinGet(h.ajogMinus[i])
 		if v != h.old.ajogMinus[i] || (v && speedChanged) {
 			if v {
-				_ = t.Jog(JogContinuous, false, axis, -ajogSpeed, 0)
+				_ = t.JogFromHAL(JogContinuous, false, axis, -ajogSpeed, 0)
 			} else {
-				_ = t.Jog(JogStop, false, axis, 0, 0)
+				_ = t.JogFromHAL(JogStop, false, axis, 0, 0)
 			}
 			h.old.ajogMinus[i] = v
 		}
@@ -1398,9 +1509,9 @@ func (h *halUI) checkAxisJog(t *Task) {
 		v = pinGet(h.ajogPlus[i])
 		if v != h.old.ajogPlus[i] || (v && speedChanged) {
 			if v {
-				_ = t.Jog(JogContinuous, false, axis, ajogSpeed, 0)
+				_ = t.JogFromHAL(JogContinuous, false, axis, ajogSpeed, 0)
 			} else {
-				_ = t.Jog(JogStop, false, axis, 0, 0)
+				_ = t.JogFromHAL(JogStop, false, axis, 0, 0)
 			}
 			h.old.ajogPlus[i] = v
 		}
@@ -1411,9 +1522,9 @@ func (h *halUI) checkAxisJog(t *Task) {
 		active := math.Abs(analog) > deadband
 		if analog != h.old.ajogAnalog[i] || (active && speedChanged) {
 			if active {
-				_ = t.Jog(JogContinuous, false, axis, ajogSpeed*analog, 0)
+				_ = t.JogFromHAL(JogContinuous, false, axis, ajogSpeed*analog, 0)
 			} else {
-				_ = t.Jog(JogStop, false, axis, 0, 0)
+				_ = t.JogFromHAL(JogStop, false, axis, 0, 0)
 			}
 			h.old.ajogAnalog[i] = analog
 		}
@@ -1422,7 +1533,7 @@ func (h *halUI) checkAxisJog(t *Task) {
 		v = pinGet(h.ajogIncrementPlus[i])
 		if risingEdge(v, h.old.ajogIncrementPlus[i]) {
 			incr := pinGet(h.ajogIncrement[i])
-			_ = t.Jog(JogIncrement, false, axis, ajogSpeed, incr)
+			_ = t.JogFromHAL(JogIncrement, false, axis, ajogSpeed, incr)
 		}
 		h.old.ajogIncrementPlus[i] = v
 
@@ -1430,7 +1541,7 @@ func (h *halUI) checkAxisJog(t *Task) {
 		v = pinGet(h.ajogIncrementMinus[i])
 		if risingEdge(v, h.old.ajogIncrementMinus[i]) {
 			incr := pinGet(h.ajogIncrement[i])
-			_ = t.Jog(JogIncrement, false, axis, ajogSpeed, -incr)
+			_ = t.JogFromHAL(JogIncrement, false, axis, ajogSpeed, -incr)
 		}
 		h.old.ajogIncrementMinus[i] = v
 
@@ -1445,18 +1556,18 @@ func (h *halUI) checkAxisJog(t *Task) {
 		v = pinGet(h.ajogMinusUI[i])
 		if v != h.old.ajogMinusUI[i] {
 			if v {
-				_ = t.Jog(JogContinuous, false, axis, -uiSpeed, 0)
+				_ = t.JogFromHAL(JogContinuous, false, axis, -uiSpeed, 0)
 			} else {
-				_ = t.Jog(JogStop, false, axis, 0, 0)
+				_ = t.JogFromHAL(JogStop, false, axis, 0, 0)
 			}
 			h.old.ajogMinusUI[i] = v
 		}
 		v = pinGet(h.ajogPlusUI[i])
 		if v != h.old.ajogPlusUI[i] {
 			if v {
-				_ = t.Jog(JogContinuous, false, axis, uiSpeed, 0)
+				_ = t.JogFromHAL(JogContinuous, false, axis, uiSpeed, 0)
 			} else {
-				_ = t.Jog(JogStop, false, axis, 0, 0)
+				_ = t.JogFromHAL(JogStop, false, axis, 0, 0)
 			}
 			h.old.ajogPlusUI[i] = v
 		}
@@ -1658,12 +1769,10 @@ func (h *halUI) updateOutputs(t *Task) {
 
 	// Motion status
 	if t.status == nil {
-		h.isRunning.Set(true)
 		return
 	}
 	ms, err := t.status.GetStatus()
 	if err != nil {
-		h.isRunning.Set(true)
 		return
 	}
 
@@ -1675,6 +1784,8 @@ func (h *halUI) updateOutputs(t *Task) {
 	h.foValue.Set(ms.FeedScale)
 	h.roValue.Set(ms.RapidScale)
 	h.mvValue.Set(ms.LimitVel)
+	h.jsValue.Set(t.jogSpeed)
+	h.asValue.Set(t.ajogSpeed)
 
 	// Joints
 	for i := 0; i <= h.numJoints; i++ {
@@ -1783,6 +1894,4 @@ func (h *halUI) updateOutputs(t *Task) {
 		}
 	}
 
-	// UI alive
-	h.isRunning.Set(true)
 }
