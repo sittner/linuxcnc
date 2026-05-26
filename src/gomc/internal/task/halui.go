@@ -85,6 +85,8 @@ type halUI struct {
 	jjogDeadband       *hal.Pin[float64]
 	jjogMinus          [maxJoints + 1]*hal.Pin[bool] // [numJoints] = selected
 	jjogPlus           [maxJoints + 1]*hal.Pin[bool]
+	jjogMinusUI        [maxJoints + 1]*hal.Pin[bool] // uses shared jog speed
+	jjogPlusUI         [maxJoints + 1]*hal.Pin[bool]
 	jjogAnalog         [maxJoints + 1]*hal.Pin[float64]
 	jjogIncrement      [maxJoints + 1]*hal.Pin[float64]
 	jjogIncrementPlus  [maxJoints + 1]*hal.Pin[bool]
@@ -95,6 +97,8 @@ type halUI struct {
 	ajogDeadband       *hal.Pin[float64]
 	ajogMinus          [maxAxes + 1]*hal.Pin[bool] // [numAxes] = selected
 	ajogPlus           [maxAxes + 1]*hal.Pin[bool]
+	ajogMinusUI        [maxAxes + 1]*hal.Pin[bool] // uses shared jog speed
+	ajogPlusUI         [maxAxes + 1]*hal.Pin[bool]
 	ajogAnalog         [maxAxes + 1]*hal.Pin[float64]
 	ajogIncrement      [maxAxes + 1]*hal.Pin[float64]
 	ajogIncrementPlus  [maxAxes + 1]*hal.Pin[bool]
@@ -186,8 +190,15 @@ type halUI struct {
 
 	// Misc
 	unitsPerMM      *hal.Pin[float64] // output
-	jogIncrementOut *hal.Pin[float64] // output — current jog increment (shared state)
+	jogIncrementOut *hal.Pin[float64] // IO — current jog increment (shared state)
+	jogSpeedOut     *hal.Pin[float64] // IO — linear jog speed (shared state)
+	ajogSpeedOut    *hal.Pin[float64] // IO — angular jog speed (shared state)
 	cycleCount      *hal.Pin[uint32]  // output
+
+	// Last-written values for IO pins (to detect external HAL changes)
+	lastWrittenIncrement float64
+	lastWrittenJogSpeed  float64
+	lastWrittenAjogSpeed float64
 
 	// --- axisui pins (merged) ---
 	// Notification control (input from HAL)
@@ -246,6 +257,8 @@ type halUIValues struct {
 	ajogSpeed          float64
 	jjogMinus          [maxJoints + 1]bool
 	jjogPlus           [maxJoints + 1]bool
+	jjogMinusUI        [maxJoints + 1]bool
+	jjogPlusUI         [maxJoints + 1]bool
 	jjogAnalog         [maxJoints + 1]float64
 	jjogIncrementPlus  [maxJoints + 1]bool
 	jjogIncrementMinus [maxJoints + 1]bool
@@ -255,6 +268,8 @@ type halUIValues struct {
 
 	ajogMinus          [maxAxes + 1]bool
 	ajogPlus           [maxAxes + 1]bool
+	ajogMinusUI        [maxAxes + 1]bool
+	ajogPlusUI         [maxAxes + 1]bool
 	ajogAnalog         [maxAxes + 1]float64
 	ajogIncrementPlus  [maxAxes + 1]bool
 	ajogIncrementMinus [maxAxes + 1]bool
@@ -505,6 +520,12 @@ func (h *halUI) createPins() error {
 		if h.jjogPlus[i], err = hal.NewPin[bool](c, sfx+".plus", hal.In); err != nil {
 			return err
 		}
+		if h.jjogMinusUI[i], err = hal.NewPin[bool](c, sfx+".minus-ui", hal.In); err != nil {
+			return err
+		}
+		if h.jjogPlusUI[i], err = hal.NewPin[bool](c, sfx+".plus-ui", hal.In); err != nil {
+			return err
+		}
 		if h.jjogAnalog[i], err = hal.NewPin[float64](c, sfx+".analog", hal.In); err != nil {
 			return err
 		}
@@ -538,6 +559,12 @@ func (h *halUI) createPins() error {
 		if h.ajogPlus[i], err = hal.NewPin[bool](c, sfx+".plus", hal.In); err != nil {
 			return err
 		}
+		if h.ajogMinusUI[i], err = hal.NewPin[bool](c, sfx+".minus-ui", hal.In); err != nil {
+			return err
+		}
+		if h.ajogPlusUI[i], err = hal.NewPin[bool](c, sfx+".plus-ui", hal.In); err != nil {
+			return err
+		}
 		if h.ajogAnalog[i], err = hal.NewPin[float64](c, sfx+".analog", hal.In); err != nil {
 			return err
 		}
@@ -556,6 +583,12 @@ func (h *halUI) createPins() error {
 		return err
 	}
 	if h.ajogPlus[maxAxes], err = hal.NewPin[bool](c, "axis.selected.plus", hal.In); err != nil {
+		return err
+	}
+	if h.ajogMinusUI[maxAxes], err = hal.NewPin[bool](c, "axis.selected.minus-ui", hal.In); err != nil {
+		return err
+	}
+	if h.ajogPlusUI[maxAxes], err = hal.NewPin[bool](c, "axis.selected.plus-ui", hal.In); err != nil {
 		return err
 	}
 	if h.ajogAnalog[maxAxes], err = hal.NewPin[float64](c, "axis.selected.analog", hal.In); err != nil {
@@ -809,7 +842,13 @@ func (h *halUI) createPins() error {
 	if h.unitsPerMM, err = hal.NewPin[float64](c, "machine.units-per-mm", hal.Out); err != nil {
 		return err
 	}
-	if h.jogIncrementOut, err = hal.NewPin[float64](c, "jog.increment", hal.Out); err != nil {
+	if h.jogIncrementOut, err = hal.NewPin[float64](c, "jog.increment", hal.IO); err != nil {
+		return err
+	}
+	if h.jogSpeedOut, err = hal.NewPin[float64](c, "jog.speed", hal.IO); err != nil {
+		return err
+	}
+	if h.ajogSpeedOut, err = hal.NewPin[float64](c, "jog.aspeed", hal.IO); err != nil {
 		return err
 	}
 	if h.cycleCount, err = hal.NewPin[uint32](c, "cycle-count", hal.Out); err != nil {
@@ -871,6 +910,7 @@ func (h *halUI) check(t *Task) {
 		h.cycleCount.Set(h.cycleCount.Get() + 1)
 	}
 
+	h.checkIOPins(t)
 	h.checkStateAndMode(t)
 	h.checkCoolant(t)
 	h.checkProgram(t)
@@ -883,6 +923,33 @@ func (h *halUI) check(t *Task) {
 	h.checkHoming(t)
 	h.checkMisc(t)
 	h.checkMDI(t)
+}
+
+// checkIOPins reads bidirectional I/O pins and updates shared state if HAL changed them.
+// Only updates if pin value differs from what we last wrote (external change detection).
+func (h *halUI) checkIOPins(t *Task) {
+	// jog.increment (IO)
+	halIncr := h.jogIncrementOut.Get()
+	if math.Abs(halIncr-h.lastWrittenIncrement) > epsilon {
+		// External HAL changed the pin — update shared state
+		t.mu.Lock()
+		t.jogIncrement = halIncr
+		t.mu.Unlock()
+	}
+	// jog.speed (IO)
+	halSpeed := h.jogSpeedOut.Get()
+	if math.Abs(halSpeed-h.lastWrittenJogSpeed) > epsilon {
+		t.mu.Lock()
+		t.jogSpeed = halSpeed
+		t.mu.Unlock()
+	}
+	// jog.aspeed (IO)
+	halASpeed := h.ajogSpeedOut.Get()
+	if math.Abs(halASpeed-h.lastWrittenAjogSpeed) > epsilon {
+		t.mu.Lock()
+		t.ajogSpeed = halASpeed
+		t.mu.Unlock()
+	}
 }
 
 func (h *halUI) checkStateAndMode(t *Task) {
@@ -1227,6 +1294,27 @@ func (h *halUI) checkJointJog(t *Task) {
 			_ = t.Jog(JogIncrement, true, joint, jjogSpeed, -incr)
 		}
 		h.old.jjogIncrementMinus[i] = v
+
+		// UI jog (uses shared jog speed from task state)
+		uiSpeed := t.jogSpeed
+		v = pinGet(h.jjogMinusUI[i])
+		if v != h.old.jjogMinusUI[i] {
+			if v {
+				_ = t.Jog(JogContinuous, true, joint, -uiSpeed, 0)
+			} else {
+				_ = t.Jog(JogStop, true, joint, 0, 0)
+			}
+			h.old.jjogMinusUI[i] = v
+		}
+		v = pinGet(h.jjogPlusUI[i])
+		if v != h.old.jjogPlusUI[i] {
+			if v {
+				_ = t.Jog(JogContinuous, true, joint, uiSpeed, 0)
+			} else {
+				_ = t.Jog(JogStop, true, joint, 0, 0)
+			}
+			h.old.jjogPlusUI[i] = v
+		}
 	}
 }
 
@@ -1296,6 +1384,27 @@ func (h *halUI) checkAxisJog(t *Task) {
 			_ = t.Jog(JogIncrement, false, axis, ajogSpeed, -incr)
 		}
 		h.old.ajogIncrementMinus[i] = v
+
+		// UI jog (uses shared jog speed from task state)
+		uiSpeed := t.ajogSpeed
+		v = pinGet(h.ajogMinusUI[i])
+		if v != h.old.ajogMinusUI[i] {
+			if v {
+				_ = t.Jog(JogContinuous, false, axis, -uiSpeed, 0)
+			} else {
+				_ = t.Jog(JogStop, false, axis, 0, 0)
+			}
+			h.old.ajogMinusUI[i] = v
+		}
+		v = pinGet(h.ajogPlusUI[i])
+		if v != h.old.ajogPlusUI[i] {
+			if v {
+				_ = t.Jog(JogContinuous, false, axis, uiSpeed, 0)
+			} else {
+				_ = t.Jog(JogStop, false, axis, 0, 0)
+			}
+			h.old.ajogPlusUI[i] = v
+		}
 	}
 }
 
@@ -1396,6 +1505,8 @@ func (h *halUI) updateOutputs(t *Task) {
 	linearUnits := t.linearUnits
 	jogAxis := t.jogAxis
 	jogIncrement := t.jogIncrement
+	jogSpeed := t.jogSpeed
+	ajogSpeed := t.ajogSpeed
 	cs := t.canon.state
 	t.mu.Unlock()
 
@@ -1435,6 +1546,11 @@ func (h *halUI) updateOutputs(t *Task) {
 		}
 	}
 	h.jogIncrementOut.Set(jogIncrement)
+	h.lastWrittenIncrement = jogIncrement
+	h.jogSpeedOut.Set(jogSpeed)
+	h.lastWrittenJogSpeed = jogSpeed
+	h.ajogSpeedOut.Set(ajogSpeed)
+	h.lastWrittenAjogSpeed = ajogSpeed
 
 	// Motion status
 	if t.status == nil {

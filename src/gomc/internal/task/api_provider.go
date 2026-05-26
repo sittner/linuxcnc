@@ -232,6 +232,20 @@ func (m *milltaskModule) SetJogIncrement(increment float64) (int32, error) {
 	return rcsDone, m.task.SetJogIncrement(increment)
 }
 
+func (m *milltaskModule) SetJogSpeed(speed float64) (int32, error) {
+	if err := m.ready(); err != nil {
+		return rcsError, err
+	}
+	return rcsDone, m.task.SetJogSpeed(speed)
+}
+
+func (m *milltaskModule) SetAjogSpeed(speed float64) (int32, error) {
+	if err := m.ready(); err != nil {
+		return rcsError, err
+	}
+	return rcsDone, m.task.SetAjogSpeed(speed)
+}
+
 // --- EmcstatCallbacks implementation ---
 
 func (m *milltaskModule) GetStat() (*emcstatapi.StatFull, error) {

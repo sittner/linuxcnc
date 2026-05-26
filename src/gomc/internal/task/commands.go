@@ -1036,3 +1036,25 @@ func (t *Task) SetJogIncrement(increment float64) error {
 	t.jogIncrement = increment
 	return nil
 }
+
+// SetJogSpeed sets the linear jog speed (units/sec).
+func (t *Task) SetJogSpeed(speed float64) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if speed < 0 {
+		return fmt.Errorf("SetJogSpeed: invalid speed %f", speed)
+	}
+	t.jogSpeed = speed
+	return nil
+}
+
+// SetAjogSpeed sets the angular jog speed (deg/sec).
+func (t *Task) SetAjogSpeed(speed float64) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if speed < 0 {
+		return fmt.Errorf("SetAjogSpeed: invalid speed %f", speed)
+	}
+	t.ajogSpeed = speed
+	return nil
+}

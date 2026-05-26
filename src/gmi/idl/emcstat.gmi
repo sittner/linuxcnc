@@ -185,6 +185,8 @@ type StatFull {
     debug: i32              # debug flags bitmask
     jog_axis: i32           # selected jog axis (0=X .. 8=W, -1=none)
     jog_increment: f64      # current jog increment (0 = continuous)
+    jog_speed: f64          # linear jog speed (units/sec)
+    ajog_speed: f64         # angular jog speed (deg/sec)
 }
 
 # ─── Functions ───

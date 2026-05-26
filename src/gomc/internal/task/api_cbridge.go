@@ -40,6 +40,8 @@ extern int32_t goTaskWaitComplete(void *ctx, double timeout);
 extern int32_t goTaskSetDebug(void *ctx, int32_t debug);
 extern int32_t goTaskSetJogAxis(void *ctx, int32_t axis);
 extern int32_t goTaskSetJogIncrement(void *ctx, double increment);
+extern int32_t goTaskSetJogSpeed(void *ctx, double speed);
+extern int32_t goTaskSetAjogSpeed(void *ctx, double speed);
 extern emcstat_stat_full_t goTaskGetStat(void *ctx);
 
 // Allocate and populate the emccmd_callbacks_t struct.
@@ -75,6 +77,8 @@ static emccmd_callbacks_t *alloc_emccmd_cbs(void *ctx) {
     cbs->set_debug = goTaskSetDebug;
     cbs->set_jog_axis = goTaskSetJogAxis;
     cbs->set_jog_increment = goTaskSetJogIncrement;
+    cbs->set_jog_speed = goTaskSetJogSpeed;
+    cbs->set_ajog_speed = goTaskSetAjogSpeed;
     return cbs;
 }
 
@@ -429,6 +433,26 @@ func goTaskSetJogIncrement(ctx unsafe.Pointer, increment C.double) C.int32_t {
 	return C.int32_t(r)
 }
 
+//export goTaskSetJogSpeed
+func goTaskSetJogSpeed(ctx unsafe.Pointer, speed C.double) C.int32_t {
+	m := cgo.Handle(ctx).Value().(*milltaskModule)
+	r, err := m.SetJogSpeed(float64(speed))
+	if err != nil {
+		return -1
+	}
+	return C.int32_t(r)
+}
+
+//export goTaskSetAjogSpeed
+func goTaskSetAjogSpeed(ctx unsafe.Pointer, speed C.double) C.int32_t {
+	m := cgo.Handle(ctx).Value().(*milltaskModule)
+	r, err := m.SetAjogSpeed(float64(speed))
+	if err != nil {
+		return -1
+	}
+	return C.int32_t(r)
+}
+
 //export goTaskGetStat
 func goTaskGetStat(ctx unsafe.Pointer) C.emcstat_stat_full_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
@@ -481,6 +505,8 @@ func goTaskGetStat(ctx unsafe.Pointer) C.emcstat_stat_full_t {
 	result.linear_units = C.double(stat.LinearUnits)
 	result.jog_axis = C.int32_t(stat.JogAxis)
 	result.jog_increment = C.double(stat.JogIncrement)
+	result.jog_speed = C.double(stat.JogSpeed)
+	result.ajog_speed = C.double(stat.AjogSpeed)
 
 	// Positions.
 	result.position = positionGoToC(stat.Position)

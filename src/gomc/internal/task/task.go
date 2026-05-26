@@ -259,6 +259,8 @@ type Task struct {
 	// Jog selection (shared across clients)
 	jogAxis      int32   // selected jog axis (0=X .. 8=W, -1=none)
 	jogIncrement float64 // current jog increment (0 = continuous)
+	jogSpeed     float64 // linear jog speed (units/sec, from UI slider)
+	ajogSpeed    float64 // angular jog speed (deg/sec, from UI slider)
 
 	// Line tracking (for stat reporting)
 	readLine    int32 // line the interpreter has read up to

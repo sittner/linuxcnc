@@ -182,3 +182,13 @@ func set_jog_axis(axis: i32) -> i32
 @method "POST"
 @path "/jog-increment"
 func set_jog_increment(increment: f64) -> i32
+
+# Set linear jog speed (units/sec)
+@method "POST"
+@path "/jog-speed"
+func set_jog_speed(speed: f64) -> i32
+
+# Set angular jog speed (deg/sec)
+@method "POST"
+@path "/ajog-speed"
+func set_ajog_speed(speed: f64) -> i32

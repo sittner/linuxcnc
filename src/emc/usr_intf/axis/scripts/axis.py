@@ -284,6 +284,8 @@ spindlerate_blackout = 0
 maxvel_blackout = 0
 jog_axis_blackout = 0
 jog_incr_blackout = 0
+jog_speed_blackout = 0
+ajog_speed_blackout = 0
 jogincr_index_last = 1
 mdi_history_index= -1
 resume_inhibit = 0
@@ -890,6 +892,7 @@ class LivePlotter:
             return
 
         global continuous_jog_in_progress,cjogindices
+        global jog_speed_blackout, ajog_speed_blackout
         if continuous_jog_in_progress and not manual_tab_visible():
             jjogmode = get_jog_mode()
             for idx in cjogindices:
@@ -962,6 +965,30 @@ class LivePlotter:
                                 continue
             except (AttributeError, KeyError):
                 pass
+
+        # Sync jog speed from server (multi-client sync)
+        if time.time() > jog_speed_blackout:
+            try:
+                remote_speed = self.stat.jog_speed
+                local_speed = vars.jog_speed.get()
+                if abs(remote_speed - local_speed) > 0.01 and remote_speed > 0:
+                    global _jog_speed_from_remote
+                    _jog_speed_from_remote = True
+                    vars.jog_speed.set(remote_speed)
+                    _jog_speed_from_remote = False
+            except (AttributeError, KeyError):
+                _jog_speed_from_remote = False
+
+        if time.time() > ajog_speed_blackout:
+            try:
+                remote_aspeed = self.stat.ajog_speed
+                local_aspeed = vars.jog_aspeed.get()
+                if abs(remote_aspeed - local_aspeed) > 0.01 and remote_aspeed > 0:
+                    _jog_speed_from_remote = True
+                    vars.jog_aspeed.set(remote_aspeed)
+                    _jog_speed_from_remote = False
+            except (AttributeError, KeyError):
+                _jog_speed_from_remote = False
 
         self.win.set_current_line(self.stat.motion_id or self.stat.motion_line)
 
@@ -4043,6 +4070,37 @@ if  (       (s.axis_mask & 56 == 0)  # 56==0x38== 000111000 (ABC)
 
 c = gmi.Command()
 e = gmi.ErrorChannel()
+
+_jog_speed_from_remote = False
+
+def _on_jog_speed_changed(*args):
+    global jog_speed_blackout, _jog_speed_from_remote
+    if _jog_speed_from_remote:
+        return
+    try:
+        speed = vars.jog_speed.get()
+        if speed > 0:
+            jog_speed_blackout = time.time() + 1
+            c.set_jog_speed(speed)
+    except Exception:
+        pass
+
+def _on_ajog_speed_changed(*args):
+    global ajog_speed_blackout, _jog_speed_from_remote
+    if _jog_speed_from_remote:
+        return
+    try:
+        speed = vars.jog_aspeed.get()
+        if speed > 0:
+            ajog_speed_blackout = time.time() + 1
+            c.set_ajog_speed(speed)
+    except Exception:
+        pass
+
+root_window.tk.call("trace", "add", "variable", "jog_speed", "write",
+    root_window.register(_on_jog_speed_changed))
+root_window.tk.call("trace", "add", "variable", "jog_aspeed", "write",
+    root_window.register(_on_ajog_speed_changed))
 
 c.set_block_delete(vars.block_delete.get())
 c.wait_complete()

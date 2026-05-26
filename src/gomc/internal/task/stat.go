@@ -53,6 +53,8 @@ func (t *Task) BuildStat() *emcstatapi.StatFull {
 		KinematicsType: emcstatapi.KinematicsType_IDENTITY,
 		JogAxis:        t.jogAxis,
 		JogIncrement:   t.jogIncrement,
+		JogSpeed:       t.jogSpeed,
+		AjogSpeed:      t.ajogSpeed,
 		ActiveGcodes:   append([]int32(nil), t.activeGcodes...),
 		ActiveMcodes:   append([]int32(nil), t.activeMcodes...),
 		ActiveSettings: append([]float64(nil), t.activeSettings...),
