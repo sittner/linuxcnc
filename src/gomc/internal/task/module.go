@@ -193,6 +193,9 @@ func (m *milltaskModule) Destroy() {
 	if m.inihal != nil {
 		m.inihal.exit()
 	}
+	if m.mon != nil && m.mon.halui != nil {
+		m.mon.halui.exit()
+	}
 	if m.apiCleanup != nil {
 		m.apiCleanup()
 	}

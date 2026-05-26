@@ -852,6 +852,13 @@ func risingEdge(new, old bool) bool {
 	return new && !old
 }
 
+// exit releases the HAL component.
+func (h *halUI) exit() {
+	if h.comp != nil {
+		h.comp.Exit()
+	}
+}
+
 // check reads all input pins and dispatches commands for any that changed.
 // Called from the monitor goroutine at 10ms intervals.
 func (h *halUI) check(t *Task) {
