@@ -5,8 +5,7 @@
 load tpmod
 load homemod
 load io <iocontrol>
-load halui
-load milltask
+load milltask halui=halui
 
 # load UI helper
 load ngcpreview
