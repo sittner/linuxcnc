@@ -1295,8 +1295,14 @@ func (h *halUI) checkJointJog(t *Task) {
 		}
 		h.old.jjogIncrementMinus[i] = v
 
-		// UI jog (uses shared jog speed from task state)
-		uiSpeed := t.jogSpeed
+		// UI jog (uses shared jog speed from task state, convert units/min to units/sec)
+		// Joints 3,4,5 (A,B,C) are angular in trivkins; all others are linear.
+		var uiSpeed float64
+		if joint >= 3 && joint <= 5 {
+			uiSpeed = t.ajogSpeed / 60.0
+		} else {
+			uiSpeed = t.jogSpeed / 60.0
+		}
 		v = pinGet(h.jjogMinusUI[i])
 		if v != h.old.jjogMinusUI[i] {
 			if v {
@@ -1385,8 +1391,14 @@ func (h *halUI) checkAxisJog(t *Task) {
 		}
 		h.old.ajogIncrementMinus[i] = v
 
-		// UI jog (uses shared jog speed from task state)
-		uiSpeed := t.ajogSpeed
+		// UI jog (uses shared jog speed from task state, convert units/min to units/sec)
+		// Axes 3,4,5 (A,B,C) are angular; all others (X,Y,Z,U,V,W) are linear.
+		var uiSpeed float64
+		if axis >= 3 && axis <= 5 {
+			uiSpeed = t.ajogSpeed / 60.0
+		} else {
+			uiSpeed = t.jogSpeed / 60.0
+		}
 		v = pinGet(h.ajogMinusUI[i])
 		if v != h.old.ajogMinusUI[i] {
 			if v {

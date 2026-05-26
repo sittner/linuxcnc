@@ -4102,6 +4102,21 @@ root_window.tk.call("trace", "add", "variable", "jog_speed", "write",
 root_window.tk.call("trace", "add", "variable", "jog_aspeed", "write",
     root_window.register(_on_ajog_speed_changed))
 
+# Send initial jog speeds to server (traces miss the initial set that happened before registration)
+try:
+    speed = vars.jog_speed.get()
+    print("note: initial jog_speed send: %.3f" % speed, file=sys.stderr)
+    if speed > 0:
+        c.set_jog_speed(speed)
+except Exception:
+    pass
+try:
+    speed = vars.jog_aspeed.get()
+    if speed > 0:
+        c.set_ajog_speed(speed)
+except Exception:
+    pass
+
 c.set_block_delete(vars.block_delete.get())
 c.wait_complete()
 c.set_optional_stop(vars.optional_stop.get())
