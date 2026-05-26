@@ -183,6 +183,8 @@ type StatFull {
     state: i32              # RCS state for connectivity check
     rcs_status: i32         # RCS command status (1=DONE, 2=EXEC, 3=ERROR)
     debug: i32              # debug flags bitmask
+    jog_axis: i32           # selected jog axis (0=X .. 8=W, -1=none)
+    jog_increment: f64      # current jog increment (0 = continuous)
 }
 
 # ─── Functions ───

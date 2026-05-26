@@ -1014,3 +1014,25 @@ func (t *Task) SetDebug(debug int32) error {
 
 	return t.motion.SetDebug(debug)
 }
+
+// SetJogAxis sets the selected jog axis (0=X .. 8=W, -1=none).
+func (t *Task) SetJogAxis(axis int32) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if axis < -1 || axis >= int32(maxAxes) {
+		return fmt.Errorf("SetJogAxis: invalid axis %d", axis)
+	}
+	t.jogAxis = axis
+	return nil
+}
+
+// SetJogIncrement sets the jog increment distance (0 = continuous).
+func (t *Task) SetJogIncrement(increment float64) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if increment < 0 {
+		return fmt.Errorf("SetJogIncrement: invalid increment %f", increment)
+	}
+	t.jogIncrement = increment
+	return nil
+}

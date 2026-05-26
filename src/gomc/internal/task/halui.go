@@ -185,8 +185,9 @@ type halUI struct {
 	axisPosRelative  [maxAxes + 1]*hal.Pin[float64]
 
 	// Misc
-	unitsPerMM *hal.Pin[float64] // output
-	cycleCount *hal.Pin[uint32]  // output
+	unitsPerMM      *hal.Pin[float64] // output
+	jogIncrementOut *hal.Pin[float64] // output — current jog increment (shared state)
+	cycleCount      *hal.Pin[uint32]  // output
 
 	// --- axisui pins (merged) ---
 	// Notification control (input from HAL)
@@ -808,6 +809,9 @@ func (h *halUI) createPins() error {
 	if h.unitsPerMM, err = hal.NewPin[float64](c, "machine.units-per-mm", hal.Out); err != nil {
 		return err
 	}
+	if h.jogIncrementOut, err = hal.NewPin[float64](c, "jog.increment", hal.Out); err != nil {
+		return err
+	}
 	if h.cycleCount, err = hal.NewPin[uint32](c, "cycle-count", hal.Out); err != nil {
 		return err
 	}
@@ -1325,6 +1329,8 @@ func (h *halUI) checkAxisSelection(t *Task) {
 					h.axisIsSelected[j].Set(j == i)
 				}
 			}
+			// Update shared jog axis state
+			_ = t.SetJogAxis(int32(i))
 		}
 		h.old.axisNrSelect[i] = v
 	}
@@ -1388,6 +1394,8 @@ func (h *halUI) updateOutputs(t *Task) {
 	optionalStop := t.optionalStop
 	blockDelete := t.blockDelete
 	linearUnits := t.linearUnits
+	jogAxis := t.jogAxis
+	jogIncrement := t.jogIncrement
 	cs := t.canon.state
 	t.mu.Unlock()
 
@@ -1416,6 +1424,17 @@ func (h *halUI) updateOutputs(t *Task) {
 	if linearUnits > 0 {
 		h.unitsPerMM.Set(1.0 / linearUnits)
 	}
+
+	// Jog axis selection (driven from shared state)
+	if jogAxis >= 0 {
+		h.axisSelected.Set(uint32(jogAxis))
+		for i := 0; i < maxAxes; i++ {
+			if h.axisIsSelected[i] != nil {
+				h.axisIsSelected[i].Set(int32(i) == jogAxis)
+			}
+		}
+	}
+	h.jogIncrementOut.Set(jogIncrement)
 
 	// Motion status
 	if t.status == nil {

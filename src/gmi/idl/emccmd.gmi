@@ -172,3 +172,13 @@ func wait_complete(timeout: f64) -> i32
 @method "POST"
 @path "/debug"
 func set_debug(debug: i32) -> i32
+
+# Set selected jog axis (0=X .. 8=W, -1=none)
+@method "POST"
+@path "/jog-axis"
+func set_jog_axis(axis: i32) -> i32
+
+# Set jog increment (0 = continuous)
+@method "POST"
+@path "/jog-increment"
+func set_jog_increment(increment: f64) -> i32

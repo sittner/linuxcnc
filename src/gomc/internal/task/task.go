@@ -256,6 +256,10 @@ type Task struct {
 	stepping      bool // single-step mode: auto-pause after each interpreter line
 	interpActive  bool // true while runProgram goroutine is executing
 
+	// Jog selection (shared across clients)
+	jogAxis      int32   // selected jog axis (0=X .. 8=W, -1=none)
+	jogIncrement float64 // current jog increment (0 = continuous)
+
 	// Line tracking (for stat reporting)
 	readLine    int32 // line the interpreter has read up to
 	currentLine int32 // line currently being executed by sequencer

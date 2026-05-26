@@ -218,6 +218,20 @@ func (m *milltaskModule) SetDebug(debug int32) (int32, error) {
 	return rcsDone, m.task.SetDebug(debug)
 }
 
+func (m *milltaskModule) SetJogAxis(axis int32) (int32, error) {
+	if err := m.ready(); err != nil {
+		return rcsError, err
+	}
+	return rcsDone, m.task.SetJogAxis(axis)
+}
+
+func (m *milltaskModule) SetJogIncrement(increment float64) (int32, error) {
+	if err := m.ready(); err != nil {
+		return rcsError, err
+	}
+	return rcsDone, m.task.SetJogIncrement(increment)
+}
+
 // --- EmcstatCallbacks implementation ---
 
 func (m *milltaskModule) GetStat() (*emcstatapi.StatFull, error) {
