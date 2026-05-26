@@ -79,117 +79,6 @@ else:
 
 if server_present == 1:
     import gmi
-    from gmi.axisui_ws_client import (
-        AxisuiWatchThread, JogInputs, SliderInputs, NotificationInputs
-    )
-
-# ---------------------------------------------------------------------------
-# WSCompat: compatibility wrapper that routes HAL pin access through WebSocket.
-# This allows existing code using comp["pin"] to work unchanged.
-# ---------------------------------------------------------------------------
-
-class WSCompat:
-    """Dict-like HAL pin proxy over WebSocket watch channel."""
-
-    # Map old axis.py pin names → (state_attr, field_name)
-    _INPUT_MAP = {
-        "jog.disable":             ("_jog", "disable"),
-        "jog.x-plus":              ("_jog", "x_plus"),
-        "jog.x-minus":             ("_jog", "x_minus"),
-        "jog.y-plus":              ("_jog", "y_plus"),
-        "jog.y-minus":             ("_jog", "y_minus"),
-        "jog.z-plus":              ("_jog", "z_plus"),
-        "jog.z-minus":             ("_jog", "z_minus"),
-        "jog.a-plus":              ("_jog", "a_plus"),
-        "jog.a-minus":             ("_jog", "a_minus"),
-        "jog.b-plus":              ("_jog", "b_plus"),
-        "jog.b-minus":             ("_jog", "b_minus"),
-        "jog.c-plus":              ("_jog", "c_plus"),
-        "jog.c-minus":             ("_jog", "c_minus"),
-        "jog.u-plus":              ("_jog", "u_plus"),
-        "jog.u-minus":             ("_jog", "u_minus"),
-        "jog.v-plus":              ("_jog", "v_plus"),
-        "jog.v-minus":             ("_jog", "v_minus"),
-        "jog.w-plus":              ("_jog", "w_plus"),
-        "jog.w-minus":             ("_jog", "w_minus"),
-        "sliders.scale":           ("_sliders", "scale"),
-        "sliders.scale-abs":       ("_sliders", "scale_abs"),
-        "sliders.spinoverride":    ("_sliders", "spinoverride"),
-        "sliders.spinoverride-abs":("_sliders", "spinoverride_abs"),
-        "sliders.feedoverride":    ("_sliders", "feedoverride"),
-        "sliders.feedoverride-abs":("_sliders", "feedoverride_abs"),
-        "sliders.rapidoverride":   ("_sliders", "rapidoverride"),
-        "sliders.rapidoverride-abs":("_sliders", "rapidoverride_abs"),
-        "sliders.jogspeed":        ("_sliders", "jogspeed"),
-        "sliders.jogspeed-abs":    ("_sliders", "jogspeed_abs"),
-        "sliders.ajogspeed":       ("_sliders", "ajogspeed"),
-        "sliders.ajogspeed-abs":   ("_sliders", "ajogspeed_abs"),
-        "sliders.maxvel":          ("_sliders", "maxvel"),
-        "sliders.maxvel-abs":      ("_sliders", "maxvel_abs"),
-        "notifications-clear":     ("_notif", "notifications_clear"),
-        "notifications-clear-info":("_notif", "notifications_clear_info"),
-        "notifications-clear-error":("_notif", "notifications_clear_error"),
-        "resume-inhibit":          ("_notif", "resume_inhibit"),
-    }
-
-    _HEARTBEAT_INTERVAL = 1.0  # seconds between is-running / has-notifications sends
-
-    def __init__(self, ws_thread):
-        self._ws = ws_thread
-        self._jog = JogInputs()
-        self._sliders = SliderInputs()
-        self._notif = NotificationInputs()
-        self._last_heartbeat = 0.0
-        self._last_has_notifications = None
-
-    def _on_jog(self, state):
-        self._jog = state
-
-    def _on_sliders(self, state):
-        self._sliders = state
-
-    def _on_notif(self, state):
-        self._notif = state
-
-    def __getitem__(self, pin):
-        entry = self._INPUT_MAP.get(pin)
-        if entry:
-            attr, field = entry
-            return getattr(getattr(self, attr), field)
-        raise KeyError(pin)
-
-    def __setitem__(self, pin, value):
-        if pin == "is-running":
-            import time
-            now = time.monotonic()
-            if now - self._last_heartbeat >= self._HEARTBEAT_INTERVAL:
-                self._ws.set_is_running(bool(value))
-                self._last_heartbeat = now
-        elif pin == "has-notifications":
-            v = bool(value)
-            if v != self._last_has_notifications:
-                self._ws.set_has_notifications(v)
-                self._last_has_notifications = v
-        elif pin == "error":
-            self._ws.set_error(bool(value))
-        elif pin == "abort":
-            self._ws.set_abort(bool(value))
-        elif pin == "jog.increment":
-            c.set_jog_increment(float(value))
-            self._ws.set_jog_increment(float(value))
-        elif pin.startswith("jog."):
-            # jog.x = True/False — batch handled by set_jog_axis
-            pass  # handled by axis_activated() via set_jog_axis
-        else:
-            pass  # ignore unknown pins (user_hal_pins compat)
-
-    def newpin(self, *args, **kwargs):
-        """No-op: pins are created by the axisui cmod."""
-        pass
-
-    def ready(self):
-        """No-op: the axisui cmod component is already ready."""
-        pass
 
 import configparser
 
@@ -275,9 +164,6 @@ mdi_history_max_entries = 1000
 mdi_history_save_filename =\
     inifile.find('DISPLAY', 'MDI_HISTORY_FILE') or "~/.axis_mdi_history"
 
-hal_joghandlers = []
-hal_scalehandlers = []
-
 feedrate_blackout = 0
 rapidrate_blackout = 0
 spindlerate_blackout = 0
@@ -288,7 +174,6 @@ jog_speed_blackout = 0
 ajog_speed_blackout = 0
 jogincr_index_last = 1
 mdi_history_index= -1
-resume_inhibit = 0
 continuous_jog_in_progress = False
 cjogindices = []
 _jog_refresh_counter = 0
@@ -1084,27 +969,13 @@ class LivePlotter:
         vupdate(vars.interp_state, self.stat.interp_state)
         vupdate(vars.queued_mdi_commands, self.stat.queued_mdi_commands)
         if server_present == 1:
-            comp["is-running"] = 1
-            now_resume_inhibit = comp["resume-inhibit"]
-            global resume_inhibit
-            if resume_inhibit != now_resume_inhibit:
-                 resume_inhibit = now_resume_inhibit
-                 if resume_inhibit:
-                     root_window.tk.call("pause_image_override")
-                 else:
-                     root_window.tk.call("pause_image_normal")
-            for handler in hal_scalehandlers:
-                handler.process()
-            if (comp["jog.disable"] or
-                    self.stat.task_state != STATE_ON or
+            if (self.stat.task_state != STATE_ON or
                     self.stat.interp_state != INTERP_IDLE):
                 widgets.jogminus.configure(state="disabled")
                 widgets.jogplus.configure(state="disabled")
             else:
                 widgets.jogminus.configure(state="normal")
                 widgets.jogplus.configure(state="normal")
-            for handler in hal_joghandlers:
-                handler.process()
         vupdate(vars.task_mode, self.stat.task_mode)
         vupdate(vars.task_state, self.stat.task_state)
         vupdate(vars.task_paused, self.stat.task_paused)
@@ -1184,119 +1055,6 @@ class LivePlotter:
     def clear(self):
         self.logger.clear()
         o.redraw_soon()
-
-class HalJogHandler:
-    def __init__(self, axis):
-        self.axis = axis
-        self.idx = "xyzabcuvw".index(axis)
-        self.pin_plus = "jog.%s-plus" % (axis)
-        self.pin_minus = "jog.%s-minus" % (axis)
-        self.jog_plus = False
-        self.jog_minus = False
-
-    def process(self):
-        if comp["jog.disable"]:
-            jog_plus = False
-            jog_minus = False
-        else:
-            jog_plus = comp[self.pin_plus]
-            jog_minus = comp[self.pin_minus]
-
-        if self.jog_plus != jog_plus:
-             self.jog_plus = jog_plus
-             if jog_plus:
-                 jog_on(self.idx, get_jog_speed(self.idx))
-             else:
-                 jog_off(self.idx)
-
-        if self.jog_minus != jog_minus:
-             self.jog_minus = jog_minus
-             if jog_minus:
-                 jog_on(self.idx, -get_jog_speed(self.idx))
-             else:
-                 jog_off(self.idx)
-
-class HalScaleHandler:
-    def __init__(self, pin, widget):
-        self.locked = False
-        self.pin = pin
-        self.widget = widget
-        self.do_init = True
-        self.last_count = 0
-        self.last_scale = 0
-        self.accu = 0
-        self.abs_pin = pin + "-abs"
-        self.last_absval = 0
-        self.last_scale_abs = 0
-        self.abs_locked = False
-
-    def process(self):
-        if self.locked:
-            return;
-
-        count = comp[self.pin]
-        if self.do_init:
-            curr = self.widget.get()
-            self.do_init = False
-            self.last_count = count
-            self.last_scale = curr
-            self.accu = 0
-            self.last_absval = comp[self.abs_pin]
-            self.last_scale_abs = curr
-            self.abs_locked = False
-            return
-
-        fr = self.widget.cget("from")
-        to = self.widget.cget("to")
-
-        diff = count - self.last_count
-        self.last_count = count
-        if diff != 0:
-            curr = self.widget.get()
-            if self.last_scale != curr:
-                self.last_scale = curr
-                self.accu = 0
-
-            scale = (to - fr) * comp["sliders.scale"]
-            self.accu += diff * scale
-
-            new = curr + self.accu
-            if new > to:
-                self.accu = 0
-                new = to
-            if new < fr:
-                self.accu = 0
-                new = fr
-            self.widget_set(new)
-
-        absval = comp[self.abs_pin]
-        if self.last_absval != absval:
-            curr = self.widget.get()
-            if self.last_scale_abs != curr:
-                self.last_scale_abs = curr
-                self.abs_locked = False
-
-            scale = (to - fr) * comp["sliders.scale-abs"]
-            new = fr + (absval * scale)
-            old = fr + (self.last_absval * scale)
-            self.last_absval = absval
-
-            if not self.abs_locked:
-                self.abs_locked = (new >= curr and old < curr) or (new <= curr and old > curr)
-
-            if self.abs_locked:
-                if new > to:
-                    new = to
-                if new < fr:
-                    new = fr
-                self.widget_set(new)
-                self.last_scale_abs = self.widget.get()
-
-    def widget_set(self, val):
-            self.locked = True;
-            self.widget.set(val)
-            self.widget.update()
-            self.locked = False;
 
 
 def running(do_poll=True):
@@ -1821,14 +1579,15 @@ def parse_increment(jogincr):
 
 def set_hal_jogincrement():
     global jog_incr_blackout
-    if not 'comp' in globals(): return # this is called once during startup before comp exists
+    if not server_present: return
+    if 'c' not in globals(): return
     jog_incr_blackout = time.time() + 1
     jogincr = widgets.jogincr.get()
     if jogincr == _("Continuous"):
         distance = 0
     else:
         distance = parse_increment(jogincr)
-    comp['jog.increment'] = distance
+    c.set_jog_increment(distance)
 
 def jogspeed_listbox_change(dummy, value):
     global jogincr_index_last
@@ -2734,8 +2493,6 @@ class TclCommands(nf.TclCommands):
             return
         s.poll()
         if s.paused:
-            global resume_inhibit
-            if resume_inhibit: return
             c.auto(AUTO_RESUME)
         elif s.interp_state != INTERP_IDLE:
             c.auto(AUTO_PAUSE)
@@ -2743,11 +2500,8 @@ class TclCommands(nf.TclCommands):
     def task_stop(*event):
         if s.task_mode == MODE_AUTO and vars.running_line.get() != 0:
             o.set_highlight_line(vars.running_line.get())
-        comp["abort"] = True
         c.abort()
         c.wait_complete()
-        time.sleep(0.3)
-        comp["abort"] = False
 
     def mdi_up_cmd(*args):
         if args and args[0].char: return   # e.g., for KP_Up with numlock on
@@ -3246,7 +3000,6 @@ class TclCommands(nf.TclCommands):
         idx = "xyzabcuvw".find(axis)
         if idx >= 0:
             c.set_jog_axis(idx)
-        _ws_thread.set_jog_axis(axis)
 
     def set_teleop_mode():
         set_motion_teleop(vars.teleop_mode.get())
@@ -4250,25 +4003,6 @@ t.bind("<Button-5>", scroll_down)
 t.configure(state="disabled")
 
 if server_present == 1 :
-    # Connect to the axisui cmod via WebSocket watch channel.
-    # The cmod owns the HAL pins; we communicate via WS.
-    _ws_thread = AxisuiWatchThread(gmi.ws_url(), instance="axisui")
-    comp = WSCompat(_ws_thread)
-    _ws_thread.subscribe_get_jog_inputs(callback=comp._on_jog)
-    _ws_thread.subscribe_get_slider_inputs(callback=comp._on_sliders)
-    _ws_thread.subscribe_get_notification_inputs(callback=comp._on_notif)
-    _ws_thread.start()
-
-    hal_scalehandlers.append(HalScaleHandler("sliders.spinoverride", widgets.spinoverride))
-    hal_scalehandlers.append(HalScaleHandler("sliders.feedoverride", widgets.feedoverride))
-    hal_scalehandlers.append(HalScaleHandler("sliders.rapidoverride", widgets.rapidoverride))
-    hal_scalehandlers.append(HalScaleHandler("sliders.ajogspeed", widgets.ajogspeed_scale))
-    hal_scalehandlers.append(HalScaleHandler("sliders.jogspeed", widgets.jogspeed_scale))
-    hal_scalehandlers.append(HalScaleHandler("sliders.maxvel", widgets.maxvel_scale))
-
-    for i, a in enumerate("xyzabcuvw"):
-        hal_joghandlers.append(HalJogHandler(a))
-
     if vcp:
         import vcpparse
         f = Tkinter.Frame(root_window)
@@ -4546,7 +4280,6 @@ if os.path.exists(rcfile):
 
 # call an empty function that can be overridden
 # by an .axisrc user_hal_pins() function
-# The axisui cmod is always ready — this is preserved for user_hal_pins() compat.
 if server_present == 1 :
     user_hal_pins()
 
@@ -4649,8 +4382,6 @@ except Exception:
 
 o.mainloop()
 live_plotter.stop()
-if server_present == 1:
-    _ws_thread.stop()
 _message_list.stop()
 
 # vim:sw=4:sts=4:et:
