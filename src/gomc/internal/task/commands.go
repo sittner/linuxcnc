@@ -763,6 +763,12 @@ func (t *Task) Home(joint int32) error {
 	if err := t.ensureMode(ModeManual); err != nil {
 		return err
 	}
+	// Home requires joint (FREE) mode — motion may be in teleop even when
+	// task mode is already ModeManual.
+	t.mu.Unlock()
+	_ = t.motion.SetFree()
+	t.waitMotionFree()
+	t.mu.Lock()
 	return t.motion.JointHome(joint)
 }
 
@@ -777,6 +783,12 @@ func (t *Task) Unhome(joint int32) error {
 	if err := t.ensureMode(ModeManual); err != nil {
 		return err
 	}
+	// Unhome requires joint (FREE) mode — motion may be in teleop even when
+	// task mode is already ModeManual.
+	t.mu.Unlock()
+	_ = t.motion.SetFree()
+	t.waitMotionFree()
+	t.mu.Lock()
 	return t.motion.JointUnhome(joint)
 }
 

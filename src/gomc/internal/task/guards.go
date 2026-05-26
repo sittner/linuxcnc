@@ -1,6 +1,9 @@
 package task
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // Guard errors returned when a command is rejected due to state/mode.
 var (
@@ -65,6 +68,7 @@ func (t *Task) ensureMode(required TaskMode) error {
 		t.mode = ModeManual
 		t.mu.Unlock()
 		_ = t.motion.SetFree()
+		t.waitMotionFree()
 		t.mu.Lock()
 	case ModeMDI:
 		t.abortLocked()
@@ -108,6 +112,7 @@ func (t *Task) restoreModeTx() {
 		t.mode = ModeManual
 		t.mu.Unlock()
 		_ = t.motion.SetFree()
+		t.waitMotionFree()
 		t.mu.Lock()
 	case ModeMDI:
 		t.mode = ModeMDI
@@ -125,6 +130,19 @@ func (t *Task) restoreModeTx() {
 			_ = t.interp.Synch()
 		}
 		t.mu.Lock()
+	}
+}
+
+// waitMotionFree polls motion status until the motion controller is in FREE
+// mode (not coord and not teleop). Must be called WITHOUT t.mu held.
+func (t *Task) waitMotionFree() {
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		ms, err := t.status.GetStatus()
+		if err == nil && ms.Coord == 0 && ms.Teleop == 0 {
+			return
+		}
+		time.Sleep(pollInterval)
 	}
 }
 
