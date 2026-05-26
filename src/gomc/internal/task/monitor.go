@@ -28,6 +28,7 @@ type monitor struct {
 	task   *Task
 	mc     MotionConfig
 	inihal *iniHal
+	halui  *halUI         // nil if halui not configured
 	ioStat IOStatusReader // nil if IO doesn't support status read
 	stopCh chan struct{}
 	doneCh chan struct{}
@@ -76,6 +77,10 @@ func (m *monitor) loop() {
 			m.checkMotionErrors(&softLimitReported)
 			if m.inihal != nil {
 				m.inihal.check(m.mc)
+			}
+			if m.halui != nil {
+				m.halui.check(m.task)
+				m.halui.updateOutputs(m.task)
 			}
 		}
 	}

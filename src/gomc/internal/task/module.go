@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 	"unsafe"
 
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcerror"
@@ -25,6 +26,18 @@ var _ MotionConfig = (*motctl.MotctlClient)(nil)
 func factory(ini *inifile.IniFile, logger *slog.Logger, name string, args []string) (gomc.Module, error) {
 	logger = logger.With("module", name)
 	m := &milltaskModule{ini: ini, logger: logger, name: name}
+
+	// Parse module parameters.
+	for _, arg := range args {
+		k, v, ok := strings.Cut(arg, "=")
+		if !ok {
+			continue
+		}
+		switch k {
+		case "halui":
+			m.haluiPrefix = v
+		}
+	}
 
 	// Register C-compatible callback structs so C modules (halui) can
 	// call emccmd/emcstat via the standard api_get mechanism.
@@ -48,18 +61,19 @@ func factory(ini *inifile.IniFile, logger *slog.Logger, name string, args []stri
 
 // milltaskModule wraps Task to satisfy the gomc.Module lifecycle.
 type milltaskModule struct {
-	ini        *inifile.IniFile
-	name       string
-	task       *Task
-	logger     *slog.Logger
-	inihal     *iniHal
-	mc         MotionConfig
-	apiCleanup func()
-	poslog     posLogger
-	interp     *CInterp
-	canonTable *canonCallbackTable
-	mon        *monitor
-	stopped    bool
+	ini         *inifile.IniFile
+	name        string
+	task        *Task
+	logger      *slog.Logger
+	inihal      *iniHal
+	mc          MotionConfig
+	apiCleanup  func()
+	poslog      posLogger
+	interp      *CInterp
+	canonTable  *canonCallbackTable
+	mon         *monitor
+	stopped     bool
+	haluiPrefix string // if set, export halui pins with this component name
 }
 
 func (m *milltaskModule) Start() error {
@@ -115,6 +129,17 @@ func (m *milltaskModule) Start() error {
 	m.inihal = ih
 	m.mc = mc
 
+	// Create halui HAL component if halui=<prefix> module parameter was given.
+	var hu *halUI
+	if m.haluiPrefix != "" {
+		mdiCmds := m.ini.GetAll("HALUI", "MDI_COMMAND")
+		hu, err = newHalUI(m.haluiPrefix, t.numJoints, t.numSpindles, t.axisMask, mdiCmds)
+		if err != nil {
+			return fmt.Errorf("milltask: %w", err)
+		}
+		m.logger.Info("halui pins exported", "prefix", m.haluiPrefix)
+	}
+
 	// Wire the error publisher so operator messages reach UI clients.
 	// EnsureDrainStarted creates the ring+drain if the C milltask didn't.
 	if drain := emcerror.EnsureDrainStarted(m.name); drain != nil {
@@ -129,8 +154,9 @@ func (m *milltaskModule) Start() error {
 	// Start the sequencer goroutine (executes queued motion commands).
 	t.StartSequencer()
 
-	// Start the monitoring goroutine (estop, errors, soft limits, inihal).
+	// Start the monitoring goroutine (estop, errors, soft limits, inihal, halui).
 	m.mon = newMonitor(t, mc, ih, io)
+	m.mon.halui = hu
 	m.mon.start()
 
 	// Register tools API (needs INI for tool table path).
