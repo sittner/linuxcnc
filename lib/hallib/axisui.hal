@@ -1,5 +1,0 @@
-# Load the axisui cmod which provides HAL pins for AXIS GUI
-# interaction (jog buttons, slider overrides, notifications, status).
-# The cmod also exposes a WebSocket watch API that axis.py connects to.
-load axisui
-addf axisui servo-thread
