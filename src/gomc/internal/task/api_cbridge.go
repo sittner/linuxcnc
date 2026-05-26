@@ -38,6 +38,8 @@ extern int32_t goTaskLoadToolTable(void *ctx);
 extern int32_t goTaskProgramOpen(void *ctx, char *file);
 extern int32_t goTaskWaitComplete(void *ctx, double timeout);
 extern int32_t goTaskSetDebug(void *ctx, int32_t debug);
+extern int32_t goTaskSetJogAxis(void *ctx, int32_t axis);
+extern int32_t goTaskSetJogIncrement(void *ctx, double increment);
 extern emcstat_stat_full_t goTaskGetStat(void *ctx);
 
 // Allocate and populate the emccmd_callbacks_t struct.
@@ -71,6 +73,8 @@ static emccmd_callbacks_t *alloc_emccmd_cbs(void *ctx) {
     cbs->program_open = (emccmd_program_open_fn)goTaskProgramOpen;
     cbs->wait_complete = goTaskWaitComplete;
     cbs->set_debug = goTaskSetDebug;
+    cbs->set_jog_axis = goTaskSetJogAxis;
+    cbs->set_jog_increment = goTaskSetJogIncrement;
     return cbs;
 }
 
@@ -405,6 +409,26 @@ func goTaskSetDebug(ctx unsafe.Pointer, debug C.int32_t) C.int32_t {
 	return C.int32_t(r)
 }
 
+//export goTaskSetJogAxis
+func goTaskSetJogAxis(ctx unsafe.Pointer, axis C.int32_t) C.int32_t {
+	m := cgo.Handle(ctx).Value().(*milltaskModule)
+	r, err := m.SetJogAxis(int32(axis))
+	if err != nil {
+		return -1
+	}
+	return C.int32_t(r)
+}
+
+//export goTaskSetJogIncrement
+func goTaskSetJogIncrement(ctx unsafe.Pointer, increment C.double) C.int32_t {
+	m := cgo.Handle(ctx).Value().(*milltaskModule)
+	r, err := m.SetJogIncrement(float64(increment))
+	if err != nil {
+		return -1
+	}
+	return C.int32_t(r)
+}
+
 //export goTaskGetStat
 func goTaskGetStat(ctx unsafe.Pointer) C.emcstat_stat_full_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
@@ -455,6 +479,8 @@ func goTaskGetStat(ctx unsafe.Pointer) C.emcstat_stat_full_t {
 	result.tool_in_spindle = C.int32_t(stat.ToolInSpindle)
 	result.pocket_prepped = C.int32_t(stat.PocketPrepped)
 	result.linear_units = C.double(stat.LinearUnits)
+	result.jog_axis = C.int32_t(stat.JogAxis)
+	result.jog_increment = C.double(stat.JogIncrement)
 
 	// Positions.
 	result.position = positionGoToC(stat.Position)

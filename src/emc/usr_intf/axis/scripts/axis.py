@@ -175,6 +175,7 @@ class WSCompat:
         elif pin == "abort":
             self._ws.set_abort(bool(value))
         elif pin == "jog.increment":
+            c.set_jog_increment(float(value))
             self._ws.set_jog_increment(float(value))
         elif pin.startswith("jog."):
             # jog.x = True/False — batch handled by set_jog_axis
@@ -281,6 +282,8 @@ feedrate_blackout = 0
 rapidrate_blackout = 0
 spindlerate_blackout = 0
 maxvel_blackout = 0
+jog_axis_blackout = 0
+jog_incr_blackout = 0
 jogincr_index_last = 1
 mdi_history_index= -1
 resume_inhibit = 0
@@ -920,6 +923,45 @@ class LivePlotter:
         self.last_task_mode = self.stat.task_mode
 
         self.after = self.win.after(update_ms, self.update)
+
+        # Sync jog axis selection from server (multi-client sync)
+        if time.time() > jog_axis_blackout:
+            try:
+                remote_jog_axis = self.stat.jog_axis
+                if remote_jog_axis >= 0 and remote_jog_axis < 9:
+                    remote_axis_letter = "xyzabcuvw"[remote_jog_axis]
+                    if vars.ja_rbutton.get() != remote_axis_letter:
+                        vars.ja_rbutton.set(remote_axis_letter)
+            except (AttributeError, KeyError):
+                pass
+
+        # Sync jog increment from server (multi-client sync)
+        if time.time() > jog_incr_blackout:
+            try:
+                remote_jog_incr = self.stat.jog_increment
+                jogincr = widgets.jogincr.get()
+                if jogincr == _("Continuous"):
+                    current_incr = 0.0
+                else:
+                    current_incr = parse_increment(jogincr)
+                if abs(remote_jog_incr - current_incr) > 1e-12:
+                    # Find matching increment in the list
+                    if remote_jog_incr == 0:
+                        root_window.call(widgets.jogincr._w, "select", 0)
+                    else:
+                        iterator = root_window.call(widgets.jogincr._w, "list", "get", "0", "end")
+                        for idx, entry in enumerate(iterator):
+                            if entry == _("Continuous"):
+                                continue
+                            try:
+                                val = parse_increment(entry)
+                                if abs(val - remote_jog_incr) < 1e-12:
+                                    root_window.call(widgets.jogincr._w, "select", idx)
+                                    break
+                            except (ValueError, ZeroDivisionError):
+                                continue
+            except (AttributeError, KeyError):
+                pass
 
         self.win.set_current_line(self.stat.motion_id or self.stat.motion_line)
 
@@ -1717,7 +1759,9 @@ def parse_increment(jogincr):
 
 
 def set_hal_jogincrement():
+    global jog_incr_blackout
     if not 'comp' in globals(): return # this is called once during startup before comp exists
+    jog_incr_blackout = time.time() + 1
     jogincr = widgets.jogincr.get()
     if jogincr == _("Continuous"):
         distance = 0
@@ -3133,9 +3177,14 @@ class TclCommands(nf.TclCommands):
             commands.set_view_z()
 
     def axis_activated(*args):
+        global jog_axis_blackout
         # this only makes sense if HAL is present on this machine
         if not server_present: return
+        jog_axis_blackout = time.time() + 1
         axis = vars.ja_rbutton.get()
+        idx = "xyzabcuvw".find(axis)
+        if idx >= 0:
+            c.set_jog_axis(idx)
         _ws_thread.set_jog_axis(axis)
 
     def set_teleop_mode():
