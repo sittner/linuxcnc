@@ -892,9 +892,17 @@ func (t *Task) Lube(on bool) error {
 		return err
 	}
 	if on {
-		return t.io.LubeOn()
+		if err := t.io.LubeOn(); err != nil {
+			return err
+		}
+		t.lubeOn = true
+		return nil
 	}
-	return t.io.LubeOff()
+	if err := t.io.LubeOff(); err != nil {
+		return err
+	}
+	t.lubeOn = false
+	return nil
 }
 
 // Abort aborts all motion and interpreter execution.

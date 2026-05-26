@@ -251,6 +251,7 @@ type Task struct {
 	blockDelete   bool
 	floodOn       bool
 	mistOn        bool
+	lubeOn        bool
 	noForceHoming bool // [TRAJ]NO_FORCE_HOMING — skip homing check before MDI/AUTO
 	stepping      bool // single-step mode: auto-pause after each interpreter line
 	interpActive  bool // true while runProgram goroutine is executing

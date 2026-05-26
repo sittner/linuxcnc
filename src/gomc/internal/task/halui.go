@@ -948,6 +948,16 @@ func (h *halUI) checkCoolant(t *Task) {
 		_ = t.Flood(false)
 	}
 	h.old.floodOff = h.floodOff.Get()
+
+	if v := h.lubeOn.Get(); risingEdge(v, h.old.lubeOn) {
+		_ = t.Lube(true)
+	}
+	h.old.lubeOn = h.lubeOn.Get()
+
+	if v := h.lubeOff.Get(); risingEdge(v, h.old.lubeOff) {
+		_ = t.Lube(false)
+	}
+	h.old.lubeOff = h.lubeOff.Get()
 }
 
 func (h *halUI) checkProgram(t *Task) {
@@ -1136,6 +1146,16 @@ func (h *halUI) checkSpindles(t *Task) {
 			_ = t.Spindle(SpindleDecrease, 0, int32(i), 0)
 		}
 		h.old.spindleDecrease[i] = h.spindleDecrease[i].Get()
+
+		if v := h.spindleBrakeOn[i].Get(); risingEdge(v, h.old.spindleBrakeOn[i]) {
+			_ = t.Brake(true, int32(i))
+		}
+		h.old.spindleBrakeOn[i] = h.spindleBrakeOn[i].Get()
+
+		if v := h.spindleBrakeOff[i].Get(); risingEdge(v, h.old.spindleBrakeOff[i]) {
+			_ = t.Brake(false, int32(i))
+		}
+		h.old.spindleBrakeOff[i] = h.spindleBrakeOff[i].Get()
 	}
 }
 
@@ -1362,6 +1382,13 @@ func (h *halUI) updateOutputs(t *Task) {
 	state := t.state
 	mode := t.mode
 	interpState := t.interpState
+	floodOn := t.floodOn
+	mistOn := t.mistOn
+	lubeOn := t.lubeOn
+	optionalStop := t.optionalStop
+	blockDelete := t.blockDelete
+	linearUnits := t.linearUnits
+	cs := t.canon.state
 	t.mu.Unlock()
 
 	// Machine state
@@ -1373,23 +1400,147 @@ func (h *halUI) updateOutputs(t *Task) {
 	h.modeIsAuto.Set(mode == ModeAuto)
 	h.modeIsMDI.Set(mode == ModeMDI)
 
+	// Coolant / lube
+	h.floodIsOn.Set(floodOn)
+	h.mistIsOn.Set(mistOn)
+	h.lubeIsOn.Set(lubeOn)
+
 	// Program state
 	h.programIsIdle.Set(interpState == InterpIdle)
 	h.programIsRunning.Set(interpState == InterpReading)
 	h.programIsPaused.Set(interpState == InterpPaused)
+	h.programOsIsOn.Set(optionalStop)
+	h.programBdIsOn.Set(blockDelete)
 
-	// Override values (read from motion status for feedback)
-	if t.status != nil {
-		ms, err := t.status.GetStatus()
-		if err == nil {
-			h.foValue.Set(ms.FeedScale)
-			h.roValue.Set(ms.RapidScale)
-			h.mvValue.Set(ms.LimitVel)
-			for i := 0; i < h.numSpindles; i++ {
-				if i < len(ms.Spindles) {
-					h.soValue[i].Set(ms.Spindles[i].Scale)
-				}
-			}
+	// Units
+	if linearUnits > 0 {
+		h.unitsPerMM.Set(1.0 / linearUnits)
+	}
+
+	// Motion status
+	if t.status == nil {
+		h.isRunning.Set(true)
+		return
+	}
+	ms, err := t.status.GetStatus()
+	if err != nil {
+		h.isRunning.Set(true)
+		return
+	}
+
+	// Teleop/joint mode
+	h.modeIsTeleop.Set(ms.Teleop != 0)
+	h.modeIsJoint.Set(ms.Teleop == 0 && ms.Coord == 0)
+
+	// Override values
+	h.foValue.Set(ms.FeedScale)
+	h.roValue.Set(ms.RapidScale)
+	h.mvValue.Set(ms.LimitVel)
+
+	// Joints
+	for i := 0; i <= h.numJoints; i++ {
+		ji := i
+		if i == h.numJoints {
+			// "selected" — use currently selected joint
+			ji = int(h.jointSelected.Get())
+		}
+		if ji >= len(ms.Joints) {
+			continue
+		}
+		j := &ms.Joints[ji]
+		if h.jointIsHomed[i] != nil {
+			h.jointIsHomed[i].Set(j.Homed != 0)
+		}
+		if h.jointHasFault[i] != nil {
+			h.jointHasFault[i].Set(j.Fault != 0)
+		}
+		if h.jointOnHardMinLimit[i] != nil {
+			h.jointOnHardMinLimit[i].Set(j.OnNegLimit != 0)
+		}
+		if h.jointOnHardMaxLimit[i] != nil {
+			h.jointOnHardMaxLimit[i].Set(j.OnPosLimit != 0)
+		}
+		if h.jointOnSoftMinLimit[i] != nil {
+			h.jointOnSoftMinLimit[i].Set(j.PosFb <= j.MinPosLimit && j.MinPosLimit != 0)
+		}
+		if h.jointOnSoftMaxLimit[i] != nil {
+			h.jointOnSoftMaxLimit[i].Set(j.PosFb >= j.MaxPosLimit && j.MaxPosLimit != 0)
+		}
+		if h.jointOverrideLimits[i] != nil {
+			h.jointOverrideLimits[i].Set(ms.OverrideLimitMask&(1<<ji) != 0)
+		}
+	}
+
+	// Spindles
+	for i := 0; i < h.numSpindles; i++ {
+		if i >= len(ms.Spindles) {
+			break
+		}
+		sp := &ms.Spindles[i]
+		if h.spindleIsOn[i] != nil {
+			h.spindleIsOn[i].Set(sp.State != 0)
+		}
+		if h.spindleRunsForward[i] != nil {
+			h.spindleRunsForward[i].Set(sp.Direction == 1)
+		}
+		if h.spindleRunsBackward[i] != nil {
+			h.spindleRunsBackward[i].Set(sp.Direction == -1)
+		}
+		if h.spindleBrakeIsOn[i] != nil {
+			h.spindleBrakeIsOn[i].Set(sp.Brake != 0)
+		}
+		if h.soValue[i] != nil {
+			h.soValue[i].Set(sp.Scale)
+		}
+	}
+
+	// Tool info
+	if t.io != nil {
+		if v, err := t.io.GetToolInSpindle(); err == nil {
+			h.toolNumber.Set(uint32(v))
+		}
+	}
+	h.toolLengthOffsetX.Set(ms.ToolOffset.X)
+	h.toolLengthOffsetY.Set(ms.ToolOffset.Y)
+	h.toolLengthOffsetZ.Set(ms.ToolOffset.Z)
+	h.toolLengthOffsetA.Set(ms.ToolOffset.A)
+	h.toolLengthOffsetB.Set(ms.ToolOffset.B)
+	h.toolLengthOffsetC.Set(ms.ToolOffset.C)
+	h.toolLengthOffsetU.Set(ms.ToolOffset.U)
+	h.toolLengthOffsetV.Set(ms.ToolOffset.V)
+	h.toolLengthOffsetW.Set(ms.ToolOffset.W)
+	// tool.diameter not directly in motion status; leave as 0 for now
+
+	// Axis positions
+	letters := "xyzabcuvw"
+	posCmd := [9]float64{ms.CartePosCmd.X, ms.CartePosCmd.Y, ms.CartePosCmd.Z,
+		ms.CartePosCmd.A, ms.CartePosCmd.B, ms.CartePosCmd.C,
+		ms.CartePosCmd.U, ms.CartePosCmd.V, ms.CartePosCmd.W}
+	posFb := [9]float64{ms.CartePosFb.X, ms.CartePosFb.Y, ms.CartePosFb.Z,
+		ms.CartePosFb.A, ms.CartePosFb.B, ms.CartePosFb.C,
+		ms.CartePosFb.U, ms.CartePosFb.V, ms.CartePosFb.W}
+	g5x := [9]float64{cs.g5xOffset.X, cs.g5xOffset.Y, cs.g5xOffset.Z,
+		cs.g5xOffset.A, cs.g5xOffset.B, cs.g5xOffset.C,
+		cs.g5xOffset.U, cs.g5xOffset.V, cs.g5xOffset.W}
+	g92 := [9]float64{cs.g92Offset.X, cs.g92Offset.Y, cs.g92Offset.Z,
+		cs.g92Offset.A, cs.g92Offset.B, cs.g92Offset.C,
+		cs.g92Offset.U, cs.g92Offset.V, cs.g92Offset.W}
+	toolOff := [9]float64{ms.ToolOffset.X, ms.ToolOffset.Y, ms.ToolOffset.Z,
+		ms.ToolOffset.A, ms.ToolOffset.B, ms.ToolOffset.C,
+		ms.ToolOffset.U, ms.ToolOffset.V, ms.ToolOffset.W}
+	_ = letters
+	for i := 0; i < maxAxes; i++ {
+		if h.axisMask&(1<<i) == 0 {
+			continue
+		}
+		if h.axisPosCommanded[i] != nil {
+			h.axisPosCommanded[i].Set(posCmd[i])
+		}
+		if h.axisPosFeedback[i] != nil {
+			h.axisPosFeedback[i].Set(posFb[i])
+		}
+		if h.axisPosRelative[i] != nil {
+			h.axisPosRelative[i].Set(posFb[i] - g5x[i] - g92[i] - toolOff[i])
 		}
 	}
 
