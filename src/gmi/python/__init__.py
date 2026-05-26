@@ -42,6 +42,12 @@ def ErrorChannel():
     return _ErrorChannel()
 
 
+def MessageList(on_update=None):
+    """Create a gmi.MessageList instance for the server-side message list."""
+    from gmi.messages import MessageList as _MessageList
+    return _MessageList(on_update=on_update)
+
+
 def positionlogger(stat_unused, c0, c1, c2, c3, c4, c5, geometry, is_xyuv=0):
     """Create a gmi.PositionLogger (drop-in for linuxcnc.positionlogger())."""
     from gmi.positionlogger import PositionLogger

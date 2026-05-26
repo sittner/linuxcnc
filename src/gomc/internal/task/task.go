@@ -307,6 +307,10 @@ type Task struct {
 	hasMotionStatus    bool
 	latencyWarnings    int
 	latencyWarningsMax int
+
+	// Current message list (independent of emcerror /errors drain queue).
+	messageList   []TaskMessage
+	nextMessageID uint64
 }
 
 // NewTask creates a new Task with dependencies injected.

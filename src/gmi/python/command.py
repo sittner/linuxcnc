@@ -169,3 +169,19 @@ class Command:
     def debug(self, level: int):
         """Set debug level (bitmask of DEBUG_* flags)."""
         self._post("/debug", {"debug": level})
+
+    def set_jog_axis(self, axis: int):
+        """Set the active jog axis (0=X, 1=Y, ...)."""
+        self._post("/jog-axis", {"axis": axis})
+
+    def set_jog_increment(self, increment: float):
+        """Set jog increment (0 = continuous)."""
+        self._post("/jog-increment", {"increment": increment})
+
+    def set_jog_speed(self, speed: float):
+        """Set linear jog speed (units/sec)."""
+        self._post("/jog-speed", {"speed": speed})
+
+    def set_ajog_speed(self, speed: float):
+        """Set angular jog speed (deg/sec)."""
+        self._post("/ajog-speed", {"speed": speed})

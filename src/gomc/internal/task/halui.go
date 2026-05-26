@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcerror"
 	"github.com/sittner/linuxcnc/src/gomc/pkg/hal"
 )
 
@@ -212,6 +213,16 @@ type halUI struct {
 	errorActive      *hal.Pin[bool]
 	isRunning        *hal.Pin[bool] // output: UI connected and alive
 
+	// Message list pins (driven from server-side message list)
+	msgHasAny     *hal.Pin[bool] // output: any current message present
+	msgHasError   *hal.Pin[bool] // output: list has error entries
+	msgHasText    *hal.Pin[bool] // output: list has text entries
+	msgHasDisplay *hal.Pin[bool] // output: list has display entries
+	msgAckAll     *hal.Pin[bool] // input: ack all messages (edge)
+	msgAckError   *hal.Pin[bool] // input: ack error messages (edge)
+	msgAckText    *hal.Pin[bool] // input: ack text messages (edge)
+	msgAckDisplay *hal.Pin[bool] // input: ack display messages (edge)
+
 	// Cached previous values for edge detection
 	old halUIValues
 
@@ -309,6 +320,11 @@ type halUIValues struct {
 	notificationsClear      bool
 	notificationsClearInfo  bool
 	notificationsClearError bool
+
+	msgAckAll     bool
+	msgAckError   bool
+	msgAckText    bool
+	msgAckDisplay bool
 }
 
 // newHalUI creates a HAL component with the given name and all its pins.
@@ -878,6 +894,32 @@ func (h *halUI) createPins() error {
 		return err
 	}
 
+	// Message list pins
+	if h.msgHasAny, err = hal.NewPin[bool](c, "messages.has-msg", hal.Out); err != nil {
+		return err
+	}
+	if h.msgHasError, err = hal.NewPin[bool](c, "messages.has-error", hal.Out); err != nil {
+		return err
+	}
+	if h.msgHasText, err = hal.NewPin[bool](c, "messages.has-text", hal.Out); err != nil {
+		return err
+	}
+	if h.msgHasDisplay, err = hal.NewPin[bool](c, "messages.has-display", hal.Out); err != nil {
+		return err
+	}
+	if h.msgAckAll, err = hal.NewPin[bool](c, "messages.ack-all", hal.In); err != nil {
+		return err
+	}
+	if h.msgAckError, err = hal.NewPin[bool](c, "messages.ack-error", hal.In); err != nil {
+		return err
+	}
+	if h.msgAckText, err = hal.NewPin[bool](c, "messages.ack-text", hal.In); err != nil {
+		return err
+	}
+	if h.msgAckDisplay, err = hal.NewPin[bool](c, "messages.ack-display", hal.In); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -923,6 +965,7 @@ func (h *halUI) check(t *Task) {
 	h.checkHoming(t)
 	h.checkMisc(t)
 	h.checkMDI(t)
+	h.checkMessages(t)
 }
 
 // checkIOPins reads bidirectional I/O pins and updates shared state if HAL changed them.
@@ -1500,6 +1543,55 @@ func (h *halUI) checkMDI(t *Task) {
 		}
 		h.old.mdiCommands[i] = v
 	}
+}
+
+func (h *halUI) checkMessages(t *Task) {
+	// Legacy notification clear pins (edge-triggered) — ack via message list.
+	if v := h.notificationsClear.Get(); risingEdge(v, h.old.notificationsClear) {
+		_ = t.ackAllMessages()
+	}
+	h.old.notificationsClear = h.notificationsClear.Get()
+
+	if v := h.notificationsClearInfo.Get(); risingEdge(v, h.old.notificationsClearInfo) {
+		_ = t.ackMessagesByKinds(emcerror.NML_TEXT, emcerror.OPERATOR_TEXT,
+			emcerror.NML_DISPLAY, emcerror.OPERATOR_DISPLAY)
+	}
+	h.old.notificationsClearInfo = h.notificationsClearInfo.Get()
+
+	if v := h.notificationsClearError.Get(); risingEdge(v, h.old.notificationsClearError) {
+		_ = t.ackMessagesByKinds(emcerror.NML_ERROR, emcerror.OPERATOR_ERROR)
+	}
+	h.old.notificationsClearError = h.notificationsClearError.Get()
+
+	// New message ack pins (edge-triggered).
+	if v := h.msgAckAll.Get(); risingEdge(v, h.old.msgAckAll) {
+		_ = t.ackAllMessages()
+	}
+	h.old.msgAckAll = h.msgAckAll.Get()
+
+	if v := h.msgAckError.Get(); risingEdge(v, h.old.msgAckError) {
+		_ = t.ackMessagesByKinds(emcerror.NML_ERROR, emcerror.OPERATOR_ERROR)
+	}
+	h.old.msgAckError = h.msgAckError.Get()
+
+	if v := h.msgAckText.Get(); risingEdge(v, h.old.msgAckText) {
+		_ = t.ackMessagesByKinds(emcerror.NML_TEXT, emcerror.OPERATOR_TEXT)
+	}
+	h.old.msgAckText = h.msgAckText.Get()
+
+	if v := h.msgAckDisplay.Get(); risingEdge(v, h.old.msgAckDisplay) {
+		_ = t.ackMessagesByKinds(emcerror.NML_DISPLAY, emcerror.OPERATOR_DISPLAY)
+	}
+	h.old.msgAckDisplay = h.msgAckDisplay.Get()
+
+	// Update output pins from message list state.
+	hasAny, hasErr, hasTxt, hasDisp := t.messageFlags()
+	h.hasNotifications.Set(hasAny)
+	h.errorActive.Set(hasErr)
+	h.msgHasAny.Set(hasAny)
+	h.msgHasError.Set(hasErr)
+	h.msgHasText.Set(hasTxt)
+	h.msgHasDisplay.Set(hasDisp)
 }
 
 // updateOutputs writes status information to the output pins.

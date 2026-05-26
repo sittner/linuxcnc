@@ -432,76 +432,121 @@ def masked_axes_count():
     return ct
 
 class Notification(Tkinter.Frame):
+    """Notification area driven by the server-side message list.
+
+    Each message has a unique ID. The server pushes the full list via
+    the messages/get_list watch. This widget reconciles its display
+    to match: adds new messages, removes acknowledged ones.
+    """
+
+    # Map error kind → icon name
+    _KIND_ICON = {
+        1: "error",   # NML_ERROR
+        11: "error",  # OPERATOR_ERROR
+        2: "info",    # NML_TEXT
+        12: "info",   # OPERATOR_TEXT
+        3: "info",    # NML_DISPLAY
+        13: "info",   # OPERATOR_DISPLAY
+    }
+
     def __init__(self, master):
-        self.widgets = []
-        self.cache = []
+        self._items = {}  # msg_id → (frame, icon_label, text_label, button, icon_image)
+        self._order = []  # msg_ids in display order
+        self._message_list = None  # set later via set_message_list()
         Tkinter.Frame.__init__(self, master)
 
-    def has_items(self):
-        return (len(self.widgets) > 0)
+    def set_message_list(self, ml):
+        """Set the gmi.MessageList client for ack commands."""
+        self._message_list = ml
 
-    def clear(self,iconname=None):
-        if iconname:
-            cpy = self.widgets[:]
-            for i, item in enumerate(cpy):
-                frame,icon,text,button,iname = item
-                if iname == "icon_std_" + iconname:
-                    self.remove(cpy[i])
+    def has_items(self):
+        return len(self._items) > 0
+
+    def sync(self, messages):
+        """Reconcile display with server message list.
+
+        messages: list of {"id": int, "kind": int, "text": str}
+        """
+        new_ids = set()
+        for msg in messages:
+            msg_id = msg["id"]
+            new_ids.add(msg_id)
+            if msg_id not in self._items:
+                self._add_widget(msg_id, msg["kind"], msg["text"])
+
+        # Remove widgets for messages no longer in the list.
+        for msg_id in list(self._order):
+            if msg_id not in new_ids:
+                self._remove_widget(msg_id)
+
+        if self._items:
+            self.place(relx=1, rely=1, y=-20, anchor="se")
         else:
-            while self.widgets:
-                self.remove(self.widgets[0])
+            self.place_forget()
+
+    def clear(self, iconname=None):
+        """Acknowledge messages via server. The sync callback will update display."""
+        if self._message_list is None:
+            return
+        if iconname == "error":
+            self._message_list.ack_error()
+        elif iconname == "info":
+            self._message_list.ack_text()
+            self._message_list.ack_display()
+        else:
+            self._message_list.ack_all()
 
     def clear_one(self):
-        if self.widgets:
-            self.remove(self.widgets[0])
+        """Acknowledge the oldest message."""
+        if self._order and self._message_list:
+            self._message_list.ack_message(self._order[0])
 
-
-    def add(self, iconname, message):
-        self.place(relx=1, rely=1, y=-20, anchor="se")
+    def _add_widget(self, msg_id, kind, text):
+        iconname = self._KIND_ICON.get(kind, "info")
         iconname_image = self.tk.call("load_image", "std_" + iconname)
         close = self.tk.call("load_image", "close", "notification-close")
-        if len(self.widgets) > 10:
-            self.remove(self.widgets[0])
-        if self.cache:
-            frame, icon, text, button, discard = self.cache.pop()
-            icon.configure(image=iconname_image)
-            text.configure(text=message)
-            widgets = frame, icon, text, button, iconname_image
-        else:
-            frame = Tkinter.Frame(self)
-            icon = Tkinter.Label(frame, image=iconname_image)
-            text = Tkinter.Label(frame, text=message, wraplength=300, justify="left")
-            button = Tkinter.Button(frame, image=close)
-            widgets = frame, icon, text, button, iconname_image
-            text.pack(side="left")
-            icon.pack(side="left")
-            button.pack(side="left")
-        button.configure(command=lambda: self.remove(widgets))
+
+        frame = Tkinter.Frame(self)
+        icon = Tkinter.Label(frame, image=iconname_image)
+        text_label = Tkinter.Label(frame, text=text, wraplength=300, justify="left")
+        button = Tkinter.Button(frame, image=close)
+        button.configure(command=lambda mid=msg_id: self._ack(mid))
+        text_label.pack(side="left")
+        icon.pack(side="left")
+        button.pack(side="left")
         frame.pack(side="top", anchor="e")
-        self.widgets.append(widgets)
-        if iconname == "error":
-           comp["error"] = True
 
-    def remove(self, widgets):
-        self.widgets.remove(widgets)
-        if len(self.cache) < 10:
-            widgets[0].pack_forget()
-            self.cache.append(widgets)
-        else:
+        self._items[msg_id] = (frame, icon, text_label, button, iconname_image)
+        self._order.append(msg_id)
+
+    def _remove_widget(self, msg_id):
+        widgets = self._items.pop(msg_id, None)
+        if widgets:
             widgets[0].destroy()
-        if len(self.widgets) == 0:
-            self.place_forget()
-        if self._remaining_error_count() == 0:
-            comp["error"] = False
+        if msg_id in self._order:
+            self._order.remove(msg_id)
 
-    def _remaining_error_count(self):
-        """ Returns the count of remaining error messages """
-        count = 0
-        for i, item in enumerate(self.widgets):
-            frame, icon, text, button, iname = item
-            if iname == "icon_std_error":
-                count += 1
-        return count
+    def _ack(self, msg_id):
+        """Called when [x] is clicked — acknowledge a single message."""
+        if self._message_list:
+            self._message_list.ack_message(msg_id)
+
+    def _has_error(self):
+        """Check if any error message is currently displayed."""
+        # Not needed for HAL pin — server drives it now
+        return False
+
+    def add(self, iconname, message):
+        """Publish a message through the server-side message list.
+
+        This is used for client-originated messages (e.g. preview timeout).
+        The message will appear via the normal watch update cycle.
+        """
+        if self._message_list is None:
+            return
+        from gmi.messages import OPERATOR_ERROR, OPERATOR_TEXT
+        kind = OPERATOR_ERROR if iconname == "error" else OPERATOR_TEXT
+        self._message_list.publish(kind, message)
 
 
 def soft_limits():
@@ -827,9 +872,6 @@ class LivePlotter:
         self.last_limit = None
         self.last_motion_mode = None
         self.last_joint_position = None
-        self.notifications_clear = False
-        self.notifications_clear_info = False
-        self.notifications_clear_error = False
 
     def start(self):
         if self.running.get(): return
@@ -870,16 +912,10 @@ class LivePlotter:
         self.running.set(True)
 
     def error_task(self):
-        error = e.poll()
-        while error:
-            kind, text = error
-            if kind in (NML_ERROR, OPERATOR_ERROR):
-                icon = "error"
-            else:
-                icon = "info"
-            notifications.add(icon, text)
-            error = e.poll()
-        self.error_after = self.win.after(200, self.error_task)
+        # Message list is now driven by the WS watch callback.
+        # Keep this method as a no-op for the after() scheduling chain
+        # which was started in __init__ — just don't reschedule.
+        pass
 
     def update(self):
         if not self.running.get():
@@ -1035,21 +1071,6 @@ class LivePlotter:
         vupdate(vars.queued_mdi_commands, self.stat.queued_mdi_commands)
         if server_present == 1:
             comp["is-running"] = 1
-            notifications_clear = comp["notifications-clear"]
-            if self.notifications_clear != notifications_clear:
-                 self.notifications_clear = notifications_clear
-                 if self.notifications_clear:
-                     notifications.clear()
-            notifications_clear_info = comp["notifications-clear-info"]
-            if self.notifications_clear_info != notifications_clear_info:
-                 self.notifications_clear_info = notifications_clear_info
-                 if self.notifications_clear_info:
-                     notifications.clear("info")
-            notifications_clear_error = comp["notifications-clear-error"]
-            if self.notifications_clear_error != notifications_clear_error:
-                 self.notifications_clear_error = notifications_clear_error
-                 if self.notifications_clear_error:
-                     notifications.clear("error")
             now_resume_inhibit = comp["resume-inhibit"]
             global resume_inhibit
             if resume_inhibit != now_resume_inhibit:
@@ -1058,7 +1079,6 @@ class LivePlotter:
                      root_window.tk.call("pause_image_override")
                  else:
                      root_window.tk.call("pause_image_normal")
-            comp["has-notifications"] = notifications.has_items()
             for handler in hal_scalehandlers:
                 handler.process()
             if (comp["jog.disable"] or
@@ -4069,7 +4089,6 @@ if  (       (s.axis_mask & 56 == 0)  # 56==0x38== 000111000 (ABC)
     widgets.ajogspeed.grid_forget()
 
 c = gmi.Command()
-e = gmi.ErrorChannel()
 
 _jog_speed_from_remote = False
 
@@ -4253,6 +4272,13 @@ if server_present == 1 :
 _dynamic_childs = {}
 
 notifications = Notification(root_window)
+
+def _on_message_list_update(messages):
+    """Called from MessageList background thread when list changes."""
+    root_window.after_idle(lambda: notifications.sync(messages))
+
+_message_list = gmi.MessageList(on_update=_on_message_list_update)
+notifications.set_message_list(_message_list)
 
 root_window.bind("<Control-space>", lambda event: notifications.clear())
 widgets.mdi_command.bind("<Control-space>", lambda event: notifications.clear())
@@ -4611,5 +4637,6 @@ o.mainloop()
 live_plotter.stop()
 if server_present == 1:
     _ws_thread.stop()
+_message_list.stop()
 
 # vim:sw=4:sts=4:et:
