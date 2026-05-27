@@ -1137,9 +1137,12 @@ class Progress:
         self.update(0, True)
 
     def done(self):
-        root_window.tk.call("destroy", ".info.progress")
         root_window.tk.call("grab", "release", ".info.progress")
-        root_window.tk.call("focus", self.old_focus)
+        try:
+            root_window.tk.call("focus", self.old_focus)
+        except Exception:
+            pass
+        root_window.tk.call("destroy", ".info.progress")
         root_window.configure(cursor="")
         root_window.tk.call(".menu", "configure", "-cursor", "")
         t.configure(cursor="xterm")
