@@ -4060,8 +4060,11 @@ if args:
     initialfile = args[0]
 elif "AXIS_OPEN_FILE" in os.environ:
     initialfile = os.environ["AXIS_OPEN_FILE"]
-elif inifile.find("DISPLAY", "OPEN_FILE"):
-    initialfile = inifile.find("DISPLAY", "OPEN_FILE")
+elif s.file:
+    # Server already has a program loaded (e.g. from [DISPLAY]OPEN_FILE or
+    # another UI instance). Load its preview without calling program_open again.
+    initialfile = s.file
+    addrecent = False
 elif lathe:
     initialfile = os.path.join(BASE, "share", "axis", "images","axis-lathe.ngc")
     addrecent = False

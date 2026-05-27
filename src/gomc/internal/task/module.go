@@ -3,6 +3,7 @@ package task
 import (
 	"fmt"
 	"log/slog"
+	"os"
 	"strconv"
 	"strings"
 	"unsafe"
@@ -161,6 +162,9 @@ func (m *milltaskModule) Start() error {
 
 	// Register tools API (needs INI for tool table path).
 	m.registerTools()
+
+	// Load default program if configured.
+	m.loadDefaultProgram()
 
 	m.logger.Info("milltask started")
 	return nil
@@ -335,4 +339,22 @@ func (p *drainErrorPublisher) OperatorText(text string) {
 func (p *drainErrorPublisher) OperatorDisplay(text string) {
 	p.drain.PublishError(emcerror.OPERATOR_DISPLAY, text)
 	p.task.appendMessage(emcerror.OPERATOR_DISPLAY, text)
+}
+
+// loadDefaultProgram opens the program specified by [DISPLAY]OPEN_FILE
+// at server startup so all UI clients see the same initial file.
+func (m *milltaskModule) loadDefaultProgram() {
+	file := m.ini.Get("DISPLAY", "OPEN_FILE")
+	if file == "" {
+		return
+	}
+	if _, err := os.Stat(file); err != nil {
+		m.logger.Warn("OPEN_FILE not found, skipping", "file", file, "error", err)
+		return
+	}
+	if err := m.task.ProgramOpen(file); err != nil {
+		m.logger.Warn("failed to load default program", "file", file, "error", err)
+	} else {
+		m.logger.Info("loaded default program", "file", file)
+	}
 }
