@@ -632,3 +632,137 @@ P = 100
 		}
 	}
 }
+
+// --------------------------------------------------------------------------
+// Namespace support
+// --------------------------------------------------------------------------
+
+func TestWithNamespace_Get(t *testing.T) {
+	dir := t.TempDir()
+	f := writeFile(t, dir, "ns.ini", `
+[TRAJ]
+COORDINATES = XYZ
+MAX_VELOCITY = 100
+
+[mill:TRAJ]
+COORDINATES = XY
+MAX_VELOCITY = 200
+
+[lathe:TRAJ]
+COORDINATES = XZ
+
+[JOINT_0]
+MAX_VELOCITY = 50
+
+[mill:JOINT_0]
+MAX_VELOCITY = 75
+`)
+	ini, err := inifile.Parse(f)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	// Without namespace — gets global section
+	if got := ini.Get("TRAJ", "COORDINATES"); got != "XYZ" {
+		t.Errorf("no namespace: TRAJ/COORDINATES = %q, want XYZ", got)
+	}
+
+	// With "mill" namespace — gets mill:TRAJ first
+	mill := ini.WithNamespace("mill")
+	if got := mill.Get("TRAJ", "COORDINATES"); got != "XY" {
+		t.Errorf("mill ns: TRAJ/COORDINATES = %q, want XY", got)
+	}
+	if got := mill.Get("TRAJ", "MAX_VELOCITY"); got != "200" {
+		t.Errorf("mill ns: TRAJ/MAX_VELOCITY = %q, want 200", got)
+	}
+	if got := mill.Get("JOINT_0", "MAX_VELOCITY"); got != "75" {
+		t.Errorf("mill ns: JOINT_0/MAX_VELOCITY = %q, want 75", got)
+	}
+
+	// With "lathe" namespace — gets lathe:TRAJ, falls back to TRAJ for missing keys
+	lathe := ini.WithNamespace("lathe")
+	if got := lathe.Get("TRAJ", "COORDINATES"); got != "XZ" {
+		t.Errorf("lathe ns: TRAJ/COORDINATES = %q, want XZ", got)
+	}
+	// MAX_VELOCITY not in [lathe:TRAJ], falls back to [TRAJ]
+	if got := lathe.Get("TRAJ", "MAX_VELOCITY"); got != "100" {
+		t.Errorf("lathe ns: TRAJ/MAX_VELOCITY = %q, want 100 (fallback)", got)
+	}
+	// JOINT_0 not in lathe namespace, falls back to global
+	if got := lathe.Get("JOINT_0", "MAX_VELOCITY"); got != "50" {
+		t.Errorf("lathe ns: JOINT_0/MAX_VELOCITY = %q, want 50 (fallback)", got)
+	}
+}
+
+func TestWithNamespace_GetAll(t *testing.T) {
+	dir := t.TempDir()
+	f := writeFile(t, dir, "ns_all.ini", `
+[RS274NGC]
+REMAP = G100
+REMAP = G101
+
+[mill:RS274NGC]
+REMAP = G200
+`)
+	ini, err := inifile.Parse(f)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	mill := ini.WithNamespace("mill")
+	all := mill.GetAll("RS274NGC", "REMAP")
+	// Namespace values first, then global
+	if len(all) != 3 {
+		t.Fatalf("mill GetAll REMAP: got %d values, want 3: %v", len(all), all)
+	}
+	if all[0] != "G200" {
+		t.Errorf("all[0] = %q, want G200 (namespace)", all[0])
+	}
+	if all[1] != "G100" || all[2] != "G101" {
+		t.Errorf("all[1:] = %v, want [G100 G101] (global)", all[1:])
+	}
+}
+
+func TestWithNamespace_GetSection(t *testing.T) {
+	dir := t.TempDir()
+	f := writeFile(t, dir, "ns_sec.ini", `
+[JOINT_0]
+MIN_LIMIT = -100
+MAX_LIMIT = 100
+
+[mill:JOINT_0]
+MAX_LIMIT = 50
+`)
+	ini, err := inifile.Parse(f)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	mill := ini.WithNamespace("mill")
+	entries := mill.GetSection("JOINT_0")
+	// Should have namespace entry first, then global entries
+	if len(entries) != 3 {
+		t.Fatalf("GetSection got %d entries, want 3: %v", len(entries), entries)
+	}
+	// First entry from [mill:JOINT_0]
+	if entries[0].Key != "MAX_LIMIT" || entries[0].Value != "50" {
+		t.Errorf("entries[0] = %s=%s, want MAX_LIMIT=50", entries[0].Key, entries[0].Value)
+	}
+}
+
+func TestWithNamespace_SourceFilePreserved(t *testing.T) {
+	dir := t.TempDir()
+	f := writeFile(t, dir, "ns_src.ini", `
+[TRAJ]
+COORDINATES = XYZ
+`)
+	ini, err := inifile.Parse(f)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	ns := ini.WithNamespace("test")
+	if ns.SourceFile() != ini.SourceFile() {
+		t.Errorf("SourceFile mismatch: %q vs %q", ns.SourceFile(), ini.SourceFile())
+	}
+}

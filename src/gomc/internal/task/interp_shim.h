@@ -10,6 +10,22 @@
 extern "C" {
 #endif
 
+// --- INI accessor callback struct ---
+// Provides INI values to the interpreter without it needing to parse files.
+// The caller (Go milltask) owns the ctx and implements the callbacks.
+// Namespace resolution is handled by the caller — the interpreter just asks
+// for section/key and gets the (possibly namespace-overridden) value back.
+typedef struct {
+    void *ctx;
+    // Get the first value for section/key.  Returns NULL if not found.
+    // The returned string is valid until the next call to get/get_nth on the
+    // same accessor (caller may use a single reusable buffer).
+    const char* (*get)(void *ctx, const char *section, const char *key);
+    // Get the n-th value (1-based) for section/key (for repeated keys like REMAP).
+    // Returns NULL when there is no n-th occurrence.
+    const char* (*get_nth)(void *ctx, const char *section, const char *key, int n);
+} interp_ini_accessor_t;
+
 // Interpreter lifecycle
 void *interp_new(void);
 void *interp_from_lib(const char *shlib);
@@ -17,7 +33,12 @@ void interp_delete(void *handle);
 
 // Configuration and initialization
 int interp_ini_load(void *handle, const char *inifile);
+int interp_ini_load_accessor(void *handle, const interp_ini_accessor_t *accessor);
 int interp_init(void *handle);
+
+// Set the INI accessor for runtime INI parameter lookups (#<_ini[SEC]KEY>).
+// Must be called before init() if runtime INI access is desired.
+void interp_set_ini_accessor(void *handle, const interp_ini_accessor_t *accessor);
 
 // File operations
 int interp_open(void *handle, const char *filename);

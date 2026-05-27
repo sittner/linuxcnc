@@ -169,7 +169,19 @@ func stripInlineComment(s string) string {
 
 // Get returns the first value for the given section and key, or an empty
 // string if not found.
+//
+// When a namespace is set, [namespace:section] is checked first, then [section].
 func (ini *IniFile) Get(section, key string) string {
+	if ini.namespace != "" {
+		if v := ini.getRaw(ini.namespace+":"+section, key); v != "" {
+			return v
+		}
+	}
+	return ini.getRaw(section, key)
+}
+
+// getRaw looks up the first value without namespace resolution.
+func (ini *IniFile) getRaw(section, key string) string {
 	for i := range ini.Sections {
 		if ini.Sections[i].Name != section {
 			continue
@@ -185,7 +197,23 @@ func (ini *IniFile) Get(section, key string) string {
 
 // GetAll returns all values for the given section and key, in the order they
 // appear in the file.  Returns nil if the key is not present.
+//
+// When a namespace is set, values from [namespace:section] are returned first,
+// followed by values from [section].
 func (ini *IniFile) GetAll(section, key string) []string {
+	var result []string
+	if ini.namespace != "" {
+		result = ini.getAllRaw(ini.namespace+":"+section, key)
+	}
+	result = append(result, ini.getAllRaw(section, key)...)
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+// getAllRaw looks up all values without namespace resolution.
+func (ini *IniFile) getAllRaw(section, key string) []string {
 	var result []string
 	for i := range ini.Sections {
 		if ini.Sections[i].Name != section {
@@ -203,8 +231,27 @@ func (ini *IniFile) GetAll(section, key string) []string {
 // GetN returns the n-th occurrence of key in section (1-based), matching the
 // behaviour of `inivar -num N`.  Returns an empty string if there is no n-th
 // occurrence.
+//
+// When a namespace is set, occurrences from [namespace:section] are counted
+// first, then [section].
 func (ini *IniFile) GetN(section, key string, n int) string {
 	count := 0
+	if ini.namespace != "" {
+		nsSection := ini.namespace + ":" + section
+		for i := range ini.Sections {
+			if ini.Sections[i].Name != nsSection {
+				continue
+			}
+			for j := range ini.Sections[i].Entries {
+				if ini.Sections[i].Entries[j].Key == key {
+					count++
+					if count == n {
+						return ini.Sections[i].Entries[j].Value
+					}
+				}
+			}
+		}
+	}
 	for i := range ini.Sections {
 		if ini.Sections[i].Name != section {
 			continue
@@ -225,17 +272,12 @@ func (ini *IniFile) GetN(section, key string, n int) string {
 // first match, along with a boolean indicating whether any match was found.
 // Each element of pairs must be a two-element slice [section, key].
 // This mirrors the GetFromIniEx behaviour used in the bash script.
+// Namespace-aware: each pair is looked up via Get() which checks namespaced
+// sections first.
 func (ini *IniFile) GetWithFallback(pairs [][2]string) (string, bool) {
 	for _, p := range pairs {
-		for i := range ini.Sections {
-			if ini.Sections[i].Name != p[0] {
-				continue
-			}
-			for j := range ini.Sections[i].Entries {
-				if ini.Sections[i].Entries[j].Key == p[1] {
-					return ini.Sections[i].Entries[j].Value, true
-				}
-			}
+		if v := ini.Get(p[0], p[1]); v != "" {
+			return v, true
 		}
 	}
 	return "", false

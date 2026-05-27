@@ -691,16 +691,17 @@ func parseLinearUnits(s string) float64 {
 }
 
 func newNgcPreview(ini *inifile.IniFile, logger *slog.Logger, name string, args []string) (gomc.Module, error) {
-	paramFile := ini.Get("RS274NGC", "PARAMETER_FILE")
+	nsIni := ini.WithNamespace(name)
+	paramFile := nsIni.Get("RS274NGC", "PARAMETER_FILE")
 	// Resolve relative parameter file path against the INI file's directory
 	if paramFile != "" && !filepath.IsAbs(paramFile) {
 		iniDir := filepath.Dir(ini.SourceFile())
 		paramFile = filepath.Join(iniDir, paramFile)
 	}
-	linearUnits := parseLinearUnits(ini.Get("TRAJ", "LINEAR_UNITS"))
+	linearUnits := parseLinearUnits(nsIni.Get("TRAJ", "LINEAR_UNITS"))
 	m := &ngcPreview{logger: logger, parameterFile: paramFile, linearUnits: linearUnits}
-	ngcpreviewapi.RegisterNgcpreviewAPI(apiserver.DefaultRegistry(), "ngcpreview", m)
-	logger.Info("ngcpreview module loaded and API registered", "parameterFile", paramFile)
+	ngcpreviewapi.RegisterNgcpreviewAPI(apiserver.DefaultRegistry(), name, m)
+	logger.Info("ngcpreview module loaded and API registered", "instance", name, "parameterFile", paramFile)
 	return m, nil
 }
 

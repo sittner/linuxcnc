@@ -192,10 +192,36 @@ int Interp::fetch_ini_param( const char *nameBuf, int *status, double *value)
      if ((n > 7) &&
 	((s = (char *) strchr(&nameBuf[6],']')) != NULL)) {
 
+	int closeBracket = s - nameBuf;
+
+	char capName[LINELEN];
+	snprintf(capName, LINELEN, "%s", nameBuf);
+	for (char *p = capName; *p != 0; p++)
+	    *p = toupper(*p);
+	capName[closeBracket] = '\0';
+
+	const char *section = &capName[5]; // after "_ini["
+	const char *key = &capName[closeBracket+1];
+
+	// Use accessor if available (multi-instance path)
+	if (_setup.ini_accessor.get != NULL) {
+	    const char *val = _setup.ini_accessor.get(
+	        _setup.ini_accessor.ctx, section, key);
+	    if (val != NULL) {
+	        *value = atof(val);
+	        *status = 1;
+	    } else {
+	        *status = 0;
+	        ERS(_("Named INI parameter #<%s> not found via accessor"),
+	            nameBuf);
+	    }
+	    return INTERP_OK;
+	}
+
+	// Legacy file-based path
 	IniFile inifile;
 	const char *iniFileName;
 	int retval;
-	int closeBracket = s - nameBuf;
 
 	if ((iniFileName = getenv("INI_FILE_NAME")) == NULL) {
 	    logNP("warning: referencing INI parameter '%s': no INI file",nameBuf);
@@ -207,14 +233,7 @@ int Interp::fetch_ini_param( const char *nameBuf, int *status, double *value)
 	    ERS(_("can\'t open INI file '%s'"), iniFileName);
 	}
 
-	char capName[LINELEN];
-
-	snprintf(capName, LINELEN, "%s", nameBuf);
-	for (char *p = capName; *p != 0; p++)
-	    *p = toupper(*p);
-	capName[closeBracket] = '\0';
-
-	if ((retval = inifile.Find( value, &capName[closeBracket+1], &capName[5])) == 0) {
+	if ((retval = inifile.Find( value, key, section)) == 0) {
 	    *status = 1;
 	    inifile.Close();
 	} else {
@@ -919,6 +938,16 @@ int Interp::init_named_parameters()
 
 double Interp::inicheck()
 {
+    // Use accessor if available (multi-instance path)
+    if (_setup.ini_accessor.get != NULL) {
+        const char *val = _setup.ini_accessor.get(
+            _setup.ini_accessor.ctx, "TRAJ", "LINEAR_UNITS");
+        if (val == NULL) return -1.0;
+        if (!strcmp(val, "inch")) return 0.0;
+        return 1.0;
+    }
+
+    // Legacy file-based path
     IniFile inifile;
     const char *filename;
     const char *inistring;

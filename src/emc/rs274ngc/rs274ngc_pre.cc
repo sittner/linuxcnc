@@ -767,8 +767,6 @@ int Interp::init()
 
   _setup.canon.init_canon();
 
-  iniFileName = getenv("INI_FILE_NAME");
-
   // the default log file
   _setup.loggingLevel = 0;
   _setup.tool_change_at_g30 = 0;
@@ -791,6 +789,142 @@ int Interp::init()
   // we'll try to override these from the INI file below
   _setup.center_arc_radius_tolerance_inch = CENTER_ARC_RADIUS_TOLERANCE_INCH;
   _setup.center_arc_radius_tolerance_mm = CENTER_ARC_RADIUS_TOLERANCE_MM;
+
+  if (_setup.ini_accessor.get != NULL) {
+      // --- Accessor-based INI loading (multi-instance path) ---
+      // The accessor provides namespace-resolved values from the Go INI parser.
+      auto ini_get = [this](const char *section, const char *key) -> const char* {
+          return _setup.ini_accessor.get(_setup.ini_accessor.ctx, section, key);
+      };
+      auto ini_get_nth = [this](const char *section, const char *key, int n) -> const char* {
+          return _setup.ini_accessor.get_nth(_setup.ini_accessor.ctx, section, key, n);
+      };
+      const char *val;
+
+      if ((val = ini_get("EMCIO", "TOOL_CHANGE_AT_G30")) != NULL)
+          _setup.tool_change_at_g30 = atoi(val);
+      if ((val = ini_get("EMCIO", "TOOL_CHANGE_QUILL_UP")) != NULL)
+          _setup.tool_change_quill_up = atoi(val);
+      if ((val = ini_get("EMCIO", "TOOL_CHANGE_WITH_SPINDLE_ON")) != NULL)
+          _setup.tool_change_with_spindle_on = atoi(val);
+      if ((val = ini_get("AXIS_A", "WRAPPED_ROTARY")) != NULL)
+          _setup.a_axis_wrapped = atoi(val);
+      if ((val = ini_get("AXIS_B", "WRAPPED_ROTARY")) != NULL)
+          _setup.b_axis_wrapped = atoi(val);
+      if ((val = ini_get("AXIS_C", "WRAPPED_ROTARY")) != NULL)
+          _setup.c_axis_wrapped = atoi(val);
+      if ((val = ini_get("EMCIO", "RANDOM_TOOLCHANGER")) != NULL)
+          _setup.random_toolchanger = atoi(val);
+      if ((val = ini_get("TRAJ", "SPINDLES")) != NULL)
+          _setup.num_spindles = atoi(val);
+
+      // Features that default to ON
+      if ((val = ini_get("RS274NGC", "INI_VARS")) == NULL || atoi(val) != 0)
+          _setup.feature_set |= FEATURE_INI_VARS;
+      if ((val = ini_get("RS274NGC", "HAL_PIN_VARS")) == NULL || atoi(val) != 0)
+          _setup.feature_set |= FEATURE_HAL_PIN_VARS;
+
+      // Features that default to OFF
+      if ((val = ini_get("RS274NGC", "RETAIN_G43")) != NULL && atoi(val) != 0)
+          _setup.feature_set |= FEATURE_RETAIN_G43;
+      if ((val = ini_get("RS274NGC", "OWORD_NARGS")) != NULL && atoi(val) != 0)
+          _setup.feature_set |= FEATURE_OWORD_N_ARGS;
+      if ((val = ini_get("RS274NGC", "NO_DOWNCASE_OWORD")) != NULL && atoi(val) != 0)
+          _setup.feature_set |= FEATURE_NO_DOWNCASE_OWORD;
+      if ((val = ini_get("RS274NGC", "OWORD_WARNONLY")) != NULL && atoi(val) != 0)
+          _setup.feature_set |= FEATURE_OWORD_WARNONLY;
+
+      if ((val = ini_get("AXIS_A", "LOCKING_INDEXER_JOINT")) != NULL)
+          _setup.a_indexer_jnum = atol(val);
+      if ((val = ini_get("AXIS_B", "LOCKING_INDEXER_JOINT")) != NULL)
+          _setup.b_indexer_jnum = atol(val);
+      if ((val = ini_get("AXIS_C", "LOCKING_INDEXER_JOINT")) != NULL)
+          _setup.c_indexer_jnum = atol(val);
+
+      if ((val = ini_get("RS274NGC", "ORIENT_OFFSET")) != NULL)
+          _setup.orient_offset = atof(val);
+
+      if ((val = ini_get("EMC", "DEBUG")) != NULL)
+          _setup.debugmask = atoi(val);
+      _setup.debugmask |= EMC_DEBUG_UNCONDITIONAL;
+
+      if ((val = ini_get("RS274NGC", "LOG_LEVEL")) != NULL)
+          _setup.loggingLevel = atol(val);
+
+      // Log file — for accessor path, default to stderr (Go handles logging)
+      log_file = stderr;
+
+      _setup.use_lazy_close = 1;
+
+      // WIZARD_ROOT
+      _setup.wizard_root[0] = 0;
+      if ((val = ini_get("WIZARD", "WIZARD_ROOT")) != NULL) {
+          if (realpath(val, _setup.wizard_root) == NULL)
+              _setup.wizard_root[0] = 0;
+      }
+
+      // PROGRAM_PREFIX — caller should pass resolved paths via accessor
+      _setup.program_prefix[0] = 0;
+      if ((val = ini_get("DISPLAY", "PROGRAM_PREFIX")) != NULL) {
+          if (realpath(val, _setup.program_prefix) == NULL)
+              _setup.program_prefix[0] = 0;
+      }
+
+      // SUBROUTINE_PATH — colon-separated, caller should pass resolved paths
+      for (int dct = 0; dct < MAX_SUB_DIRS; dct++)
+          _setup.subroutines[dct] = NULL;
+      if ((val = ini_get("RS274NGC", "SUBROUTINE_PATH")) != NULL) {
+          char tmpdirs[PATH_MAX+1];
+          rtapi_strxcpy(tmpdirs, val);
+          char *nextdir = strtok(tmpdirs, ":");
+          int dct = 0;
+          while (nextdir != NULL && dct < MAX_SUB_DIRS) {
+              char tmp_path[PATH_MAX];
+              if (realpath(nextdir, tmp_path) != NULL) {
+                  _setup.subroutines[dct] = strstore(tmp_path);
+                  dct++;
+              }
+              nextdir = strtok(NULL, ":");
+          }
+      }
+
+      // ON_ABORT_COMMAND
+      if ((val = ini_get("RS274NGC", "ON_ABORT_COMMAND")) != NULL)
+          _setup.on_abort_command = strstore(val);
+      else
+          _setup.on_abort_command = NULL;
+
+      // REMAP entries (repeated key)
+      _setup.g_remapped.clear();
+      _setup.m_remapped.clear();
+      _setup.remaps.clear();
+      for (int n = 1; ; n++) {
+          val = ini_get_nth("RS274NGC", "REMAP", n);
+          if (val == NULL) break;
+          CHP(parse_remap(val, n));
+      }
+
+      // Arc radius tolerances
+      if ((val = ini_get("RS274NGC", "CENTER_ARC_RADIUS_TOLERANCE_INCH")) != NULL) {
+          double v = atof(val);
+          if (v >= MIN_CENTER_ARC_RADIUS_TOLERANCE_INCH)
+              _setup.center_arc_radius_tolerance_inch = v;
+      }
+      if ((val = ini_get("RS274NGC", "CENTER_ARC_RADIUS_TOLERANCE_MM")) != NULL) {
+          double v = atof(val);
+          if (v >= MIN_CENTER_ARC_RADIUS_TOLERANCE_MM)
+              _setup.center_arc_radius_tolerance_mm = v;
+      }
+
+      // G92 persistence and Fanuc-style sub
+      if ((val = ini_get("RS274NGC", "DISABLE_G92_PERSISTENCE")) != NULL)
+          _setup.disable_g92_persistence = atoi(val);
+      if ((val = ini_get("RS274NGC", "DISABLE_FANUC_STYLE_SUB")) != NULL)
+          _setup.disable_fanuc_style_sub = atoi(val);
+
+  } else {
+      // --- Legacy file-based INI loading ---
+      iniFileName = getenv("INI_FILE_NAME");
 
   if(iniFileName != NULL) {
 
@@ -1001,6 +1135,7 @@ int Interp::init()
           inifile.Close();
       }
   }
+  } // end legacy INI path
 
   _setup.length_units = _setup.canon.get_external_length_unit_type();
   _setup.canon.use_length_units(_setup.length_units);

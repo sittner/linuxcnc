@@ -183,7 +183,8 @@ setup::setup() :
     qc_endpoint_valid(0),
     qc_queue(nullptr),
     task_mode(0),
-    user_defined_function{}
+    user_defined_function{},
+    ini_accessor{nullptr, nullptr, nullptr}
 {
   std::fill(parameters, parameters + interp_param_global::RS274NGC_MAX_PARAMETERS, 0);
 }

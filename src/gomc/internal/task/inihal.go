@@ -87,9 +87,10 @@ type iniHalValues struct {
 	axisMaxAcc   [maxAxes]float64
 }
 
-// newIniHal creates the "inihal" HAL component and all its pins.
-func newIniHal(numJoints int) (*iniHal, error) {
-	comp, err := hal.NewComponent("inihal")
+// newIniHal creates the inihal HAL component and all its pins.
+// The name parameter allows per-instance components (e.g. "mill1.inihal").
+func newIniHal(name string, numJoints int) (*iniHal, error) {
+	comp, err := hal.NewComponent(name)
 	if err != nil {
 		return nil, fmt.Errorf("inihal: hal_init: %w", err)
 	}

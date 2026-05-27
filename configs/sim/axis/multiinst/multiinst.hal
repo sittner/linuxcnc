@@ -1,0 +1,40 @@
+# Multi-instance HAL — two milltask instances sharing one motion controller.
+# This is a stepping-stone config: full independence requires per-instance
+# motmod (future work).  For now, both milltask instances talk to the same
+# motion controller — useful for testing INI namespace isolation,
+# interpreter accessor callbacks, and API routing.
+
+# Infrastructure (normally from linuxcnc.hal)
+load tpmod
+load homemod
+load io <iocontrol>
+
+# Two milltask instances (mill1 uses global INI, mill2 uses [mill2:*] overrides)
+load milltask <mill1> halui=halui
+load milltask <mill2> halui=halui2
+
+# Two ngcpreview instances
+load ngcpreview <preview1,preview2>
+
+# Kinematics and motion
+load trivkins
+load motmod num_spindles=1
+
+addf motion-command-handler servo-thread
+addf motion-controller servo-thread
+
+# ESTOP loop-back
+net estop-loop iocontrol.user-enable-out iocontrol.emc-enable-in
+
+# Position loop-back (commanded → feedback)
+net x-pos joint.0.motor-pos-cmd => joint.0.motor-pos-fb
+net y-pos joint.1.motor-pos-cmd => joint.1.motor-pos-fb
+net z-pos joint.2.motor-pos-cmd => joint.2.motor-pos-fb
+
+# Instant home
+setp joint.0.home-sw-in 1
+setp joint.1.home-sw-in 1
+setp joint.2.home-sw-in 1
+
+# Spindle at-speed
+setp spindle.0.at-speed 1

@@ -842,6 +842,15 @@ struct setup
     // (moved from globals to support multiple Interp instances)
     int task_mode;  // 0 = preview, 1 = task (replaces global _task)
     USER_DEFINED_FUNCTION_TYPE user_defined_function[USER_DEFINED_FUNCTION_NUM];
+
+    // INI accessor callback struct — when set, used instead of file-based
+    // INI lookups for init() and runtime #<_ini[SEC]KEY> named parameters.
+    // Owned by the caller (milltask); lifetime must exceed this setup struct.
+    struct {
+        void *ctx;
+        const char* (*get)(void *ctx, const char *section, const char *key);
+        const char* (*get_nth)(void *ctx, const char *section, const char *key, int n);
+    } ini_accessor;
 };
 
 inline bool is_a_cycle(int motion) {

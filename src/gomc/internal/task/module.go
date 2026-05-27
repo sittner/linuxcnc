@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"runtime/cgo"
 	"strconv"
 	"strings"
 	"unsafe"
@@ -26,7 +27,11 @@ var _ MotionConfig = (*motctl.MotctlClient)(nil)
 
 func factory(ini *inifile.IniFile, logger *slog.Logger, name string, args []string) (gomc.Module, error) {
 	logger = logger.With("module", name)
-	m := &milltaskModule{ini: ini, logger: logger, name: name}
+	// Use a namespaced view of the INI so this instance reads [name:SECTION]
+	// with fallback to [SECTION].  For the default "milltask" instance name
+	// where no namespaced sections exist, all lookups fall through to global.
+	nsIni := ini.WithNamespace(name)
+	m := &milltaskModule{ini: nsIni, logger: logger, name: name}
 
 	// Parse module parameters.
 	for _, arg := range args {
@@ -62,19 +67,20 @@ func factory(ini *inifile.IniFile, logger *slog.Logger, name string, args []stri
 
 // milltaskModule wraps Task to satisfy the gomc.Module lifecycle.
 type milltaskModule struct {
-	ini         *inifile.IniFile
-	name        string
-	task        *Task
-	logger      *slog.Logger
-	inihal      *iniHal
-	mc          MotionConfig
-	apiCleanup  func()
-	poslog      posLogger
-	interp      *CInterp
-	canonTable  *canonCallbackTable
-	mon         *monitor
-	stopped     bool
-	haluiPrefix string // if set, export halui pins with this component name
+	ini               *inifile.IniFile
+	name              string
+	task              *Task
+	logger            *slog.Logger
+	inihal            *iniHal
+	mc                MotionConfig
+	apiCleanup        func()
+	poslog            posLogger
+	interp            *CInterp
+	canonTable        *canonCallbackTable
+	mon               *monitor
+	stopped           bool
+	haluiPrefix       string     // if set, export halui pins with this component name
+	iniAccessorHandle cgo.Handle // CGo handle for the INI accessor (must be freed)
 }
 
 func (m *milltaskModule) Start() error {
@@ -120,7 +126,7 @@ func (m *milltaskModule) Start() error {
 	}
 
 	// Create inihal HAL component for runtime INI parameter override.
-	ih, err := newIniHal(t.numJoints)
+	ih, err := newIniHal(m.name+".inihal", t.numJoints)
 	if err != nil {
 		return fmt.Errorf("milltask: %w", err)
 	}
@@ -190,6 +196,10 @@ func (m *milltaskModule) Destroy() {
 		m.interp.Destroy()
 		m.interp = nil
 	}
+	if m.iniAccessorHandle != 0 {
+		FreeIniAccessor(m.iniAccessorHandle)
+		m.iniAccessorHandle = 0
+	}
 	if m.canonTable != nil {
 		m.canonTable.release()
 		m.canonTable = nil
@@ -221,12 +231,17 @@ func (m *milltaskModule) initInterpreter() error {
 	ct := newCanonCallbackTable(m.task.canon)
 	interp.SetCanonCallbacks(ct.ptr())
 
-	// Load INI configuration into interpreter.
-	if err := interp.IniLoad(m.ini.SourceFile()); err != nil {
+	// Load INI configuration into interpreter via accessor callbacks.
+	// This replaces interp.IniLoad(filename) — the accessor provides
+	// namespace-resolved values from the Go INI parser, enabling
+	// multi-instance support without the interpreter opening files.
+	accHandle, err := interp.IniLoadAccessor(m.ini)
+	if err != nil {
 		interp.Destroy()
 		ct.release()
-		return fmt.Errorf("interpreter ini_load: %w", err)
+		return fmt.Errorf("interpreter ini_load_accessor: %w", err)
 	}
+	m.iniAccessorHandle = accHandle
 
 	// Ensure canon knows the parameter file name so the interpreter can
 	// load it during Init(). IniLoad should set this via the callback,

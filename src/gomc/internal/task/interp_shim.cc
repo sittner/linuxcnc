@@ -9,6 +9,9 @@
 #define CANON_API_CGO
 #include "gomc/generated/gmi/canon/canon_api.h"
 
+// Include interp_shim.h for the interp_ini_accessor_t typedef.
+#include "interp_shim.h"
+
 extern "C" {
 
 // interp_new creates the default interpreter (rs274ngc).
@@ -176,6 +179,38 @@ void interp_active_m_codes(void *handle, int *mcodes, int max_len) {
 void interp_active_settings(void *handle, double *settings, int max_len) {
     static_cast<InterpBase*>(handle)->active_settings(settings);
     (void)max_len;
+}
+
+// interp_set_ini_accessor stores the INI accessor callback struct in the
+// interpreter's setup struct.  Must be called before init().
+void interp_set_ini_accessor(void *handle, const interp_ini_accessor_t *accessor) {
+    Interp *ip = dynamic_cast<Interp*>(static_cast<InterpBase*>(handle));
+    if (ip && accessor) {
+        ip->_setup.ini_accessor.ctx = accessor->ctx;
+        ip->_setup.ini_accessor.get = accessor->get;
+        ip->_setup.ini_accessor.get_nth = accessor->get_nth;
+    }
+}
+
+// interp_ini_load_accessor loads INI config using the accessor callbacks
+// instead of opening a file.  Replaces interp_ini_load() for gomc usage.
+int interp_ini_load_accessor(void *handle, const interp_ini_accessor_t *accessor) {
+    Interp *ip = dynamic_cast<Interp*>(static_cast<InterpBase*>(handle));
+    if (!ip || !accessor) return -1;
+
+    // Store accessor for runtime use (fetch_ini_param)
+    ip->_setup.ini_accessor.ctx = accessor->ctx;
+    ip->_setup.ini_accessor.get = accessor->get;
+    ip->_setup.ini_accessor.get_nth = accessor->get_nth;
+
+    // Read PARAMETER_FILE — the only thing ini_load() does
+    const char *param_file = accessor->get(accessor->ctx, "RS274NGC", "PARAMETER_FILE");
+    if (param_file && param_file[0] != '\0') {
+        ip->_setup.canon.set_parameter_file_name(param_file);
+    } else {
+        return -1;  // parameter file name is required
+    }
+    return 0;
 }
 
 } // extern "C"
