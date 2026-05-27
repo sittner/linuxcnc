@@ -144,11 +144,22 @@ def parse(filename, canon, *args):
             center_x = seg["center_x"] if isinstance(seg, dict) else seg.center_x
             center_y = seg["center_y"] if isinstance(seg, dict) else seg.center_y
             rotation = seg["rotation"] if isinstance(seg, dict) else seg.rotation
-            # arc_feed signature: (first_end, second_end, first_axis, second_axis,
-            #                      rotation, axis_end_point, a, b, c, u, v, w)
-            # In-plane coords: end = (ex, ey), center = (center_x, center_y), axis = ez
-            canon.arc_feed(ex, ey, center_x, center_y, rotation, ez,
-                           ea, eb, ec, eu, ev, ew)
+            seg_plane = seg["plane"] if isinstance(seg, dict) else seg.plane
+            # Set canon plane for arc_to_segments linearization
+            canon.plane = seg_plane if seg_plane else 1
+            # arc_feed expects in-plane coords: (first_end, second_end,
+            #   first_axis, second_axis, rotation, axis_end_point, a,b,c,u,v,w)
+            # center_x/center_y are already in-plane (first_axis, second_axis).
+            # Convert XYZ endpoint back to in-plane based on active plane.
+            if seg_plane == 2:  # YZ: first=Y, second=Z, axis=X
+                canon.arc_feed(ey, ez, center_x, center_y, rotation, ex,
+                               ea, eb, ec, eu, ev, ew)
+            elif seg_plane == 3:  # XZ: first=Z, second=X, axis=Y
+                canon.arc_feed(ez, ex, center_x, center_y, rotation, ey,
+                               ea, eb, ec, eu, ev, ew)
+            else:  # XY (default): first=X, second=Y, axis=Z
+                canon.arc_feed(ex, ey, center_x, center_y, rotation, ez,
+                               ea, eb, ec, eu, ev, ew)
         elif seg_type == SegmentType.PROBE:
             if hasattr(canon, 'straight_probe'):
                 canon.straight_probe(ex, ey, ez, ea, eb, ec, eu, ev, ew)

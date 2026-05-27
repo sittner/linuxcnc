@@ -44,6 +44,7 @@ type Segment {
     center_x: f64
     center_y: f64
     rotation: i32
+    plane: i32
 }
 
 # A dwell (pause) point
@@ -74,7 +75,7 @@ type PreviewResult {
     g92_offset: Position
     # XY rotation angle (radians) for rotated coordinate systems
     xy_rotation: f64
-    # Active plane (1=XY, 2=XZ, 3=YZ) for arc linearization
+    # Active plane (1=XY, 2=YZ, 3=XZ) for arc linearization
     plane: i32
 }
 

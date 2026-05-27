@@ -47,7 +47,7 @@ typedef struct {
     // XY rotation angle (radians)
     double xy_rotation;
 
-    // Active plane (1=XY, 2=XZ, 3=YZ)
+    // Active plane (1=XY, 2=YZ, 3=XZ)
     int plane;
 
     // Current line number
@@ -81,6 +81,7 @@ typedef struct preview_segment {
     double center_x;
     double center_y;
     int rotation;
+    int plane;      // active plane at time of arc (1=XY, 2=YZ, 3=XZ)
 } preview_segment_t;
 
 typedef struct preview_dwell {
@@ -182,16 +183,30 @@ static void pc_arc_feed(void *vctx, int32_t ln,
     double u, double v, double w) {
     preview_ctx_t *ctx = (preview_ctx_t*)vctx;
     ctx->line_no = ln;
-    // Record arc endpoint and center in the selected plane.
-    // first_end/second_end = endpoint in-plane, first_axis/second_axis = center in-plane.
-    // For XY plane: end=(first_end, second_end, axis_end_point)
-    add_segment(ctx, 3, first_end, second_end, axis_end_point,
-                a, b, c, u, v, w);
-    // Store arc center and rotation on the last-added segment
+    // Map in-plane coordinates back to XYZ based on active plane.
+    // Plane 1 (XY): first=X, second=Y, axis=Z
+    // Plane 2 (YZ): first=Y, second=Z, axis=X
+    // Plane 3 (XZ): first=Z, second=X, axis=Y
+    double x, y, z;
+    switch (ctx->plane) {
+    case 2: // YZ
+        x = axis_end_point; y = first_end; z = second_end;
+        break;
+    case 3: // XZ
+        x = second_end; y = axis_end_point; z = first_end;
+        break;
+    default: // XY (plane 1)
+        x = first_end; y = second_end; z = axis_end_point;
+        break;
+    }
+    add_segment(ctx, 3, x, y, z, a, b, c, u, v, w);
+    // Store in-plane arc center and rotation on the last-added segment.
+    // center_x = first_axis (in-plane), center_y = second_axis (in-plane).
     preview_segment_t *s = &ctx->segments[ctx->seg_count - 1];
     s->center_x = ctx->metric ? first_axis / 25.4 : first_axis;
     s->center_y = ctx->metric ? second_axis / 25.4 : second_axis;
     s->rotation = rotation;
+    s->plane = ctx->plane;
 }
 
 static void pc_straight_probe(void *vctx, int32_t ln,
@@ -873,6 +888,7 @@ func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode stri
 				CenterX:  sanitize(float64(s.center_x)),
 				CenterY:  sanitize(float64(s.center_y)),
 				Rotation: int32(s.rotation),
+				Plane:    int32(s.plane),
 			}
 		}
 	}
