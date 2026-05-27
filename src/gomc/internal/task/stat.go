@@ -69,6 +69,7 @@ func (t *Task) BuildStat() *emcstatapi.StatFull {
 			U: cs.g92Offset.U, V: cs.g92Offset.V, W: cs.g92Offset.W,
 		},
 		RotationXy: cs.xyRotation,
+		PreviewSeq: t.previewSeq,
 	}
 	numJoints := t.numJoints
 	numSpindles := t.numSpindles

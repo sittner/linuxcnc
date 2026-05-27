@@ -141,6 +141,15 @@ void interp_set_loop_on_main_m99(void *handle, int state) {
     static_cast<InterpBase*>(handle)->set_loop_on_main_m99(state != 0);
 }
 
+// interp_set_task_mode sets _setup.task_mode (1=task, 0=preview).
+// When task_mode=1, save_parameters actually writes the var file.
+void interp_set_task_mode(void *handle, int mode) {
+    Interp *ip = dynamic_cast<Interp*>(static_cast<InterpBase*>(handle));
+    if (ip) {
+        ip->_setup.task_mode = mode;
+    }
+}
+
 // interp_set_user_defined_function registers a function pointer for M(100+idx).
 void interp_set_user_defined_function(void *handle, int idx,
     void (*fn)(int num, double arg1, double arg2)) {

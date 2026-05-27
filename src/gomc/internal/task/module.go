@@ -235,6 +235,10 @@ func (m *milltaskModule) initInterpreter() error {
 		m.task.canon.SetParameterFileName(pf)
 	}
 
+	// Mark interpreter as running in task mode (not preview mode).
+	// This enables save_parameters to actually write the var file.
+	interp.SetTaskMode(1)
+
 	// Initialize interpreter state.
 	if err := interp.Init(); err != nil {
 		interp.Destroy()

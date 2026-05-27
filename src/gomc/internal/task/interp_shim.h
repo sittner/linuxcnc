@@ -48,6 +48,7 @@ const char *interp_command(void *handle, char *buf, size_t buflen);
 // Configuration
 void interp_set_loglevel(void *handle, int level);
 void interp_set_loop_on_main_m99(void *handle, int state);
+void interp_set_task_mode(void *handle, int mode);
 
 // Canon callback wiring
 struct canon_callbacks;

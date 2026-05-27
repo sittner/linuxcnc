@@ -301,6 +301,7 @@ type Task struct {
 	// Program state
 	programFile string
 	programOpen bool
+	previewSeq  int32 // increments on changes that invalidate preview
 
 	// Sequencer
 	interpQueue chan QueuedCmd

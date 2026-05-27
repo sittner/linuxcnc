@@ -310,6 +310,7 @@ func (c *Canon) SetG5xOffset(origin int32, x, y, z, a, b, _c, u, v, w float64) {
 		A: a, B: b, C: _c,
 		U: s.fromProg(u), V: s.fromProg(v), W: s.fromProg(w),
 	}
+	c.task.previewSeq++
 }
 
 func (c *Canon) SetG92Offset(x, y, z, a, b, _c, u, v, w float64) {
@@ -319,10 +320,12 @@ func (c *Canon) SetG92Offset(x, y, z, a, b, _c, u, v, w float64) {
 		A: a, B: b, C: _c,
 		U: s.fromProg(u), V: s.fromProg(v), W: s.fromProg(w),
 	}
+	c.task.previewSeq++
 }
 
 func (c *Canon) SetXYRotation(t float64) {
 	c.state.xyRotation = t
+	c.task.previewSeq++
 }
 
 func (c *Canon) UseLengthUnits(units int32) {

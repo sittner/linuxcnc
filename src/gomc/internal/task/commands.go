@@ -220,6 +220,7 @@ func (t *Task) ProgramOpen(file string) error {
 	}
 	t.programFile = file
 	t.programOpen = true
+	t.previewSeq++
 	return nil
 }
 
@@ -1024,7 +1025,13 @@ func (t *Task) SetBlockDelete(on bool) error {
 
 // LoadToolTable reloads the tool table from file.
 func (t *Task) LoadToolTable() error {
-	return t.io.ToolLoadTable("")
+	err := t.io.ToolLoadTable("")
+	if err == nil {
+		t.mu.Lock()
+		t.previewSeq++
+		t.mu.Unlock()
+	}
+	return err
 }
 
 // WaitComplete waits for motion to complete (with timeout).

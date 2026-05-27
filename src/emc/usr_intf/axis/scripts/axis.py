@@ -936,6 +936,13 @@ class LivePlotter:
         if (   self.stat.tool_offset   != o.last_tool_offset
             or self.stat.tool_in_spindle != o.last_tool):
             o.redraw_dro()
+        # When the server signals that preview-relevant state changed
+        # (offsets, program loaded, tool table), reload the preview.
+        preview_seq = getattr(self.stat, 'preview_seq', 0)
+        if (loaded_file and not running()
+                and preview_seq != getattr(o, 'last_preview_seq', None)):
+            o.last_preview_seq = preview_seq
+            root_window.after_idle(refresh_preview)
         if (self.logger.npts != self.lastpts
                 or limits != o.last_limits
                 or self.stat.actual_position != o.last_position
@@ -2023,6 +2030,71 @@ def reload_file(refilter=True):
         open_file_guts(tempfile, True, False)
     if line:
         o.set_highlight_line(line)
+
+def refresh_preview():
+    """Re-generate preview with current offsets without reloading the file."""
+    if running(): return
+    s.poll()
+    if not loaded_file:
+        return
+    # Ensure the var file reflects the current interpreter parameters
+    # (e.g. after G10 L20 touchoff which updates in-memory params only).
+    c.task_plan_synch()
+    c.wait_complete()
+    f = loaded_file
+    program_filter = get_filter(f)
+    if program_filter:
+        f = os.path.join(tempdir, os.path.basename(f))
+        if not os.path.exists(f):
+            return  # filtered file not available, need full reload
+    f = os.path.abspath(f)
+    lines = open(f).readlines()
+    canon = AxisCanon(o, widgets.text, len(lines) - 1, DummyProgress(), arcdivision)
+
+    initcodes = []
+    initcode = inifile.find("EMC", "RS274NGC_STARTUP_CODE") or ""
+    if initcode == "":
+        initcode = inifile.find("RS274NGC", "RS274NGC_STARTUP_CODE") or ""
+    if initcode:
+        initcodes.append(initcode)
+    if not interpname:
+        unitcode = "G%d" % (20 + (s.linear_units == 1))
+        initcodes.append(unitcode)
+        initcodes.append("g90")
+        initcodes.append("t%d m6" % s.tool_in_spindle)
+        for i in range(9):
+            if s.axis_mask & (1<<i):
+                axis = "XYZABCUVW"[i]
+                if (axis == "A" and a_axis_wrapped) or\
+                   (axis == "B" and b_axis_wrapped) or\
+                   (axis == "C" and c_axis_wrapped):
+                    pos = s.position[i] % 360.000
+                else:
+                    pos = s.position[i]
+                initcodes.append("g53 g0 %s%.8f" % (axis, pos))
+        for i, g in enumerate(s.gcodes):
+            if i in (0, 1, 2): continue
+            if g == -1: continue
+            if g == 960:
+                initcodes.append("G96 S%.0f" % s.settings[2])
+            else:
+                initcodes.append("G%.1f" % (g * .1))
+        tool_offset = "G43.1"
+        for i in range(9):
+            if s.axis_mask & (1<<i):
+                tool_offset += " %s%.8f" % ("XYZABCUVW"[i], s.tool_offset[i])
+        initcodes.append(tool_offset)
+        for i, m in enumerate(s.mcodes):
+            if i in (0, 1): continue
+            if m == -1: continue
+            initcodes.append("M%d" % m)
+    try:
+        o.canon = canon
+        o.load_preview(f, canon, initcodes, interpname)
+    except Exception:
+        pass
+    o.lp.set_depth(from_internal_linear_unit(o.get_foam_z()),
+                   from_internal_linear_unit(o.get_foam_w()))
 
 def ja_from_rbutton():
     # radiobuttons for joints set ja_rbutton to numeric value [0,MAX_JOINTS)

@@ -200,6 +200,10 @@ func (i *CInterp) SetLoopOnMainM99(state bool) {
 	C.interp_set_loop_on_main_m99(i.handle, v)
 }
 
+func (i *CInterp) SetTaskMode(mode int) {
+	C.interp_set_task_mode(i.handle, C.int(mode))
+}
+
 const (
 	activeGCodesLen   = 17 // ACTIVE_G_CODES
 	activeMCodesLen   = 10 // ACTIVE_M_CODES

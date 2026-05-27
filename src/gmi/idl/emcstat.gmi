@@ -187,6 +187,7 @@ type StatFull {
     jog_increment: f64      # current jog increment (0 = continuous)
     jog_speed: f64          # linear jog speed (units/sec)
     ajog_speed: f64         # angular jog speed (deg/sec)
+    preview_seq: i32        # increments on any change that invalidates preview
 }
 
 # ─── Functions ───
