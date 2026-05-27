@@ -59,41 +59,67 @@ func (c *Canon) GetExternalMist() int32 {
 }
 
 // Position getters — return current position in program units.
+// Like the C canon (GET_EXTERNAL_POSITION), these read from endPoint
+// (absolute machine coordinates, synced from CartePosFb before each synch)
+// and return the position with offsets removed, in program units.
+// This matches the C canon's unoffset_and_unrotate_pos + to_prog.
+
+func (c *Canon) syncEndPointFromMachine() {
+	if c.task == nil || c.task.status == nil {
+		return
+	}
+	ms, err := c.task.status.GetStatus()
+	if err != nil {
+		return
+	}
+	p := ms.CartePosFb
+	c.state.endPoint = Pose{
+		X: p.X, Y: p.Y, Z: p.Z,
+		A: p.A, B: p.B, C: p.C,
+		U: p.U, V: p.V, W: p.W,
+	}
+}
+
+// getExternalPosition returns the current position with offsets removed,
+// matching the C canon's unoffset_and_unrotate_pos + to_prog.
+func (c *Canon) getExternalPosition() Pose {
+	return c.state.fromAbsolute(c.state.endPoint)
+}
 
 func (c *Canon) GetExternalPositionX() float64 {
-	return c.state.toProg(c.state.endPoint.X)
+	return c.getExternalPosition().X
 }
 
 func (c *Canon) GetExternalPositionY() float64 {
-	return c.state.toProg(c.state.endPoint.Y)
+	return c.getExternalPosition().Y
 }
 
 func (c *Canon) GetExternalPositionZ() float64 {
-	return c.state.toProg(c.state.endPoint.Z)
+	return c.getExternalPosition().Z
 }
 
 func (c *Canon) GetExternalPositionA() float64 {
-	return c.state.endPoint.A
+	return c.getExternalPosition().A
 }
 
 func (c *Canon) GetExternalPositionB() float64 {
-	return c.state.endPoint.B
+	return c.getExternalPosition().B
 }
 
 func (c *Canon) GetExternalPositionC() float64 {
-	return c.state.endPoint.C
+	return c.getExternalPosition().C
 }
 
 func (c *Canon) GetExternalPositionU() float64 {
-	return c.state.toProg(c.state.endPoint.U)
+	return c.getExternalPosition().U
 }
 
 func (c *Canon) GetExternalPositionV() float64 {
-	return c.state.toProg(c.state.endPoint.V)
+	return c.getExternalPosition().V
 }
 
 func (c *Canon) GetExternalPositionW() float64 {
-	return c.state.toProg(c.state.endPoint.W)
+	return c.getExternalPosition().W
 }
 
 // Probe position getters — return probe trip position in program units.

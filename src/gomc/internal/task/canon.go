@@ -271,12 +271,6 @@ func (c *Canon) setDiscard(d bool) {
 	c.discard = d
 }
 
-// UpdateEndPointFromMachine syncs the canon endpoint with actual machine position.
-// Used after seeking to update interpreter's view of current position.
-func (c *Canon) UpdateEndPointFromMachine(pos Pose) {
-	c.state.endPoint = pos
-}
-
 // --- State-setting callbacks (modify canon state, no queued commands) ---
 
 func (c *Canon) InitCanon() {

@@ -78,6 +78,7 @@ func (t *Task) SetState(state int32) error {
 				_ = t.interp.Abort(0, "estop")
 				_ = t.interp.Close()
 				_ = t.interp.Reset()
+				t.canon.syncEndPointFromMachine()
 				_ = t.interp.Synch()
 			}
 			t.StartSequencer()
@@ -181,6 +182,7 @@ func (t *Task) SetMode(mode int32) error {
 		t.mu.Unlock()
 		_ = t.motion.SetCoord()
 		if t.interp != nil {
+			t.canon.syncEndPointFromMachine()
 			_ = t.interp.Synch()
 		}
 		return nil
@@ -192,6 +194,7 @@ func (t *Task) SetMode(mode int32) error {
 		t.mu.Unlock()
 		_ = t.motion.SetCoord()
 		if t.interp != nil {
+			t.canon.syncEndPointFromMachine()
 			_ = t.interp.Synch()
 		}
 		return nil
@@ -273,6 +276,7 @@ func (t *Task) AutoCommand(cmd int32, line int32) error {
 			t.setInterpState(InterpIdle)
 			return fmt.Errorf("re-open program: %w", err)
 		}
+		t.canon.syncEndPointFromMachine()
 		if err := interp.Synch(); err != nil {
 			t.logger.Error("interp synch failed before run", "err", err)
 		}
@@ -337,6 +341,7 @@ func (t *Task) AutoCommand(cmd int32, line int32) error {
 				t.setInterpState(InterpIdle)
 				return fmt.Errorf("re-open program: %w", err)
 			}
+			t.canon.syncEndPointFromMachine()
 			if err := interp.Synch(); err != nil {
 				t.logger.Error("interp synch failed before step", "err", err)
 			}
@@ -433,6 +438,10 @@ func (t *Task) executeMDI(command string) error {
 
 	// Set active canon for M-code callbacks (no ctx parameter).
 	setActiveCanon(t.canon)
+
+	// Sync canon endpoint from actual machine position before interp synch,
+	// matching C canon's GET_EXTERNAL_POSITION which reads from STAT.
+	t.canon.syncEndPointFromMachine()
 
 	// Synch interpreter with current machine position before MDI.
 	if err := interp.Synch(); err != nil {
@@ -532,6 +541,7 @@ func (t *Task) runProgram(interp Interpreter, startLine int32) {
 			if t.waitSequencerDrain() {
 				return // aborted
 			}
+			t.canon.syncEndPointFromMachine()
 			if err := interp.Synch(); err != nil {
 				t.logger.Error("interp synch after execute_finish", "err", err)
 			}
@@ -589,6 +599,7 @@ func (t *Task) seekToLine(interp Interpreter, startLine int32) bool {
 
 		// Handle EXECUTE_FINISH during seek (needed for tool changes etc.)
 		if rc == InterpExecuteFinish {
+			t.canon.syncEndPointFromMachine()
 			if err := interp.Synch(); err != nil {
 				t.logger.Error("interp synch during seek", "err", err)
 			}
@@ -598,17 +609,7 @@ func (t *Task) seekToLine(interp Interpreter, startLine int32) bool {
 		if lineNow >= startLine {
 			// Sync interpreter position with actual machine position
 			// so the first real move goes to the right place.
-			if t.status != nil {
-				ms, err := t.status.GetStatus()
-				if err == nil {
-					p := ms.CartePosFb
-					t.canon.UpdateEndPointFromMachine(Pose{
-						X: p.X, Y: p.Y, Z: p.Z,
-						A: p.A, B: p.B, C: p.C,
-						U: p.U, V: p.V, W: p.W,
-					})
-				}
-			}
+			t.canon.syncEndPointFromMachine()
 			if err := interp.Synch(); err != nil {
 				t.logger.Error("interp synch after seek", "err", err)
 			}
@@ -1001,6 +1002,7 @@ func (t *Task) TaskPlanSynch() error {
 	if t.interp == nil {
 		return nil
 	}
+	t.canon.syncEndPointFromMachine()
 	return t.interp.Synch()
 }
 
