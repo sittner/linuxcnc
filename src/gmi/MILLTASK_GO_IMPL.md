@@ -48,6 +48,7 @@ Integration test: **61 pass, 0 fail, 4 xfail** (configs/sim/test/tasktest.ini)
 - ✅ Poll interval aligned to 10ms (100Hz, matching C milltask cycle time)
 - ✅ Stat: ToolInSpindle + PocketPrepped populated from IO controller
 - ✅ Program file cleared on ESTOP (fixes run_requires_file test)
+- ✅ Default program loading at startup ([DISPLAY]OPEN_FILE loaded by milltask, not UI)
 
 ### XFAILs (known issues, not regressions)
 1. **jog/incremental** — wrong distance (units/scale bug in motctl or motion)

@@ -5,12 +5,29 @@
 Centralize all UI state in the server-side companion (currently `axis_ui` cmod)
 so that multiple axis client instances can run simultaneously without conflicts.
 
-## Current Problems
+## Current Status (May 2026)
 
-- Each axis client holds its own state (loaded file, slider values, jog increment, mode)
-- Starting a second client re-issues mode switches and file opens, conflicting with running programs
+| Feature | Status | Commit |
+|---------|--------|--------|
+| REST routes for cmod APIs | ✅ Done | c57b08d3b8 |
+| File sync across instances | ✅ Done | 7bc84a70b2 |
+| Default program loading in milltask | ✅ Done | d959ec9af0 |
+| Jog speed slider sync | ✅ Done | 853e62427f |
+| Progress.done() crash fix | ✅ Done | 2ae38c2100 |
+| axisui cmod removed | ✅ Done | c63af91cdd |
+| Mode management (remove ensure_mode) | ❌ Pending | — |
+| Remove c.mode() calls from axis | ❌ Pending | — |
+
+## Original Problems (mostly solved)
+
+- ~~Each axis client holds its own state (loaded file, slider values, jog increment, mode)~~
+  → File syncs from stat.file; jog speed syncs via stat + slider update
+- ~~Starting a second client re-issues mode switches and file opens, conflicting with running programs~~
+  → Default file loaded by milltask at startup; clients read stat.file
 - HAL pins are "last writer wins" — no defined owner in multi-client setups
-- Startup during program execution causes rejected NML commands and slow window appearance
+  → axisui cmod removed; HAL pins owned by halui
+- ~~Startup during program execution causes rejected NML commands and slow window appearance~~
+  → Client syncs existing state from server, no mode switches on startup
 
 ## Architecture
 
@@ -46,24 +63,24 @@ so that multiple axis client instances can run simultaneously without conflicts.
 
 ## Migration Order (incremental)
 
-1. **Sliders** (feed override, spindle override, max velocity)
-   - Already have HAL pins
-   - Server owns values, pushes to clients
-   - Client sends `set_feed_override(value)` intent
+1. **Sliders** (feed override, spindle override, max velocity, jog speed) ✅
+   - Server owns values via emcstat watch
+   - Client syncs from stat polling with blackout timers to prevent feedback loops
+   - Jog speed uses logarithmic slider mapping (setval/val2vel)
 
-2. **Jog settings** (axis, increment)
-   - Already partially in axisui API
-   - Server validates and applies
+2. **Jog settings** (axis, increment) — partially done
+   - Jog speed: ✅ syncs via stat.jog_speed / stat.ajog_speed
+   - Jog axis/increment: still client-local (low priority — rarely conflicts)
 
-3. **File management** (open, reload, close)
-   - Biggest piece, highest payoff
-   - Server handles ensure_mode + interpreter commands
-   - Clients get notified of success + file content
+3. **File management** (open, reload, close) ✅
+   - milltask loads `[DISPLAY]OPEN_FILE` at startup (no UI involvement)
+   - Clients detect `stat.file != loaded_file` in update() loop → sync
+   - File open via emccmd API → all clients get notified via stat watch
 
-4. **Mode management**
-   - Last — requires most careful coordination
-   - Server becomes sole issuer of mode changes
-   - Clients request intent ("I want to run"), server orchestrates
+4. **Mode management** — pending
+   - Next step: remove `ensure_mode()` from axis.py
+   - Remove direct `c.mode()` calls
+   - Server (milltask) handles mode switches internally for commands that need them
 
 ## Implementation Options
 
@@ -89,4 +106,6 @@ Choose based on whether HAL pin manipulation or state logic dominates the comple
 - gomc-server unifies cmod + task + motion in one process — "moving logic to server" means no IPC overhead
 - NML will be replaced by GMI calls (one of the goals of the gomc project)
 - The axisui `.gmi` IDL already defines part of this interface — expand it incrementally
-- Existing axis client code can be thinned step by step (remove ensure_mode, remove direct NML calls, replace with API calls)
+- Existing axis client code can be thinned step by step (remove ensure_mode, remove direct c.mode() calls)
+- axisui cmod has been removed — axis talks directly to emccmd/emcstat APIs
+- Multi-client sync uses blackout timers (1s) to prevent feedback loops when local changes propagate
