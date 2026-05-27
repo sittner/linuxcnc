@@ -980,6 +980,13 @@ class LivePlotter:
         vupdate(vars.task_state, self.stat.task_state)
         vupdate(vars.task_paused, self.stat.task_paused)
         vupdate(vars.taskfile, self.stat.file)
+
+        # Multi-client sync: reload preview when another UI loads a file.
+        remote_file = self.stat.file
+        if (remote_file and remote_file != loaded_file
+                and self.stat.interp_state == INTERP_IDLE):
+            open_file_guts(remote_file, False, False)
+
         vupdate(vars.interp_pause, self.stat.paused)
         vupdate(vars.mist, self.stat.mist)
         vupdate(vars.flood, self.stat.flood)
