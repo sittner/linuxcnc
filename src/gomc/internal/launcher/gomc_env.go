@@ -306,7 +306,7 @@ func gomc_api_register_cb(ctx unsafe.Pointer, apiName *C.char, version C.int,
 	ver := int(version)
 	instance := C.GoString(instanceName)
 
-	err := reg.RegisterNoREST(name, ver, instance, callbacks)
+	err := reg.Register(name, ver, instance, callbacks)
 	if err != nil {
 		slog.Error("register_api: registration failed",
 			"api", name, "instance", instance, "error", err)
