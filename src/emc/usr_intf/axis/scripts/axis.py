@@ -3365,19 +3365,13 @@ def get_jog_mode():
     s.poll()
     if  (    (s.kinematics_type == KINEMATICS_IDENTITY)
         and  all_homed() ):
-        teleop_mode = 1
         jjogmode = False
     else:
         # check motion_mode since other guis (halui) could alter it
         if s.motion_mode == TRAJ_MODE_FREE:
-            teleop_mode = 0
             jjogmode = True
         else:
-            teleop_mode = 1
             jjogmode = False
-    if (   (    jjogmode and s.motion_mode != TRAJ_MODE_FREE)
-        or (not jjogmode and s.motion_mode != TRAJ_MODE_TELEOP) ):
-        set_motion_teleop(teleop_mode)
     return jjogmode
 
 # Note: require MAX_JOINTS >= MAX_AXIS
@@ -3469,7 +3463,20 @@ def bind_axis(a, b, d):
     root_window.bind("<KeyRelease-%s>" % a, lambda e: jog_off_map(d))
     root_window.bind("<KeyRelease-%s>" % b, lambda e: jog_off_map(d))
 
-root_window.bind("<FocusOut>", lambda e: str(e.widget) == "." and jog_off_all())
+def _focusout_handler(e):
+    if str(e.widget) != ".":
+        return
+    # Only stop jogs if focus left the application entirely.
+    # Ignore internal focus changes (e.g. activate_ja_widget calling .focus()).
+    try:
+        if root_window.focus_get() is not None:
+            return
+    except KeyError:
+        # Focused widget is a Tcl-only widget not in Python's tree — still ours.
+        return
+    jog_off_all()
+
+root_window.bind("<FocusOut>", _focusout_handler)
 
 open_directory = "programs"
 

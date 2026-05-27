@@ -111,8 +111,13 @@ func (t *Task) restoreModeTx() {
 	case ModeManual:
 		t.mode = ModeManual
 		t.mu.Unlock()
-		_ = t.motion.SetFree()
-		t.waitMotionFree()
+		if t.allHomed() {
+			_ = t.motion.SetTeleop()
+			t.waitMotionTeleop()
+		} else {
+			_ = t.motion.SetFree()
+			t.waitMotionFree()
+		}
 		t.mu.Lock()
 	case ModeMDI:
 		t.mode = ModeMDI
@@ -144,6 +149,22 @@ func (t *Task) waitMotionFree() {
 		}
 		time.Sleep(pollInterval)
 	}
+}
+
+// waitMotionTeleop waits until motion is in teleop mode (up to 500ms).
+// Retries sending SetTeleop if motion hasn't switched (e.g. wasn't INPOS).
+func (t *Task) waitMotionTeleop() bool {
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		ms, err := t.status.GetStatus()
+		if err == nil && ms.Teleop != 0 {
+			return true
+		}
+		// Retry sending SetTeleop (motion may have rejected due to !INPOS).
+		_ = t.motion.SetTeleop()
+		time.Sleep(pollInterval)
+	}
+	return false
 }
 
 // requireNotEstop checks that we are not in estop.

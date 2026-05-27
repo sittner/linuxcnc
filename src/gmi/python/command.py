@@ -13,6 +13,8 @@ Usage:
 from __future__ import annotations
 
 import json
+import queue
+import threading
 import urllib.request
 from typing import Optional
 
@@ -27,6 +29,20 @@ class Command:
 
     def __init__(self, instance: str = "milltask"):
         self._base = rest_url() + "/api/v1/" + instance
+        self._async_queue = queue.Queue()
+        self._async_worker = threading.Thread(
+            target=self._async_loop, daemon=True)
+        self._async_worker.start()
+
+    def _async_loop(self):
+        """Worker thread that sends queued requests in order."""
+        while True:
+            req = self._async_queue.get()
+            try:
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    resp.read()
+            except Exception:
+                pass
 
     def _post(self, path: str, data: dict = None) -> dict:
         """Send POST request to the emccmd REST endpoint."""
@@ -46,6 +62,17 @@ class Command:
             print(f"gmi.Command: {e.code} {url}: {err_body}", file=sys.stderr)
             raise
 
+    def _post_async(self, path: str, data: dict = None):
+        """Queue a POST request for ordered async delivery (non-blocking)."""
+        url = self._base + path
+        body = json.dumps(data or {}).encode("utf-8")
+        req = urllib.request.Request(
+            url, data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        self._async_queue.put(req)
+
     def state(self, state: int):
         """Set task state (STATE_ESTOP, STATE_ON, etc.)."""
         self._post("/state", {"state": state})
@@ -64,8 +91,8 @@ class Command:
 
     def jog(self, jog_type: int, jjogmode: bool, axis_or_joint: int,
             velocity: float = 0.0, distance: float = 0.0):
-        """Jog an axis or joint."""
-        self._post("/jog", {
+        """Jog an axis or joint (non-blocking, fire-and-forget)."""
+        self._post_async("/jog", {
             "jog_type": jog_type,
             "jjogmode": bool(jjogmode),
             "axis_or_joint": axis_or_joint,
@@ -74,8 +101,8 @@ class Command:
         })
 
     def jog_stop(self, jjogmode: bool, axis_or_joint: int):
-        """Stop a jog."""
-        self._post("/jog-stop", {
+        """Stop a jog (non-blocking, fire-and-forget)."""
+        self._post_async("/jog-stop", {
             "jjogmode": bool(jjogmode),
             "axis_or_joint": axis_or_joint,
         })

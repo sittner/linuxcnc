@@ -1362,7 +1362,11 @@ class GlCanonDraw:
 
         if self.get_show_tool():
             pos = self.lp.last(self.get_show_live_plot())
-            if pos is None: pos = [0] * 6
+            if pos is None:
+                # No backplot points yet — use current stat position so the
+                # tool cone shows at the actual machine position on startup.
+                p = list(s.actual_position[:3]) + list(s.actual_position[3:6])
+                pos = p
             rx, ry, rz = pos[3:6]
             pos = self.to_internal_units(pos[:3])
             if self.is_foam():

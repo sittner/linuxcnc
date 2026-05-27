@@ -667,6 +667,30 @@ func (t *Task) jogInternal(jogType int32, jjogmode bool, axisOrJoint int32, velo
 		isTeleop = 1
 	}
 
+	// Ensure motion is in the correct mode for the requested jog type.
+	// JOG_STOP never needs a mode switch — it just aborts whatever is running.
+	if jogType != JogStop {
+		if isTeleop == 1 {
+			ms, err := t.status.GetStatus()
+			if err == nil && ms.Teleop == 0 {
+				t.mu.Unlock()
+				ok := t.waitMotionTeleop()
+				t.mu.Lock()
+				if !ok {
+					return fmt.Errorf("cannot jog: motion did not switch to teleop mode")
+				}
+			}
+		} else {
+			ms, err := t.status.GetStatus()
+			if err == nil && (ms.Coord != 0 || ms.Teleop != 0) {
+				_ = t.motion.SetFree()
+				t.mu.Unlock()
+				t.waitMotionFree()
+				t.mu.Lock()
+			}
+		}
+	}
+
 	// Clamp velocity to joint/axis max (matches C milltask emcJogCont/Incr).
 	velocity = t.clampJogVel(velocity, axisOrJoint, jjogmode)
 
