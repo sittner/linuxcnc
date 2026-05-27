@@ -910,6 +910,7 @@ class LivePlotter:
                     global _jog_speed_from_remote
                     _jog_speed_from_remote = True
                     vars.jog_speed.set(remote_speed)
+                    root_window.tk.eval("${pane_top}.jogspeed.s set [setval $jog_speed $max_speed]")
                     _jog_speed_from_remote = False
             except (AttributeError, KeyError):
                 _jog_speed_from_remote = False
@@ -921,6 +922,7 @@ class LivePlotter:
                 if abs(remote_aspeed - local_aspeed) > 0.01 and remote_aspeed > 0:
                     _jog_speed_from_remote = True
                     vars.jog_aspeed.set(remote_aspeed)
+                    root_window.tk.eval("${pane_top}.ajogspeed.s set [setval $jog_aspeed $max_aspeed]")
                     _jog_speed_from_remote = False
             except (AttributeError, KeyError):
                 _jog_speed_from_remote = False
