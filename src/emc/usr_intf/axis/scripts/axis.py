@@ -939,10 +939,17 @@ class LivePlotter:
         # When the server signals that preview-relevant state changed
         # (offsets, program loaded, tool table), reload the preview.
         preview_seq = getattr(self.stat, 'preview_seq', 0)
-        if (loaded_file and not running()
+        if (not running()
                 and preview_seq != getattr(o, 'last_preview_seq', None)):
             o.last_preview_seq = preview_seq
-            root_window.after_idle(refresh_preview)
+            # Multi-client sync: if another client loaded a different file,
+            # update text editor and loaded_file (without re-sending
+            # program_open to avoid infinite seq increment loop).
+            remote_file = self.stat.file
+            if remote_file and remote_file != loaded_file:
+                load_text_and_set_file(remote_file)
+            if loaded_file:
+                root_window.after_idle(refresh_preview)
         if (self.logger.npts != self.lastpts
                 or limits != o.last_limits
                 or self.stat.actual_position != o.last_position
@@ -989,12 +996,6 @@ class LivePlotter:
         vupdate(vars.task_state, self.stat.task_state)
         vupdate(vars.task_paused, self.stat.task_paused)
         vupdate(vars.taskfile, self.stat.file)
-
-        # Multi-client sync: reload preview when another UI loads a file.
-        remote_file = self.stat.file
-        if (remote_file and remote_file != loaded_file
-                and self.stat.interp_state == INTERP_IDLE):
-            open_file_guts(remote_file, False, False)
 
         vupdate(vars.interp_pause, self.stat.paused)
         vupdate(vars.mist, self.stat.mist)
@@ -1277,6 +1278,38 @@ def cancel_open(event=None):
         o.canon.aborted = True
 
 loaded_file = None
+
+def load_text_and_set_file(f):
+    """Load file text into the editor and update loaded_file.
+
+    Used for multi-client sync — does NOT call program_open (the server
+    already has the file open from the other client's action).
+    """
+    global loaded_file
+    loaded_file = f
+    program_filter = get_filter(f)
+    if program_filter:
+        f = os.path.join(tempdir, os.path.basename(f))
+        exitcode, stderr = filter_program(program_filter, loaded_file, f)
+        if exitcode:
+            return
+    try:
+        lines = open(f).readlines()
+        t.configure(state="normal")
+        t.tk.call("delete_all", t)
+        code = []
+        for i, l in enumerate(lines):
+            l = l.expandtabs().replace("\r", "")
+            code.extend(["%6d: " % (i+1), "lineno", l, ""])
+            if i % 1000 == 0:
+                t.insert("end", *code)
+                del code[:]
+        if code:
+            t.insert("end", *code)
+        t.configure(state="disabled")
+    except Exception as e:
+        notifications.add("error", str(e))
+
 def open_file_guts(f, filtered=False, addrecent=True):
     s.poll()
     if addrecent:
@@ -1299,9 +1332,7 @@ def open_file_guts(f, filtered=False, addrecent=True):
             return open_file_guts(tempfile, True, False)
 
     set_first_line(0)
-    t0 = time.time()
 
-    canon = None
     o.deselect(None) # remove highlight line from last program
     try:
         # Force a sync of the interpreter, which writes out the var file.
@@ -1309,14 +1340,13 @@ def open_file_guts(f, filtered=False, addrecent=True):
         c.wait_complete()
         c.program_open(f)
         lines = open(f).readlines()
-        progress = Progress(2, len(lines))
+        root_window.tk.call("destroy", ".info.progress")
+        progress = Progress(1, len(lines))
         t.configure(state="normal")
         t.tk.call("delete_all", t)
         code = []
-        i = 0
         for i, l in enumerate(lines):
             l = l.expandtabs().replace("\r", "")
-            #t.insert("end", "%6d: " % (i+1), "lineno", l)
             code.extend(["%6d: " % (i+1), "lineno", l, ""])
             if i % 1000 == 0:
                 t.insert("end", *code)
@@ -1324,113 +1354,18 @@ def open_file_guts(f, filtered=False, addrecent=True):
                 progress.update(i)
         if code:
             t.insert("end", *code)
-        progress.nextphase(len(lines))
-        f = os.path.abspath(f)
-        o.canon = canon = AxisCanon(o, widgets.text, i, progress, arcdivision)
-        root_window.bind_class(".info.progress", "<Escape>", cancel_open)
-
-        parameter = inifile.find("RS274NGC", "PARAMETER_FILE")
-        temp_parameter = os.path.join(tempdir, os.path.basename(parameter))
-        try:
-            content = gmi.fetch_parameter_file()
-            with open(temp_parameter, 'w') as pf:
-                pf.write(content)
-        except Exception:
-            pass
-        canon.parameter_file = temp_parameter
-
-        timeout = inifile.find("DISPLAY", "PREVIEW_TIMEOUT") or ""
-        if timeout:
-            canon.set_timeout(float(timeout))
-
-        initcode = inifile.find("EMC", "RS274NGC_STARTUP_CODE") or ""
-        if initcode == "":
-            initcode = inifile.find("RS274NGC", "RS274NGC_STARTUP_CODE") or ""
-        initcodes = []
-        if initcode:
-            initcodes.append(initcode)
-        if not interpname:
-            unitcode = "G%d" % (20 + (s.linear_units == 1))
-            initcodes.append(unitcode)
-            initcodes.append("g90")
-            initcodes.append("t%d m6" % s.tool_in_spindle)
-            for i in range(9):
-                if s.axis_mask & (1<<i):
-                    axis = "XYZABCUVW"[i]
-
-                    if (axis == "A" and a_axis_wrapped) or\
-                       (axis == "B" and b_axis_wrapped) or\
-                       (axis == "C" and c_axis_wrapped):
-                        pos = s.position[i] % 360.000
-                    else:
-                        pos = s.position[i]
-
-                    position = "g53 g0 %s%.8f" % (axis, pos)
-                    initcodes.append(position)
-            for i, g in enumerate(s.gcodes):
-                # index 0 is "sequence number" and index 2 is the last block's
-                # "g_mode" neither of which should be sent as a startup code.
-                # In particular, after issuing a non-modal G like G10, that
-                # will appear at s.gcodes[2] which caused issue #269
-                if i in (0, 1, 2): continue
-                if g == -1: continue
-                if g == 960: # Issue #1232
-                    initcodes.append("G96 S%.0f" % s.settings[2])
-                else:
-                    initcodes.append("G%.1f" % (g * .1))
-            tool_offset = "G43.1"
-            for i in range(9):
-                if s.axis_mask & (1<<i):
-                    tool_offset += " %s%.8f" % ("XYZABCUVW"[i], s.tool_offset[i])
-            initcodes.append(tool_offset)
-            for i, m in enumerate(s.mcodes):
-                # index 0 is "sequence number", just like s.gcodes[0].  Trying
-                # to set this number as a modal code caused issue #271.
-                # index 1 is the stopping code, which holds M2 after reading
-                # ahead to the end of a program.  Trying to set this number
-                # as a modal code makes the next preview disappear.
-                # (see Interp::write_m_codes)
-                if i in (0,1): continue
-                if m == -1: continue
-                initcodes.append("M%d" % m)
-        try:
-            result, seq = o.load_preview(f, canon, initcodes, interpname)
-        except KeyboardInterrupt:
-            result, seq = 0, 0
-        # According to the documentation, MIN_ERROR is the largest value that is
-        # not an error.  Crazy though that sounds...
-        if result > gcode.MIN_ERROR:
-            error_str = _(gcode.strerror(result))
-            root_window.tk.call("nf_dialog", ".error",
-                    _("G-Code error in %s") % os.path.basename(f),
-                    _("Near line %(seq)d of %(f)s:\n%(error_str)s") % {'seq': seq, 'f': f, 'error_str': error_str},
-                    "error",0,_("OK"))
-
         t.configure(state="disabled")
-        o.lp.set_depth(from_internal_linear_unit(o.get_foam_z()),
-                       from_internal_linear_unit(o.get_foam_w()))
 
     except Exception as e:
         notifications.add("error", str(e))
     finally:
-        # Before unbusying, I update again, so that any keystroke events
-        # that reached the program while it was busy are sent to the
-        # label, not to another window in the application.  If this
-        # update call is removed, the events are only handled after that
-        # widget is destroyed and focus has passed to some other widget,
-        # which will handle the keystrokes instead, leading to the
-        # R-while-loading bug.
-        #print "load_time", time.time() - t0
         root_window.update()
-        root_window.tk.call("destroy", ".info.progress")
         root_window.tk.call("grab", "release", ".info.progress")
-        if canon:
-            canon.progress = DummyProgress()
+        root_window.tk.call("destroy", ".info.progress")
         try:
             progress.done()
         except UnboundLocalError:
             pass
-        o.tkRedraw()
         root_window.tk.call("set_mode_from_tab")
 
 tabs_mdi = str(root_window.tk.call("set", "_tabs_mdi"))
@@ -2090,11 +2025,19 @@ def refresh_preview():
             initcodes.append("M%d" % m)
     try:
         o.canon = canon
-        o.load_preview(f, canon, initcodes, interpname)
-    except Exception:
-        pass
+        result, seq = o.load_preview(f, canon, initcodes, interpname)
+    except Exception as e:
+        notifications.add("error", str(e))
+        return
+    if result > gcode.MIN_ERROR:
+        error_str = _(gcode.strerror(result))
+        root_window.tk.call("nf_dialog", ".error",
+                _("G-Code error in %s") % os.path.basename(f),
+                _("Near line %(seq)d of %(f)s:\n%(error_str)s") % {'seq': seq, 'f': f, 'error_str': error_str},
+                "error",0,_("OK"))
     o.lp.set_depth(from_internal_linear_unit(o.get_foam_z()),
                    from_internal_linear_unit(o.get_foam_w()))
+    o.tkRedraw()
 
 def ja_from_rbutton():
     # radiobuttons for joints set ja_rbutton to numeric value [0,MAX_JOINTS)
