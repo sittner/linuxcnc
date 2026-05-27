@@ -207,7 +207,15 @@ func (m *milltaskModule) ProgramOpen(file string) (int32, error) {
 }
 
 func (m *milltaskModule) WaitComplete(timeout float64) (int32, error) {
-	// Always report done for now (no motion queue to wait on).
+	if err := m.ready(); err != nil {
+		return rcsError, err
+	}
+	if timeout <= 0 {
+		timeout = 5.0
+	}
+	if err := m.task.WaitComplete(timeout); err != nil {
+		return rcsError, err
+	}
 	return rcsDone, nil
 }
 

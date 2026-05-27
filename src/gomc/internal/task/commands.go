@@ -453,6 +453,8 @@ func (t *Task) executeMDI(command string) error {
 		t.setInterpState(InterpIdle)
 		return fmt.Errorf("MDI interpreter error")
 	default:
+		// Mark exec state as busy so WaitComplete doesn't return prematurely.
+		t.setExecState(ExecWaitingForMotion)
 		// Wait for queued motion to finish before going idle.
 		t.EnqueueCmd(&mdiDoneCmd{})
 	}
