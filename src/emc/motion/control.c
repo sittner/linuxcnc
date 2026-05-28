@@ -1192,7 +1192,7 @@ static void handle_jjogwheels(motmod_inst_t *inst)
 void jerk_filter_recompute_window(motmod_inst_t *inst)
 {
     int max_window = 0;
-    int j;
+    int i, j;
     for (j = 0; j < inst->num_joints; j++) {
         double jerk = inst->joints[j].jerk_limit;
         if (jerk <= 0.0) continue;
@@ -1237,6 +1237,19 @@ void jerk_filter_recompute_window(motmod_inst_t *inst)
             if (inst->jerk_filter.buf) { rtapi_free(inst->jerk_filter.buf); inst->jerk_filter.buf = NULL; }
             if (inst->jerk_filter.sum) { rtapi_free(inst->jerk_filter.sum); inst->jerk_filter.sum = NULL; }
             inst->jerk_filter.window_size = 0;
+            inst->jerk_filter.num_joints = 0;
+        }
+        else {
+            for (j = 0; j < nj; j++) {
+                double pos = inst->joints[j].pos_cmd;
+                double *jbuf = inst->jerk_filter.buf + j * max_window;
+
+                for (i = 0; i < max_window; i++) {
+                    jbuf[i] = pos;
+                }
+                inst->jerk_filter.sum[j] = pos * max_window;
+            }
+            inst->jerk_filter.filled = max_window;
         }
     }
 }

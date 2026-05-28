@@ -92,6 +92,9 @@ void simple_tp_update(simple_tp_t *tp, double period)
 	} else {
 	    /* within 'tiny_dp' of desired pos, no need to move */
 	    vel_req = 0.0;
+	    if (tp->curr_vel == 0.0) {
+		tp->curr_acc = 0.0;
+	    }
 	}
     } else {
 	/* planner disabled, request zero velocity */
@@ -127,6 +130,11 @@ void simple_tp_update(simple_tp_t *tp, double period)
     tp->curr_vel += tp->curr_acc * period;
     /* clamp velocity */
     tp->curr_vel = stp_clamp(tp->curr_vel, tp->max_vel);
+
+    pos_err = tp->pos_cmd - tp->curr_pos;
+    if (tp->curr_vel == 0.0 && pos_err <= tiny_dp && pos_err >= -tiny_dp) {
+	tp->curr_acc = 0.0;
+    }
 
     /* check for still moving */
     if (tp->curr_vel != 0.0 || tp->curr_acc != 0.0) {
