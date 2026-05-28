@@ -79,10 +79,12 @@ static const char *home_instance = "homemod";
 /* File-local instance pointer — set at each RT entry and in Init().
    Used by kinematics wrappers and GMI callbacks that cannot take inst
    as a parameter due to fixed ABI signatures. */
-static motmod_inst_t *g_inst = NULL;
+/* Active RT instance — set at top of each servo cycle by control.c.
+   Only used by kinematics wrappers (fixed ABI, cannot take inst param). */
+static motmod_inst_t *active_inst = NULL;
 
 /* Called from emcmotController/emcmotCommandHandler at RT entry. */
-void motmod_set_active_inst(motmod_inst_t *inst) { g_inst = inst; }
+void motmod_set_active_inst(motmod_inst_t *inst) { active_inst = inst; }
 
 /***********************************************************************
 *                  LOCAL VARIABLE DECLARATIONS                         *
@@ -96,14 +98,14 @@ static int mot_comp_id;
    Usage: hal_pin_float_newf(HAL_OUT, &p, id, PFMT("joint.%d.pos-cmd"), num)
    When pin_prefix is empty (default/no alias), expands to bare "joint.%d.pos-cmd".
    When pin_prefix is "name.", expands to "name.joint.%d.pos-cmd". */
-#define PFMT(fmt) "%s" fmt, g_inst->pin_prefix
+#define PFMT(fmt) "%s" fmt, active_inst->pin_prefix
 
 /***********************************************************************
 *           KINEMATICS API WRAPPERS (via GMI kins_callbacks_t)         *
 ************************************************************************/
 
-/* Access kins via g_inst (set at top of each RT cycle). */
-#define motmod_kins ((const kins_callbacks_t *)g_inst->kins)
+/* Access kins via active_inst (set at top of each RT cycle by control.c). */
+#define motmod_kins ((const kins_callbacks_t *)active_inst->kins)
 
 /* These functions satisfy the legacy extern declarations in kinematics.h
    but delegate to the registered kins API callbacks. */
@@ -155,23 +157,23 @@ int kinematicsSwitch(int switchkins_type)
 /* --- I/O callbacks --- */
 
 static void gmi_mot_dio_write(void *ctx, int32_t index, int8_t value)
-{    (void)ctx; emcmotDioWrite(g_inst, index, value);
+{    motmod_inst_t *inst = (motmod_inst_t *)ctx; emcmotDioWrite(inst, index, value);
 }
 
 static void gmi_mot_aio_write(void *ctx, int32_t index, double value)
-{    (void)ctx; emcmotAioWrite(g_inst, index, value);
+{    motmod_inst_t *inst = (motmod_inst_t *)ctx; emcmotAioWrite(inst, index, value);
 }
 
 /* --- Rotary unlock --- */
 
 static void gmi_mot_set_rotary_unlock(void *ctx, int32_t jnum, int32_t unlock)
-{    (void)ctx; emcmotSetRotaryUnlock(g_inst, jnum, unlock);
+{    motmod_inst_t *inst = (motmod_inst_t *)ctx; emcmotSetRotaryUnlock(inst, jnum, unlock);
 }
 
 static int32_t gmi_mot_get_rotary_unlock(void *ctx, int32_t jnum)
 {
-    (void)ctx;
-    return emcmotGetRotaryIsUnlocked(g_inst, jnum);
+    motmod_inst_t *inst = (motmod_inst_t *)ctx;
+    return emcmotGetRotaryIsUnlocked(inst, jnum);
 }
 
 /* --- Axis limits --- */
@@ -364,130 +366,146 @@ static int32_t gmi_mot_get_num_joints(void *ctx)
 
 static int32_t gmi_mot_joint_get_active_flag(void *ctx, int32_t jno)
 {
-    (void)ctx;
-    return GET_JOINT_ACTIVE_FLAG(&g_inst->joints[jno]);
+    motmod_inst_t *inst = (motmod_inst_t *)ctx;
+
+    return GET_JOINT_ACTIVE_FLAG(&inst->joints[jno]);
 }
 
 static int32_t gmi_mot_joint_get_inpos_flag(void *ctx, int32_t jno)
 {
-    (void)ctx;
-    return GET_JOINT_INPOS_FLAG(&g_inst->joints[jno]);
+    motmod_inst_t *inst = (motmod_inst_t *)ctx;
+
+    return GET_JOINT_INPOS_FLAG(&inst->joints[jno]);
 }
 
 static int32_t gmi_mot_joint_get_free_tp_active(void *ctx, int32_t jno)
 {
-    (void)ctx;
-    return g_inst->joints[jno].free_tp.active;
+    motmod_inst_t *inst = (motmod_inst_t *)ctx;
+
+    return inst->joints[jno].free_tp.active;
 }
 
 static void gmi_mot_joint_set_free_tp_enable(void *ctx, int32_t jno, int32_t enable)
-{    (void)ctx; g_inst->joints[jno].free_tp.enable = enable;
+{    motmod_inst_t *inst = (motmod_inst_t *)ctx; inst->joints[jno].free_tp.enable = enable;
 }
 
 static double gmi_mot_joint_get_free_tp_pos_cmd(void *ctx, int32_t jno)
 {
-    (void)ctx;
-    return g_inst->joints[jno].free_tp.pos_cmd;
+    motmod_inst_t *inst = (motmod_inst_t *)ctx;
+
+    return inst->joints[jno].free_tp.pos_cmd;
 }
 
 static void gmi_mot_joint_set_free_tp_pos_cmd(void *ctx, int32_t jno, double val)
-{    (void)ctx; g_inst->joints[jno].free_tp.pos_cmd = val;
+{    motmod_inst_t *inst = (motmod_inst_t *)ctx; inst->joints[jno].free_tp.pos_cmd = val;
 }
 
 static double gmi_mot_joint_get_free_tp_curr_pos(void *ctx, int32_t jno)
 {
-    (void)ctx;
-    return g_inst->joints[jno].free_tp.curr_pos;
+    motmod_inst_t *inst = (motmod_inst_t *)ctx;
+
+    return inst->joints[jno].free_tp.curr_pos;
 }
 
 static void gmi_mot_joint_set_free_tp_curr_pos(void *ctx, int32_t jno, double val)
-{    (void)ctx; g_inst->joints[jno].free_tp.curr_pos = val;
+{    motmod_inst_t *inst = (motmod_inst_t *)ctx; inst->joints[jno].free_tp.curr_pos = val;
 }
 
 static void gmi_mot_joint_set_free_tp_max_vel(void *ctx, int32_t jno, double vel)
-{    (void)ctx; g_inst->joints[jno].free_tp.max_vel = vel;
+{    motmod_inst_t *inst = (motmod_inst_t *)ctx; inst->joints[jno].free_tp.max_vel = vel;
 }
 
 static double gmi_mot_joint_get_free_tp_max_vel(void *ctx, int32_t jno)
 {
-    (void)ctx;
-    return g_inst->joints[jno].free_tp.max_vel;
+    motmod_inst_t *inst = (motmod_inst_t *)ctx;
+
+    return inst->joints[jno].free_tp.max_vel;
 }
 
 static double gmi_mot_joint_get_pos_cmd(void *ctx, int32_t jno)
 {
-    (void)ctx;
-    return g_inst->joints[jno].pos_cmd;
+    motmod_inst_t *inst = (motmod_inst_t *)ctx;
+
+    return inst->joints[jno].pos_cmd;
 }
 
 static void gmi_mot_joint_set_pos_cmd(void *ctx, int32_t jno, double val)
-{    (void)ctx; g_inst->joints[jno].pos_cmd = val;
+{    motmod_inst_t *inst = (motmod_inst_t *)ctx; inst->joints[jno].pos_cmd = val;
 }
 
 static double gmi_mot_joint_get_pos_fb(void *ctx, int32_t jno)
 {
-    (void)ctx;
-    return g_inst->joints[jno].pos_fb;
+    motmod_inst_t *inst = (motmod_inst_t *)ctx;
+
+    return inst->joints[jno].pos_fb;
 }
 
 static void gmi_mot_joint_set_pos_fb(void *ctx, int32_t jno, double val)
-{    (void)ctx; g_inst->joints[jno].pos_fb = val;
+{    motmod_inst_t *inst = (motmod_inst_t *)ctx; inst->joints[jno].pos_fb = val;
 }
 
 static double gmi_mot_joint_get_motor_pos_fb(void *ctx, int32_t jno)
 {
-    (void)ctx;
-    return g_inst->joints[jno].motor_pos_fb;
+    motmod_inst_t *inst = (motmod_inst_t *)ctx;
+
+    return inst->joints[jno].motor_pos_fb;
 }
 
 static double gmi_mot_joint_get_motor_offset(void *ctx, int32_t jno)
 {
-    (void)ctx;
-    return g_inst->joints[jno].motor_offset;
+    motmod_inst_t *inst = (motmod_inst_t *)ctx;
+
+    return inst->joints[jno].motor_offset;
 }
 
 static void gmi_mot_joint_set_motor_offset(void *ctx, int32_t jno, double val)
-{    (void)ctx; g_inst->joints[jno].motor_offset = val;
+{    motmod_inst_t *inst = (motmod_inst_t *)ctx; inst->joints[jno].motor_offset = val;
 }
 
 static double gmi_mot_joint_get_backlash_filt(void *ctx, int32_t jno)
 {
-    (void)ctx;
-    return g_inst->joints[jno].backlash_filt;
+    motmod_inst_t *inst = (motmod_inst_t *)ctx;
+
+    return inst->joints[jno].backlash_filt;
 }
 
 static double gmi_mot_joint_get_vel_limit(void *ctx, int32_t jno)
 {
-    (void)ctx;
-    return g_inst->joints[jno].vel_limit;
+    motmod_inst_t *inst = (motmod_inst_t *)ctx;
+
+    return inst->joints[jno].vel_limit;
 }
 
 static double gmi_mot_joint_get_max_pos_limit(void *ctx, int32_t jno)
 {
-    (void)ctx;
-    return g_inst->joints[jno].max_pos_limit;
+    motmod_inst_t *inst = (motmod_inst_t *)ctx;
+
+    return inst->joints[jno].max_pos_limit;
 }
 
 static double gmi_mot_joint_get_min_pos_limit(void *ctx, int32_t jno)
 {
-    (void)ctx;
-    return g_inst->joints[jno].min_pos_limit;
+    motmod_inst_t *inst = (motmod_inst_t *)ctx;
+
+    return inst->joints[jno].min_pos_limit;
 }
 
 static int32_t gmi_mot_joint_get_on_pos_limit(void *ctx, int32_t jno)
 {
-    (void)ctx;
-    return g_inst->joints[jno].on_pos_limit;
+    motmod_inst_t *inst = (motmod_inst_t *)ctx;
+
+    return inst->joints[jno].on_pos_limit;
 }
 
 static int32_t gmi_mot_joint_get_on_neg_limit(void *ctx, int32_t jno)
 {
-    (void)ctx;
-    return g_inst->joints[jno].on_neg_limit;
+    motmod_inst_t *inst = (motmod_inst_t *)ctx;
+
+    return inst->joints[jno].on_neg_limit;
 }
 
-/* mot API callback table */
-static const mot_callbacks_t motmod_mot_callbacks = GMI_MOT_CALLBACKS;
+/* mot API callback table (template — per-instance copy gets ctx set in New()) */
+static const mot_callbacks_t motmod_mot_callbacks_template = GMI_MOT_CALLBACKS;
 
 /***********************************************************************
 *                   LOCAL FUNCTION PROTOTYPES                          *
@@ -495,7 +513,7 @@ static const mot_callbacks_t motmod_mot_callbacks = GMI_MOT_CALLBACKS;
 /* init_hal_io() exports HAL pins and parameters making data from
    the realtime control module visible and usable by the world
 */
-static int init_hal_io(void);
+static int init_hal_io(motmod_inst_t *inst);
 
 /* functions called by init_hal_io() */
 
@@ -510,7 +528,7 @@ static int export_spindle(int num, spindle_hal_t * addr);
    status, and error buffers used to communicate with the user
    space parts of emc.
 */
-static int init_comm_buffers(void);
+static int init_comm_buffers(motmod_inst_t *inst);
 
 /* export_functions() exports realtime functions for the motion controller.
    Thread creation is handled externally (by the launcher loading the
@@ -521,8 +539,8 @@ static int init_comm_buffers(void);
 static int export_functions(motmod_inst_t *inst);
 
 /* functions called by export_functions() */
-static int setTrajCycleTime(double secs);
-static int setServoCycleTime(double secs);
+static int setTrajCycleTime(motmod_inst_t *inst, double secs);
+static int setServoCycleTime(motmod_inst_t *inst, double secs);
 
 static int module_intfc(void);
 static int tp_init(void);
@@ -534,7 +552,6 @@ int joint_is_lockable(int joint_num) {
 }
 
 void switch_to_teleop_mode(motmod_inst_t *inst) {
-    (void)inst;  /* used via g_inst macros */
     int joint_num;
     emcmot_joint_t *joint;
 
@@ -546,7 +563,7 @@ void switch_to_teleop_mode(motmod_inst_t *inst) {
     }
 
     for (joint_num = 0; joint_num < ALL_JOINTS; joint_num++) {
-        joint = &g_inst->joints[joint_num];
+        joint = &inst->joints[joint_num];
         if (joint != 0) { joint->free_tp.enable = 0; }
     }
 
@@ -746,7 +763,13 @@ int New(const cmod_env_t *env, const char *name,
 
     /* Register the mot reverse-callback API so tpmod/homemod can look it up
        in their Init() functions. */
-    retval = mot_api_register(env->api, name, &motmod_mot_callbacks);
+    /* Per-instance mot callbacks with ctx = inst */
+    mot_callbacks_t *mot_cb = malloc(sizeof(mot_callbacks_t));
+    if (!mot_cb) { hal_exit(mot_comp_id); return -1; }
+    *mot_cb = motmod_mot_callbacks_template;
+    mot_cb->ctx = inst;
+    inst->mot_cb = mot_cb;
+    retval = mot_api_register(env->api, name, mot_cb);
     if (retval != 0) {
 	rtapi_print_msg(RTAPI_MSG_ERR,
 	    _("MOTION: failed to register mot API: %d\n"), retval);
@@ -915,9 +938,8 @@ static int motmod_init(cmod_t *self)
     motmod_inst_t *inst = (motmod_inst_t *)self->priv;
     const cmod_env_t *env = (const cmod_env_t *)inst->env;
 
-    /* Set global instance pointer so that #define aliases in mot_priv.h work */
-    g_inst = inst;
     mot_comp_id = inst->comp_id;
+    active_inst = inst;  /* needed for PFMT and emcmotConfig/Status macros during init */
 
     rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: Init('%s') starting...\n", inst->name);
 
@@ -961,13 +983,13 @@ static int motmod_init(cmod_t *self)
 
     /* --- HAL pins, shared memory, RT function export --- */
 
-    retval = init_hal_io();
+    retval = init_hal_io(inst);
     if (retval != 0) {
 	rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: init_hal_io() failed\n"));
 	return -1;
     }
 
-    retval = init_comm_buffers();
+    retval = init_comm_buffers(inst);
     if (retval != 0) {
 	rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: init_comm_buffers() failed\n"));
 	return -1;
@@ -1014,15 +1036,13 @@ static void motmod_Destroy(cmod_t *self)
     int retval;
     motmod_inst_t *inst = (motmod_inst_t *)self->priv;
 
-    /* Set g_inst so macros work during teardown */
-    g_inst = inst;
 
     rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: Destroy('%s') started.\n", inst->name);
 
     /* free motion structure */
-    if (g_inst->mot_struct) {
-        rtapi_free(g_inst->mot_struct);
-        g_inst->mot_struct = 0;
+    if (inst->mot_struct) {
+        rtapi_free(inst->mot_struct);
+        inst->mot_struct = 0;
     }
     /* disconnect from HAL and RTAPI */
     retval = hal_exit(inst->comp_id);
@@ -1036,7 +1056,7 @@ static void motmod_Destroy(cmod_t *self)
     rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: Destroy('%s') finished.\n", inst->name);
 
     /* free per-instance state */
-    g_inst = NULL;
+    free(inst->mot_cb);
     free(inst);
     free(self);
 }
@@ -1054,7 +1074,7 @@ static void motmod_Destroy(cmod_t *self)
 /* init_hal_io() exports HAL pins and parameters making data from
    the realtime control module visible and usable by the world
 */
-static int init_hal_io(void)
+static int init_hal_io(motmod_inst_t *inst)
 {
     int n, retval;
     joint_hal_t      *joint_data;
@@ -1287,7 +1307,7 @@ static int init_hal_io(void)
         }
     }
 
-    CALL_CHECK(axis_init_hal_io(mot_comp_id, g_inst->pin_prefix));
+    CALL_CHECK(axis_init_hal_io(mot_comp_id, inst->pin_prefix));
 
     CALL_CHECK(hal_pin_bit_newf(HAL_OUT, &(emcmot_hal_data->eoffset_limited), mot_comp_id, PFMT("motion.eoffset-limited")));
     CALL_CHECK(hal_pin_bit_newf(HAL_OUT, &(emcmot_hal_data->eoffset_active), mot_comp_id, PFMT("motion.eoffset-active")));
@@ -1411,7 +1431,7 @@ static int export_extrajoint(int num, extrajoint_hal_t * addr)
    status, and error buffers used to communicate with the user
    space parts of emc.
 */
-static int init_comm_buffers(void)
+static int init_comm_buffers(motmod_inst_t *inst)
 {
     int joint_num, spindle_num, n;
     emcmot_joint_t *joint;
@@ -1501,7 +1521,7 @@ static int init_comm_buffers(void)
     /* init per-joint stuff */
     for (joint_num = 0; joint_num < ALL_JOINTS; joint_num++) {
 	/* point to structure for this joint */
-	joint = &g_inst->joints[joint_num];
+	joint = &inst->joints[joint_num];
 
 	/* init the config fields with some "reasonable" defaults" */
 	joint->type = 0;
@@ -1629,8 +1649,8 @@ static int export_functions(motmod_inst_t *inst)
 
     // if we don't set cycle times based on these guesses, emc doesn't
     // start up right
-    setServoCycleTime(servo_period_nsec * 1e-9);
-    setTrajCycleTime(traj_period_nsec * 1e-9);
+    setServoCycleTime(inst, servo_period_nsec * 1e-9);
+    setTrajCycleTime(inst, traj_period_nsec * 1e-9);
 
     rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: export_functions() complete\n");
     return 0;
@@ -1641,12 +1661,12 @@ void emcmotSetCycleTime(unsigned long nsec )
     int servo_mult;
     servo_mult = traj_period_nsec / nsec;
     if(servo_mult < 0) servo_mult = 1;
-    setTrajCycleTime(nsec * 1e-9);
-    setServoCycleTime(nsec * servo_mult * 1e-9);
+    setTrajCycleTime(active_inst, nsec * 1e-9);
+    setServoCycleTime(active_inst, nsec * servo_mult * 1e-9);
 }
 
 /* call this when setting the trajectory cycle time */
-static int setTrajCycleTime(double secs)
+static int setTrajCycleTime(motmod_inst_t *inst, double secs)
 {
     static int t;
 
@@ -1672,7 +1692,7 @@ static int setTrajCycleTime(double secs)
 
     /* set the free planners, cubic interpolation rate and segment time */
     for (t = 0; t < ALL_JOINTS; t++) {
-	cubicSetInterpolationRate(&(g_inst->joints[t].cubic),
+	cubicSetInterpolationRate(&(inst->joints[t].cubic),
 	    emcmotConfig->interpolationRate);
     }
 
@@ -1683,7 +1703,7 @@ static int setTrajCycleTime(double secs)
 }
 
 /* call this when setting the servo cycle time */
-static int setServoCycleTime(double secs)
+static int setServoCycleTime(motmod_inst_t *inst, double secs)
 {
     static int t;
 
@@ -1703,9 +1723,9 @@ static int setServoCycleTime(double secs)
 
     /* set the cubic interpolation rate and PID cycle time */
     for (t = 0; t < ALL_JOINTS; t++) {
-	cubicSetInterpolationRate(&(g_inst->joints[t].cubic),
+	cubicSetInterpolationRate(&(inst->joints[t].cubic),
 	    emcmotConfig->interpolationRate);
-	cubicSetSegmentTime(&(g_inst->joints[t].cubic), secs);
+	cubicSetSegmentTime(&(inst->joints[t].cubic), secs);
     }
 
     /* copy into status out */

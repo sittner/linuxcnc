@@ -280,6 +280,7 @@ typedef struct motmod_inst {
     void *motstat_ctx;
     void *motctl_cb;
     void *motstat_cb;
+    void *mot_cb;  /* per-instance mot_callbacks_t* (freed in Destroy) */
 } motmod_inst_t;
 
 /***********************************************************************
@@ -292,20 +293,20 @@ typedef struct motmod_inst {
  * Other consumers of mot_priv.h (motion-logger, etc.) still see
  * the traditional extern declarations below.
  *
- * g_inst is file-local in motion.c — set via motmod_set_active_inst()
+ * active_inst is file-local in motion.c — set via motmod_set_active_inst()
  * at each RT entry. These macros are used by motion.c; control.c and
  * command.c override them to use their local inst parameter.
  */
 
-#define emcmot_hal_data  (g_inst->hal_data)
-#define emcmotStruct     (g_inst->mot_struct)
-#define emcmotCommand    (g_inst->command)
-#define emcmotStatus     (g_inst->status)
-#define emcmotConfig     (g_inst->config)
-#define emcmotInternal   (g_inst->internal)
-#define motmod_tp_api    ((const tp_callbacks_t *)g_inst->tp_api)
-#define motmod_home_api  ((const home_callbacks_t *)g_inst->home_api)
-#define motion_num_spindles (g_inst->num_spindles)
+#define emcmot_hal_data  (active_inst->hal_data)
+#define emcmotStruct     (active_inst->mot_struct)
+#define emcmotCommand    (active_inst->command)
+#define emcmotStatus     (active_inst->status)
+#define emcmotConfig     (active_inst->config)
+#define emcmotInternal   (active_inst->internal)
+#define motmod_tp_api    ((const tp_callbacks_t *)active_inst->tp_api)
+#define motmod_home_api  ((const home_callbacks_t *)active_inst->home_api)
+#define motion_num_spindles (active_inst->num_spindles)
 
 #else /* !MOTMOD_INTERNAL — legacy declarations for external consumers */
 
