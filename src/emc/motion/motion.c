@@ -709,6 +709,7 @@ int New(const cmod_env_t *env, const char *name,
     }
     inst->env = env;
     inst->name = name;
+    inst->ctl_first_pass = 1;
 
     /* Set pin_prefix: empty for default module name (bare pins), "name." for aliases */
     if (strcmp(name, "motmod") == 0) {

@@ -267,6 +267,14 @@ typedef struct motmod_inst {
     /* command.c runtime state */
     int rehomeAll;
 
+    /* control.c per-instance state (formerly static locals) */
+    int ctl_first_pass;
+    int ctl_old_motion_index[EMCMOT_MAX_SPINDLES];
+    int ctl_old_hal_index[EMCMOT_MAX_SPINDLES];
+    int ctl_old_joint_flags[8];
+    int ctl_old_motion_flag;
+    int ctl_old_probeVal;
+
     /* Per-instance motctl/motstat handler contexts and callbacks (opaque) */
     void *motctl_ctx;
     void *motstat_ctx;

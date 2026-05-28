@@ -691,7 +691,14 @@ func parseLinearUnits(s string) float64 {
 }
 
 func newNgcPreview(ini *inifile.IniFile, logger *slog.Logger, name string, args []string) (gomc.Module, error) {
-	nsIni := ini.WithNamespace(name)
+	// Allow overriding INI namespace via "namespace=xxx" argument.
+	ns := name
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "namespace=") {
+			ns = strings.TrimPrefix(arg, "namespace=")
+		}
+	}
+	nsIni := ini.WithNamespace(ns)
 	paramFile := nsIni.Get("RS274NGC", "PARAMETER_FILE")
 	// Resolve relative parameter file path against the INI file's directory
 	if paramFile != "" && !filepath.IsAbs(paramFile) {

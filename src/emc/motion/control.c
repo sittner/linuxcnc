@@ -669,7 +669,7 @@ static void do_forward_kins(void)
 static void process_probe_inputs(void)
 {
     motmod_inst_t *inst = g_inst;
-    static int old_probeVal = 0;
+    int old_probeVal = inst->ctl_old_probeVal;
     unsigned char probe_type = inst->status->probe_type;
 
     // don't error
@@ -768,6 +768,7 @@ static void process_probe_inputs(void)
         }
     }
     old_probeVal = inst->status->probeVal;
+    inst->ctl_old_probeVal = old_probeVal;
 }
 
 static void check_for_faults(void)
@@ -1035,7 +1036,7 @@ static void handle_jjogwheels(void)
     joint_hal_t *joint_data;
     int new_jjog_counts, delta;
     double distance, pos, stop_dist;
-    static int first_pass = 1;	/* used to set initial conditions */
+    int first_pass = inst->ctl_first_pass;
 
     for (joint_num = 0; joint_num < ALL_JOINTS; joint_num++) {
         double jaccel_limit;
@@ -1168,6 +1169,7 @@ static void handle_jjogwheels(void)
 
     // done with initialization, do the whole thing from now on
     first_pass = 0;
+    inst->ctl_first_pass = 0;
 }
 
 static void get_pos_cmds(long period)
@@ -1852,8 +1854,8 @@ static void output_to_hal(void)
     double inch_mult;
     emcmot_joint_t *joint;
     joint_hal_t *joint_data;
-    static int old_motion_index[EMCMOT_MAX_SPINDLES] = {0};
-    static int old_hal_index[EMCMOT_MAX_SPINDLES] = {0};
+    int *old_motion_index = inst->ctl_old_motion_index;
+    int *old_hal_index = inst->ctl_old_hal_index;
 
     /* output machine info to HAL for scoping, etc */
     *(inst->hal_data->motion_enabled) = GET_MOTION_ENABLE_FLAG();
@@ -2074,8 +2076,8 @@ static void update_status(void)
     emcmot_joint_status_t *joint_status;
     emcmot_axis_status_t *axis_status;
 #ifdef WATCH_FLAGS
-    static int old_joint_flags[8];
-    static int old_motion_flag;
+    int *old_joint_flags = inst->ctl_old_joint_flags;
+    int *old_motion_flag_p = &inst->ctl_old_motion_flag;
 #endif
 
     /* copy status info from private joint structure to status
@@ -2176,9 +2178,9 @@ static void update_status(void)
     }
 #ifdef WATCH_FLAGS
     /*! \todo FIXME - this is for debugging */
-    if ( old_motion_flag != inst->status->motionFlag ) {
-	rtapi_print ( "Motion flag %04X -> %04X\n", old_motion_flag, inst->status->motionFlag );
-	old_motion_flag = inst->status->motionFlag;
+    if ( *old_motion_flag_p != inst->status->motionFlag ) {
+	rtapi_print ( "Motion flag %04X -> %04X\n", *old_motion_flag_p, inst->status->motionFlag );
+	*old_motion_flag_p = inst->status->motionFlag;
     }
 #endif
 }

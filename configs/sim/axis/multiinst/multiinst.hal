@@ -21,7 +21,8 @@ load milltask <mill1> halui=halui
 load milltask <mill2> halui=halui2
 
 # Preview instances
-load ngcpreview <mill1-preview,mill2-preview>
+load ngcpreview <mill1-preview> namespace=mill1
+load ngcpreview <mill2-preview> namespace=mill2
 
 # RT functions for mot1
 addf mot1.motion-command-handler servo-thread

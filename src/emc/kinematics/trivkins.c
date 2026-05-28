@@ -27,6 +27,7 @@ typedef struct {
     // Built from the coordinates string, e.g. "XYZ" → {0,1,2,-1,...}
     int                 axis_to_joint[KINS_MAX_JOINTS];
     int                 num_joints;
+    kins_callbacks_t   *kins_cb;    // per-instance allocated callbacks
 } trivkins_t;
 
 // ─── Axis letter helpers ───
@@ -97,9 +98,8 @@ static kins_kinematics_type_t trivkins_type(void *ctx) {
     (void)ctx;
     // We store ktype in thread-local? No — we need the instance.
     // Since there's only one kinematics instance, use a file-static.
-    // (The module pointer is set during New.)
-    extern trivkins_t *g_trivkins;
-    return g_trivkins->ktype;
+    trivkins_t *tk = (trivkins_t *)ctx;
+    return tk->ktype;
 }
 
 static int32_t trivkins_switchable(void *ctx) {
@@ -114,18 +114,7 @@ static int32_t trivkins_switch(void *ctx, int32_t switchkins_type) {
     return -1; // not supported
 }
 
-// ─── Singleton pointer for callbacks that need instance access ───
 
-trivkins_t *g_trivkins = NULL;
-
-static kins_callbacks_t trivkins_callbacks = {
-    .ctx = NULL,
-    .forward    = trivkins_forward,
-    .inverse    = trivkins_inverse,
-    .type       = trivkins_type,
-    .switchable = trivkins_switchable,
-    .switch_    = trivkins_switch,
-};
 
 // ─── cmod lifecycle ───
 
@@ -140,9 +129,9 @@ static void trivkins_Stop(cmod_t *self) {
 
 static void trivkins_Destroy(cmod_t *self) {
     trivkins_t *tk = (trivkins_t *)self;
+    if (tk->kins_cb) free(tk->kins_cb);
     if (tk->name) free(tk->name);
     free(tk);
-    if (g_trivkins == tk) g_trivkins = NULL;
 }
 
 // ─── Parse kinstype string ───
@@ -210,11 +199,19 @@ int New(
         }
     }
 
-    // Set singleton for type() callback
-    g_trivkins = tk;
+    // Allocate per-instance callbacks
+    kins_callbacks_t *cb = calloc(1, sizeof(*cb));
+    if (!cb) { trivkins_Destroy(&tk->base); return -1; }
+    cb->ctx = tk;
+    cb->forward    = trivkins_forward;
+    cb->inverse    = trivkins_inverse;
+    cb->type       = trivkins_type;
+    cb->switchable = trivkins_switchable;
+    cb->switch_    = trivkins_switch;
+    tk->kins_cb = cb;
 
     // Register with the GMI kinematics API
-    int rc = kins_api_register(env->api, name, &trivkins_callbacks);
+    int rc = kins_api_register(env->api, name, cb);
     if (rc != 0) {
         gomc_log_errorf(env->log, name,
             "failed to register kinematics API: %d", rc);
