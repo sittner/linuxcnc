@@ -28,7 +28,7 @@ try:
 except ImportError:
     websockets = None
 
-from gmi import ws_url
+from gmi import instance, ws_url
 
 # OpenGL imports are deferred to avoid pulling them at module load.
 _gl = None
@@ -351,7 +351,7 @@ class PositionLogger:
         msg = {
             "action": "subscribe",
             "api": "emcstat",
-            "instance": "milltask",
+            "instance": instance(),
             "func": "get_positions",
             "rate_ms": 200,
         }
@@ -364,7 +364,7 @@ class PositionLogger:
         msg = {
             "action": "call",
             "api": "emcstat",
-            "instance": "milltask",
+            "instance": instance(),
             "func": func,
             "id": 0,
         }
