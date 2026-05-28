@@ -127,6 +127,9 @@ class IniFile:
     Matches the linuxcnc.ini API:
       - find(section, key) -> str | None
       - findall(section, key) -> list[str]
+
+    When GMC_INSTANCE is set (multi-instance), namespace-prefixed sections
+    (e.g. [mill2:KINS]) are resolved automatically via the server.
     """
 
     def __init__(self):
@@ -134,6 +137,9 @@ class IniFile:
         self._client = IniClient(rest_url())
         self._cache = {}  # (section, key) -> str or None (find)
         self._cache_all = {}  # (section, key) -> list[str] (findall)
+        # Use namespace only when GMC_INSTANCE is explicitly set.
+        ns = os.environ.get(_INSTANCE_ENV_VAR)
+        self._namespace = ns if ns else None
 
     def find(self, section, key):
         """Return the first value for section/key, or None if not found."""
@@ -141,7 +147,7 @@ class IniFile:
         if cache_key in self._cache:
             return self._cache[cache_key]
         from gmi.ini_client import IniQueryItem
-        results = self._client.query([IniQueryItem(section=section, key=key).to_dict()])
+        results = self._client.query([IniQueryItem(section=section, key=key, namespace=self._namespace).to_dict()])
         if results and len(results) == 1:
             val = results[0].value
             self._cache[cache_key] = val
@@ -155,7 +161,7 @@ class IniFile:
         if cache_key in self._cache_all:
             return self._cache_all[cache_key]
         from gmi.ini_client import IniQueryItem
-        results = self._client.query([IniQueryItem(section=section, key=key, all=True).to_dict()])
+        results = self._client.query([IniQueryItem(section=section, key=key, all=True, namespace=self._namespace).to_dict()])
         if results and len(results) == 1:
             vals = results[0].values or []
             self._cache_all[cache_key] = vals

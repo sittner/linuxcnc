@@ -22,14 +22,18 @@ func (im *iniImpl) Query(items []iniapi.IniQueryItem) ([]iniapi.IniQueryResult, 
 
 	results := make([]iniapi.IniQueryResult, len(items))
 	for i, q := range items {
+		ini := im.ini
+		if q.Namespace != "" {
+			ini = ini.WithNamespace(q.Namespace)
+		}
 		if q.All != nil && *q.All {
-			vals := im.ini.GetAll(q.Section, q.Key)
+			vals := ini.GetAll(q.Section, q.Key)
 			if vals == nil {
 				vals = []string{}
 			}
 			results[i] = iniapi.IniQueryResult{Values: vals}
 		} else {
-			v := im.ini.Get(q.Section, q.Key)
+			v := ini.Get(q.Section, q.Key)
 			if v == "" && !im.keyExists(q.Section, q.Key) {
 				results[i] = iniapi.IniQueryResult{}
 			} else {
