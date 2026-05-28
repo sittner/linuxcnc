@@ -424,13 +424,13 @@ func (g *generator) emitFunctionForwards() {
 		g.printf("static void %s(void *arg, long period);\n", cName)
 	}
 	if g.hasUserMainloop() {
-		g.printf("static void user_mainloop(void);\n")
+		g.printf("static void user_mainloop(inst_t *__comp_inst);\n")
 	}
 	if g.hasExtraSetup() {
 		g.printf("static int extra_setup(inst_t *__comp_inst, const char *name, int nparams, const char **params);\n")
 	}
 	if g.hasExtraCleanup() {
-		g.printf("static void extra_cleanup(void);\n")
+		g.printf("static void extra_cleanup(inst_t *__comp_inst);\n")
 	}
 	g.printf("\n")
 }
@@ -444,17 +444,16 @@ func (g *generator) emitConvenienceDefines() {
 	g.printf(" * Convenience defines — user code accesses pins/params by short names.\n")
 	g.printf(" * ------------------------------------------------------------------------- */\n\n")
 
-	// user_mainloop support: global instance pointer + exit helpers.
+	// user_mainloop support: convenience macros for exit and instance iteration.
 	if g.hasUserMainloop() {
-		g.printf("/* Global instance pointer — set before user_mainloop() is called. */\n")
-		g.printf("static inst_t *__comp_inst_ptr;\n")
-		g.printf("#define __comp_inst __comp_inst_ptr\n\n")
+		g.printf("/* Rewrite user_mainloop(void) → user_mainloop(inst_t *__comp_inst) */\n")
+		g.printf("#define user_mainloop(...) user_mainloop(inst_t *__comp_inst)\n\n")
 
 		g.printf("/* eventfd file descriptor — add to select/poll for clean shutdown. */\n")
 		g.printf("#define GOMC_EXIT_FD()      (__comp_inst->exit_fd)\n")
 		g.printf("#define GOMC_SHOULD_EXIT()  gomc_should_exit(__comp_inst->exit_fd)\n\n")
 
-		g.printf("#define FOR_ALL_INSTS() /* userspace — __comp_inst is set per-thread */\n\n")
+		g.printf("#define FOR_ALL_INSTS() /* userspace — single instance per thread */\n\n")
 	}
 
 	// FUNCTION macro — always available when the component declares functions.
@@ -528,7 +527,7 @@ func (g *generator) emitConvenienceDefines() {
 	// EXTRA_CLEANUP macro.
 	if g.hasExtraCleanup() {
 		g.printf("\n#undef EXTRA_CLEANUP\n")
-		g.printf("#define EXTRA_CLEANUP() static void extra_cleanup(void)\n")
+		g.printf("#define EXTRA_CLEANUP() static void extra_cleanup(inst_t *__comp_inst)\n")
 	}
 
 	// RT-safe logging convenience macros.
@@ -613,7 +612,7 @@ func (g *generator) emitUndefConvenience() {
 	g.printf(" * ------------------------------------------------------------------------- */\n\n")
 
 	if g.hasUserMainloop() {
-		g.printf("#undef __comp_inst\n")
+		g.printf("#undef user_mainloop\n")
 		g.printf("#undef GOMC_EXIT_FD\n")
 		g.printf("#undef GOMC_SHOULD_EXIT\n")
 		g.printf("#undef FOR_ALL_INSTS\n")
@@ -676,10 +675,9 @@ func (g *generator) emitInitStartStopDestroy() {
 	}
 
 	if g.hasUserMainloop() {
-		// Thread entry point: sets __comp_inst_ptr and calls user_mainloop.
+		// Thread entry point: passes instance pointer to user_mainloop.
 		g.printf("static void *userspace_thread(void *arg) {\n")
-		g.printf("    __comp_inst_ptr = (inst_t *)arg;\n")
-		g.printf("    user_mainloop();\n")
+		g.printf("    user_mainloop((inst_t *)arg);\n")
 		g.printf("    return NULL;\n")
 		g.printf("}\n\n")
 
@@ -709,11 +707,7 @@ func (g *generator) emitInitStartStopDestroy() {
 	g.printf("static void inst_destroy(cmod_t *self) {\n")
 	g.printf("    inst_t *inst = (inst_t *)self;\n")
 	if g.hasExtraCleanup() {
-		if g.hasUserMainloop() {
-			// Set __comp_inst_ptr so convenience macros work in extra_cleanup.
-			g.printf("    __comp_inst_ptr = inst;\n")
-		}
-		g.printf("    extra_cleanup();\n")
+		g.printf("    extra_cleanup(inst);\n")
 	}
 	if g.hasUserMainloop() {
 		g.printf("    if (inst->exit_fd >= 0)\n")
@@ -837,11 +831,6 @@ func (g *generator) emitNew() {
 	if g.hasUserMainloop() {
 		g.printf("    inst->exit_fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);\n")
 		g.printf("    if (inst->exit_fd < 0) goto err;\n\n")
-	}
-
-	// Set __comp_inst_ptr so convenience macros work in extra_setup/userinit.
-	if g.hasUserMainloop() {
-		g.printf("    __comp_inst_ptr = inst;\n\n")
 	}
 
 	// Allocate HAL shared memory portion for pins and params.
