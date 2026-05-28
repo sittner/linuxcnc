@@ -719,7 +719,11 @@ func (c *Canon) GetOptionalProgramStop() int32 {
 }
 
 func (c *Canon) OnReset() {
-	c.InitCanon()
+	// The C canon's ON_RESET only drops queued segments — it does NOT
+	// reinitialize state like feed rate, spindle speed, etc.  Those must
+	// persist across interpreter resets (which happen on every mode switch
+	// to Manual) so that MDI state is preserved between commands.
+	// InitCanon() must only be called during true initialization.
 }
 
 func (c *Canon) TurnProbeOn()  {}
