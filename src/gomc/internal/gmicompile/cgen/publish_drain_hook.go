@@ -173,6 +173,129 @@ func (g *publishDrainHookGen) emitDrainHook(fn ast.Func) {
 	g.printf("\t\tdelete(%sDrains, name)\n", fn.Name)
 	g.printf("\t}\n")
 	g.printf("}\n\n")
+
+	// Publish method — inject event directly from Go (bypasses C ring)
+	g.emitPublishMethod(fn)
+
+	// GetXxxDrain — lookup helper
+	g.emitGetDrain(fn)
+
+	// EnsureDrainStarted — create ring + register + return drain
+	g.emitEnsureDrainStarted(fn)
+}
+
+// emitPublishMethod generates a Publish method on the drain type that injects
+// events directly from Go code (bypasses the C ring buffer). Thread-safe.
+func (g *publishDrainHookGen) emitPublishMethod(fn ast.Func) {
+	drainType := toPascalCase(fn.Name) + "Drain"
+	eventType := toPascalCase(fn.Name) + "Event"
+
+	// Method signature with the same params as the publish func
+	g.printf("// %s injects an event directly from Go code (no C ring needed).\n", toPascalCase(fn.Name))
+	g.printf("// Thread-safe.\n")
+	g.printf("func (d *%s) %s(", drainType, toPascalCase(fn.Name))
+	for i, p := range fn.Params {
+		if i > 0 {
+			g.printf(", ")
+		}
+		g.printf("%s %s", p.Name, g.paramGoType(p))
+	}
+	g.printf(") {\n")
+	g.printf("\td.mu.Lock()\n")
+	g.printf("\td.events = append(d.events, %s{", eventType)
+	for i, p := range fn.Params {
+		if i > 0 {
+			g.printf(", ")
+		}
+		g.printf("%s: %s", toPascalCase(p.Name), p.Name)
+	}
+	g.printf("})\n")
+	g.printf("\td.mu.Unlock()\n")
+	g.printf("}\n\n")
+}
+
+// emitGetDrain generates a GetXxxDrain(instance) lookup helper.
+func (g *publishDrainHookGen) emitGetDrain(fn ast.Func) {
+	drainType := toPascalCase(fn.Name) + "Drain"
+
+	g.printf("// Get%s returns the active drain for the given instance, or nil.\n", drainType)
+	g.printf("func Get%s(instance string) *%s {\n", drainType, drainType)
+	g.printf("\t%sDrainMu.Lock()\n", fn.Name)
+	g.printf("\tdefer %sDrainMu.Unlock()\n", fn.Name)
+	g.printf("\tif %sDrains == nil {\n", fn.Name)
+	g.printf("\t\treturn nil\n")
+	g.printf("\t}\n")
+	g.printf("\treturn %sDrains[instance]\n", fn.Name)
+	g.printf("}\n\n")
+}
+
+// emitEnsureDrainStarted generates EnsureDrainStarted(instance) that creates
+// a ring buffer, registers it (triggering the OnRegister hook), and returns the drain.
+func (g *publishDrainHookGen) emitEnsureDrainStarted(fn ast.Func) {
+	drainType := toPascalCase(fn.Name) + "Drain"
+	apiRegName := fmt.Sprintf("%s_%s", g.api.Name, fn.Name)
+	createRingFunc := "Create" + toPascalCase(fn.Name) + "Ring"
+
+	g.printf("// EnsureDrainStarted creates a %s ring and starts the drain\n", fn.Name)
+	g.printf("// for the given instance. Returns the active drain.\n")
+	g.printf("// Each instance gets its own drain (supports multi-instance).\n")
+	g.printf("func EnsureDrainStarted(instance string) *%s {\n", drainType)
+	g.printf("\t%sDrainMu.Lock()\n", fn.Name)
+	g.printf("\tif %sDrains != nil {\n", fn.Name)
+	g.printf("\t\tif d, ok := %sDrains[instance]; ok {\n", fn.Name)
+	g.printf("\t\t\t%sDrainMu.Unlock()\n", fn.Name)
+	g.printf("\t\t\treturn d\n")
+	g.printf("\t\t}\n")
+	g.printf("\t}\n")
+	g.printf("\t%sDrainMu.Unlock()\n\n", fn.Name)
+	g.printf("\t// Create a C ring and register it — this triggers start%sDrain\n", toPascalCase(fn.Name))
+	g.printf("\t// via the OnRegister hook.\n")
+	g.printf("\tring := %s()\n\n", createRingFunc)
+	g.printf("\treg := apiserver.DefaultRegistry()\n")
+	g.printf("\tif reg != nil {\n")
+	g.printf("\t\t_ = reg.Register(%q, 1, instance, ring)\n", apiRegName)
+	g.printf("\t}\n\n")
+	g.printf("\t// The hook should have started the drain now.\n")
+	g.printf("\t%sDrainMu.Lock()\n", fn.Name)
+	g.printf("\tvar d *%s\n", drainType)
+	g.printf("\tif %sDrains != nil {\n", fn.Name)
+	g.printf("\t\td = %sDrains[instance]\n", fn.Name)
+	g.printf("\t}\n")
+	g.printf("\t%sDrainMu.Unlock()\n", fn.Name)
+	g.printf("\treturn d\n")
+	g.printf("}\n\n")
+}
+
+func (g *publishDrainHookGen) paramGoType(p ast.Param) string {
+	t := p.Type
+	switch t.Kind {
+	case ast.TypePrimitive:
+		switch t.Name {
+		case "bool":
+			return "bool"
+		case "i8":
+			return "int8"
+		case "u8":
+			return "uint8"
+		case "i32":
+			return "int32"
+		case "u32":
+			return "uint32"
+		case "i64":
+			return "int64"
+		case "u64":
+			return "uint64"
+		case "f32":
+			return "float32"
+		case "f64":
+			return "float64"
+		case "string":
+			return "string"
+		}
+	case ast.TypeNamed:
+		return toPascalCase(t.Name)
+	}
+	return "int32"
 }
 
 // findWatchSourceName finds the @watch function that sources from this publish func.
