@@ -1,6 +1,6 @@
 ifeq ($(BUILD_ETHERCAT),yes)
 
-LCEC_DIR := hal/proto/ethercat/src
+LCEC_DIR := hal/drivers/ethercat
 
 # ---------- Unified cmod plugin: ethercat.so ----------
 #
