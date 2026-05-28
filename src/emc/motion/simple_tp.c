@@ -92,6 +92,7 @@ void simple_tp_update(simple_tp_t *tp, double period)
 	} else {
 	    /* within 'tiny_dp' of desired pos, no need to move */
 	    vel_req = 0.0;
+	    tp->curr_acc = 0.0;
 	}
     } else {
 	/* planner disabled, request zero velocity */

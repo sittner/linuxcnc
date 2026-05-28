@@ -1237,6 +1237,18 @@ void jerk_filter_recompute_window(motmod_inst_t *inst)
             if (inst->jerk_filter.buf) { rtapi_free(inst->jerk_filter.buf); inst->jerk_filter.buf = NULL; }
             if (inst->jerk_filter.sum) { rtapi_free(inst->jerk_filter.sum); inst->jerk_filter.sum = NULL; }
             inst->jerk_filter.window_size = 0;
+        } else {
+            /* Pre-fill buffers with current positions to avoid startup
+               transient when the filter window is changed at runtime. */
+            for (j = 0; j < nj; j++) {
+                double pos = inst->joints[j].coarse_pos;
+                double *jbuf = inst->jerk_filter.buf + j * max_window;
+                int k;
+                for (k = 0; k < max_window; k++)
+                    jbuf[k] = pos;
+                inst->jerk_filter.sum[j] = pos * max_window;
+            }
+            inst->jerk_filter.filled = max_window;
         }
     }
 }
