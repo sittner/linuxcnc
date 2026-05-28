@@ -251,6 +251,9 @@ func set_joint_vel_limit(joint: i32, vel: f64) -> i32
 @doc "Set joint acceleration limit"
 func set_joint_acc_limit(joint: i32, acc: f64) -> i32
 
+@doc "Set joint jerk limit (0 = disabled)"
+func set_joint_jerk_limit(joint: i32, jerk: f64) -> i32
+
 @doc "Set motor-to-joint offset"
 func set_joint_motor_offset(joint: i32, offset: f64) -> i32
 

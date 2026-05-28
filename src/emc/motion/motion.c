@@ -1052,6 +1052,15 @@ static void motmod_Destroy(cmod_t *self)
         rtapi_free(inst->mot_struct);
         inst->mot_struct = 0;
     }
+    /* free jerk filter buffers */
+    if (inst->jerk_filter.buf) {
+        rtapi_free(inst->jerk_filter.buf);
+        inst->jerk_filter.buf = NULL;
+    }
+    if (inst->jerk_filter.sum) {
+        rtapi_free(inst->jerk_filter.sum);
+        inst->jerk_filter.sum = NULL;
+    }
     /* disconnect from HAL and RTAPI */
     retval = hal_exit(inst->comp_id);
     if (retval < 0) {
@@ -1538,6 +1547,7 @@ static int init_comm_buffers(motmod_inst_t *inst)
 	joint->min_pos_limit = -1.0;
 	joint->vel_limit = 1.0;
 	joint->acc_limit = 1.0;
+	joint->jerk_limit = 0.0;	/* disabled by default */
 	joint->min_ferror = 0.01;
 	joint->max_ferror = 1.0;
 	joint->backlash = 0.0;

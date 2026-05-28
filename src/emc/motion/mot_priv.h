@@ -284,6 +284,17 @@ typedef struct motmod_inst {
 
     /* Per-instance axis state (opaque, axis_inst_t* from axis.c) */
     void *axis_inst;
+
+    /* Jerk filter (boxcar) state for coordinated/teleop motion */
+    #define JERK_FILTER_MAX_WINDOW 64
+    struct {
+        double *buf;       /* [num_joints * window_size] ring buffer (row-major) */
+        double *sum;       /* [num_joints] running sums */
+        int num_joints;    /* allocated joint count */
+        int idx;
+        int filled;
+        int window_size;   /* 0 = filter disabled */
+    } jerk_filter;
 } motmod_inst_t;
 
 /***********************************************************************
@@ -354,6 +365,7 @@ void switch_to_teleop_mode(motmod_inst_t *inst);
 
 /* recalculates jog limits */
 extern void refresh_jog_limits(motmod_inst_t *inst, emcmot_joint_t *joint, int joint_num);
+extern void jerk_filter_recompute_window(motmod_inst_t *inst);
 /* handles 'homed' flags, see command.c for details */
 extern void clearHomes(motmod_inst_t *inst, int joint_num);
 

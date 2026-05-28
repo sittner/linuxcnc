@@ -1185,6 +1185,92 @@ static void handle_jjogwheels(motmod_inst_t *inst)
     inst->ctl_first_pass = 0;
 }
 
+/***********************************************************************
+*              JERK FILTER (boxcar moving-average)                      *
+************************************************************************/
+
+void jerk_filter_recompute_window(motmod_inst_t *inst)
+{
+    int max_window = 0;
+    int j;
+    for (j = 0; j < inst->num_joints; j++) {
+        double jerk = inst->joints[j].jerk_limit;
+        if (jerk <= 0.0) continue;
+        double acc = inst->joints[j].acc_limit;
+        int w = (int)ceil(acc / (jerk * servo_period));
+        if (w > max_window) max_window = w;
+    }
+    if (max_window > JERK_FILTER_MAX_WINDOW)
+        max_window = JERK_FILTER_MAX_WINDOW;
+    if (max_window < 1)
+        max_window = 0;  /* disabled */
+
+    int nj = inst->num_joints;
+
+    if (max_window == inst->jerk_filter.window_size &&
+        nj == inst->jerk_filter.num_joints)
+        return;  /* no change */
+
+    /* Free old buffers */
+    if (inst->jerk_filter.buf) {
+        rtapi_free(inst->jerk_filter.buf);
+        inst->jerk_filter.buf = NULL;
+    }
+    if (inst->jerk_filter.sum) {
+        rtapi_free(inst->jerk_filter.sum);
+        inst->jerk_filter.sum = NULL;
+    }
+
+    inst->jerk_filter.window_size = max_window;
+    inst->jerk_filter.num_joints = nj;
+    inst->jerk_filter.idx = 0;
+    inst->jerk_filter.filled = 0;
+
+    if (max_window > 0 && nj > 0) {
+        /* Allocate exactly what's needed (pre-faulted, mlock'd) */
+        inst->jerk_filter.buf = rtapi_calloc((size_t)nj * max_window * sizeof(double));
+        inst->jerk_filter.sum = rtapi_calloc((size_t)nj * sizeof(double));
+        if (!inst->jerk_filter.buf || !inst->jerk_filter.sum) {
+            rtapi_print_msg(RTAPI_MSG_ERR,
+                "MOTION: jerk filter alloc failed (joints=%d window=%d)\n", nj, max_window);
+            /* Fall back to disabled */
+            if (inst->jerk_filter.buf) { rtapi_free(inst->jerk_filter.buf); inst->jerk_filter.buf = NULL; }
+            if (inst->jerk_filter.sum) { rtapi_free(inst->jerk_filter.sum); inst->jerk_filter.sum = NULL; }
+            inst->jerk_filter.window_size = 0;
+        }
+    }
+}
+
+static inline void jerk_filter_apply(motmod_inst_t *inst, double *positions)
+{
+    int ws = inst->jerk_filter.window_size;
+    if (ws <= 0) return;
+
+    double *buf = inst->jerk_filter.buf;
+    double *sum = inst->jerk_filter.sum;
+    int nj = inst->jerk_filter.num_joints;
+    int idx = inst->jerk_filter.idx;
+    int filled = inst->jerk_filter.filled;
+    int count = (filled < ws) ? filled + 1 : ws;
+    int j;
+
+    for (j = 0; j < nj; j++) {
+        double *jbuf = buf + j * ws;  /* row for this joint */
+        /* subtract oldest value from running sum */
+        sum[j] -= jbuf[idx];
+        /* store new value */
+        jbuf[idx] = positions[j];
+        /* add new value to running sum */
+        sum[j] += positions[j];
+        /* output filtered position */
+        positions[j] = sum[j] / count;
+    }
+
+    inst->jerk_filter.idx = (idx + 1) % ws;
+    if (inst->jerk_filter.filled < ws)
+        inst->jerk_filter.filled++;
+}
+
 static void get_pos_cmds(motmod_inst_t *inst, long period)
 {
     int joint_num, result;
@@ -1260,6 +1346,7 @@ static void get_pos_cmds(motmod_inst_t *inst, long period)
             } else {
                 joint->free_tp.max_acc = joint->acc_limit;
             }
+            joint->free_tp.max_jerk = joint->jerk_limit;
             simple_tp_update(&(joint->free_tp), servo_period );
             /* copy free TP output to pos_cmd and coarse_pos */
             joint->pos_cmd = joint->free_tp.curr_pos;
@@ -1361,6 +1448,9 @@ static void get_pos_cmds(motmod_inst_t *inst, long period)
 		&inst->iflags, &inst->fflags);
 	    if(result == 0)
 	    {
+		/* Apply jerk-limiting boxcar filter (if enabled) */
+		jerk_filter_apply(inst, positions);
+
 		/* copy to joint structures and spline them up */
 		for (joint_num = 0; joint_num < NO_OF_KINS_JOINTS; joint_num++) {
 		    if(!isfinite(positions[joint_num]))
@@ -1429,6 +1519,9 @@ static void get_pos_cmds(motmod_inst_t *inst, long period)
 	/* copy to joint structures and spline them up */
 	if(result == 0)
 	{
+	    /* Apply jerk-limiting boxcar filter (if enabled) */
+	    jerk_filter_apply(inst, positions);
+
 	    for (joint_num = 0; joint_num < NO_OF_KINS_JOINTS; joint_num++) {
 		if(!isfinite(positions[joint_num]))
 		{

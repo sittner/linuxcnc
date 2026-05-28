@@ -40,6 +40,7 @@ type iniHal struct {
 	jointMaxLimit   [maxJoints]*hal.Pin[float64]
 	jointMaxVel     [maxJoints]*hal.Pin[float64]
 	jointMaxAcc     [maxJoints]*hal.Pin[float64]
+	jointMaxJerk    [maxJoints]*hal.Pin[float64]
 	jointHome       [maxJoints]*hal.Pin[float64]
 	jointHomeOffset [maxJoints]*hal.Pin[float64]
 	jointHomeSeq    [maxJoints]*hal.Pin[int32]
@@ -77,6 +78,7 @@ type iniHalValues struct {
 	jointMaxLimit   [maxJoints]float64
 	jointMaxVel     [maxJoints]float64
 	jointMaxAcc     [maxJoints]float64
+	jointMaxJerk    [maxJoints]float64
 	jointHome       [maxJoints]float64
 	jointHomeOffset [maxJoints]float64
 	jointHomeSeq    [maxJoints]int32
@@ -118,6 +120,9 @@ func newIniHal(name string, numJoints int) (*iniHal, error) {
 			return nil, err
 		}
 		if h.jointMaxAcc[i], err = hal.NewPin[float64](comp, fmt.Sprintf("%d.max_acceleration", i), hal.In); err != nil {
+			return nil, err
+		}
+		if h.jointMaxJerk[i], err = hal.NewPin[float64](comp, fmt.Sprintf("%d.max_jerk", i), hal.In); err != nil {
 			return nil, err
 		}
 		if h.jointHome[i], err = hal.NewPin[float64](comp, fmt.Sprintf("%d.home", i), hal.In); err != nil {
@@ -218,6 +223,7 @@ func (h *iniHal) initPins(t *Task) {
 		h.old.jointMaxLimit[i] = h.jointMaxLimit[i].Get()
 		h.old.jointMaxVel[i] = h.jointMaxVel[i].Get()
 		h.old.jointMaxAcc[i] = h.jointMaxAcc[i].Get()
+		h.old.jointMaxJerk[i] = h.jointMaxJerk[i].Get()
 		h.old.jointHome[i] = h.jointHome[i].Get()
 		h.old.jointHomeOffset[i] = h.jointHomeOffset[i].Get()
 		h.old.jointHomeSeq[i] = h.jointHomeSeq[i].Get()
@@ -278,6 +284,10 @@ func (h *iniHal) check(mc MotionConfig) {
 		if v := h.jointMaxAcc[i].Get(); !floatClose(v, h.old.jointMaxAcc[i]) {
 			h.old.jointMaxAcc[i] = v
 			mc.SetJointAccLimit(joint, v)
+		}
+		if v := h.jointMaxJerk[i].Get(); !floatClose(v, h.old.jointMaxJerk[i]) {
+			h.old.jointMaxJerk[i] = v
+			mc.SetJointJerkLimit(joint, v)
 		}
 		if v := h.jointFerror[i].Get(); !floatClose(v, h.old.jointFerror[i]) {
 			h.old.jointFerror[i] = v

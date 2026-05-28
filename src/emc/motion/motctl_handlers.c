@@ -662,6 +662,15 @@ static int32_t h_set_joint_acc_limit(void *ctx, int32_t joint, double acc)
     return send_command(mc, &cmd);
 }
 
+static int32_t h_set_joint_jerk_limit(void *ctx, int32_t joint, double jerk)
+{
+    CTX; emcmot_command_t cmd;
+    cmd_init(&cmd, EMCMOT_SET_JOINT_JERK_LIMIT);
+    cmd.joint = joint;
+    cmd.jerk = jerk;
+    return send_command(mc, &cmd);
+}
+
 static int32_t h_set_joint_motor_offset(void *ctx, int32_t joint, double offset)
 {
     CTX; emcmot_command_t cmd;
@@ -898,6 +907,7 @@ motctl_callbacks_t motctl_get_callbacks(motctl_ctx_t **ctx_out)
         .set_joint_min_ferror      = h_set_joint_min_ferror,
         .set_joint_vel_limit       = h_set_joint_vel_limit,
         .set_joint_acc_limit       = h_set_joint_acc_limit,
+        .set_joint_jerk_limit      = h_set_joint_jerk_limit,
         .set_joint_motor_offset    = h_set_joint_motor_offset,
         .set_joint_comp            = h_set_joint_comp,
         .override_limits           = h_override_limits,

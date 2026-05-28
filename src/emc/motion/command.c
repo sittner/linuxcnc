@@ -1184,6 +1184,18 @@ void emcmotCommandHandler_locked(void *arg, long servo_period)
 	    joint->acc_limit = inst->command->acc;
 	    break;
 
+	case EMCMOT_SET_JOINT_JERK_LIMIT:
+	    /* set joint max jerk (0 = disabled) */
+	    rtapi_print_msg(RTAPI_MSG_DBG, "SET_JOINT_JERK_LIMIT");
+	    rtapi_print_msg(RTAPI_MSG_DBG, " %d", joint_num);
+	    emcmot_config_change();
+	    if (joint == 0) {
+		break;
+	    }
+	    joint->jerk_limit = inst->command->jerk;
+	    jerk_filter_recompute_window(inst);
+	    break;
+
 	case EMCMOT_SET_ACC:
 	    /* set the max acceleration */
 	    /* can do it at any time */

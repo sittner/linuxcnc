@@ -27,6 +27,7 @@ type MotionConfig interface {
 	SetJointMinFerror(joint int32, ferror float64) error
 	SetJointVelLimit(joint int32, vel float64) error
 	SetJointAccLimit(joint int32, acc float64) error
+	SetJointJerkLimit(joint int32, jerk float64) error
 	SetJointHomingParams(joint int32, offset, home, homeFinalVel, searchVel, latchVel float64, flags, sequence, volatileHome int32) error
 
 	// Axes
@@ -222,6 +223,12 @@ func loadJoint(ini *inifile.IniFile, joint int32, mc MotionConfig) error {
 	maxAcc := getFloatOrSection(ini, section, "MAX_ACCELERATION", 1.0)
 	if err := mc.SetJointAccLimit(joint, maxAcc); err != nil {
 		return err
+	}
+	maxJerk := getFloatOrSection(ini, section, "MAX_JERK", 0.0)
+	if maxJerk > 0.0 {
+		if err := mc.SetJointJerkLimit(joint, maxJerk); err != nil {
+			return err
+		}
 	}
 
 	// Activate
