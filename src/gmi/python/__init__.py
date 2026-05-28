@@ -4,9 +4,42 @@ import os
 
 _DEFAULT_REST_URL = "http://127.0.0.1:5080"
 _ENV_VAR = "GMC_REST_URL"
+_INSTANCE_ENV_VAR = "GMC_INSTANCE"
+_DEFAULT_INSTANCE = "milltask"
 
 # Version string (matches linuxcnc.version).
 version = os.environ.get("LINUXCNCVERSION", "unknown")
+
+
+def instance() -> str:
+    """Return the target instance name (from GMC_INSTANCE or default 'milltask')."""
+    return os.environ.get(_INSTANCE_ENV_VAR, _DEFAULT_INSTANCE)
+
+
+def preview_instance() -> str:
+    """Return the preview instance name.
+
+    If GMC_PREVIEW_INSTANCE is set, use it.
+    Otherwise derive from GMC_INSTANCE: '{instance}-preview'.
+    If neither is set, fall back to 'ngcpreview'.
+    """
+    if "GMC_PREVIEW_INSTANCE" in os.environ:
+        return os.environ["GMC_PREVIEW_INSTANCE"]
+    inst = os.environ.get(_INSTANCE_ENV_VAR)
+    return f"{inst}-preview" if inst else "ngcpreview"
+
+
+def mtc_instance() -> str:
+    """Return the manual-tool-change instance name.
+
+    If GMC_MTC_INSTANCE is set, use it.
+    Otherwise derive from GMC_INSTANCE: '{instance}-manualtoolchange'.
+    If neither is set, fall back to 'manualtoolchange'.
+    """
+    if "GMC_MTC_INSTANCE" in os.environ:
+        return os.environ["GMC_MTC_INSTANCE"]
+    inst = os.environ.get(_INSTANCE_ENV_VAR)
+    return f"{inst}-manualtoolchange" if inst else "manualtoolchange"
 
 
 def rest_url() -> str:
@@ -27,19 +60,19 @@ def ws_url() -> str:
 def Stat():
     """Create a gmi.Stat instance (drop-in for linuxcnc.stat())."""
     from gmi.stat import Stat as _Stat
-    return _Stat()
+    return _Stat(instance=instance())
 
 
 def Command():
     """Create a gmi.Command instance (drop-in for linuxcnc.command())."""
     from gmi.command import Command as _Command
-    return _Command()
+    return _Command(instance=instance())
 
 
 def ErrorChannel():
     """Create a gmi.ErrorChannel instance (drop-in for linuxcnc.error_channel())."""
     from gmi.error import ErrorChannel as _ErrorChannel
-    return _ErrorChannel()
+    return _ErrorChannel(instance=instance())
 
 
 def MessageList(on_update=None):

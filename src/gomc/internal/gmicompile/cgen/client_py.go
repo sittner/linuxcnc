@@ -154,8 +154,8 @@ func (g *clientPyGen) emitClient() {
 	g.printf("    \"\"\"REST client for the %s API.\"\"\"\n\n", g.api.Name)
 
 	// Constructor
-	g.printf("    def __init__(self, base_url: str):\n")
-	g.printf("        self.base_url = base_url.rstrip(\"/\") + \"/api/v1/%s\"\n\n", g.api.Prefix)
+	g.printf("    def __init__(self, base_url: str, instance: str = %q):\n", g.api.Name)
+	g.printf("        self.base_url = base_url.rstrip(\"/\") + \"/api/v1/\" + instance\n\n")
 
 	// _do_request helper
 	g.printf("    def _do_request(self, method: str, path: str, body: Any = None, has_result: bool = False) -> Any:\n")

@@ -22,7 +22,7 @@ import tkinter
 
 def main():
     rest_url = gmi.rest_url()
-    instance = os.environ.get("GMC_MTC_INSTANCE", "manualtoolchange")
+    instance = gmi.mtc_instance()
     # The generated client builds base_url + "/api/v1/manualtoolchange",
     # but the REST server routes by instance name. Override the prefix
     # portion by constructing a URL that makes the client produce the

@@ -15,23 +15,26 @@ func (d *PublishErrorDrain) PublishError(kind ErrorKind, text string) {
 	d.mu.Unlock()
 }
 
-// GetPublishErrorDrain returns the active drain instance, or nil if not started.
-func GetPublishErrorDrain() *PublishErrorDrain {
+// GetPublishErrorDrain returns the active drain for the given instance, or nil.
+func GetPublishErrorDrain(instance string) *PublishErrorDrain {
 	publish_errorDrainMu.Lock()
 	defer publish_errorDrainMu.Unlock()
-	return publish_errorDrainInst
+	if publish_errorDrains == nil {
+		return nil
+	}
+	return publish_errorDrains[instance]
 }
 
 // EnsureDrainStarted creates a publish_error ring and starts the drain
-// if it hasn't been started yet (e.g. when no C milltask is present).
-// Returns the active drain. The ring is registered with the API registry
-// so that the standard WS watch hook fires.
+// for the given instance. Returns the active drain.
+// Each instance gets its own drain (supports multi-instance milltask).
 func EnsureDrainStarted(instance string) *PublishErrorDrain {
 	publish_errorDrainMu.Lock()
-	if publish_errorDrainInst != nil {
-		d := publish_errorDrainInst
-		publish_errorDrainMu.Unlock()
-		return d
+	if publish_errorDrains != nil {
+		if d, ok := publish_errorDrains[instance]; ok {
+			publish_errorDrainMu.Unlock()
+			return d
+		}
 	}
 	publish_errorDrainMu.Unlock()
 
@@ -46,7 +49,10 @@ func EnsureDrainStarted(instance string) *PublishErrorDrain {
 
 	// The hook should have started the drain now.
 	publish_errorDrainMu.Lock()
-	d := publish_errorDrainInst
+	var d *PublishErrorDrain
+	if publish_errorDrains != nil {
+		d = publish_errorDrains[instance]
+	}
 	publish_errorDrainMu.Unlock()
 	return d
 }

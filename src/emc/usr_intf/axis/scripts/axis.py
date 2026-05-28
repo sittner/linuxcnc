@@ -4342,7 +4342,7 @@ _mtc_poller = None
 try:
     from gmi.manualtoolchange_client import ManualtoolchangeClient
     _mtc_rest_url = gmi.rest_url()
-    _mtc_instance = os.environ.get("GMC_MTC_INSTANCE", "manualtoolchange")
+    _mtc_instance = gmi.mtc_instance()
     _mtc_client = ManualtoolchangeClient(_mtc_rest_url)
     _mtc_client.base_url = f"{_mtc_rest_url}/api/v1/{_mtc_instance}"
     # Probe endpoint availability with a GET /state

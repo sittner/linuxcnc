@@ -34,7 +34,8 @@ class ErrorChannel:
     background thread and returned one at a time by poll().
     """
 
-    def __init__(self):
+    def __init__(self, instance: str = "milltask"):
+        self._instance = instance
         self._queue = collections.deque()
         self._lock = threading.Lock()
         self._connected = threading.Event()
@@ -63,7 +64,7 @@ class ErrorChannel:
         msg = {
             "action": "subscribe",
             "api": "emcerror",
-            "instance": "emcerror",
+            "instance": self._instance,
             "func": "get_errors",
             "rate_ms": 200,
         }

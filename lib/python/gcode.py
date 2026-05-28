@@ -61,7 +61,8 @@ def parse(filename, canon, *args):
 
     # Connect to the REST server
     base_url = os.environ.get("GMC_REST_URL", "http://localhost:5080")
-    client = NgcpreviewClient(base_url)
+    import gmi
+    client = NgcpreviewClient(base_url, instance=gmi.preview_instance())
 
     try:
         result = client.gen_preview(

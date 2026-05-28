@@ -92,10 +92,10 @@ func (g *publishDrainHookGen) emitDrainHook(fn ast.Func) {
 
 	g.printf("// --- Auto-drain hook for %s ---\n\n", fn.Name)
 
-	// Package-level state for drain lifecycle
+	// Package-level state for drain lifecycle (per-instance map)
 	g.printf("var (\n")
-	g.printf("\t%sDrainMu    sync.Mutex\n", fn.Name)
-	g.printf("\t%sDrainInst  *%s\n", fn.Name, drainType)
+	g.printf("\t%sDrainMu sync.Mutex\n", fn.Name)
+	g.printf("\t%sDrains  map[string]*%s\n", fn.Name, drainType)
 	g.printf(")\n\n")
 
 	// init() subscribes to OnRegister
@@ -115,12 +115,16 @@ func (g *publishDrainHookGen) emitDrainHook(fn ast.Func) {
 	g.printf("\t%sDrainMu.Lock()\n", fn.Name)
 	g.printf("\tdefer %sDrainMu.Unlock()\n", fn.Name)
 	g.printf("\n")
-	g.printf("\tif %sDrainInst != nil {\n", fn.Name)
-	g.printf("\t\treturn // already started\n")
+	g.printf("\tif %sDrains == nil {\n", fn.Name)
+	g.printf("\t\t%sDrains = make(map[string]*%s)\n", fn.Name, drainType)
+	g.printf("\t}\n\n")
+	g.printf("\tinstance := api.Instance\n")
+	g.printf("\tif _, exists := %sDrains[instance]; exists {\n", fn.Name)
+	g.printf("\t\treturn // already started for this instance\n")
 	g.printf("\t}\n\n")
 	g.printf("\tdrain := New%s(api.Callbacks)\n", drainType)
 	g.printf("\tdrain.Start()\n")
-	g.printf("\t%sDrainInst = drain\n\n", fn.Name)
+	g.printf("\t%sDrains[instance] = drain\n\n", fn.Name)
 
 	// Register WS watch
 	g.printf("\twreg := apiserver.DefaultWatchRegistry()\n")
@@ -132,7 +136,7 @@ func (g *publishDrainHookGen) emitDrainHook(fn ast.Func) {
 	if watchName != "" {
 		g.printf("\twreg.Register(&apiserver.WatchAPI{\n")
 		g.printf("\t\tAPIName:  %q,\n", g.api.Name)
-		g.printf("\t\tInstance: %q,\n", g.api.Name)
+		g.printf("\t\tInstance: instance,\n")
 		g.printf("\t\tWatches: []apiserver.WatchFuncMeta{\n")
 		g.printf("\t\t\t{\n")
 		g.printf("\t\t\t\tName:        %q,\n", watchName)
@@ -145,14 +149,28 @@ func (g *publishDrainHookGen) emitDrainHook(fn ast.Func) {
 
 	g.printf("}\n\n")
 
-	// Stop function for cleanup
-	g.printf("// Stop%sDrain stops the auto-started drain (called during shutdown).\n", toPascalCase(fn.Name))
-	g.printf("func Stop%sDrain() {\n", toPascalCase(fn.Name))
+	// Stop function for a specific instance
+	g.printf("// Stop%sDrain stops the drain for the given instance.\n", toPascalCase(fn.Name))
+	g.printf("func Stop%sDrain(instance string) {\n", toPascalCase(fn.Name))
 	g.printf("\t%sDrainMu.Lock()\n", fn.Name)
 	g.printf("\tdefer %sDrainMu.Unlock()\n", fn.Name)
-	g.printf("\tif %sDrainInst != nil {\n", fn.Name)
-	g.printf("\t\t%sDrainInst.Stop()\n", fn.Name)
-	g.printf("\t\t%sDrainInst = nil\n", fn.Name)
+	g.printf("\tif %sDrains == nil {\n", fn.Name)
+	g.printf("\t\treturn\n")
+	g.printf("\t}\n")
+	g.printf("\tif d, ok := %sDrains[instance]; ok {\n", fn.Name)
+	g.printf("\t\td.Stop()\n")
+	g.printf("\t\tdelete(%sDrains, instance)\n", fn.Name)
+	g.printf("\t}\n")
+	g.printf("}\n\n")
+
+	// StopAll function for shutdown
+	g.printf("// StopAll%sDrains stops all instance drains (called during shutdown).\n", toPascalCase(fn.Name))
+	g.printf("func StopAll%sDrains() {\n", toPascalCase(fn.Name))
+	g.printf("\t%sDrainMu.Lock()\n", fn.Name)
+	g.printf("\tdefer %sDrainMu.Unlock()\n", fn.Name)
+	g.printf("\tfor name, d := range %sDrains {\n", fn.Name)
+	g.printf("\t\td.Stop()\n")
+	g.printf("\t\tdelete(%sDrains, name)\n", fn.Name)
 	g.printf("\t}\n")
 	g.printf("}\n\n")
 }

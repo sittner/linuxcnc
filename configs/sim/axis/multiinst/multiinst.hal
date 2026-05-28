@@ -13,8 +13,8 @@ load io <iocontrol>
 load milltask <mill1> halui=halui
 load milltask <mill2> halui=halui2
 
-# Two ngcpreview instances
-load ngcpreview <preview1,preview2>
+# Preview instances (named {instance}-preview per convention)
+load ngcpreview <mill1-preview,mill2-preview>
 
 # Kinematics and motion
 load trivkins
