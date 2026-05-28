@@ -225,7 +225,7 @@ modules: $(CMOD_TARGETS)
 
 CMOD_C_SRCS := spindle supply watchdog modmath weighted_sum counter \
     debounce siggen encoder_ratio sim_encoder pwmgen encoder pid stepgen \
-    boss_plc joint_ctrl
+    boss_plc
 CMOD_C_TARGETS := $(addprefix ../cmod/, $(addsuffix .so, $(CMOD_C_SRCS)))
 
 # Generic rule for hand-written cmod C components
