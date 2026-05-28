@@ -36,7 +36,7 @@ typedef struct motstat_ctx motstat_ctx_t;
 extern motctl_callbacks_t motctl_get_callbacks(motctl_ctx_t **ctx_out);
 extern void motctl_init_ctx(motctl_ctx_t *mc, emcmot_struct_t *mot, double timeout);
 extern motstat_callbacks_t motstat_get_callbacks(motstat_ctx_t **ctx_out);
-extern void motstat_init_ctx(motstat_ctx_t *mc, emcmot_struct_t *mot);
+extern void motstat_init_ctx(motstat_ctx_t *mc, emcmot_struct_t *mot, axis_inst_t *ai);
 
 // Mark strings for translation, but defer translation to userspace
 #define _(s) (s)
@@ -180,14 +180,14 @@ static int32_t gmi_mot_get_rotary_unlock(void *ctx, int32_t jnum)
 
 static double gmi_mot_axis_get_vel_limit(void *ctx, int32_t axis)
 {
-    (void)ctx;
-    return axis_get_vel_limit(axis);
+    motmod_inst_t *inst = (motmod_inst_t *)ctx;
+    return axis_get_vel_limit((axis_inst_t *)inst->axis_inst, axis);
 }
 
 static double gmi_mot_axis_get_acc_limit(void *ctx, int32_t axis)
 {
-    (void)ctx;
-    return axis_get_acc_limit(axis);
+    motmod_inst_t *inst = (motmod_inst_t *)ctx;
+    return axis_get_acc_limit((axis_inst_t *)inst->axis_inst, axis);
 }
 
 /* --- Config getters (emcmotConfig fields, read-only) --- */
@@ -728,6 +728,14 @@ int New(const cmod_env_t *env, const char *name,
     inst->name = name;
     inst->ctl_first_pass = 1;
 
+    /* Allocate per-instance axis state */
+    inst->axis_inst = axis_inst_new();
+    if (!inst->axis_inst) {
+        rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: failed to allocate axis instance\n"));
+        free(inst);
+        return -1;
+    }
+
     /* Set pin_prefix: empty for default module name (bare pins), "name." for aliases */
     if (strcmp(name, "motmod") == 0) {
         inst->pin_prefix[0] = '\0';
@@ -997,7 +1005,7 @@ static int motmod_init(cmod_t *self)
 
     /* Wire up motctl/motstat handler contexts now that emcmotStruct exists. */
     motctl_init_ctx(inst->motctl_ctx, emcmotStruct, DEFAULT_EMCMOT_COMM_TIMEOUT);
-    motstat_init_ctx(inst->motstat_ctx, emcmotStruct);
+    motstat_init_ctx(inst->motstat_ctx, emcmotStruct, (axis_inst_t *)inst->axis_inst);
 
     retval = export_functions(inst);
     if (retval != 0) {
@@ -1057,6 +1065,7 @@ static void motmod_Destroy(cmod_t *self)
 
     /* free per-instance state */
     free(inst->mot_cb);
+    if (inst->axis_inst) axis_inst_free((axis_inst_t *)inst->axis_inst);
     free(inst);
     free(self);
 }
@@ -1307,7 +1316,7 @@ static int init_hal_io(motmod_inst_t *inst)
         }
     }
 
-    CALL_CHECK(axis_init_hal_io(mot_comp_id, inst->pin_prefix));
+    CALL_CHECK(axis_init_hal_io((axis_inst_t *)inst->axis_inst, mot_comp_id, inst->pin_prefix));
 
     CALL_CHECK(hal_pin_bit_newf(HAL_OUT, &(emcmot_hal_data->eoffset_limited), mot_comp_id, PFMT("motion.eoffset-limited")));
     CALL_CHECK(hal_pin_bit_newf(HAL_OUT, &(emcmot_hal_data->eoffset_active), mot_comp_id, PFMT("motion.eoffset-active")));
@@ -1516,7 +1525,7 @@ static int init_comm_buffers(motmod_inst_t *inst)
         emcmotStatus->spindle_status[spindle_num].speed = 0.0;
     }
 
-    axis_init_all();
+    axis_init_all((axis_inst_t *)inst->axis_inst);
 
     /* init per-joint stuff */
     for (joint_num = 0; joint_num < ALL_JOINTS; joint_num++) {

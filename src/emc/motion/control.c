@@ -74,6 +74,7 @@
 #define motmod_tp_api    ((const tp_callbacks_t *)inst->tp_api)
 #define motmod_home_api  ((const home_callbacks_t *)inst->home_api)
 #define motion_num_spindles (inst->num_spindles)
+#define ai ((axis_inst_t *)inst->axis_inst)
 
 /***********************************************************************
 *                      LOCAL FUNCTION PROTOTYPES                       *
@@ -263,7 +264,7 @@ void emcmotController(void *arg, long period)
         handle_jjogwheels(inst);
     }
     if (!inst->status->on_soft_limit && !*inst->hal_data->jog_inhibit) {  // change from teleop to move off joint soft limit
-        axis_handle_jogwheels(GET_MOTION_TELEOP_FLAG(), GET_MOTION_ENABLE_FLAG(), motmod_home_api->get_is_active(motmod_home_api->ctx));
+        axis_handle_jogwheels(ai, GET_MOTION_TELEOP_FLAG(), GET_MOTION_ENABLE_FLAG(), motmod_home_api->get_is_active(motmod_home_api->ctx));
     }
     if (   (inst->status->motion_state == EMCMOT_MOTION_FREE)
         && motmod_home_api->do_homing(motmod_home_api->ctx)) {
@@ -272,7 +273,7 @@ void emcmotController(void *arg, long period)
 
     get_pos_cmds(inst, period);
     compute_screw_comp(inst);
-    *(inst->hal_data->eoffset_active) = axis_plan_external_offsets(servo_period, GET_MOTION_ENABLE_FLAG(), motmod_home_api->get_allhomed(motmod_home_api->ctx));
+    *(inst->hal_data->eoffset_active) = axis_plan_external_offsets(ai, servo_period, GET_MOTION_ENABLE_FLAG(), motmod_home_api->get_allhomed(motmod_home_api->ctx));
     output_to_hal(inst);
     motmod_home_api->write_out_pins(motmod_home_api->ctx, ALL_JOINTS);
     update_status(inst);
@@ -548,7 +549,7 @@ static void process_inputs(motmod_inst_t *inst)
     // if jog in progress stop the jog if requested
     if (enables & *(inst->hal_data->jog_is_active) && (*(inst->hal_data->jog_stop) || *(inst->hal_data->jog_stop_immediate))) {
         joint_jog_abort_all(inst, *(inst->hal_data->jog_stop_immediate));
-        axis_jog_abort_all(*(inst->hal_data->jog_stop_immediate));
+        axis_jog_abort_all(ai, *(inst->hal_data->jog_stop_immediate));
         if (*(inst->hal_data->jog_stop_immediate)) {
           rtapi_print_msg(RTAPI_MSG_ERR, "Jog aborted by jog-stop-immediate");
         } else {
@@ -765,7 +766,7 @@ static void process_probe_inputs(motmod_inst_t *inst)
                 }
             }
             if (!inst->config->inhibit_probe_jog_error) {
-                if (axis_jog_abort_all(1)) {
+                if (axis_jog_abort_all(ai, 1)) {
                     aborted = 3;
                 }
             }
@@ -893,7 +894,7 @@ static void set_operating_mode(motmod_inst_t *inst)
 	       we just went into disabled state */
 	}
 
-    axis_jog_abort_all(1);
+    axis_jog_abort_all(ai, 1);
 
 	SET_MOTION_ENABLE_FLAG(0);
 	/* don't clear the motion error flag, since that may signify why we
@@ -907,7 +908,7 @@ static void set_operating_mode(motmod_inst_t *inst)
                         "soft limit with active external offsets");
             *(inst->hal_data->eoffset_limited) = 0;
         }
-        axis_initialize_external_offsets();
+        axis_initialize_external_offsets(ai);
         motmod_tp_api->set_pos(motmod_tp_api->ctx, (tp_pose_t *)&inst->status->carte_pos_cmd);
 	for (joint_num = 0; joint_num < ALL_JOINTS; joint_num++) {
 	    /* point to joint data */
@@ -923,7 +924,7 @@ static void set_operating_mode(motmod_inst_t *inst)
 	}
 	if ( !GET_MOTION_ENABLE_FLAG() ) {
             if (GET_MOTION_TELEOP_FLAG()) {
-                axis_sync_teleop_tp_to_carte_pos(0, pcmd_p);
+                axis_sync_teleop_tp_to_carte_pos(ai, 0, pcmd_p);
             }
 	}
 	SET_MOTION_ENABLE_FLAG(1);
@@ -960,7 +961,7 @@ static void set_operating_mode(motmod_inst_t *inst)
 
             kinematicsForward(positions, &inst->status->carte_pos_cmd, &inst->fflags, &inst->iflags);
             // entering teleop (INPOS), remove ext offsets
-            axis_sync_teleop_tp_to_carte_pos(-1, pcmd_p);
+            axis_sync_teleop_tp_to_carte_pos(ai, -1, pcmd_p);
 	} else {
 	    /* not in position-- don't honor mode change */
 	    inst->internal->teleoperating = 0;
@@ -986,7 +987,7 @@ static void set_operating_mode(motmod_inst_t *inst)
 		/* preset traj planner to current position */
 
                 // subtract at coord mode start
-                axis_apply_ext_offsets_to_carte_pos(-1, pcmd_p);
+                axis_apply_ext_offsets_to_carte_pos(ai, -1, pcmd_p);
 
 		motmod_tp_api->set_pos(motmod_tp_api->ctx, (tp_pose_t *)&inst->status->carte_pos_cmd);
 		/* drain the cubics so they'll synch up */
@@ -1337,7 +1338,7 @@ static void get_pos_cmds(motmod_inst_t *inst, long period)
 	break;
 
     case EMCMOT_MOTION_COORD:
-        axis_jog_abort_all(1);
+        axis_jog_abort_all(ai, 1);
 
 	/* check joint 0 to see if the interpolators are empty */
 	coord_cubic_active = 1;
@@ -1349,7 +1350,7 @@ static void get_pos_cmds(motmod_inst_t *inst, long period)
             /* get new commanded traj pos */
             motmod_tp_api->get_pos(motmod_tp_api->ctx, (tp_pose_t *)&inst->status->carte_pos_cmd);
 
-            if (axis_update_coord_with_bound(pcmd_p, servo_period)) {
+            if (axis_update_coord_with_bound(ai, pcmd_p, servo_period)) {
                 ext_offset_coord_limit = 1;
             } else {
                 ext_offset_coord_limit = 0;
@@ -1405,14 +1406,14 @@ static void get_pos_cmds(motmod_inst_t *inst, long period)
 	break;
 
     case EMCMOT_MOTION_TELEOP:
-        ext_offset_teleop_limit = axis_calc_motion(servo_period);
+        ext_offset_teleop_limit = axis_calc_motion(ai, servo_period);
         if (!ext_offset_teleop_limit) {
             ext_offset_coord_limit = 0; //in case was set in prior coord motion
         }
 
-        axis_sync_carte_pos_to_teleop_tp(+1, pcmd_p); // teleop
+        axis_sync_carte_pos_to_teleop_tp(ai, +1, pcmd_p); // teleop
 
-	if ( axis_jog_is_active() ) {
+	if ( axis_jog_is_active(ai) ) {
 	    /* is any limit disabled for this move? */
 	    if ( inst->status->overrideLimitMask ) {
 		inst->internal->overriding = 1;
@@ -1460,7 +1461,7 @@ static void get_pos_cmds(motmod_inst_t *inst, long period)
 	/* END OF OUTPUT KINS */
 
 	/* if overriding is true and the jog is complete, the limits should be re-enabled */
-	if ( ( inst->internal->overriding ) && ( !axis_jog_is_active() ) ) {
+	if ( ( inst->internal->overriding ) && ( !axis_jog_is_active(ai) ) ) {
 	    inst->status->overrideLimitMask = 0;
 	    inst->internal->overriding = 0;
 	}
@@ -1567,7 +1568,7 @@ static void get_pos_cmds(motmod_inst_t *inst, long period)
         && GET_MOTION_TELEOP_FLAG()
         && inst->status->on_soft_limit ) {
         SET_MOTION_ERROR_FLAG(1);
-        axis_jog_abort_all(1);
+        axis_jog_abort_all(ai, 1);
     }
     if (ext_offset_teleop_limit || ext_offset_coord_limit) {
         *(inst->hal_data->eoffset_limited) = 1;
@@ -1956,7 +1957,7 @@ static void output_to_hal(motmod_inst_t *inst)
         *(inst->hal_data->current_vel) = inst->status->current_vel;
         *(inst->hal_data->requested_vel) = inst->status->requested_vel;
     } else if (GET_MOTION_TELEOP_FLAG()) {
-        inst->status->current_vel = (*inst->hal_data->current_vel) = axis_get_compound_velocity();
+        inst->status->current_vel = (*inst->hal_data->current_vel) = axis_get_compound_velocity(ai);
         *(inst->hal_data->requested_vel) = 0.0;
     } else {
         int i;
@@ -2071,9 +2072,9 @@ static void output_to_hal(motmod_inst_t *inst)
 	}
     } // for joint_num
 
-    axis_output_to_hal(pcmd_p);
+    axis_output_to_hal(ai, pcmd_p);
 
-    *(inst->hal_data->jog_is_active) = axis_jog_is_active() || joint_jog_is_active(inst);
+    *(inst->hal_data->jog_is_active) = axis_jog_is_active(ai) || joint_jog_is_active(inst);
 
 }
 
@@ -2129,19 +2130,19 @@ static void update_status(motmod_inst_t *inst)
         /* point to axis status */
         axis_status = &(inst->status->axis_status[axis_num]);
 
-        axis_status->teleop_vel_cmd = axis_get_teleop_vel_cmd(axis_num);
-        axis_status->max_pos_limit = axis_get_max_pos_limit(axis_num);
-        axis_status->min_pos_limit = axis_get_min_pos_limit(axis_num);
+        axis_status->teleop_vel_cmd = axis_get_teleop_vel_cmd(ai, axis_num);
+        axis_status->max_pos_limit = axis_get_max_pos_limit(ai, axis_num);
+        axis_status->min_pos_limit = axis_get_min_pos_limit(ai, axis_num);
     }
-    inst->status->eoffset_pose.tran.x = axis_get_ext_offset_curr_pos(0);
-    inst->status->eoffset_pose.tran.y = axis_get_ext_offset_curr_pos(1);
-    inst->status->eoffset_pose.tran.z = axis_get_ext_offset_curr_pos(2);
-    inst->status->eoffset_pose.a      = axis_get_ext_offset_curr_pos(3);
-    inst->status->eoffset_pose.b      = axis_get_ext_offset_curr_pos(4);
-    inst->status->eoffset_pose.c      = axis_get_ext_offset_curr_pos(5);
-    inst->status->eoffset_pose.u      = axis_get_ext_offset_curr_pos(6);
-    inst->status->eoffset_pose.v      = axis_get_ext_offset_curr_pos(7);
-    inst->status->eoffset_pose.w      = axis_get_ext_offset_curr_pos(8);
+    inst->status->eoffset_pose.tran.x = axis_get_ext_offset_curr_pos(ai, 0);
+    inst->status->eoffset_pose.tran.y = axis_get_ext_offset_curr_pos(ai, 1);
+    inst->status->eoffset_pose.tran.z = axis_get_ext_offset_curr_pos(ai, 2);
+    inst->status->eoffset_pose.a      = axis_get_ext_offset_curr_pos(ai, 3);
+    inst->status->eoffset_pose.b      = axis_get_ext_offset_curr_pos(ai, 4);
+    inst->status->eoffset_pose.c      = axis_get_ext_offset_curr_pos(ai, 5);
+    inst->status->eoffset_pose.u      = axis_get_ext_offset_curr_pos(ai, 6);
+    inst->status->eoffset_pose.v      = axis_get_ext_offset_curr_pos(ai, 7);
+    inst->status->eoffset_pose.w      = axis_get_ext_offset_curr_pos(ai, 8);
 
     inst->status->external_offsets_applied = *(inst->hal_data->eoffset_active);
 

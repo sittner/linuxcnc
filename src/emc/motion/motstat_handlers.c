@@ -21,6 +21,7 @@
 
 typedef struct motstat_ctx {
     emcmot_struct_t *mot;
+    axis_inst_t *axis_inst;
 } motstat_ctx_t;
 
 #define CTX motstat_ctx_t *mc = (motstat_ctx_t *)ctx
@@ -211,8 +212,8 @@ static int32_t h_get_status(void *ctx, motstat_motion_status_t *status)
         motstat_axis_status_t *d = &status->axes[i];
         d->min_pos_limit = s.axis_status[i].min_pos_limit;
         d->max_pos_limit = s.axis_status[i].max_pos_limit;
-        d->vel_limit = axis_get_vel_limit(i);
-        d->acc_limit = axis_get_acc_limit(i);
+        d->vel_limit = axis_get_vel_limit(mc->axis_inst, i);
+        d->acc_limit = axis_get_acc_limit(mc->axis_inst, i);
     }
 
     /* I/O arrays */
@@ -319,9 +320,10 @@ motstat_callbacks_t motstat_get_callbacks(motstat_ctx_t **ctx_out)
     return cb;
 }
 
-void motstat_init_ctx(motstat_ctx_t *mc, emcmot_struct_t *mot)
+void motstat_init_ctx(motstat_ctx_t *mc, emcmot_struct_t *mot, axis_inst_t *ai)
 {
     if (mc) {
         mc->mot = mot;
+        mc->axis_inst = ai;
     }
 }

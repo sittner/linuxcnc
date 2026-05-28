@@ -36,6 +36,8 @@
 #include "mot_priv.h"
 #include "axis.h"
 
+static axis_inst_t *ml_axis_inst;
+
 static struct motion_logger_data_t {
     hal_bit_t *reopen;
 } *motion_logger_data;
@@ -164,12 +166,13 @@ static int init_comm_buffers(void) {
     }
 
     /* init per-axis stuff */
-    axis_init_all();
+    ml_axis_inst = axis_inst_new();
+    axis_init_all(ml_axis_inst);
     for (axis_num = 0; axis_num < EMCMOT_MAX_AXIS; axis_num++) {
-        axis_set_max_pos_limit(axis_num,  1.0);
-        axis_set_min_pos_limit(axis_num, -1.0);
-        axis_set_vel_limit(axis_num, 1.0);
-        axis_set_acc_limit(axis_num, 1.0);
+        axis_set_max_pos_limit(ml_axis_inst, axis_num,  1.0);
+        axis_set_min_pos_limit(ml_axis_inst, axis_num, -1.0);
+        axis_set_vel_limit(ml_axis_inst, axis_num, 1.0);
+        axis_set_acc_limit(ml_axis_inst, axis_num, 1.0);
     }
 
     rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: init_comm_buffers() complete\n");
@@ -495,8 +498,8 @@ int main(int argc, char* argv[]) {
                     "SET_AXIS_POSITION_LIMITS axis=%d, min=%.6g, max=%.6g\n",
                     c->axis, c->minLimit, c->maxLimit
                 );
-                axis_set_min_pos_limit(c->axis, c->minLimit);
-                axis_set_max_pos_limit(c->axis, c->maxLimit);
+                axis_set_min_pos_limit(ml_axis_inst, c->axis, c->minLimit);
+                axis_set_max_pos_limit(ml_axis_inst, c->axis, c->maxLimit);
                 break;
 
             case EMCMOT_SET_AXIS_LOCKING_JOINT:
@@ -504,7 +507,7 @@ int main(int argc, char* argv[]) {
                     "SET_AXIS_LOCKING_JOINT axis=%d, locking_joint=%d\n",
                     c->axis, c->joint
                 );
-                axis_set_locking_joint(c->axis, c->joint);
+                axis_set_locking_joint(ml_axis_inst, c->axis, c->joint);
                 break;
 
             case EMCMOT_SET_JOINT_BACKLASH:

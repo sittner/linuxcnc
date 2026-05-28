@@ -96,6 +96,7 @@
 #define motmod_tp_api    ((const tp_callbacks_t *)inst->tp_api)
 #define motmod_home_api  ((const home_callbacks_t *)inst->home_api)
 #define motion_num_spindles (inst->num_spindles)
+#define ai ((axis_inst_t *)inst->axis_inst)
 
 /* limits_ok() returns 1 if none of the hard limits are set,
    0 if any are set. Called on a linear and circular move. */
@@ -228,7 +229,7 @@ static int inRange(motmod_inst_t *inst, EmcPose pos, int id, char *move_type)
         targets[6] = pos.u;
         targets[7] = pos.v;
         targets[8] = pos.w;
-        axis_check_constraints(targets, failing_axes);
+        axis_check_constraints(ai, targets, failing_axes);
         for (axis_num = 0; axis_num < EMCMOT_MAX_AXIS; axis_num += 1) {
             if (failing_axes[axis_num] == -1) {
                 rtapi_print_msg(RTAPI_MSG_ERR, _("%s move on line %d would exceed %c's %s limit"),
@@ -464,10 +465,10 @@ void emcmotCommandHandler_locked(void *arg, long servo_period)
                return;
            }
            if (GET_MOTION_TELEOP_FLAG()) {
-                if ( (inst->command->axis >= 0) && (axis_get_locking_joint(inst->command->axis) >= 0) ) {
+                if ( (inst->command->axis >= 0) && (axis_get_locking_joint(ai, inst->command->axis) >= 0) ) {
                     rtapi_print_msg(RTAPI_MSG_ERR,
                     "Cannot jog a locking indexer AXIS_%c,joint_num=%d\n",
-                    "XYZABCUVW"[inst->command->axis], axis_get_locking_joint(inst->command->axis));
+                    "XYZABCUVW"[inst->command->axis], axis_get_locking_joint(ai, inst->command->axis));
                     return;
                 }
            }
@@ -525,7 +526,7 @@ void emcmotCommandHandler_locked(void *arg, long servo_period)
 	    rtapi_print_msg(RTAPI_MSG_DBG, " %d", joint_num);
 	    /* check for coord or free space motion active */
 	    if (GET_MOTION_TELEOP_FLAG()) {
-                axis_jog_abort_all(0);
+                axis_jog_abort_all(ai, 0);
 	    } else if (GET_MOTION_COORD_FLAG()) {
 		motmod_tp_api->abort(motmod_tp_api->ctx);
 	    } else {
@@ -558,7 +559,7 @@ void emcmotCommandHandler_locked(void *arg, long servo_period)
 	    if (GET_MOTION_TELEOP_FLAG()) {
 	        /* tell teleop planner to stop */
 	        if ((inst->command->axis >= 0) && (inst->command->axis < EMCMOT_MAX_AXIS)) {
-	            axis_jog_abort(inst->command->axis, 0);
+	            axis_jog_abort(ai, inst->command->axis, 0);
 	        }
 	    } else {
 	        if (joint == 0) { break; }
@@ -576,7 +577,7 @@ void emcmotCommandHandler_locked(void *arg, long servo_period)
 	    break;
 
 	case EMCMOT_FREE:
-            axis_jog_abort_all(0);
+            axis_jog_abort_all(ai, 0);
 	    /* change the mode to free mode motion (joint mode) */
 	    /* can be done at any time */
 	    /* this code doesn't actually make the transition, it merely
@@ -839,7 +840,7 @@ void emcmotCommandHandler_locked(void *arg, long servo_period)
 	        joint->kb_jjog_active = 1;
 	        /* and let it go */
 	        joint->free_tp.enable = 1;
-                axis_jog_abort_all(0);
+                axis_jog_abort_all(ai, 0);
 	        /*! \todo FIXME - should we really be clearing errors here? */
 	        SET_JOINT_ERROR_FLAG(joint, 0);
 	        /* clear joints homed flag(s) if we don't have forward kins.
@@ -854,7 +855,7 @@ void emcmotCommandHandler_locked(void *arg, long servo_period)
                     joint = &inst->joints[joint_num];
                     if (joint != 0) { joint->free_tp.enable = 0; }
                 }
-                axis_jog_cont(inst->command->axis, inst->command->vel, servo_period);
+                axis_jog_cont(ai, inst->command->axis, inst->command->vel, servo_period);
             }
 	    break;
 
@@ -916,7 +917,7 @@ void emcmotCommandHandler_locked(void *arg, long servo_period)
 	        joint->kb_jjog_active = 1;
 	        /* and let it go */
 	        joint->free_tp.enable = 1;
-                axis_jog_abort_all(0);
+                axis_jog_abort_all(ai, 0);
 	        SET_JOINT_ERROR_FLAG(joint, 0);
 	        /* clear joint homed flag(s) if we don't have forward kins.
 	           Otherwise, a transition into coordinated mode will incorrectly
@@ -926,7 +927,7 @@ void emcmotCommandHandler_locked(void *arg, long servo_period)
             } else {
                 // TELEOP JOG_INCR
                 if (GET_MOTION_ERROR_FLAG()) { break; }
-                axis_jog_incr(inst->command->axis, inst->command->offset, inst->command->vel, servo_period);
+                axis_jog_incr(ai, inst->command->axis, inst->command->offset, inst->command->vel, servo_period);
                 for (joint_num = 0; joint_num < ALL_JOINTS; joint_num++) {
                     joint = &inst->joints[joint_num];
                     if (joint != 0) { joint->free_tp.enable = 0; }
@@ -993,7 +994,7 @@ void emcmotCommandHandler_locked(void *arg, long servo_period)
                 clearHomes(inst, joint_num);
             } else {
                 // TELEOP JOG_ABS
-                axis_jog_abs(inst->command->axis, inst->command->offset, inst->command->vel);
+                axis_jog_abs(ai, inst->command->axis, inst->command->offset, inst->command->vel);
                 for (joint_num = 0; joint_num < ALL_JOINTS; joint_num++) {
                    joint = &inst->joints[joint_num];
                    if (joint != 0) { joint->free_tp.enable = 0; }
@@ -1872,8 +1873,8 @@ void emcmotCommandHandler_locked(void *arg, long servo_period)
             if ((inst->command->axis < 0) || (inst->command->axis >= EMCMOT_MAX_AXIS)) {
                 break;
             }
-            axis_set_min_pos_limit(inst->command->axis, inst->command->minLimit);
-            axis_set_max_pos_limit(inst->command->axis, inst->command->maxLimit);
+            axis_set_min_pos_limit(ai, inst->command->axis, inst->command->minLimit);
+            axis_set_max_pos_limit(ai, inst->command->axis, inst->command->maxLimit);
 	    break;
 
         case EMCMOT_SET_AXIS_VEL_LIMIT:
@@ -1885,8 +1886,8 @@ void emcmotCommandHandler_locked(void *arg, long servo_period)
             if ((inst->command->axis < 0) || (inst->command->axis >= EMCMOT_MAX_AXIS)) {
                 break;
             }
-            axis_set_vel_limit(inst->command->axis, inst->command->vel);
-            axis_set_ext_offset_vel_limit(inst->command->axis, inst->command->ext_offset_vel);
+            axis_set_vel_limit(ai, inst->command->axis, inst->command->vel);
+            axis_set_ext_offset_vel_limit(ai, inst->command->axis, inst->command->ext_offset_vel);
             break;
 
         case EMCMOT_SET_AXIS_ACC_LIMIT:
@@ -1898,8 +1899,8 @@ void emcmotCommandHandler_locked(void *arg, long servo_period)
             if ((inst->command->axis < 0) || (inst->command->axis >= EMCMOT_MAX_AXIS)) {
                 break;
             }
-            axis_set_acc_limit(inst->command->axis, inst->command->acc);
-            axis_set_ext_offset_acc_limit(inst->command->axis, inst->command->ext_offset_acc);
+            axis_set_acc_limit(ai, inst->command->axis, inst->command->acc);
+            axis_set_ext_offset_acc_limit(ai, inst->command->axis, inst->command->ext_offset_acc);
             break;
 
         case EMCMOT_SET_AXIS_LOCKING_JOINT:
@@ -1909,7 +1910,7 @@ void emcmotCommandHandler_locked(void *arg, long servo_period)
             if ((inst->command->axis < 0) || (inst->command->axis >= EMCMOT_MAX_AXIS)) {
                 break;
             }
-            axis_set_locking_joint(inst->command->axis, joint_num);
+            axis_set_locking_joint(ai, inst->command->axis, joint_num);
             break;
 
 	default:

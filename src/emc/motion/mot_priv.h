@@ -281,6 +281,9 @@ typedef struct motmod_inst {
     void *motctl_cb;
     void *motstat_cb;
     void *mot_cb;  /* per-instance mot_callbacks_t* (freed in Destroy) */
+
+    /* Per-instance axis state (opaque, axis_inst_t* from axis.c) */
+    void *axis_inst;
 } motmod_inst_t;
 
 /***********************************************************************
