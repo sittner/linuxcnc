@@ -88,7 +88,7 @@ package kinstest
 // // Load the .so via dlopen and call its New() function.
 // static int load_trivkins(const char *so_path, cmod_t **out) {
 //     init_stub_env();
-//     void *handle = dlopen(so_path, RTLD_NOW | RTLD_GLOBAL);
+//     void *handle = dlopen(so_path, RTLD_NOW);
 //     if (!handle) return -1;
 //
 //     cmod_new_fn factory = (cmod_new_fn)dlsym(handle, "New");
@@ -195,7 +195,7 @@ package kinstest
 //     } else {
 //         init_stub_env();
 //     }
-//     void *handle = dlopen(so_path, RTLD_NOW | RTLD_GLOBAL);
+//     void *handle = dlopen(so_path, RTLD_NOW);
 //     if (!handle) return -1;
 //
 //     cmod_new_fn factory = (cmod_new_fn)dlsym(handle, "New");

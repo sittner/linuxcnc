@@ -53,11 +53,7 @@ class Tk(OldTk):
 
 Tkinter.Tk = Tk
 
-RTLD_NOW, RTLD_GLOBAL = 0x1, 0x100  # XXX portable?
-old_flags = sys.getdlopenflags()
-sys.setdlopenflags(RTLD_NOW | RTLD_GLOBAL);
 import gcode
-sys.setdlopenflags(old_flags)
 from rs274.OpenGLTk import *
 from rs274.interpret import StatMixin
 from rs274.glcanon import GLCanon, GlCanonDraw

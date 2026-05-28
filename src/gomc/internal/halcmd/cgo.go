@@ -804,7 +804,7 @@ static int hal_shim_net(const char *sig_name, const char *pin_names, int num_pin
 
 // hal_shim_loadrt loads a realtime module in-process via rtapi_dlopen.
 // Replaces the former fork+exec of rtapi_app.  The module's .so is opened
-// with RTLD_GLOBAL|RTLD_NOW, module parameters are parsed via dlsym'd
+// with RTLD_NOW, module parameters are parsed via dlsym'd
 // rtapi_info_* symbols, and rtapi_app_main() is called.  Waits for the
 // component to appear in HAL shared memory (ready flag).
 // Returns 0 on success, non-zero on error.
@@ -816,10 +816,9 @@ static int hal_shim_loadrt(const char *mod, const char *const args[], int nargs)
 
     char what[PATH_MAX];
     snprintf(what, sizeof(what), "%s/%s.so", EMC2_RTLIB_DIR, mod);
-    // RTLD_GLOBAL required for legacy multi-module symbol sharing
     // (hostmot2 <-> board drivers, homecomp EXPORT_SYMBOL).
     // Remove once hostmot2 is ported to the GMI cmod API pattern.
-    void *module = rtapi_dlopen(what, RTLD_GLOBAL | RTLD_NOW);
+    void *module = rtapi_dlopen(what, RTLD_NOW);
     if (!module) {
         // Note: rtapi_dlopen already logs the dlerror() message.
         return -ENOENT;
