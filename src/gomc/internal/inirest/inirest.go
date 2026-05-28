@@ -44,11 +44,15 @@ func (im *iniImpl) Query(items []iniapi.IniQueryItem) ([]iniapi.IniQueryResult, 
 	return results, nil
 }
 
-func (im *iniImpl) GetParameterFile() (string, error) {
+func (im *iniImpl) GetParameterFile(namespace string) (string, error) {
 	if im.ini == nil {
 		return "", fmt.Errorf("INI file not loaded")
 	}
-	rel := im.ini.Get("RS274NGC", "PARAMETER_FILE")
+	ini := im.ini
+	if namespace != "" {
+		ini = ini.WithNamespace(namespace)
+	}
+	rel := ini.Get("RS274NGC", "PARAMETER_FILE")
 	if rel == "" {
 		return "", fmt.Errorf("[RS274NGC]PARAMETER_FILE not set")
 	}

@@ -29,7 +29,7 @@ func query(items: []IniQueryItem) -> []IniQueryResult
 
 # Get the content of the RS274NGC parameter (var) file.
 # The server resolves the path from [RS274NGC]PARAMETER_FILE.
-@method "GET"
+@method "POST"
 @path "/parameter-file"
 @rt_safe "false"
-func get_parameter_file() -> string
+func get_parameter_file(namespace: string?) -> string

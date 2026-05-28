@@ -90,7 +90,7 @@ def positionlogger(stat_unused, c0, c1, c2, c3, c4, c5, geometry, is_xyuv=0):
 def ToolTable():
     """Create a gmi.ToolTable instance for REST tool table access."""
     from gmi.tools import ToolTable as _ToolTable
-    return _ToolTable()
+    return _ToolTable(instance=instance())
 
 
 def component_exists(name: str) -> bool:
@@ -173,5 +173,6 @@ class IniFile:
 def fetch_parameter_file():
     """Fetch the RS274NGC parameter file content from the REST service."""
     from gmi.ini_client import IniClient
+    ns = os.environ.get(_INSTANCE_ENV_VAR)
     client = IniClient(rest_url())
-    return client.get_parameter_file()
+    return client.get_parameter_file(namespace=ns if ns else None)
