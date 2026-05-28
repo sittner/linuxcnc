@@ -34,16 +34,8 @@
 #include "home_api.h"
 #include "axis.h"
 
-extern const tp_callbacks_t   *motmod_tp_api;
-extern const home_callbacks_t *motmod_home_api;
-
 // Mark strings for translation, but defer translation to userspace
 #define _(s) (s)
-
-static int    ext_offset_teleop_limit = 0;
-static int    ext_offset_coord_limit  = 0;
-static bool   coord_cubic_active = 0;
-static int    switchkins_type = 0;
 
 /*! \todo FIXME - debugging - uncomment the following line to log changes in
    JOINT_FLAG and MOTION_FLAG */
@@ -54,16 +46,14 @@ static int    switchkins_type = 0;
 *                  LOCAL VARIABLE DECLARATIONS                         *
 ************************************************************************/
 
-/* the (nominal) period the last time the motion handler was invoked */
-static long last_period = 0;
-
-/* servo cycle time */
-static double servo_period;
-
-// *pcmd_p[0] is shorthand for inst->status->carte_pos_cmd.tran.x
-// *pcmd_p[1] is shorthand for inst->status->carte_pos_cmd.tran.y
-//  etc.
-static double *pcmd_p[EMCMOT_MAX_AXIS];
+/* Per-instance state accessed via g_inst (set at RT entry). */
+#define ext_offset_teleop_limit (g_inst->ext_offset_teleop_limit)
+#define ext_offset_coord_limit  (g_inst->ext_offset_coord_limit)
+#define coord_cubic_active      (g_inst->coord_cubic_active)
+#define ctl_switchkins_type     (g_inst->ctl_switchkins_type)
+#define ctl_last_period         (g_inst->ctl_last_period)
+#define servo_period            (g_inst->ctl_servo_period)
+#define pcmd_p                  (g_inst->pcmd_p)
 
 /***********************************************************************
 *                      LOCAL FUNCTION PROTOTYPES                       *
@@ -205,8 +195,13 @@ static void handle_kinematicsSwitch(void);
 void emcmotController(void *arg, long period)
 {
     motmod_inst_t *inst = (motmod_inst_t *)arg;
-    static int do_once = 1;
-    if (do_once) {
+
+    /* Set global instance pointer for this RT cycle */
+    g_inst = inst;
+    joints = inst->joints;
+
+    /* Initialize pcmd_p on first call for this instance */
+    if (!pcmd_p[0]) {
         pcmd_p[0] = &(inst->status->carte_pos_cmd.tran.x);
         pcmd_p[1] = &(inst->status->carte_pos_cmd.tran.y);
         pcmd_p[2] = &(inst->status->carte_pos_cmd.tran.z);
@@ -216,25 +211,22 @@ void emcmotController(void *arg, long period)
         pcmd_p[6] = &(inst->status->carte_pos_cmd.u);
         pcmd_p[7] = &(inst->status->carte_pos_cmd.v);
         pcmd_p[8] = &(inst->status->carte_pos_cmd.w);
-        do_once = 0;
     }
 
-    static long long int last = 0;
-
     long long int now = rtapi_get_clocks();
-    long int this_run = (long int)(now - last);
+    long int this_run = (long int)(now - inst->last_clocks);
     *(inst->hal_data->last_period) = this_run;
 
     // we need this for next time
-    last = now;
+    inst->last_clocks = now;
 
 
     /* calculate servo period as a double - period is in integer nsec */
     servo_period = period * 0.000000001;
 
-    if(period != last_period) {
+    if(period != ctl_last_period) {
         emcmotSetCycleTime(period);
-        last_period = period;
+        ctl_last_period = period;
     }
 
     /* increment head count to indicate work in progress */
@@ -297,9 +289,9 @@ static void handle_kinematicsSwitch(void) {
 
     if (!kinematicsSwitchable()) return;
     hal_switchkins_type = (int)*inst->hal_data->switchkins_type;
-    if (switchkins_type == hal_switchkins_type) return;
+    if (ctl_switchkins_type == hal_switchkins_type) return;
 
-    switchkins_type = hal_switchkins_type;
+    ctl_switchkins_type = hal_switchkins_type;
 
     emcmot_joint_t *jointKinsSwitch;
     double joint_posKinsSwitch[EMCMOT_MAX_JOINTS] = {0,};
@@ -311,7 +303,7 @@ static void handle_kinematicsSwitch(void) {
         joint_posKinsSwitch[joint_num] = jointKinsSwitch->pos_cmd;
     }
 
-    if (kinematicsSwitch(switchkins_type)) {
+    if (kinematicsSwitch(ctl_switchkins_type)) {
         rtapi_print_msg(RTAPI_MSG_ERR,"kinematicsSwitch() FAIL<%f>\n",
                         *inst->hal_data->switchkins_type);
         SET_MOTION_ERROR_FLAG(1);  // abort
@@ -331,7 +323,7 @@ static void handle_kinematicsSwitch(void) {
                       &inst->status->carte_pos_cmd,
                       &tmpFFlags, &tmpIFlags);
 #ifdef SWITCHKINS_DEBUG
-    fprintf(stderr,"kswitch type=%d (%s:%d)\n",switchkins_type,__FUNCTION__,__LINE__);
+    fprintf(stderr,"kswitch type=%d (%s:%d)\n",ctl_switchkins_type,__FUNCTION__,__LINE__);
     for (anum = 0; anum < EMCMOT_MAX_AXIS; anum++) {
         fprintf(stderr,"anum=%d before:%8.3g after:%8.3g delta=%8.3g\n"
                ,anum,beforePose[anum],*pcmd_p[anum],*pcmd_p[anum]-beforePose[anum]);

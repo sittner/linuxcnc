@@ -18,6 +18,7 @@
 #include "hal.h"
 
 #include <stdint.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 #include "gomc_env.h"
@@ -134,6 +135,11 @@ typedef struct {
 
 typedef struct {
     const mot_callbacks_t *mot;
+    const gomc_api_t *api;
+    char name[HAL_NAME_LEN];
+    char pin_prefix[HAL_NAME_LEN]; /* "" when default, "name." when aliased */
+    char mot_instance[HAL_NAME_LEN];
+    int comp_id;
     double servo_freq;
     int all_joints;
     int extra_joints;
@@ -143,6 +149,8 @@ typedef struct {
     home_local_data H[EMCMOT_MAX_JOINTS];
     all_joints_home_data_t *joint_home_data;
     bool sync_now;
+    home_callbacks_t callbacks;
+    cmod_t cmod;
 } homemod_inst_t;
 
 static homemod_inst_t *g_inst;
@@ -248,6 +256,7 @@ static int base_make_joint_home_pins(int id,int njoints)
 //NOTE: motmod supplies the component id
     int jno,retval;
     one_joint_home_data_t *addr;
+    const char *P = g_inst->pin_prefix;
 
     joint_home_data = hal_malloc(sizeof(all_joints_home_data_t));
     if (joint_home_data == 0) {
@@ -260,15 +269,15 @@ static int base_make_joint_home_pins(int id,int njoints)
         addr = &(joint_home_data->jhd[jno]);
 
         retval += hal_pin_bit_newf(HAL_IN, &(addr->home_sw), id,
-                                  "joint.%d.home-sw-in", jno);
+                                  "%sjoint.%d.home-sw-in", P, jno);
         retval += hal_pin_bit_newf(HAL_OUT, &(addr->homing), id,
-                                  "joint.%d.homing", jno);
+                                  "%sjoint.%d.homing", P, jno);
         retval += hal_pin_bit_newf(HAL_OUT, &(addr->homed), id,
-                                  "joint.%d.homed", jno);
+                                  "%sjoint.%d.homed", P, jno);
         retval += hal_pin_s32_newf(HAL_OUT, &(addr->home_state), id,
-                                  "joint.%d.home-state", jno);
+                                  "%sjoint.%d.home-state", P, jno);
         retval += hal_pin_bit_newf(HAL_IO, &(addr->index_enable), id,
-                                  "joint.%d.index-enable", jno);
+                                  "%sjoint.%d.index-enable", P, jno);
     }
     return retval;
 } // base_make_joint_home_pins()
@@ -1418,7 +1427,8 @@ static bool base_do_homing(void)
 static int32_t gmi_home_init(void *ctx, int32_t comp_id, double servo_period,
     int32_t n_joints, int32_t n_extrajoints)
 {
-    (void)ctx;
+    g_inst = (homemod_inst_t *)ctx;
+    g_inst->comp_id = comp_id;
     return base_homing_init(comp_id, servo_period, n_joints, n_extrajoints);
 }
 
@@ -1427,7 +1437,7 @@ static int32_t gmi_home_set_joint_params(void *ctx, int32_t jno, double offset, 
     double home_latch_vel, int32_t home_flags,
     int32_t home_sequence, int32_t volatile_home)
 {
-    (void)ctx;
+    g_inst = (homemod_inst_t *)ctx;
     base_set_joint_homing_params(jno, offset, home,
         home_final_vel, home_search_vel, home_latch_vel,
         home_flags, home_sequence, (bool)volatile_home);
@@ -1437,100 +1447,106 @@ static int32_t gmi_home_set_joint_params(void *ctx, int32_t jno, double offset, 
 static int32_t gmi_home_update_joint_params(void *ctx, int32_t jno, double home_offset,
     double home_home, int32_t home_sequence)
 {
-    (void)ctx;
+    g_inst = (homemod_inst_t *)ctx;
     base_update_joint_homing_params(jno, home_offset, home_home, home_sequence);
     return 0;
 }
 
 static int32_t gmi_home_read_in_pins(void *ctx, int32_t njoints)
 {
-    (void)ctx;
+    g_inst = (homemod_inst_t *)ctx;
     base_read_homing_in_pins(njoints);
     return 0;
 }
 
-static int32_t gmi_home_do_homing(void *ctx) { (void)ctx; return (int32_t)base_do_homing(); }
+static int32_t gmi_home_do_homing(void *ctx) { g_inst = (homemod_inst_t *)ctx; return (int32_t)base_do_homing(); }
 
 static int32_t gmi_home_write_out_pins(void *ctx, int32_t njoints)
 {
-    (void)ctx;
+    g_inst = (homemod_inst_t *)ctx;
     base_write_homing_out_pins(njoints);
     return 0;
 }
 
-static int32_t gmi_home_do_home_joint(void *ctx, int32_t jno) { (void)ctx; base_do_home_joint(jno); return 0; }
-static int32_t gmi_home_do_cancel(void *ctx, int32_t jno) { (void)ctx; base_do_cancel_homing(jno); return 0; }
+static int32_t gmi_home_do_home_joint(void *ctx, int32_t jno) { g_inst = (homemod_inst_t *)ctx; base_do_home_joint(jno); return 0; }
+static int32_t gmi_home_do_cancel(void *ctx, int32_t jno) { g_inst = (homemod_inst_t *)ctx; base_do_cancel_homing(jno); return 0; }
 
 static int32_t gmi_home_set_unhomed(void *ctx, int32_t jno, home_motion_state_t motstate)
 {
-    (void)ctx;
+    g_inst = (homemod_inst_t *)ctx;
     base_set_unhomed(jno, (motion_state_t)motstate);
     return 0;
 }
 
-static int32_t gmi_home_get_allhomed(void *ctx) { (void)ctx; return (int32_t)base_get_allhomed(); }
-static int32_t gmi_home_get_is_active(void *ctx) { (void)ctx; return (int32_t)base_get_homing_is_active(); }
-static int32_t gmi_home_get_sequence(void *ctx, int32_t jno) { (void)ctx; return base_get_home_sequence(jno); }
-static int32_t gmi_home_get_homing(void *ctx, int32_t jno) { (void)ctx; return (int32_t)base_get_homing(jno); }
-static int32_t gmi_home_get_homed(void *ctx, int32_t jno) { (void)ctx; return (int32_t)base_get_homed(jno); }
-static int32_t gmi_home_get_index_enable(void *ctx, int32_t jno) { (void)ctx; return (int32_t)base_get_index_enable(jno); }
-static int32_t gmi_home_get_needs_unlock_first(void *ctx, int32_t jno) { (void)ctx; return (int32_t)base_get_home_needs_unlock_first(jno); }
-static int32_t gmi_home_get_is_idle(void *ctx, int32_t jno) { (void)ctx; return (int32_t)base_get_home_is_idle(jno); }
-static int32_t gmi_home_get_is_synchronized(void *ctx, int32_t jno) { (void)ctx; return (int32_t)base_get_home_is_synchronized(jno); }
-static int32_t gmi_home_get_at_index_search_wait(void *ctx, int32_t jno) { (void)ctx; return (int32_t)base_get_homing_at_index_search_wait(jno); }
-
-// ─── Callbacks table ────────────────────────────────────────────────────
-
-static const home_callbacks_t home_cmod_callbacks = GMI_HOME_CALLBACKS;
+static int32_t gmi_home_get_allhomed(void *ctx) { g_inst = (homemod_inst_t *)ctx; return (int32_t)base_get_allhomed(); }
+static int32_t gmi_home_get_is_active(void *ctx) { g_inst = (homemod_inst_t *)ctx; return (int32_t)base_get_homing_is_active(); }
+static int32_t gmi_home_get_sequence(void *ctx, int32_t jno) { g_inst = (homemod_inst_t *)ctx; return base_get_home_sequence(jno); }
+static int32_t gmi_home_get_homing(void *ctx, int32_t jno) { g_inst = (homemod_inst_t *)ctx; return (int32_t)base_get_homing(jno); }
+static int32_t gmi_home_get_homed(void *ctx, int32_t jno) { g_inst = (homemod_inst_t *)ctx; return (int32_t)base_get_homed(jno); }
+static int32_t gmi_home_get_index_enable(void *ctx, int32_t jno) { g_inst = (homemod_inst_t *)ctx; return (int32_t)base_get_index_enable(jno); }
+static int32_t gmi_home_get_needs_unlock_first(void *ctx, int32_t jno) { g_inst = (homemod_inst_t *)ctx; return (int32_t)base_get_home_needs_unlock_first(jno); }
+static int32_t gmi_home_get_is_idle(void *ctx, int32_t jno) { g_inst = (homemod_inst_t *)ctx; return (int32_t)base_get_home_is_idle(jno); }
+static int32_t gmi_home_get_is_synchronized(void *ctx, int32_t jno) { g_inst = (homemod_inst_t *)ctx; return (int32_t)base_get_home_is_synchronized(jno); }
+static int32_t gmi_home_get_at_index_search_wait(void *ctx, int32_t jno) { g_inst = (homemod_inst_t *)ctx; return (int32_t)base_get_homing_at_index_search_wait(jno); }
 
 // ─── cmod lifecycle ─────────────────────────────────────────────────────
 
-static cmod_t home_cmod;
-static const gomc_api_t *home_cmod_api;
-static const char *home_mot_instance = "motmod";
-
 static void home_cmod_destroy(cmod_t *self) {
-    (void)self;
-    free(g_inst);
-    g_inst = NULL;
+    homemod_inst_t *inst = (homemod_inst_t *)((char *)self - offsetof(homemod_inst_t, cmod));
+    if (g_inst == inst) g_inst = NULL;
+    free(inst);
 }
 
 static int home_cmod_init(cmod_t *self)
 {
-    (void)self;
-    const mot_callbacks_t *mot = mot_api_get(home_cmod_api, home_mot_instance);
+    homemod_inst_t *inst = (homemod_inst_t *)((char *)self - offsetof(homemod_inst_t, cmod));
+    g_inst = inst;
+    const mot_callbacks_t *mot = mot_api_get(inst->api, inst->mot_instance);
     if (!mot) return -1;
-    g_inst->mot = mot;
+    inst->mot = mot;
     return 0;
 }
 
 int New(const cmod_env_t *env, const char *name,
         int argc, const char **argv, cmod_t **out)
 {
-    home_cmod_api = env->api;
-
     /* Allocate per-instance state */
-    g_inst = calloc(1, sizeof(homemod_inst_t));
-    if (!g_inst) return -1;
+    homemod_inst_t *inst = calloc(1, sizeof(homemod_inst_t));
+    if (!inst) return -1;
 
-    /* Parse mot_instance parameter */
-    for (int i = 0; i < argc; i++) {
-        if (strncmp(argv[i], "mot_instance=", 13) == 0)
-            home_mot_instance = argv[i] + 13;
+    inst->api = env->api;
+    snprintf(inst->name, sizeof(inst->name), "%s", name);
+
+    /* Set pin_prefix: empty for default module name (bare pins), "name." for aliases */
+    if (strcmp(name, "homemod") == 0) {
+        inst->pin_prefix[0] = '\0';
+    } else {
+        snprintf(inst->pin_prefix, sizeof(inst->pin_prefix), "%s.", name);
     }
 
-    int rc = home_api_register(env->api, name, &home_cmod_callbacks);
+    /* Parse mot_instance parameter (default: "motmod") */
+    snprintf(inst->mot_instance, sizeof(inst->mot_instance), "motmod");
+    for (int i = 0; i < argc; i++) {
+        if (strncmp(argv[i], "mot_instance=", 13) == 0)
+            snprintf(inst->mot_instance, sizeof(inst->mot_instance), "%s", argv[i] + 13);
+    }
+
+    /* Set up per-instance callbacks with ctx pointing to this instance */
+    inst->callbacks = (home_callbacks_t)GMI_HOME_CALLBACKS;
+    inst->callbacks.ctx = inst;
+
+    int rc = home_api_register(env->api, name, &inst->callbacks);
     if (rc != 0) {
         gomc_log_errorf(env->log, name,
             "failed to register home API: %d", rc);
-        free(g_inst);
-        g_inst = NULL;
+        free(inst);
         return rc;
     }
 
-    home_cmod.Init    = home_cmod_init;
-    home_cmod.Start   = NULL;
-    home_cmod.Destroy = home_cmod_destroy;
-    *out = &home_cmod;
+    g_inst = inst;
+    inst->cmod.Init    = home_cmod_init;
+    inst->cmod.Start   = NULL;
+    inst->cmod.Destroy = home_cmod_destroy;
+    *out = &inst->cmod;
     return 0;
 }

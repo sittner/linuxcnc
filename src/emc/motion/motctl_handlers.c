@@ -8,6 +8,7 @@
 ********************************************************************/
 
 #include <string.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include "motion.h"
 #include "motion_struct.h"
@@ -27,7 +28,7 @@
  * Context and command dispatch
  * ================================================================ */
 
-typedef struct {
+typedef struct motctl_ctx {
     emcmot_struct_t *mot;
     int command_num;
     double comm_timeout; /* seconds */
@@ -830,19 +831,21 @@ static int32_t h_set_debug(void *ctx, int32_t level)
  * Public: build the callback table
  * ================================================================ */
 
-static motctl_ctx_t motctl_context;
-
-void motctl_init_handlers(emcmot_struct_t *mot, double timeout)
+motctl_callbacks_t motctl_get_callbacks(motctl_ctx_t **ctx_out)
 {
-    motctl_context.mot = mot;
-    motctl_context.command_num = 0;
-    motctl_context.comm_timeout = timeout;
-}
+    motctl_ctx_t *mc = calloc(1, sizeof(*mc));
+    if (!mc) {
+        motctl_callbacks_t empty = {0};
+        if (ctx_out) *ctx_out = NULL;
+        return empty;
+    }
+    mc->mot = NULL;
+    mc->command_num = 0;
+    mc->comm_timeout = 0;
+    if (ctx_out) *ctx_out = mc;
 
-motctl_callbacks_t motctl_get_callbacks(void)
-{
     motctl_callbacks_t cb = {
-        .ctx                       = &motctl_context,
+        .ctx                       = mc,
         .set_line                  = h_set_line,
         .set_circle                = h_set_circle,
         .probe                     = h_probe,
@@ -912,4 +915,12 @@ motctl_callbacks_t motctl_get_callbacks(void)
         .set_debug                 = h_set_debug,
     };
     return cb;
+}
+
+void motctl_init_ctx(motctl_ctx_t *mc, emcmot_struct_t *mot, double timeout)
+{
+    if (mc) {
+        mc->mot = mot;
+        mc->comm_timeout = timeout;
+    }
 }

@@ -62,7 +62,6 @@
 #include "motion.h"
 
 #include "mot_priv.h"
-#undef emcmotStruct /* avoid collision with inst->emcmotStruct member name */
 #include "motion_struct.h"
 #include "rtapi_math.h"
 #include "motion_types.h"
@@ -70,19 +69,13 @@
 #include "home_api.h"
 #include "axis.h"
 
-extern const tp_callbacks_t   *motmod_tp_api;
-extern const home_callbacks_t *motmod_home_api;
-
-
 
 #define ABS(x) (((x) < 0) ? -(x) : (x))
 
 // Mark strings for translation, but defer translation to userspace
 #define _(s) (s)
 
-extern int motion_num_spindles;
-
-static int rehomeAll;
+#define rehomeAll (g_inst->rehomeAll)
 
 /* limits_ok() returns 1 if none of the hard limits are set,
    0 if any are set. Called on a linear and circular move. */
@@ -398,6 +391,11 @@ static int is_feed_type(int motion_type)
 void emcmotCommandHandler_locked(void *arg, long servo_period)
 {
     motmod_inst_t *inst = (motmod_inst_t *)arg;
+
+    /* Set global instance pointer for this RT cycle */
+    g_inst = inst;
+    joints = inst->joints;
+
     int joint_num, spindle_num;
     int n,s0,s1;
     emcmot_joint_t *joint;
@@ -1944,12 +1942,12 @@ void emcmotCommandHandler_locked(void *arg, long servo_period)
 
 void emcmotCommandHandler(void *arg, long servo_period) {
     motmod_inst_t *inst = (motmod_inst_t *)arg;
-    if (rtapi_mutex_try(&inst->emcmotStruct->command_mutex) != 0) {
+    if (rtapi_mutex_try(&inst->mot_struct->command_mutex) != 0) {
         // Failed to take the mutex, because it is held by Task.
         // This means Task is in the process of updating the command.
         // Give up for now, and try again on the next invocation.
         return;
     }
     emcmotCommandHandler_locked(arg, servo_period);
-    rtapi_mutex_give(&inst->emcmotStruct->command_mutex);
+    rtapi_mutex_give(&inst->mot_struct->command_mutex);
 }

@@ -55,6 +55,7 @@
 #endif // }
 
 #include <stdlib.h>
+#include <stddef.h>
 #include <string.h>
 #include "gomc_env.h"
 #include "tp_api.h"
@@ -66,8 +67,13 @@
 
 typedef struct {
     const mot_callbacks_t *mot;
+    const gomc_api_t *api;
+    char name[HAL_NAME_LEN];
+    char mot_instance[HAL_NAME_LEN];
     TP_STRUCT tp;
     TC_STRUCT queueTcSpace[DEFAULT_TC_QUEUE_SIZE + 10];
+    tp_callbacks_t callbacks;
+    cmod_t cmod;
 } tpmod_inst_t;
 
 static tpmod_inst_t *g_inst;
@@ -3754,39 +3760,39 @@ _Static_assert(sizeof(tp_state_tag_t) == sizeof(struct state_tag_t),
 
 // ─── GMI callback implementations ──────────────────────────────────────
 
-static int32_t gmi_tp_init(void *ctx) { (void)ctx; return 0; }
+static int32_t gmi_tp_init(void *ctx) { g_inst = (tpmod_inst_t *)ctx; return 0; }
 
 static int32_t gmi_tp_create(void *ctx, int32_t queue_size, int32_t comp_id)
 {
-    (void)ctx;
+    g_inst = (tpmod_inst_t *)ctx;
     /* tp is embedded in g_inst (allocated in New()), just initialize it */
     memset(g_tp, 0, sizeof(TP_STRUCT));
     return tpCreate(g_tp, queue_size, comp_id);
 }
 
-static int32_t gmi_tp_clear(void *ctx) { (void)ctx; return tpClear(g_tp); }
-static int32_t gmi_tp_set_cycle_time(void *ctx, double secs) { (void)ctx; return tpSetCycleTime(g_tp, secs); }
-static int32_t gmi_tp_set_vmax(void *ctx, double vmax, double ini_maxvel) { (void)ctx; return tpSetVmax(g_tp, vmax, ini_maxvel); }
-static int32_t gmi_tp_set_vlimit(void *ctx, double limit) { (void)ctx; return tpSetVlimit(g_tp, limit); }
-static int32_t gmi_tp_set_amax(void *ctx, double amax) { (void)ctx; return tpSetAmax(g_tp, amax); }
-static int32_t gmi_tp_set_id(void *ctx, int32_t id) { (void)ctx; return tpSetId(g_tp, id); }
-static int32_t gmi_tp_set_pos(void *ctx, tp_pose_t *pos) { (void)ctx; return tpSetPos(g_tp, (EmcPose const *)pos); }
+static int32_t gmi_tp_clear(void *ctx) { g_inst = (tpmod_inst_t *)ctx; return tpClear(g_tp); }
+static int32_t gmi_tp_set_cycle_time(void *ctx, double secs) { g_inst = (tpmod_inst_t *)ctx; return tpSetCycleTime(g_tp, secs); }
+static int32_t gmi_tp_set_vmax(void *ctx, double vmax, double ini_maxvel) { g_inst = (tpmod_inst_t *)ctx; return tpSetVmax(g_tp, vmax, ini_maxvel); }
+static int32_t gmi_tp_set_vlimit(void *ctx, double limit) { g_inst = (tpmod_inst_t *)ctx; return tpSetVlimit(g_tp, limit); }
+static int32_t gmi_tp_set_amax(void *ctx, double amax) { g_inst = (tpmod_inst_t *)ctx; return tpSetAmax(g_tp, amax); }
+static int32_t gmi_tp_set_id(void *ctx, int32_t id) { g_inst = (tpmod_inst_t *)ctx; return tpSetId(g_tp, id); }
+static int32_t gmi_tp_set_pos(void *ctx, tp_pose_t *pos) { g_inst = (tpmod_inst_t *)ctx; return tpSetPos(g_tp, (EmcPose const *)pos); }
 
 static int32_t gmi_tp_set_term_cond(void *ctx, int32_t cond, double tolerance)
 {
-    (void)ctx;
+    g_inst = (tpmod_inst_t *)ctx;
     return tpSetTermCond(g_tp, cond, tolerance);
 }
 
 static int32_t gmi_tp_set_spindle_sync(void *ctx, int32_t spindle, double sync, int32_t wait)
 {
-    (void)ctx;
+    g_inst = (tpmod_inst_t *)ctx;
     return tpSetSpindleSync(g_tp, spindle, sync, wait);
 }
 
 static int32_t gmi_tp_set_run_dir(void *ctx, tp_direction_t dir)
 {
-    (void)ctx;
+    g_inst = (tpmod_inst_t *)ctx;
     return tpSetRunDir(g_tp, (tc_direction_t)dir);
 }
 
@@ -3795,7 +3801,7 @@ static int32_t gmi_tp_add_line(void *ctx, const tp_pose_t *end,
     double acc, uint8_t enables, int8_t atspeed,
     int32_t indexrotary, const tp_state_tag_t *tag)
 {
-    (void)ctx;
+    g_inst = (tpmod_inst_t *)ctx;
     return tpAddLine(g_tp, *(EmcPose *)end,
                      canon_motion_type, vel, ini_maxvel, acc,
                      enables, (char)atspeed, indexrotary,
@@ -3808,7 +3814,7 @@ static int32_t gmi_tp_add_circle(void *ctx, const tp_pose_t *end,
     double vel, double ini_maxvel, double acc,
     uint8_t enables, int8_t atspeed, const tp_state_tag_t *tag)
 {
-    (void)ctx;
+    g_inst = (tpmod_inst_t *)ctx;
     return tpAddCircle(g_tp, *(EmcPose *)end,
                        *(PmCartesian *)center, *(PmCartesian *)normal,
                        turn, canon_motion_type,
@@ -3821,7 +3827,7 @@ static int32_t gmi_tp_add_rigid_tap(void *ctx, const tp_pose_t *end,
     double vel, double ini_maxvel, double acc,
     uint8_t enables, double scale, const tp_state_tag_t *tag)
 {
-    (void)ctx;
+    g_inst = (tpmod_inst_t *)ctx;
     return tpAddRigidTap(g_tp, *(EmcPose *)end,
                          vel, ini_maxvel, acc,
                          enables, scale,
@@ -3830,90 +3836,89 @@ static int32_t gmi_tp_add_rigid_tap(void *ctx, const tp_pose_t *end,
 
 static int32_t gmi_tp_set_aout(void *ctx, uint8_t index, double start_val, double end_val)
 {
-    (void)ctx;
+    g_inst = (tpmod_inst_t *)ctx;
     return tpSetAout(g_tp, index, start_val, end_val);
 }
 
 static int32_t gmi_tp_set_dout(void *ctx, int32_t index, uint8_t start_val, uint8_t end_val)
 {
-    (void)ctx;
+    g_inst = (tpmod_inst_t *)ctx;
     return tpSetDout(g_tp, index, start_val, end_val);
 }
 
-static int32_t gmi_tp_run_cycle(void *ctx, int64_t period) { (void)ctx; return tpRunCycle(g_tp, (long)period); }
-static int32_t gmi_tp_pause(void *ctx) { (void)ctx; return tpPause(g_tp); }
-static int32_t gmi_tp_resume(void *ctx) { (void)ctx; return tpResume(g_tp); }
-static int32_t gmi_tp_abort(void *ctx) { (void)ctx; return tpAbort(g_tp); }
-static int32_t gmi_tp_get_exec_id(void *ctx) { (void)ctx; return tpGetExecId(g_tp); }
+static int32_t gmi_tp_run_cycle(void *ctx, int64_t period) { g_inst = (tpmod_inst_t *)ctx; return tpRunCycle(g_tp, (long)period); }
+static int32_t gmi_tp_pause(void *ctx) { g_inst = (tpmod_inst_t *)ctx; return tpPause(g_tp); }
+static int32_t gmi_tp_resume(void *ctx) { g_inst = (tpmod_inst_t *)ctx; return tpResume(g_tp); }
+static int32_t gmi_tp_abort(void *ctx) { g_inst = (tpmod_inst_t *)ctx; return tpAbort(g_tp); }
+static int32_t gmi_tp_get_exec_id(void *ctx) { g_inst = (tpmod_inst_t *)ctx; return tpGetExecId(g_tp); }
 
 static int32_t gmi_tp_get_exec_tag(void *ctx, tp_state_tag_t *tag)
 {
-    (void)ctx;
+    g_inst = (tpmod_inst_t *)ctx;
     struct state_tag_t t = tpGetExecTag(g_tp);
     memcpy(tag, &t, sizeof(t));
     return 0;
 }
 
-static int32_t gmi_tp_get_pos(void *ctx, tp_pose_t *pos) { (void)ctx; return tpGetPos(g_tp, (EmcPose *)pos); }
-static int32_t gmi_tp_is_done(void *ctx) { (void)ctx; return tpIsDone(g_tp); }
-static int32_t gmi_tp_queue_depth(void *ctx) { (void)ctx; return tpQueueDepth(g_tp); }
-static int32_t gmi_tp_active_depth(void *ctx) { (void)ctx; return tpActiveDepth(g_tp); }
-static int32_t gmi_tp_get_motion_type(void *ctx) { (void)ctx; return tpGetMotionType(g_tp); }
-static int32_t gmi_tp_queue_full(void *ctx) { (void)ctx; return tcqFull(&g_tp->queue); }
-static int32_t gmi_tp_get_run_dir(void *ctx) { (void)ctx; return g_tp->reverse_run; }
-
-// ─── Callbacks table ────────────────────────────────────────────────────
-
-static const tp_callbacks_t tp_cmod_callbacks = GMI_TP_CALLBACKS;
+static int32_t gmi_tp_get_pos(void *ctx, tp_pose_t *pos) { g_inst = (tpmod_inst_t *)ctx; return tpGetPos(g_tp, (EmcPose *)pos); }
+static int32_t gmi_tp_is_done(void *ctx) { g_inst = (tpmod_inst_t *)ctx; return tpIsDone(g_tp); }
+static int32_t gmi_tp_queue_depth(void *ctx) { g_inst = (tpmod_inst_t *)ctx; return tpQueueDepth(g_tp); }
+static int32_t gmi_tp_active_depth(void *ctx) { g_inst = (tpmod_inst_t *)ctx; return tpActiveDepth(g_tp); }
+static int32_t gmi_tp_get_motion_type(void *ctx) { g_inst = (tpmod_inst_t *)ctx; return tpGetMotionType(g_tp); }
+static int32_t gmi_tp_queue_full(void *ctx) { g_inst = (tpmod_inst_t *)ctx; return tcqFull(&g_tp->queue); }
+static int32_t gmi_tp_get_run_dir(void *ctx) { g_inst = (tpmod_inst_t *)ctx; return g_tp->reverse_run; }
 
 // ─── cmod lifecycle ─────────────────────────────────────────────────────
 
-static cmod_t tp_cmod;
-static const gomc_api_t *tp_cmod_api;
-static const char *tp_mot_instance = "motmod";
-
 static void tp_cmod_destroy(cmod_t *self) {
-    (void)self;
-    free(g_inst);
-    g_inst = NULL;
+    tpmod_inst_t *inst = (tpmod_inst_t *)((char *)self - offsetof(tpmod_inst_t, cmod));
+    if (g_inst == inst) g_inst = NULL;
+    free(inst);
 }
 
 static int tp_cmod_init(cmod_t *self)
 {
-    (void)self;
-    const mot_callbacks_t *mot = mot_api_get(tp_cmod_api, tp_mot_instance);
+    tpmod_inst_t *inst = (tpmod_inst_t *)((char *)self - offsetof(tpmod_inst_t, cmod));
+    g_inst = inst;
+    const mot_callbacks_t *mot = mot_api_get(inst->api, inst->mot_instance);
     if (!mot) return -1;
-    g_inst->mot = mot;
+    inst->mot = mot;
     return 0;
 }
 
 int New(const cmod_env_t *env, const char *name,
         int argc, const char **argv, cmod_t **out)
 {
-    tp_cmod_api = env->api;
-
     /* Allocate per-instance state */
-    g_inst = calloc(1, sizeof(tpmod_inst_t));
-    if (!g_inst) return -1;
+    tpmod_inst_t *inst = calloc(1, sizeof(tpmod_inst_t));
+    if (!inst) return -1;
 
-    /* Parse mot_instance parameter */
+    inst->api = env->api;
+    snprintf(inst->name, sizeof(inst->name), "%s", name);
+
+    /* Parse mot_instance parameter (default: "motmod") */
+    snprintf(inst->mot_instance, sizeof(inst->mot_instance), "motmod");
     for (int i = 0; i < argc; i++) {
         if (strncmp(argv[i], "mot_instance=", 13) == 0)
-            tp_mot_instance = argv[i] + 13;
+            snprintf(inst->mot_instance, sizeof(inst->mot_instance), "%s", argv[i] + 13);
     }
 
-    int rc = tp_api_register(env->api, name, &tp_cmod_callbacks);
+    /* Set up per-instance callbacks with ctx pointing to this instance */
+    inst->callbacks = (tp_callbacks_t)GMI_TP_CALLBACKS;
+    inst->callbacks.ctx = inst;
+
+    int rc = tp_api_register(env->api, name, &inst->callbacks);
     if (rc != 0) {
         gomc_log_errorf(env->log, name,
             "failed to register tp API: %d", rc);
-        free(g_inst);
-        g_inst = NULL;
+        free(inst);
         return rc;
     }
 
-    tp_cmod.Init    = tp_cmod_init;
-    tp_cmod.Start   = NULL;
-    tp_cmod.Destroy = tp_cmod_destroy;
-    *out = &tp_cmod;
+    g_inst = inst;
+    inst->cmod.Init    = tp_cmod_init;
+    inst->cmod.Start   = NULL;
+    inst->cmod.Destroy = tp_cmod_destroy;
+    *out = &inst->cmod;
     return 0;
 }

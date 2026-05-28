@@ -7,6 +7,7 @@
 ********************************************************************/
 
 #include <string.h>
+#include <stdlib.h>
 #include "motion.h"
 #include "motion_struct.h"
 #include "mot_priv.h"
@@ -18,7 +19,7 @@
 #include "motstat_api.h"
 #undef MOTSTAT_API_CGO
 
-typedef struct {
+typedef struct motstat_ctx {
     emcmot_struct_t *mot;
 } motstat_ctx_t;
 
@@ -293,17 +294,19 @@ static int32_t h_get_command_status(void *ctx)
  * Public: build the callback table
  * ================================================================ */
 
-static motstat_ctx_t motstat_context;
-
-void motstat_init_handlers(emcmot_struct_t *mot)
+motstat_callbacks_t motstat_get_callbacks(motstat_ctx_t **ctx_out)
 {
-    motstat_context.mot = mot;
-}
+    motstat_ctx_t *mc = calloc(1, sizeof(*mc));
+    if (!mc) {
+        motstat_callbacks_t empty = {0};
+        if (ctx_out) *ctx_out = NULL;
+        return empty;
+    }
+    mc->mot = NULL;
+    if (ctx_out) *ctx_out = mc;
 
-motstat_callbacks_t motstat_get_callbacks(void)
-{
     motstat_callbacks_t cb = {
-        .ctx                  = &motstat_context,
+        .ctx                  = mc,
         .get_status           = h_get_status,
         .get_pos_cmd          = h_get_pos_cmd,
         .get_pos_fb           = h_get_pos_fb,
@@ -314,4 +317,11 @@ motstat_callbacks_t motstat_get_callbacks(void)
         .get_command_status   = h_get_command_status,
     };
     return cb;
+}
+
+void motstat_init_ctx(motstat_ctx_t *mc, emcmot_struct_t *mot)
+{
+    if (mc) {
+        mc->mot = mot;
+    }
 }

@@ -219,6 +219,10 @@ typedef struct motmod_inst {
     /* identity / environment */
     const void *env;           /* actually cmod_env_t* */
     const char *name;
+    char pin_prefix[HAL_NAME_LEN]; /* "name." when aliased, "" when default */
+    char kins_inst_name[HAL_NAME_LEN];
+    char tp_inst_name[HAL_NAME_LEN];
+    char home_inst_name[HAL_NAME_LEN];
     int comp_id;
 
     /* cross-module API pointers (opaque, cast at use sites) */
@@ -231,7 +235,7 @@ typedef struct motmod_inst {
 
     /* core motion data */
     emcmot_joint_t joints[EMCMOT_MAX_JOINTS];
-    struct emcmot_struct_t *emcmotStruct;
+    struct emcmot_struct_t *mot_struct;
     struct emcmot_command_t *command;
     struct emcmot_status_t *status;
     struct emcmot_config_t *config;
@@ -254,12 +258,20 @@ typedef struct motmod_inst {
     int ext_offset_teleop_limit;
     int ext_offset_coord_limit;
     int coord_cubic_active;
-    int switchkins_type;
-    long last_period;
-    double servo_period;
+    int ctl_switchkins_type;
+    long ctl_last_period;
+    double ctl_servo_period;
+    double *pcmd_p[EMCMOT_MAX_AXIS];
+    long long last_clocks;
 
     /* command.c runtime state */
     int rehomeAll;
+
+    /* Per-instance motctl/motstat handler contexts and callbacks (opaque) */
+    void *motctl_ctx;
+    void *motstat_ctx;
+    void *motctl_cb;
+    void *motstat_cb;
 } motmod_inst_t;
 
 /***********************************************************************
@@ -286,11 +298,14 @@ extern KINEMATICS_FORWARD_FLAGS fflags;
 extern KINEMATICS_INVERSE_FLAGS iflags;
 
 #define emcmot_hal_data  (g_inst->hal_data)
-#define emcmotStruct     (g_inst->emcmotStruct)
+#define emcmotStruct     (g_inst->mot_struct)
 #define emcmotCommand    (g_inst->command)
 #define emcmotStatus     (g_inst->status)
 #define emcmotConfig     (g_inst->config)
 #define emcmotInternal   (g_inst->internal)
+#define motmod_tp_api    ((const tp_callbacks_t *)g_inst->tp_api)
+#define motmod_home_api  ((const home_callbacks_t *)g_inst->home_api)
+#define motion_num_spindles (g_inst->num_spindles)
 
 #else /* !MOTMOD_INTERNAL — legacy declarations for external consumers */
 

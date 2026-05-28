@@ -91,28 +91,28 @@ void axis_initialize_external_offsets(void)
         if (_retval) return _retval;    \
     } while (0);
 
-static int export_axis(int mot_comp_id, char c, axis_hal_t * addr)
+static int export_axis(int mot_comp_id, char c, axis_hal_t * addr, const char *P)
 {
     int msg;
 
     msg = rtapi_get_msg_level();
     rtapi_set_msg_level(RTAPI_MSG_WARN);
 
-    CALL_CHECK(hal_pin_bit_newf(HAL_IN, &(addr->ajog_enable), mot_comp_id,"axis.%c.jog-enable", c));
-    CALL_CHECK(hal_pin_float_newf(HAL_IN, &(addr->ajog_scale), mot_comp_id,"axis.%c.jog-scale", c));
-    CALL_CHECK(hal_pin_s32_newf(HAL_IN, &(addr->ajog_counts), mot_comp_id,"axis.%c.jog-counts", c));
-    CALL_CHECK(hal_pin_bit_newf(HAL_IN, &(addr->ajog_vel_mode), mot_comp_id,"axis.%c.jog-vel-mode", c));
-    CALL_CHECK(hal_pin_bit_newf(HAL_OUT, &(addr->kb_ajog_active), mot_comp_id,"axis.%c.kb-jog-active", c));
-    CALL_CHECK(hal_pin_bit_newf(HAL_OUT, &(addr->wheel_ajog_active), mot_comp_id,"axis.%c.wheel-jog-active", c));
+    CALL_CHECK(hal_pin_bit_newf(HAL_IN, &(addr->ajog_enable), mot_comp_id,"%saxis.%c.jog-enable", P, c));
+    CALL_CHECK(hal_pin_float_newf(HAL_IN, &(addr->ajog_scale), mot_comp_id,"%saxis.%c.jog-scale", P, c));
+    CALL_CHECK(hal_pin_s32_newf(HAL_IN, &(addr->ajog_counts), mot_comp_id,"%saxis.%c.jog-counts", P, c));
+    CALL_CHECK(hal_pin_bit_newf(HAL_IN, &(addr->ajog_vel_mode), mot_comp_id,"%saxis.%c.jog-vel-mode", P, c));
+    CALL_CHECK(hal_pin_bit_newf(HAL_OUT, &(addr->kb_ajog_active), mot_comp_id,"%saxis.%c.kb-jog-active", P, c));
+    CALL_CHECK(hal_pin_bit_newf(HAL_OUT, &(addr->wheel_ajog_active), mot_comp_id,"%saxis.%c.wheel-jog-active", P, c));
 
-    CALL_CHECK(hal_pin_float_newf(HAL_IN,&(addr->ajog_accel_fraction), mot_comp_id,"axis.%c.jog-accel-fraction", c));
+    CALL_CHECK(hal_pin_float_newf(HAL_IN,&(addr->ajog_accel_fraction), mot_comp_id,"%saxis.%c.jog-accel-fraction", P, c));
     *addr->ajog_accel_fraction = 1.0; // fraction of accel for wheel ajogs
 
     rtapi_set_msg_level(msg);
     return 0;
 }
 
-int axis_init_hal_io(int mot_comp_id)
+int axis_init_hal_io(int mot_comp_id, const char *pin_prefix)
 {
     int n, retval;
 
@@ -125,21 +125,22 @@ int axis_init_hal_io(int mot_comp_id)
     // export axis pins and parameters
     for (n = 0; n < EMCMOT_MAX_AXIS; n++) {
         char c = "xyzabcuvw"[n];
+        const char *P = pin_prefix;
         axis_hal_t *axis_data = &(hal_data->axis[n]);
-        CALL_CHECK(hal_pin_float_newf(HAL_OUT, &axis_data->pos_cmd, mot_comp_id, "axis.%c.pos-cmd", c));
-        CALL_CHECK(hal_pin_float_newf(HAL_OUT, &axis_data->teleop_vel_cmd, mot_comp_id, "axis.%c.teleop-vel-cmd", c));
-        CALL_CHECK(hal_pin_float_newf(HAL_OUT, &axis_data->teleop_pos_cmd, mot_comp_id, "axis.%c.teleop-pos-cmd", c));
-        CALL_CHECK(hal_pin_float_newf(HAL_OUT, &axis_data->teleop_vel_lim, mot_comp_id, "axis.%c.teleop-vel-lim", c));
-        CALL_CHECK(hal_pin_bit_newf(HAL_OUT, &axis_data->teleop_tp_enable, mot_comp_id, "axis.%c.teleop-tp-enable",c));
-        CALL_CHECK(hal_pin_bit_newf(HAL_IN, &axis_data->eoffset_enable, mot_comp_id, "axis.%c.eoffset-enable", c));
-        CALL_CHECK(hal_pin_bit_newf(HAL_IN, &axis_data->eoffset_clear, mot_comp_id, "axis.%c.eoffset-clear", c));
-        CALL_CHECK(hal_pin_s32_newf(HAL_IN, &axis_data->eoffset_counts, mot_comp_id, "axis.%c.eoffset-counts", c));
-        CALL_CHECK(hal_pin_float_newf(HAL_IN, &axis_data->eoffset_scale, mot_comp_id, "axis.%c.eoffset-scale", c));
-        CALL_CHECK(hal_pin_float_newf(HAL_OUT, &axis_data->external_offset, mot_comp_id, "axis.%c.eoffset", c));
+        CALL_CHECK(hal_pin_float_newf(HAL_OUT, &axis_data->pos_cmd, mot_comp_id, "%saxis.%c.pos-cmd", P, c));
+        CALL_CHECK(hal_pin_float_newf(HAL_OUT, &axis_data->teleop_vel_cmd, mot_comp_id, "%saxis.%c.teleop-vel-cmd", P, c));
+        CALL_CHECK(hal_pin_float_newf(HAL_OUT, &axis_data->teleop_pos_cmd, mot_comp_id, "%saxis.%c.teleop-pos-cmd", P, c));
+        CALL_CHECK(hal_pin_float_newf(HAL_OUT, &axis_data->teleop_vel_lim, mot_comp_id, "%saxis.%c.teleop-vel-lim", P, c));
+        CALL_CHECK(hal_pin_bit_newf(HAL_OUT, &axis_data->teleop_tp_enable, mot_comp_id, "%saxis.%c.teleop-tp-enable", P, c));
+        CALL_CHECK(hal_pin_bit_newf(HAL_IN, &axis_data->eoffset_enable, mot_comp_id, "%saxis.%c.eoffset-enable", P, c));
+        CALL_CHECK(hal_pin_bit_newf(HAL_IN, &axis_data->eoffset_clear, mot_comp_id, "%saxis.%c.eoffset-clear", P, c));
+        CALL_CHECK(hal_pin_s32_newf(HAL_IN, &axis_data->eoffset_counts, mot_comp_id, "%saxis.%c.eoffset-counts", P, c));
+        CALL_CHECK(hal_pin_float_newf(HAL_IN, &axis_data->eoffset_scale, mot_comp_id, "%saxis.%c.eoffset-scale", P, c));
+        CALL_CHECK(hal_pin_float_newf(HAL_OUT, &axis_data->external_offset, mot_comp_id, "%saxis.%c.eoffset", P, c));
         CALL_CHECK(hal_pin_float_newf(HAL_OUT, &axis_data->external_offset_requested,
-           mot_comp_id, "axis.%c.eoffset-request", c));
+           mot_comp_id, "%saxis.%c.eoffset-request", P, c));
 
-        retval = export_axis(mot_comp_id, c, axis_data);
+        retval = export_axis(mot_comp_id, c, axis_data, P);
         if (retval) {
             rtapi_print_msg(RTAPI_MSG_ERR, _("MOTION: axis %c pin/param export failed\n"), c);
             return -1;
