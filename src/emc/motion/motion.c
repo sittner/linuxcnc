@@ -46,7 +46,7 @@ extern void motstat_init_ctx(motstat_ctx_t *mc, emcmot_struct_t *mot);
 ************************************************************************/
 
 static long base_period_nsec = 0;	/* fastest thread period */
-int base_thread_fp = 0;	/* default is no floating point in base thread */
+static int base_thread_fp = 0;	/* default is no floating point in base thread */
 static long servo_period_nsec = 1000000;	/* servo thread period */
 static long traj_period_nsec = 0;	/* trajectory planner period */
 static int num_spindles = 1; /* default number of spindles is 1 */
@@ -76,14 +76,13 @@ static const char *home_instance = "homemod";
 *                  GLOBAL VARIABLE DEFINITIONS                         *
 ************************************************************************/
 
-/* The single instance pointer — set at each RT entry and in Init(). */
-motmod_inst_t *g_inst = NULL;
+/* File-local instance pointer — set at each RT entry and in Init().
+   Used by kinematics wrappers and GMI callbacks that cannot take inst
+   as a parameter due to fixed ABI signatures. */
+static motmod_inst_t *g_inst = NULL;
 
-/* These cannot be #define'd (collide with struct members/params).
-   Real globals pointing into / alongside g_inst, set at RT entry. */
-emcmot_joint_t *joints = NULL;
-KINEMATICS_FORWARD_FLAGS fflags = 0;
-KINEMATICS_INVERSE_FLAGS iflags = 0;
+/* Called from emcmotController/emcmotCommandHandler at RT entry. */
+void motmod_set_active_inst(motmod_inst_t *inst) { g_inst = inst; }
 
 /***********************************************************************
 *                  LOCAL VARIABLE DECLARATIONS                         *
@@ -156,23 +155,23 @@ int kinematicsSwitch(int switchkins_type)
 /* --- I/O callbacks --- */
 
 static void gmi_mot_dio_write(void *ctx, int32_t index, int8_t value)
-{    (void)ctx; emcmotDioWrite(index, value);
+{    (void)ctx; emcmotDioWrite(g_inst, index, value);
 }
 
 static void gmi_mot_aio_write(void *ctx, int32_t index, double value)
-{    (void)ctx; emcmotAioWrite(index, value);
+{    (void)ctx; emcmotAioWrite(g_inst, index, value);
 }
 
 /* --- Rotary unlock --- */
 
 static void gmi_mot_set_rotary_unlock(void *ctx, int32_t jnum, int32_t unlock)
-{    (void)ctx; emcmotSetRotaryUnlock(jnum, unlock);
+{    (void)ctx; emcmotSetRotaryUnlock(g_inst, jnum, unlock);
 }
 
 static int32_t gmi_mot_get_rotary_unlock(void *ctx, int32_t jnum)
 {
     (void)ctx;
-    return emcmotGetRotaryIsUnlocked(jnum);
+    return emcmotGetRotaryIsUnlocked(g_inst, jnum);
 }
 
 /* --- Axis limits --- */
@@ -366,125 +365,125 @@ static int32_t gmi_mot_get_num_joints(void *ctx)
 static int32_t gmi_mot_joint_get_active_flag(void *ctx, int32_t jno)
 {
     (void)ctx;
-    return GET_JOINT_ACTIVE_FLAG(&joints[jno]);
+    return GET_JOINT_ACTIVE_FLAG(&g_inst->joints[jno]);
 }
 
 static int32_t gmi_mot_joint_get_inpos_flag(void *ctx, int32_t jno)
 {
     (void)ctx;
-    return GET_JOINT_INPOS_FLAG(&joints[jno]);
+    return GET_JOINT_INPOS_FLAG(&g_inst->joints[jno]);
 }
 
 static int32_t gmi_mot_joint_get_free_tp_active(void *ctx, int32_t jno)
 {
     (void)ctx;
-    return joints[jno].free_tp.active;
+    return g_inst->joints[jno].free_tp.active;
 }
 
 static void gmi_mot_joint_set_free_tp_enable(void *ctx, int32_t jno, int32_t enable)
-{    (void)ctx; joints[jno].free_tp.enable = enable;
+{    (void)ctx; g_inst->joints[jno].free_tp.enable = enable;
 }
 
 static double gmi_mot_joint_get_free_tp_pos_cmd(void *ctx, int32_t jno)
 {
     (void)ctx;
-    return joints[jno].free_tp.pos_cmd;
+    return g_inst->joints[jno].free_tp.pos_cmd;
 }
 
 static void gmi_mot_joint_set_free_tp_pos_cmd(void *ctx, int32_t jno, double val)
-{    (void)ctx; joints[jno].free_tp.pos_cmd = val;
+{    (void)ctx; g_inst->joints[jno].free_tp.pos_cmd = val;
 }
 
 static double gmi_mot_joint_get_free_tp_curr_pos(void *ctx, int32_t jno)
 {
     (void)ctx;
-    return joints[jno].free_tp.curr_pos;
+    return g_inst->joints[jno].free_tp.curr_pos;
 }
 
 static void gmi_mot_joint_set_free_tp_curr_pos(void *ctx, int32_t jno, double val)
-{    (void)ctx; joints[jno].free_tp.curr_pos = val;
+{    (void)ctx; g_inst->joints[jno].free_tp.curr_pos = val;
 }
 
 static void gmi_mot_joint_set_free_tp_max_vel(void *ctx, int32_t jno, double vel)
-{    (void)ctx; joints[jno].free_tp.max_vel = vel;
+{    (void)ctx; g_inst->joints[jno].free_tp.max_vel = vel;
 }
 
 static double gmi_mot_joint_get_free_tp_max_vel(void *ctx, int32_t jno)
 {
     (void)ctx;
-    return joints[jno].free_tp.max_vel;
+    return g_inst->joints[jno].free_tp.max_vel;
 }
 
 static double gmi_mot_joint_get_pos_cmd(void *ctx, int32_t jno)
 {
     (void)ctx;
-    return joints[jno].pos_cmd;
+    return g_inst->joints[jno].pos_cmd;
 }
 
 static void gmi_mot_joint_set_pos_cmd(void *ctx, int32_t jno, double val)
-{    (void)ctx; joints[jno].pos_cmd = val;
+{    (void)ctx; g_inst->joints[jno].pos_cmd = val;
 }
 
 static double gmi_mot_joint_get_pos_fb(void *ctx, int32_t jno)
 {
     (void)ctx;
-    return joints[jno].pos_fb;
+    return g_inst->joints[jno].pos_fb;
 }
 
 static void gmi_mot_joint_set_pos_fb(void *ctx, int32_t jno, double val)
-{    (void)ctx; joints[jno].pos_fb = val;
+{    (void)ctx; g_inst->joints[jno].pos_fb = val;
 }
 
 static double gmi_mot_joint_get_motor_pos_fb(void *ctx, int32_t jno)
 {
     (void)ctx;
-    return joints[jno].motor_pos_fb;
+    return g_inst->joints[jno].motor_pos_fb;
 }
 
 static double gmi_mot_joint_get_motor_offset(void *ctx, int32_t jno)
 {
     (void)ctx;
-    return joints[jno].motor_offset;
+    return g_inst->joints[jno].motor_offset;
 }
 
 static void gmi_mot_joint_set_motor_offset(void *ctx, int32_t jno, double val)
-{    (void)ctx; joints[jno].motor_offset = val;
+{    (void)ctx; g_inst->joints[jno].motor_offset = val;
 }
 
 static double gmi_mot_joint_get_backlash_filt(void *ctx, int32_t jno)
 {
     (void)ctx;
-    return joints[jno].backlash_filt;
+    return g_inst->joints[jno].backlash_filt;
 }
 
 static double gmi_mot_joint_get_vel_limit(void *ctx, int32_t jno)
 {
     (void)ctx;
-    return joints[jno].vel_limit;
+    return g_inst->joints[jno].vel_limit;
 }
 
 static double gmi_mot_joint_get_max_pos_limit(void *ctx, int32_t jno)
 {
     (void)ctx;
-    return joints[jno].max_pos_limit;
+    return g_inst->joints[jno].max_pos_limit;
 }
 
 static double gmi_mot_joint_get_min_pos_limit(void *ctx, int32_t jno)
 {
     (void)ctx;
-    return joints[jno].min_pos_limit;
+    return g_inst->joints[jno].min_pos_limit;
 }
 
 static int32_t gmi_mot_joint_get_on_pos_limit(void *ctx, int32_t jno)
 {
     (void)ctx;
-    return joints[jno].on_pos_limit;
+    return g_inst->joints[jno].on_pos_limit;
 }
 
 static int32_t gmi_mot_joint_get_on_neg_limit(void *ctx, int32_t jno)
 {
     (void)ctx;
-    return joints[jno].on_neg_limit;
+    return g_inst->joints[jno].on_neg_limit;
 }
 
 /* mot API callback table */
@@ -534,7 +533,8 @@ int joint_is_lockable(int joint_num) {
     return (unlock_joints_mask & (1 << joint_num) );
 }
 
-void switch_to_teleop_mode(void) {
+void switch_to_teleop_mode(motmod_inst_t *inst) {
+    (void)inst;  /* used via g_inst macros */
     int joint_num;
     emcmot_joint_t *joint;
 
@@ -546,7 +546,7 @@ void switch_to_teleop_mode(void) {
     }
 
     for (joint_num = 0; joint_num < ALL_JOINTS; joint_num++) {
-        joint = &joints[joint_num];
+        joint = &g_inst->joints[joint_num];
         if (joint != 0) { joint->free_tp.enable = 0; }
     }
 
@@ -917,7 +917,6 @@ static int motmod_init(cmod_t *self)
 
     /* Set global instance pointer so that #define aliases in mot_priv.h work */
     g_inst = inst;
-    joints = inst->joints;
     mot_comp_id = inst->comp_id;
 
     rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: Init('%s') starting...\n", inst->name);
@@ -1017,7 +1016,6 @@ static void motmod_Destroy(cmod_t *self)
 
     /* Set g_inst so macros work during teardown */
     g_inst = inst;
-    joints = inst->joints;
 
     rtapi_print_msg(RTAPI_MSG_INFO, "MOTION: Destroy('%s') started.\n", inst->name);
 
@@ -1503,7 +1501,7 @@ static int init_comm_buffers(void)
     /* init per-joint stuff */
     for (joint_num = 0; joint_num < ALL_JOINTS; joint_num++) {
 	/* point to structure for this joint */
-	joint = &joints[joint_num];
+	joint = &g_inst->joints[joint_num];
 
 	/* init the config fields with some "reasonable" defaults" */
 	joint->type = 0;
@@ -1674,7 +1672,7 @@ static int setTrajCycleTime(double secs)
 
     /* set the free planners, cubic interpolation rate and segment time */
     for (t = 0; t < ALL_JOINTS; t++) {
-	cubicSetInterpolationRate(&(joints[t].cubic),
+	cubicSetInterpolationRate(&(g_inst->joints[t].cubic),
 	    emcmotConfig->interpolationRate);
     }
 
@@ -1705,9 +1703,9 @@ static int setServoCycleTime(double secs)
 
     /* set the cubic interpolation rate and PID cycle time */
     for (t = 0; t < ALL_JOINTS; t++) {
-	cubicSetInterpolationRate(&(joints[t].cubic),
+	cubicSetInterpolationRate(&(g_inst->joints[t].cubic),
 	    emcmotConfig->interpolationRate);
-	cubicSetSegmentTime(&(joints[t].cubic), secs);
+	cubicSetSegmentTime(&(g_inst->joints[t].cubic), secs);
     }
 
     /* copy into status out */

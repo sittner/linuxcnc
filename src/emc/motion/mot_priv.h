@@ -291,19 +291,11 @@ typedef struct motmod_inst {
  * Multi-instance support (only active inside motmod.so build).
  * Other consumers of mot_priv.h (motion-logger, etc.) still see
  * the traditional extern declarations below.
+ *
+ * g_inst is file-local in motion.c — set via motmod_set_active_inst()
+ * at each RT entry. These macros are used by motion.c; control.c and
+ * command.c override them to use their local inst parameter.
  */
-
-/* Single instance pointer — set in motmod_init(), used by all code
-   that hasn't yet been converted to pass inst explicitly. */
-extern motmod_inst_t *g_inst;
-
-/* Compatibility aliases — old code uses these names unchanged.
-   NOTE: joints, fflags, iflags are too generic to #define safely
-   (they collide with struct members and parameter names). They remain
-   as real extern variables, migrated to inst-> access in Step 4. */
-extern emcmot_joint_t *joints;
-extern KINEMATICS_FORWARD_FLAGS fflags;
-extern KINEMATICS_INVERSE_FLAGS iflags;
 
 #define emcmot_hal_data  (g_inst->hal_data)
 #define emcmotStruct     (g_inst->mot_struct)
@@ -337,13 +329,14 @@ extern struct emcmot_internal_t *emcmotInternal;
 extern void emcmotCommandHandler(void *arg, long period);
 extern void emcmotController(void *arg, long period);
 extern void emcmotSetCycleTime(unsigned long nsec);
+extern void motmod_set_active_inst(motmod_inst_t *inst);
 
 /* these are related to synchronized I/O */
-extern void emcmotDioWrite(int index, char value);
-extern void emcmotAioWrite(int index, double value);
+extern void emcmotDioWrite(motmod_inst_t *inst, int index, char value);
+extern void emcmotAioWrite(motmod_inst_t *inst, int index, double value);
 
-extern void emcmotSetRotaryUnlock(int axis, int unlock);
-extern int emcmotGetRotaryIsUnlocked(int axis);
+extern void emcmotSetRotaryUnlock(motmod_inst_t *inst, int axis, int unlock);
+extern int emcmotGetRotaryIsUnlocked(motmod_inst_t *inst, int axis);
 
 //
 // Try to change the Motion mode to Teleop.
@@ -353,12 +346,12 @@ extern int emcmotGetRotaryIsUnlocked(int axis);
 // make the transition, it just sets a flag requesting the transition.
 // The real transition to Teleop mode is done in emcmotController().
 //
-void switch_to_teleop_mode(void);
+void switch_to_teleop_mode(motmod_inst_t *inst);
 
 /* recalculates jog limits */
-extern void refresh_jog_limits(emcmot_joint_t *joint,int joint_num);
+extern void refresh_jog_limits(motmod_inst_t *inst, emcmot_joint_t *joint, int joint_num);
 /* handles 'homed' flags, see command.c for details */
-extern void clearHomes(int joint_num);
+extern void clearHomes(motmod_inst_t *inst, int joint_num);
 
 extern void emcmot_config_change(void);
 

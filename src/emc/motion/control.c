@@ -46,14 +46,34 @@
 *                  LOCAL VARIABLE DECLARATIONS                         *
 ************************************************************************/
 
-/* Per-instance state accessed via g_inst (set at RT entry). */
-#define ext_offset_teleop_limit (g_inst->ext_offset_teleop_limit)
-#define ext_offset_coord_limit  (g_inst->ext_offset_coord_limit)
-#define coord_cubic_active      (g_inst->coord_cubic_active)
-#define ctl_switchkins_type     (g_inst->ctl_switchkins_type)
-#define ctl_last_period         (g_inst->ctl_last_period)
-#define servo_period            (g_inst->ctl_servo_period)
-#define pcmd_p                  (g_inst->pcmd_p)
+/* Per-instance state accessed via inst (set at RT entry). */
+#define ext_offset_teleop_limit (inst->ext_offset_teleop_limit)
+#define ext_offset_coord_limit  (inst->ext_offset_coord_limit)
+#define coord_cubic_active      (inst->coord_cubic_active)
+#define ctl_switchkins_type     (inst->ctl_switchkins_type)
+#define ctl_last_period         (inst->ctl_last_period)
+#define servo_period            (inst->ctl_servo_period)
+#define pcmd_p                  (inst->pcmd_p)
+
+/* Override mot_priv.h macros to use local inst parameter */
+#undef emcmot_hal_data
+#undef emcmotStruct
+#undef emcmotCommand
+#undef emcmotStatus
+#undef emcmotConfig
+#undef emcmotInternal
+#undef motmod_tp_api
+#undef motmod_home_api
+#undef motion_num_spindles
+#define emcmot_hal_data  (inst->hal_data)
+#define emcmotStruct     (inst->mot_struct)
+#define emcmotCommand    (inst->command)
+#define emcmotStatus     (inst->status)
+#define emcmotConfig     (inst->config)
+#define emcmotInternal   (inst->internal)
+#define motmod_tp_api    ((const tp_callbacks_t *)inst->tp_api)
+#define motmod_home_api  ((const home_callbacks_t *)inst->home_api)
+#define motion_num_spindles (inst->num_spindles)
 
 /***********************************************************************
 *                      LOCAL FUNCTION PROTOTYPES                       *
@@ -72,7 +92,7 @@
    switches, it means debouncing them and setting flags in the
    inst->status structure.
 */
-static void process_inputs(void);
+static void process_inputs(motmod_inst_t *inst);
 
 /* 'joint_jog_abort_all()' if either jog-stop or jog-stop-immediate
    become True while jogging then the jog will abort.
@@ -81,7 +101,7 @@ static void process_inputs(void);
    jog-stop-immediate will immediately stop jogging (potentially
    causing joint following errors).
 */
-static void joint_jog_abort_all(bool immediate);
+static void joint_jog_abort_all(motmod_inst_t *inst, bool immediate);
 
 /* 'do forward kins()' takes the position feedback in joint coords
    and applies the forward kinematics to it to generate feedback
@@ -89,13 +109,13 @@ static void joint_jog_abort_all(bool immediate);
    don't have forward kins, and other special cases, such as when
    the joints have not been homed.
 */
-static void do_forward_kins(void);
+static void do_forward_kins(motmod_inst_t *inst);
 
 /* probe inputs need to be handled after forward kins are run, since
    cartesian feedback position is latched when the probe fires, and it
    should be based on the feedback read in on this servo cycle.
 */
-static void process_probe_inputs(void);
+static void process_probe_inputs(motmod_inst_t *inst);
 
 /* 'check_for_faults()' is responsible for detecting fault conditions
    such as limit switches, amp faults, following error, etc.  It only
@@ -105,7 +125,7 @@ static void process_probe_inputs(void);
    up the architecture toward the GUI - printing error messages
    directly seems a little messy)
 */
-static void check_for_faults(void);
+static void check_for_faults(motmod_inst_t *inst);
 
 /* 'set_operating_mode()' handles transitions between the operating
    modes, which are free, coordinated, and teleop.  This stuff needs
@@ -114,13 +134,13 @@ static void check_for_faults(void);
    state can change.  It should be rewritten as such, but for now
    it consists of code copied exactly from emc1.
 */
-static void set_operating_mode(void);
+static void set_operating_mode(motmod_inst_t *inst);
 
 /* 'handle_jjogwheels()' reads jogwheels, decides if they should be
    enabled, and if so, changes the free mode planner's target position
    when the jogwheel(s) turn.
 */
-static void handle_jjogwheels(void);
+static void handle_jjogwheels(motmod_inst_t *inst);
 
 /* 'do_homing_sequence()' decides what, if anything, needs to be done
     related to multi-joint homing.
@@ -143,7 +163,7 @@ static void handle_jjogwheels(void);
 /* 'get_pos_cmds()' generates the position setpoints.  This includes
    calling the trajectory planner and interpolating its outputs.
 */
-static void get_pos_cmds(long period);
+static void get_pos_cmds(motmod_inst_t *inst, long period);
 
 /* 'compute_screw_comp()' is responsible for calculating backlash and
    lead screw error compensation.  (Leadscrew error compensation is
@@ -159,7 +179,7 @@ static void get_pos_cmds(long period);
    the direction reverses.  backlash_filt is a ramped version, and
    that is the one that is later added/subtracted from the position.
 */
-static void compute_screw_comp(void);
+static void compute_screw_comp(motmod_inst_t *inst);
 
 /* 'output_to_hal()' writes the handles the final stages of the
    control function.  It applies screw comp and writes the
@@ -168,15 +188,15 @@ static void compute_screw_comp(void);
    number of internal variables to HAL parameters so they can
    be observed with halscope and halmeter.
 */
-static void output_to_hal(void);
+static void output_to_hal(motmod_inst_t *inst);
 
 /* 'update_status()' copies assorted status information to shared
    memory (the inst->status structure) so that it is available to
    higher level code.
 */
-static void update_status(void);
+static void update_status(motmod_inst_t *inst);
 
-static void handle_kinematicsSwitch(void);
+static void handle_kinematicsSwitch(motmod_inst_t *inst);
 
 /***********************************************************************
 *                        PUBLIC FUNCTION CODE                          *
@@ -195,10 +215,9 @@ static void handle_kinematicsSwitch(void);
 void emcmotController(void *arg, long period)
 {
     motmod_inst_t *inst = (motmod_inst_t *)arg;
+    motmod_set_active_inst(inst);
 
     /* Set global instance pointer for this RT cycle */
-    g_inst = inst;
-    joints = inst->joints;
 
     /* Initialize pcmd_p on first call for this instance */
     if (!pcmd_p[0]) {
@@ -234,29 +253,29 @@ void emcmotController(void *arg, long period)
     /* here begins the core of the controller */
 
     motmod_home_api->read_in_pins(motmod_home_api->ctx, ALL_JOINTS);
-    handle_kinematicsSwitch();
-    process_inputs();
-    do_forward_kins();
-    process_probe_inputs();
-    check_for_faults();
-    set_operating_mode();
+    handle_kinematicsSwitch(inst);
+    process_inputs(inst);
+    do_forward_kins(inst);
+    process_probe_inputs(inst);
+    check_for_faults(inst);
+    set_operating_mode(inst);
     if (!*inst->hal_data->jog_inhibit) {
-        handle_jjogwheels();
+        handle_jjogwheels(inst);
     }
     if (!inst->status->on_soft_limit && !*inst->hal_data->jog_inhibit) {  // change from teleop to move off joint soft limit
         axis_handle_jogwheels(GET_MOTION_TELEOP_FLAG(), GET_MOTION_ENABLE_FLAG(), motmod_home_api->get_is_active(motmod_home_api->ctx));
     }
     if (   (inst->status->motion_state == EMCMOT_MOTION_FREE)
         && motmod_home_api->do_homing(motmod_home_api->ctx)) {
-        switch_to_teleop_mode();
+        switch_to_teleop_mode(inst);
     }
 
-    get_pos_cmds(period);
-    compute_screw_comp();
+    get_pos_cmds(inst, period);
+    compute_screw_comp(inst);
     *(inst->hal_data->eoffset_active) = axis_plan_external_offsets(servo_period, GET_MOTION_ENABLE_FLAG(), motmod_home_api->get_allhomed(motmod_home_api->ctx));
-    output_to_hal();
+    output_to_hal(inst);
     motmod_home_api->write_out_pins(motmod_home_api->ctx, ALL_JOINTS);
-    update_status();
+    update_status(inst);
     /* here ends the core of the controller */
     inst->status->heartbeat++;
     /* set tail to head, to indicate work complete */
@@ -272,18 +291,17 @@ void emcmotController(void *arg, long period)
    prototypes"
 */
 
-static bool joint_jog_is_active(void) {
+static bool joint_jog_is_active(motmod_inst_t *inst) {
     int jno;
     for (jno = 0; jno < EMCMOT_MAX_JOINTS; jno++) {
-        if ( (&joints[jno])->kb_jjog_active || (&joints[jno])->wheel_jjog_active) {
+        if ( (&inst->joints[jno])->kb_jjog_active || (&inst->joints[jno])->wheel_jjog_active) {
             return 1;
         }
     }
     return 0;
 }
 
-static void handle_kinematicsSwitch(void) {
-    motmod_inst_t *inst = g_inst;
+static void handle_kinematicsSwitch(motmod_inst_t *inst) {
     int joint_num;
     int hal_switchkins_type = 0;
 
@@ -298,7 +316,7 @@ static void handle_kinematicsSwitch(void) {
     /* copy joint position feedback to local array */
     for (joint_num = 0; joint_num < inst->config->numJoints; joint_num++) {
         /* point to joint struct */
-        jointKinsSwitch = &joints[joint_num];
+        jointKinsSwitch = &inst->joints[joint_num];
         /* copy feedback */
         joint_posKinsSwitch[joint_num] = jointKinsSwitch->pos_cmd;
     }
@@ -310,8 +328,8 @@ static void handle_kinematicsSwitch(void) {
         return; // no updates for abort
     }
 
-    KINEMATICS_FORWARD_FLAGS tmpFFlags = fflags;
-    KINEMATICS_INVERSE_FLAGS tmpIFlags = iflags;
+    KINEMATICS_FORWARD_FLAGS tmpFFlags = inst->fflags;
+    KINEMATICS_INVERSE_FLAGS tmpIFlags = inst->iflags;
 #ifdef SWITCHKINS_DEBUG
     double beforePose[EMCMOT_MAX_AXIS];
     int anum;
@@ -332,9 +350,8 @@ static void handle_kinematicsSwitch(void) {
     motmod_tp_api->set_pos(motmod_tp_api->ctx, (tp_pose_t *)&inst->status->carte_pos_cmd);
 } //handle_kinematicsSwitch()
 
-static void process_inputs(void)
+static void process_inputs(motmod_inst_t *inst)
 {
-    motmod_inst_t *inst = g_inst;
     int joint_num, spindle_num;
     double abs_ferror, scale;
     joint_hal_t *joint_data;
@@ -428,7 +445,7 @@ static void process_inputs(void)
 	/* point to joint HAL data */
 	joint_data = &(inst->hal_data->joint[joint_num]);
 	/* point to joint data */
-	joint = &joints[joint_num];
+	joint = &inst->joints[joint_num];
 	if (!GET_JOINT_ACTIVE_FLAG(joint)) {
 	    /* if joint is not active, skip it */
 	    continue;
@@ -530,7 +547,7 @@ static void process_inputs(void)
     }
     // if jog in progress stop the jog if requested
     if (enables & *(inst->hal_data->jog_is_active) && (*(inst->hal_data->jog_stop) || *(inst->hal_data->jog_stop_immediate))) {
-        joint_jog_abort_all(*(inst->hal_data->jog_stop_immediate));
+        joint_jog_abort_all(inst, *(inst->hal_data->jog_stop_immediate));
         axis_jog_abort_all(*(inst->hal_data->jog_stop_immediate));
         if (*(inst->hal_data->jog_stop_immediate)) {
           rtapi_print_msg(RTAPI_MSG_ERR, "Jog aborted by jog-stop-immediate");
@@ -540,12 +557,12 @@ static void process_inputs(void)
     }
 }
 
-static void joint_jog_abort_all(bool immediate)
+static void joint_jog_abort_all(motmod_inst_t *inst, bool immediate)
 {
     int jNum;
     emcmot_joint_t *joint;
     for (jNum = 0; jNum < NO_OF_KINS_JOINTS; jNum++) {
-        joint = &joints[jNum];
+        joint = &inst->joints[jNum];
         joint->free_tp.enable = 0;
         joint->kb_jjog_active = 0;
         joint->wheel_jjog_active = 0;
@@ -555,9 +572,8 @@ static void joint_jog_abort_all(bool immediate)
     }
 }
 
-static void do_forward_kins(void)
+static void do_forward_kins(motmod_inst_t *inst)
 {
-    motmod_inst_t *inst = g_inst;
 /* there are four possibilities for kinType:
 
    IDENTITY: Both forward and inverse kins are available, and they
@@ -609,15 +625,15 @@ static void do_forward_kins(void)
     /* copy joint position feedback to local array */
     for (joint_num = 0; joint_num < NO_OF_KINS_JOINTS; joint_num++) {
 	/* point to joint struct */
-	joint = &joints[joint_num];
+	joint = &inst->joints[joint_num];
 	/* copy feedback */
 	joint_pos[joint_num] = joint->pos_fb;
     }
     switch (inst->config->kinType) {
 
     case KINEMATICS_IDENTITY:
-	kinematicsForward(joint_pos, &inst->status->carte_pos_fb, &fflags,
-	    &iflags);
+	kinematicsForward(joint_pos, &inst->status->carte_pos_fb, &inst->fflags,
+	    &inst->iflags);
 	if (motmod_home_api->get_allhomed(motmod_home_api->ctx)) {
 	    inst->status->carte_pos_fb_ok = 1;
 	} else {
@@ -635,7 +651,7 @@ static void do_forward_kins(void)
 	    /* calculate Cartesean position feedback from joint pos fb */
 	    result =
 		kinematicsForward(joint_pos, &inst->status->carte_pos_fb,
-		&fflags, &iflags);
+		&inst->fflags, &inst->iflags);
 	    /* check to make sure kinematics converged */
 	    if (result < 0) {
 		/* error during kinematics calculations */
@@ -666,9 +682,8 @@ static void do_forward_kins(void)
     }
 }
 
-static void process_probe_inputs(void)
+static void process_probe_inputs(motmod_inst_t *inst)
 {
-    motmod_inst_t *inst = g_inst;
     int old_probeVal = inst->ctl_old_probeVal;
     unsigned char probe_type = inst->status->probe_type;
 
@@ -722,7 +737,7 @@ static void process_probe_inputs(void)
             int aborted = 0;
 
             for(i=0; i<NO_OF_KINS_JOINTS; i++) {
-                emcmot_joint_t *joint = &joints[i];
+                emcmot_joint_t *joint = &inst->joints[i];
 
                 if (!GET_JOINT_ACTIVE_FLAG(joint)) {
                     /* if joint is not active, skip it */
@@ -771,9 +786,8 @@ static void process_probe_inputs(void)
     inst->ctl_old_probeVal = old_probeVal;
 }
 
-static void check_for_faults(void)
+static void check_for_faults(motmod_inst_t *inst)
 {
-    motmod_inst_t *inst = g_inst;
     int joint_num, spindle_num, error_num;
     emcmot_joint_t *joint;
     int neg_limit_override, pos_limit_override;
@@ -796,7 +810,7 @@ static void check_for_faults(void)
     /* check for various joint fault conditions */
     for (joint_num = 0; joint_num < ALL_JOINTS; joint_num++) {
 	/* point to joint data */
-	joint = &joints[joint_num];
+	joint = &inst->joints[joint_num];
 	/* only check active, enabled axes */
 	if ( GET_JOINT_ACTIVE_FLAG(joint) && GET_JOINT_ENABLE_FLAG(joint) ) {
 	    /* are any limits for this joint overridden? */
@@ -852,9 +866,8 @@ static void check_for_faults(void)
     }
 }
 
-static void set_operating_mode(void)
+static void set_operating_mode(motmod_inst_t *inst)
 {
-    motmod_inst_t *inst = g_inst;
     int joint_num;
     emcmot_joint_t *joint;
     double positions[EMCMOT_MAX_JOINTS];
@@ -865,7 +878,7 @@ static void set_operating_mode(void)
 	motmod_tp_api->clear(motmod_tp_api->ctx);
 	for (joint_num = 0; joint_num < ALL_JOINTS; joint_num++) {
 	    /* point to joint data */
-	    joint = &joints[joint_num];
+	    joint = &inst->joints[joint_num];
 	    /* disable free mode planner */
 	    joint->free_tp.enable = 0;
 	    joint->free_tp.curr_vel = 0.0;
@@ -898,7 +911,7 @@ static void set_operating_mode(void)
         motmod_tp_api->set_pos(motmod_tp_api->ctx, (tp_pose_t *)&inst->status->carte_pos_cmd);
 	for (joint_num = 0; joint_num < ALL_JOINTS; joint_num++) {
 	    /* point to joint data */
-	    joint = &joints[joint_num];
+	    joint = &inst->joints[joint_num];
 	    joint->free_tp.curr_pos = joint->pos_cmd;
 	    if (GET_JOINT_ACTIVE_FLAG(joint)) {
 		SET_JOINT_ENABLE_FLAG(joint, 1);
@@ -928,7 +941,7 @@ static void set_operating_mode(void)
 	    for (joint_num = 0; joint_num < EMCMOT_MAX_JOINTS; joint_num++) {
 		if (joint_num < NO_OF_KINS_JOINTS) {
 		/* point to joint data */
-		    joint = &joints[joint_num];
+		    joint = &inst->joints[joint_num];
 		    if (coord_cubic_active && *(inst->hal_data->eoffset_active)) {
 		        //skip
 		    } else {
@@ -945,7 +958,7 @@ static void set_operating_mode(void)
 	    SET_MOTION_COORD_FLAG(0);
 	    SET_MOTION_ERROR_FLAG(0);
 
-            kinematicsForward(positions, &inst->status->carte_pos_cmd, &fflags, &iflags);
+            kinematicsForward(positions, &inst->status->carte_pos_cmd, &inst->fflags, &inst->iflags);
             // entering teleop (INPOS), remove ext offsets
             axis_sync_teleop_tp_to_carte_pos(-1, pcmd_p);
 	} else {
@@ -959,7 +972,7 @@ static void set_operating_mode(void)
 		if (!inst->internal->coordinating) {
 		    for (joint_num = 0; joint_num < NO_OF_KINS_JOINTS; joint_num++) {
 			/* point to joint data */
-			joint = &joints[joint_num];
+			joint = &inst->joints[joint_num];
 			/* update free planner positions */
 			joint->free_tp.curr_pos = joint->pos_cmd;
 		    }
@@ -979,7 +992,7 @@ static void set_operating_mode(void)
 		/* drain the cubics so they'll synch up */
 		for (joint_num = 0; joint_num < NO_OF_KINS_JOINTS; joint_num++) {
 		    /* point to joint data */
-		    joint = &joints[joint_num];
+		    joint = &inst->joints[joint_num];
 		    cubicDrain(&(joint->cubic));
 		}
 		/* clear the override limits flags */
@@ -999,7 +1012,7 @@ static void set_operating_mode(void)
 	    if (GET_MOTION_INPOS_FLAG()) {
 		for (joint_num = 0; joint_num < ALL_JOINTS; joint_num++) {
 		    /* point to joint data */
-		    joint = &joints[joint_num];
+		    joint = &inst->joints[joint_num];
 		    /* set joint planner curr_pos to current location */
 		    joint->free_tp.curr_pos = joint->pos_cmd;
 		    /* but it can stay disabled until a move is required */
@@ -1028,9 +1041,8 @@ static void set_operating_mode(void)
     }
 } //set_operating_mode
 
-static void handle_jjogwheels(void)
+static void handle_jjogwheels(motmod_inst_t *inst)
 {
-    motmod_inst_t *inst = g_inst;
     int joint_num;
     emcmot_joint_t *joint;
     joint_hal_t *joint_data;
@@ -1042,7 +1054,7 @@ static void handle_jjogwheels(void)
         double jaccel_limit;
 	/* point to joint data */
 	joint_data = &(inst->hal_data->joint[joint_num]);
-	joint = &joints[joint_num];
+	joint = &inst->joints[joint_num];
 	if (!GET_JOINT_ACTIVE_FLAG(joint)) {
 	    /* if joint is not active, skip it */
 	    continue;
@@ -1125,7 +1137,7 @@ static void handle_jjogwheels(void)
 	/* calc target position for jog */
 	pos = joint->free_tp.pos_cmd + distance;
 	/* don't jog past limits */
-	refresh_jog_limits(joint,joint_num);
+	refresh_jog_limits(inst, joint, joint_num);
 	if (pos > joint->max_jog_limit) {
 	    continue;
 	}
@@ -1164,7 +1176,7 @@ static void handle_jjogwheels(void)
 	   Otherwise, a transition into coordinated mode will incorrectly
 	   assume the homed position. Do all if they've all been moved
 	   since homing, otherwise just do this one */
-	clearHomes(joint_num);
+	clearHomes(inst, joint_num);
     }
 
     // done with initialization, do the whole thing from now on
@@ -1172,9 +1184,8 @@ static void handle_jjogwheels(void)
     inst->ctl_first_pass = 0;
 }
 
-static void get_pos_cmds(long period)
+static void get_pos_cmds(motmod_inst_t *inst, long period)
 {
-    motmod_inst_t *inst = g_inst;
     int joint_num, result;
     emcmot_joint_t *joint;
     double positions[EMCMOT_MAX_JOINTS];
@@ -1187,7 +1198,7 @@ static void get_pos_cmds(long period)
     /* copy joint position feedback to local array */
     for (joint_num = 0; joint_num < ALL_JOINTS; joint_num++) {
 	/* point to joint struct */
-	joint = &joints[joint_num];
+	joint = &inst->joints[joint_num];
 	/* copy coarse command */
 	positions[joint_num] = joint->coarse_pos;
     }
@@ -1206,7 +1217,7 @@ static void get_pos_cmds(long period)
 	SET_MOTION_INPOS_FLAG(1);
 	for (joint_num = 0; joint_num < ALL_JOINTS; joint_num++) {
 	    /* point to joint struct */
-	    joint = &joints[joint_num];
+	    joint = &inst->joints[joint_num];
 	    if (!GET_JOINT_ACTIVE_FLAG(joint)) {
 	        /* if joint is not active, skip it */
 	        continue;
@@ -1283,7 +1294,7 @@ static void get_pos_cmds(long period)
 	switch (inst->config->kinType) {
 
 	case KINEMATICS_IDENTITY:
-	    kinematicsForward(positions, &inst->status->carte_pos_cmd, &fflags, &iflags);
+	    kinematicsForward(positions, &inst->status->carte_pos_cmd, &inst->fflags, &inst->iflags);
 	    if (motmod_home_api->get_allhomed(motmod_home_api->ctx)) {
 		inst->status->carte_pos_cmd_ok = 1;
 	    } else {
@@ -1300,7 +1311,7 @@ static void get_pos_cmds(long period)
 		}
 		/* calculate Cartesean position command from joint coarse pos cmd */
 		result =
-		    kinematicsForward(positions, &inst->status->carte_pos_cmd, &fflags, &iflags);
+		    kinematicsForward(positions, &inst->status->carte_pos_cmd, &inst->fflags, &inst->iflags);
 		/* check to make sure kinematics converged */
 		if (result < 0) {
 		    /* error during kinematics calculations */
@@ -1330,7 +1341,7 @@ static void get_pos_cmds(long period)
 
 	/* check joint 0 to see if the interpolators are empty */
 	coord_cubic_active = 1;
-	while (cubicNeedNextPoint(&(joints[0].cubic))) {
+	while (cubicNeedNextPoint(&(inst->joints[0].cubic))) {
 	    /* they're empty, pull next point(s) off Cartesian planner */
 	    /* run coordinated trajectory planning cycle */
 
@@ -1346,7 +1357,7 @@ static void get_pos_cmds(long period)
 
 	    /* OUTPUT KINEMATICS - convert to joints in local array */
 	    result = kinematicsInverse(&inst->status->carte_pos_cmd, positions,
-		&iflags, &fflags);
+		&inst->iflags, &inst->fflags);
 	    if(result == 0)
 	    {
 		/* copy to joint structures and spline them up */
@@ -1360,7 +1371,7 @@ static void get_pos_cmds(long period)
                        break;
 		    }
 		    /* point to joint struct */
-		    joint = &joints[joint_num];
+		    joint = &inst->joints[joint_num];
 		    joint->coarse_pos = positions[joint_num];
 		    /* spline joints up-- note that we may be adding points
 		       that fail soft limits, but we'll abort at the end of
@@ -1382,7 +1393,7 @@ static void get_pos_cmds(long period)
 	/* run interpolation */
 	for (joint_num = 0; joint_num < NO_OF_KINS_JOINTS; joint_num++) {
 	    /* point to joint struct */
-	    joint = &joints[joint_num];
+	    joint = &inst->joints[joint_num];
 	    /* interpolate to get new position and velocity */
 	    joint->pos_cmd = cubicInterpolate(&(joint->cubic), 0, &(joint->vel_cmd), &(joint->acc_cmd), 0);
 	}
@@ -1412,7 +1423,7 @@ static void get_pos_cmds(long period)
 	    to compute the next positions of the joints */
 
 	/* OUTPUT KINEMATICS - convert to joints in local array */
-	result = kinematicsInverse(&inst->status->carte_pos_cmd, positions, &iflags, &fflags);
+	result = kinematicsInverse(&inst->status->carte_pos_cmd, positions, &inst->iflags, &inst->fflags);
 
 	/* copy to joint structures and spline them up */
 	if(result == 0)
@@ -1427,7 +1438,7 @@ static void get_pos_cmds(long period)
 		   break;
 		}
 		/* point to joint struct */
-		joint = &joints[joint_num];
+		joint = &inst->joints[joint_num];
 		joint->coarse_pos = positions[joint_num];
 		/* spline joints up-- note that we may be adding points
 		       that fail soft limits, but we'll abort at the end of
@@ -1464,7 +1475,7 @@ static void get_pos_cmds(long period)
 	inst->status->carte_pos_cmd = inst->status->carte_pos_fb;
 	for (joint_num = 0; joint_num < ALL_JOINTS; joint_num++) {
 	    /* point to joint struct */
-	    joint = &joints[joint_num];
+	    joint = &inst->joints[joint_num];
 	    /* save old command */
 	    joint->pos_cmd = joint->pos_fb;
 	    /* set joint velocity and acceleration to zero */
@@ -1486,7 +1497,7 @@ static void get_pos_cmds(long period)
     */
     for (joint_num = 0; joint_num < ALL_JOINTS; joint_num++) {
 	/* point to joint data */
-	joint = &joints[joint_num];
+	joint = &inst->joints[joint_num];
 	
 	/* Zero values */
 	joint_limit[joint_num][0] = 0;
@@ -1527,7 +1538,7 @@ static void get_pos_cmds(long period)
         */
 	    for (joint_num = 0; joint_num < inst->config->numJoints; joint_num++) {
 	        if (joint_limit[joint_num][0] == 1) {
-                    joint = &joints[joint_num];
+                    joint = &inst->joints[joint_num];
                     rtapi_print_msg(RTAPI_MSG_ERR, _("Exceeded NEGATIVE soft limit (%.5f) on joint %d\n"),
                                   joint->min_pos_limit, joint_num);
                     if (inst->config->kinType == KINEMATICS_IDENTITY) {
@@ -1536,7 +1547,7 @@ static void get_pos_cmds(long period)
                         rtapi_print_msg(RTAPI_MSG_ERR, _("Hint: switch to joint mode to jog off soft limit"));
                     }
                 } else if (joint_limit[joint_num][1] == 1) {
-                    joint = &joints[joint_num];
+                    joint = &inst->joints[joint_num];
                     rtapi_print_msg(RTAPI_MSG_ERR, _("Exceeded POSITIVE soft limit (%.5f) on joint %d\n"),
                                   joint->max_pos_limit,joint_num);
                     if (inst->config->kinType == KINEMATICS_IDENTITY) {
@@ -1570,11 +1581,11 @@ static void get_pos_cmds(long period)
 There are seven sets of position information.
 
 1) inst->status->carte_pos_cmd
-2) inst->status->joints[n].coarse_pos
-3) inst->status->joints[n].pos_cmd
-4) inst->status->joints[n].motor_pos_cmd
-5) inst->status->joints[n].motor_pos_fb
-6) inst->status->joints[n].pos_fb
+2) inst->status->inst->joints[n].coarse_pos
+3) inst->status->inst->joints[n].pos_cmd
+4) inst->status->inst->joints[n].motor_pos_cmd
+5) inst->status->inst->joints[n].motor_pos_fb
+6) inst->status->inst->joints[n].pos_fb
 7) inst->status->carte_pos_fb
 
 Their exact contents and meaning are as follows:
@@ -1655,9 +1666,8 @@ Their exact contents and meaning are as follows:
 
 */
 
-static void compute_screw_comp(void)
+static void compute_screw_comp(motmod_inst_t *inst)
 {
-    motmod_inst_t *inst = g_inst;
     int joint_num;
     emcmot_joint_t *joint;
     emcmot_comp_t *comp;
@@ -1668,7 +1678,7 @@ static void compute_screw_comp(void)
     /* compute the correction */
     for (joint_num = 0; joint_num < ALL_JOINTS; joint_num++) {
         /* point to joint struct */
-        joint = &joints[joint_num];
+        joint = &inst->joints[joint_num];
 	if (!GET_JOINT_ACTIVE_FLAG(joint)) {
 	    /* if joint is not active, skip it */
 	    continue;
@@ -1847,9 +1857,8 @@ static void compute_screw_comp(void)
    halscope and halmeter for debugging.
 */
 
-static void output_to_hal(void)
+static void output_to_hal(motmod_inst_t *inst)
 {
-    motmod_inst_t *inst = g_inst;
     int joint_num, spindle_num;
     double inch_mult;
     emcmot_joint_t *joint;
@@ -1953,8 +1962,8 @@ static void output_to_hal(void)
         int i;
         double v2 = 0.0;
         for(i=0; i < ALL_JOINTS; i++)
-            if(GET_JOINT_ACTIVE_FLAG(&(joints[i])) && joints[i].free_tp.active)
-                v2 += joints[i].vel_cmd * joints[i].vel_cmd;
+            if(GET_JOINT_ACTIVE_FLAG(&(inst->joints[i])) && inst->joints[i].free_tp.active)
+                v2 += inst->joints[i].vel_cmd * inst->joints[i].vel_cmd;
         if(v2 > 0.0)
             inst->status->current_vel = (*inst->hal_data->current_vel) = sqrt(v2);
         else
@@ -1967,7 +1976,7 @@ static void output_to_hal(void)
        to one of the debug parameters.  You can also comment out these lines
        and copy elsewhere if you want to observe an automatic variable that
        isn't in scope here. */
-    inst->hal_data->debug_bit_0 = joints[1].free_tp.active;
+    inst->hal_data->debug_bit_0 = inst->joints[1].free_tp.active;
     inst->hal_data->debug_bit_1 = inst->status->enables_new & AF_ENABLED;
     inst->hal_data->debug_float_0 = inst->status->spindle_status[0].speed;
     inst->hal_data->debug_float_1 = inst->status->spindleSync;
@@ -2008,7 +2017,7 @@ static void output_to_hal(void)
     /* output joint info to HAL for scoping, etc */
     for (joint_num = 0; joint_num < ALL_JOINTS; joint_num++) {
 	/* point to joint struct */
-	joint = &joints[joint_num];
+	joint = &inst->joints[joint_num];
 	joint_data = &(inst->hal_data->joint[joint_num]);
 
 	/* apply backlash and motor offset to output */
@@ -2064,13 +2073,12 @@ static void output_to_hal(void)
 
     axis_output_to_hal(pcmd_p);
 
-    *(inst->hal_data->jog_is_active) = axis_jog_is_active() || joint_jog_is_active();
+    *(inst->hal_data->jog_is_active) = axis_jog_is_active() || joint_jog_is_active(inst);
 
 }
 
-static void update_status(void)
+static void update_status(motmod_inst_t *inst)
 {
-    motmod_inst_t *inst = g_inst;
     int joint_num, axis_num, dio, aio, misc_error;
     emcmot_joint_t *joint;
     emcmot_joint_status_t *joint_status;
@@ -2084,7 +2092,7 @@ static void update_status(void)
        struct in shared memory */
     for (joint_num = 0; joint_num < ALL_JOINTS; joint_num++) {
 	/* point to joint data */
-	joint = &joints[joint_num];
+	joint = &inst->joints[joint_num];
 	/* point to joint status */
 	joint_status = &(inst->status->joint_status[joint_num]);
 	/* copy stuff */
