@@ -135,6 +135,8 @@ typedef struct {
 
     syncdio_t syncdio; //record tpSetDout's here
 
+    const void *mot;  /* mot_callbacks_t* for accessing motmod services */
+    void *tc_space;   /* TC_STRUCT[] queue storage (in enclosing instance) */
 } TP_STRUCT;
 
 
