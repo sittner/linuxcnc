@@ -852,42 +852,17 @@ endif
 # Subdirectory:  rtapi
 
 # Subdirectory: hal/components
-RTMODULES += boss_plc.o
-boss_plc-objs := hal/components/boss_plc.o $(MATHSTUB)
-RTMODULES += debounce.o
-debounce-objs := hal/components/debounce.o $(MATHSTUB)
-RTMODULES += encoder.o
-encoder-objs := hal/components/encoder.o $(MATHSTUB)
+# NOTE: boss_plc, debounce, encoder, counter, encoder_ratio, stepgen,
+# pwmgen, siggen, pid, supply, sim_encoder, weighted_sum, watchdog, modmath
+# are now cmod-only (built from _cmod.c via hal/components/Submakefile)
 RTMODULES += enum.o
 enum-objs := hal/components/enum.o $(MATHSTUB)
-RTMODULES += counter.o
-counter-objs := hal/components/counter.o $(MATHSTUB)
-RTMODULES += encoder_ratio.o
-encoder_ratio-objs := hal/components/encoder_ratio.o $(MATHSTUB)
-RTMODULES += stepgen.o
-stepgen-objs := hal/components/stepgen.o $(MATHSTUB)
 RTMODULES += lcd.o
 lcd-objs := hal/components/lcd.o $(MATHSTUB)
 RTMODULES += matrix_kb.o
 matrix_kb-objs := hal/components/matrix_kb.o $(MATHSTUB)
 RTMODULES += mux_generic.o
 mux_generic-objs := hal/components/mux_generic.o $(MATHSTUB)
-RTMODULES += pwmgen.o
-pwmgen-objs := hal/components/pwmgen.o $(MATHSTUB)
-RTMODULES += siggen.o
-siggen-objs := hal/components/siggen.o $(MATHSTUB)
-RTMODULES += pid.o
-pid-objs := hal/components/pid.o $(MATHSTUB)
-RTMODULES += supply.o
-supply-objs := hal/components/supply.o $(MATHSTUB)
-RTMODULES += sim_encoder.o
-sim_encoder-objs := hal/components/sim_encoder.o $(MATHSTUB)
-RTMODULES += weighted_sum.o
-weighted_sum-objs := hal/components/weighted_sum.o $(MATHSTUB)
-RTMODULES += watchdog.o
-watchdog-objs := hal/components/watchdog.o $(MATHSTUB)
-RTMODULES += modmath.o
-modmath-objs := hal/components/modmath.o $(MATHSTUB)
 RTMODULES += streamer.o
 streamer-objs := hal/components/streamer.o $(MATHSTUB)
 RTMODULES += sampler.o
