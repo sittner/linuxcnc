@@ -855,14 +855,10 @@ endif
 # NOTE: boss_plc, debounce, encoder, counter, encoder_ratio, stepgen,
 # pwmgen, siggen, pid, supply, sim_encoder, weighted_sum, watchdog, modmath
 # are now cmod-only (built from _cmod.c via hal/components/Submakefile)
-RTMODULES += enum.o
-enum-objs := hal/components/enum.o $(MATHSTUB)
 RTMODULES += lcd.o
 lcd-objs := hal/components/lcd.o $(MATHSTUB)
 RTMODULES += matrix_kb.o
 matrix_kb-objs := hal/components/matrix_kb.o $(MATHSTUB)
-RTMODULES += mux_generic.o
-mux_generic-objs := hal/components/mux_generic.o $(MATHSTUB)
 RTMODULES += streamer.o
 streamer-objs := hal/components/streamer.o $(MATHSTUB)
 RTMODULES += sampler.o
