@@ -510,6 +510,9 @@ void classicladder_refresh(void *arg, long period) {
 
     unsigned long t0 = rtapi_get_time();
 
+    /* Update periodic refresh period from actual thread timing */
+    rt->periodic_refresh_ms = (int)ms;
+
     /* Read HAL inputs → internal variables */
     read_hal_inputs(rt);
     read_hal_s32_inputs(rt);
