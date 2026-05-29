@@ -380,8 +380,12 @@ func (l *Launcher) loadCPlugin(path string, name string, args []string) error {
 func (l *Launcher) runtimeLoadModule(module string, args []string) error {
 	path := resolveCModulePath(module)
 	if !cModuleExists(path) {
-		// Try as a Go module
-		return l.loadGoModule(module, module, args)
+		// Try as a Go module — load and start immediately.
+		if err := l.loadGoModule(module, module, args); err != nil {
+			return err
+		}
+		gm := l.goModules[len(l.goModules)-1]
+		return gm.mod.Start()
 	}
 
 	// Use the module basename (without .so) as the instance name.

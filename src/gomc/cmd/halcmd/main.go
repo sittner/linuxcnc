@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -1049,6 +1050,22 @@ func cmdUnlinkP(args []string) error {
 	return checkResult(result)
 }
 
+// resolveArgPath makes a relative file path absolute so the server (which may
+// have a different cwd) can find it.  Non-path args (key=value) are unchanged.
+func resolveArgPath(arg string) string {
+	if strings.Contains(arg, "=") {
+		return arg
+	}
+	if strings.Contains(arg, "/") || strings.Contains(arg, ".") {
+		if !filepath.IsAbs(arg) {
+			if abs, err := filepath.Abs(arg); err == nil {
+				return abs
+			}
+		}
+	}
+	return arg
+}
+
 func cmdLoad(args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("load requires module name")
@@ -1056,7 +1073,7 @@ func cmdLoad(args []string) error {
 	module := args[0]
 	var modArgs []*string
 	for _, a := range args[1:] {
-		s := a
+		s := resolveArgPath(a)
 		modArgs = append(modArgs, &s)
 	}
 	result, err := client.Load(module, modArgs)

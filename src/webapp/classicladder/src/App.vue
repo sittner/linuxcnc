@@ -8,28 +8,38 @@ import RequestsPanel from './components/RequestsPanel.vue';
 import StatusPanel from './components/StatusPanel.vue';
 import { ladderStore } from './stores/ladder';
 import { modbusStore } from './stores/modbus';
-import { LadderState } from './generated/classicladder_client';
+import { ClassicladderClient, LadderState, type Status } from './generated/classicladder_client';
 
 type Tab = 'ladder' | 'variables' | 'modbus-params' | 'modbus-requests' | 'modbus-status';
 const activeTab = ref<Tab>('ladder');
+const clStatus = ref<Status | null>(null);
+const statusClient = new ClassicladderClient(window.location.origin);
+let statusTimer: ReturnType<typeof setInterval> | null = null;
+
+async function refreshStatus() {
+  try { clStatus.value = await statusClient.getStatus(); } catch {}
+}
 
 onMounted(() => {
   ladderStore.fetchProgram();
   modbusStore.fetchAll();
   modbusStore.startPolling();
+  refreshStatus();
+  statusTimer = setInterval(refreshStatus, 2000);
 });
 
 onUnmounted(() => {
   modbusStore.stopPolling();
+  if (statusTimer) clearInterval(statusTimer);
 });
 
-function toggleRun() {
-  if (modbusStore.state.status?.running) {
-    ladderStore.setState(LadderState.STOP);
+async function toggleRun() {
+  if (clStatus.value?.state === LadderState.RUN) {
+    await ladderStore.setState(LadderState.STOP);
   } else {
-    ladderStore.setState(LadderState.RUN);
+    await ladderStore.setState(LadderState.RUN);
   }
-  setTimeout(() => modbusStore.refreshStatus(), 200);
+  setTimeout(refreshStatus, 200);
 }
 </script>
 
@@ -38,12 +48,12 @@ function toggleRun() {
     <header class="header">
       <h1>Classic Ladder</h1>
       <div class="header-actions">
-        <div class="status-indicator" v-if="modbusStore.state.status">
-          <span :class="modbusStore.state.status.running ? 'dot-green' : 'dot-red'"></span>
-          {{ modbusStore.state.status.running ? 'Running' : 'Stopped' }}
+        <div class="status-indicator" v-if="clStatus">
+          <span :class="clStatus.state === 2 ? 'dot-green' : 'dot-red'"></span>
+          {{ clStatus.state === 2 ? 'Running' : 'Stopped' }}
         </div>
         <button class="btn btn-sm" @click="toggleRun">
-          {{ modbusStore.state.status?.running ? 'Stop' : 'Run' }}
+          {{ clStatus?.state === 2 ? 'Stop' : 'Run' }}
         </button>
         <button class="btn btn-sm" @click="ladderStore.fetchProgram()">Reload</button>
       </div>
