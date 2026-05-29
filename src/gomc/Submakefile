@@ -102,10 +102,10 @@ gomc/packages.conf: gomc/packages.conf.in Makefile.inc
 	$(call filter_packages_conf)
 
 gomc/go.mod: gomc/go.mod.in
-	$(Q)test -f $@ || cp $< $@
+	$(Q)cp $< $@
 
-gomc/go.sum: gomc/go.mod
-	$(Q)test -f $@ || cd gomc && $(GO) mod download
+gomc/go.sum: gomc/go.mod $(IMPORTS_GENERATED)
+	$(Q)cd gomc && $(GO) mod tidy
 
 $(IMPORTS_GENERATED): gomc/packages.conf ../bin/modcompile
 	$(Q)cd gomc && $(TOP)/bin/modcompile regenerate-imports
@@ -169,25 +169,25 @@ HAL_GO_CGO_LDFLAGS := -L$(TOP)/lib -llinuxcnchal
 
 HAL_GO_EXAMPLES := ../bin/passthrough ../bin/str-sender ../bin/str-receiver
 
-../bin/passthrough: $(GOMC_SRC) gomc/pkg/hal/examples/passthrough/main.go gomc/pkg/hal/examples/passthrough/go.mod ../lib/liblinuxcnchal.so
+../bin/passthrough: $(GOMC_SRC) gomc/pkg/hal/examples/passthrough/main.go gomc/pkg/hal/examples/passthrough/go.mod gomc/go.sum ../lib/liblinuxcnchal.so
 	$(ECHO) Building hal-go passthrough example
-	$(Q)cd gomc/pkg/hal/examples/passthrough && \
+	$(Q)cd gomc/pkg/hal/examples/passthrough && $(GO) mod tidy && \
 	CGO_ENABLED=1 \
 	CGO_CFLAGS="$(HAL_GO_CGO_CFLAGS)" \
 	CGO_LDFLAGS="$(HAL_GO_CGO_LDFLAGS)" \
 	$(GO) build -o $(TOP)/bin/passthrough .
 
-../bin/str-sender: $(GOMC_SRC) gomc/pkg/hal/tests/str-sender/main.go gomc/pkg/hal/tests/str-sender/go.mod ../lib/liblinuxcnchal.so
+../bin/str-sender: $(GOMC_SRC) gomc/pkg/hal/tests/str-sender/main.go gomc/pkg/hal/tests/str-sender/go.mod gomc/go.sum ../lib/liblinuxcnchal.so
 	$(ECHO) Building hal-go str-sender test component
-	$(Q)cd gomc/pkg/hal/tests/str-sender && \
+	$(Q)cd gomc/pkg/hal/tests/str-sender && $(GO) mod tidy && \
 	CGO_ENABLED=1 \
 	CGO_CFLAGS="$(HAL_GO_CGO_CFLAGS)" \
 	CGO_LDFLAGS="$(HAL_GO_CGO_LDFLAGS)" \
 	$(GO) build -o $(TOP)/bin/str-sender .
 
-../bin/str-receiver: $(GOMC_SRC) gomc/pkg/hal/tests/str-receiver/main.go gomc/pkg/hal/tests/str-receiver/go.mod ../lib/liblinuxcnchal.so
+../bin/str-receiver: $(GOMC_SRC) gomc/pkg/hal/tests/str-receiver/main.go gomc/pkg/hal/tests/str-receiver/go.mod gomc/go.sum ../lib/liblinuxcnchal.so
 	$(ECHO) Building hal-go str-receiver test component
-	$(Q)cd gomc/pkg/hal/tests/str-receiver && \
+	$(Q)cd gomc/pkg/hal/tests/str-receiver && $(GO) mod tidy && \
 	CGO_ENABLED=1 \
 	CGO_CFLAGS="$(HAL_GO_CGO_CFLAGS)" \
 	CGO_LDFLAGS="$(HAL_GO_CGO_LDFLAGS)" \
@@ -202,7 +202,7 @@ TARGETS += ../bin/gomc-server ../bin/ads-xml-gen $(GOMC_PKG_FILES) $(HAL_GO_EXAM
 ../bin/modcompile: $(GOMC_SRC_BASE) Makefile.inc
 	$(ECHO) Building modcompile
 	@rm -f $@
-	$(Q)cd gomc && $(GO) build -ldflags "$(GOMC_LDFLAGS)" -o $(TOP)/bin/modcompile ./cmd/modcompile
+	$(Q)cd gomc && $(GO) mod tidy && $(GO) build -ldflags "$(GOMC_LDFLAGS)" -o $(TOP)/bin/modcompile ./cmd/modcompile
 
 TARGETS += ../bin/modcompile
 
