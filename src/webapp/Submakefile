@@ -136,6 +136,36 @@ $(TOOLEDIT_WEBAPP_STAMP): $(TOOLEDIT_WEBAPP_SRCS) $(TOOLEDIT_NPM_STAMP) $(TOOLED
 
 TARGETS += $(TOOLEDIT_WEBAPP_STAMP)
 
+# --- classicladder ---
+
+CLASSICLADDER_WEBAPP_SRC := $(WEBAPP_DIR)/classicladder
+CLASSICLADDER_WEBAPP_DEST := $(WEBAPP_DEST)/classicladder
+
+CLASSICLADDER_WEBAPP_STAMP := $(CLASSICLADDER_WEBAPP_DEST)/.build-stamp
+
+CLASSICLADDER_WEBAPP_SRCS := $(shell find $(CLASSICLADDER_WEBAPP_SRC)/src -type f 2>/dev/null) \
+	$(CLASSICLADDER_WEBAPP_SRC)/index.html \
+	$(CLASSICLADDER_WEBAPP_SRC)/package.json \
+	$(CLASSICLADDER_WEBAPP_SRC)/vite.config.ts \
+	$(CLASSICLADDER_WEBAPP_SRC)/tsconfig.json
+
+CLASSICLADDER_NPM_STAMP := $(CLASSICLADDER_WEBAPP_SRC)/node_modules/.install-stamp
+
+$(CLASSICLADDER_NPM_STAMP): $(CLASSICLADDER_WEBAPP_SRC)/package.json
+	$(ECHO) "Installing classicladder webapp dependencies"
+	$(Q)cd $(CLASSICLADDER_WEBAPP_SRC) && npm install --no-audit --no-fund
+	$(Q)touch $@
+
+CLASSICLADDER_GEN_TS := $(WEBAPP_DIR)/classicladder/src/generated/classicladder_client.ts
+
+$(CLASSICLADDER_WEBAPP_STAMP): $(CLASSICLADDER_WEBAPP_SRCS) $(CLASSICLADDER_NPM_STAMP) $(CLASSICLADDER_GEN_TS)
+	$(ECHO) "Building classicladder webapp"
+	$(Q)rm -rf $(CLASSICLADDER_WEBAPP_DEST)
+	$(Q)cd $(CLASSICLADDER_WEBAPP_SRC) && npx vite build --outDir $(abspath $(CLASSICLADDER_WEBAPP_DEST)) --emptyOutDir
+	$(Q)touch $@
+
+TARGETS += $(CLASSICLADDER_WEBAPP_STAMP)
+
 clean: webapp-clean
 .PHONY: webapp-clean
 webapp-clean:
@@ -144,5 +174,6 @@ webapp-clean:
 	rm -rf $(HALSHOW_WEBAPP_SRC)/node_modules
 	rm -rf $(EMCCALIB_WEBAPP_SRC)/node_modules
 	rm -rf $(TOOLEDIT_WEBAPP_SRC)/node_modules
+	rm -rf $(CLASSICLADDER_WEBAPP_SRC)/node_modules
 
 endif # BUILD_GOLANG
