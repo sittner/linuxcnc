@@ -1,14 +1,20 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
+import LadderView from './components/LadderView.vue';
+import EditToolbar from './components/EditToolbar.vue';
+import VarSpy from './components/VarSpy.vue';
 import ComParamsPanel from './components/ComParamsPanel.vue';
 import RequestsPanel from './components/RequestsPanel.vue';
 import StatusPanel from './components/StatusPanel.vue';
+import { ladderStore } from './stores/ladder';
 import { modbusStore } from './stores/modbus';
+import { LadderState } from './generated/classicladder_client';
 
-type Tab = 'com-params' | 'requests' | 'status';
-const activeTab = ref<Tab>('com-params');
+type Tab = 'ladder' | 'variables' | 'modbus-params' | 'modbus-requests' | 'modbus-status';
+const activeTab = ref<Tab>('ladder');
 
 onMounted(() => {
+  ladderStore.fetchProgram();
   modbusStore.fetchAll();
   modbusStore.startPolling();
 });
@@ -16,39 +22,65 @@ onMounted(() => {
 onUnmounted(() => {
   modbusStore.stopPolling();
 });
+
+function toggleRun() {
+  if (modbusStore.state.status?.running) {
+    ladderStore.setState(LadderState.STOP);
+  } else {
+    ladderStore.setState(LadderState.RUN);
+  }
+  setTimeout(() => modbusStore.refreshStatus(), 200);
+}
 </script>
 
 <template>
   <div class="app">
     <header class="header">
-      <h1>Classic Ladder — Modbus Configuration</h1>
-      <div class="status-indicator" v-if="modbusStore.state.status">
-        <span :class="modbusStore.state.status.running ? 'dot-green' : 'dot-red'"></span>
-        {{ modbusStore.state.status.running ? 'Running' : 'Stopped' }}
+      <h1>Classic Ladder</h1>
+      <div class="header-actions">
+        <div class="status-indicator" v-if="modbusStore.state.status">
+          <span :class="modbusStore.state.status.running ? 'dot-green' : 'dot-red'"></span>
+          {{ modbusStore.state.status.running ? 'Running' : 'Stopped' }}
+        </div>
+        <button class="btn btn-sm" @click="toggleRun">
+          {{ modbusStore.state.status?.running ? 'Stop' : 'Run' }}
+        </button>
+        <button class="btn btn-sm" @click="ladderStore.fetchProgram()">Reload</button>
       </div>
     </header>
 
     <nav class="tabs">
-      <button :class="{ active: activeTab === 'com-params' }" @click="activeTab = 'com-params'">
-        COM Parameters
+      <button :class="{ active: activeTab === 'ladder' }" @click="activeTab = 'ladder'">
+        Ladder
       </button>
-      <button :class="{ active: activeTab === 'requests' }" @click="activeTab = 'requests'">
-        I/O Requests
+      <button :class="{ active: activeTab === 'variables' }" @click="activeTab = 'variables'">
+        Variables
       </button>
-      <button :class="{ active: activeTab === 'status' }" @click="activeTab = 'status'">
-        Status
+      <button :class="{ active: activeTab === 'modbus-params' }" @click="activeTab = 'modbus-params'">
+        Modbus Config
+      </button>
+      <button :class="{ active: activeTab === 'modbus-requests' }" @click="activeTab = 'modbus-requests'">
+        Modbus I/O
+      </button>
+      <button :class="{ active: activeTab === 'modbus-status' }" @click="activeTab = 'modbus-status'">
+        Modbus Status
       </button>
     </nav>
 
-    <div class="error-bar" v-if="modbusStore.state.error">
-      {{ modbusStore.state.error }}
-      <button @click="modbusStore.state.error = ''">✕</button>
+    <div class="error-bar" v-if="ladderStore.state.error || modbusStore.state.error">
+      {{ ladderStore.state.error || modbusStore.state.error }}
+      <button @click="ladderStore.state.error = ''; modbusStore.state.error = ''">✕</button>
     </div>
 
     <main class="content">
-      <ComParamsPanel v-if="activeTab === 'com-params'" />
-      <RequestsPanel v-if="activeTab === 'requests'" />
-      <StatusPanel v-if="activeTab === 'status'" />
+      <template v-if="activeTab === 'ladder'">
+        <EditToolbar />
+        <LadderView />
+      </template>
+      <VarSpy v-else-if="activeTab === 'variables'" />
+      <ComParamsPanel v-else-if="activeTab === 'modbus-params'" />
+      <RequestsPanel v-else-if="activeTab === 'modbus-requests'" />
+      <StatusPanel v-else-if="activeTab === 'modbus-status'" />
     </main>
   </div>
 </template>
@@ -83,6 +115,17 @@ body {
 .header h1 {
   font-size: 18px;
   font-weight: 600;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-sm {
+  padding: 4px 10px !important;
+  font-size: 12px !important;
 }
 
 .status-indicator {
