@@ -218,6 +218,16 @@ $(GMI_CLASSICLADDER_SERVER_GO): $(GMI_CLASSICLADDER_IDL) $(GMICOMPILE_BIN)
 
 TARGETS += $(GMI_CLASSICLADDER_SERVER_GO)
 
+# TypeScript REST client for classicladder web UI
+GMI_CLASSICLADDER_TS := webapp/classicladder/src/generated/classicladder_client.ts
+
+$(GMI_CLASSICLADDER_TS): $(GMI_CLASSICLADDER_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI classicladder TypeScript REST client from $(GMI_CLASSICLADDER_IDL)"
+	@mkdir -p $(dir $(GMI_CLASSICLADDER_TS))
+	$(Q)$(GMICOMPILE) --client-ts $(GMI_CLASSICLADDER_IDL) -o $(GMI_CLASSICLADDER_TS)
+
+TARGETS += $(GMI_CLASSICLADDER_TS)
+
 # --- halshow (uses halcmd API; TypeScript clients for the web UI) ---
 
 GMI_HALCMD_IDL := gmi/idl/halcmd.gmi

@@ -248,6 +248,81 @@ func save_project(path: string) -> i32
 @path "/symbols"
 func get_symbols() -> []Symbol
 
+# --- Modbus types ---
+
+enum ModbusReqType {
+    COIL_READ = 0       # FC 1
+    COIL_WRITE = 1      # FC 5/15
+    INPUT_READ = 2      # FC 2
+    HOLDING_READ = 3    # FC 3
+    REGISTER_WRITE = 4  # FC 6/16
+    DIAGNOSTIC = 5      # FC 8
+}
+
+type ModbusComParams {
+    serialPort: string
+    serialSpeed: i32
+    serialDataBits: i32
+    serialStopBits: i32
+    serialParity: i32          # 0=none, 1=odd, 2=even
+    serialUseRts: bool
+    elementOffset: i32
+    timeInterFrame: i32        # ms between frames
+    timeOutReceipt: i32        # ms receive timeout
+    timeAfterTransmit: i32     # ms delay after TX (RS485)
+    debugLevel: i32
+    mapCoilRead: i32           # variable type for coil reads
+    mapCoilWrite: i32          # variable type for coil writes
+    mapInputs: i32             # variable type for discrete inputs
+    mapHolding: i32            # variable type for holding registers
+    mapRegisterRead: i32       # variable type for register reads
+    mapRegisterWrite: i32      # variable type for register writes
+}
+
+type ModbusRequest {
+    slaveAddr: string          # IP:port for TCP, slave number for serial
+    typeReq: ModbusReqType
+    firstModbusElement: i32
+    nbrModbusElements: i32
+    logicInverted: bool
+    offsetVarMapped: i32
+}
+
+type ModbusStatus {
+    running: bool
+    currentReq: i32
+    frameCount: i32
+    errorCount: i32
+    slavePort: i32             # TCP slave listen port (0=disabled)
+}
+
+# --- Modbus functions ---
+
+# Get Modbus communication parameters.
+@method GET
+@path "/modbus/com_params"
+func get_modbus_com_params() -> ModbusComParams
+
+# Set Modbus communication parameters (restarts master if running).
+@method PUT
+@path "/modbus/com_params"
+func set_modbus_com_params(params: ModbusComParams) -> i32
+
+# Get all Modbus I/O request definitions.
+@method GET
+@path "/modbus/requests"
+func get_modbus_requests() -> []ModbusRequest
+
+# Replace all Modbus I/O request definitions (restarts master if running).
+@method PUT
+@path "/modbus/requests"
+func set_modbus_requests(requests: []ModbusRequest) -> i32
+
+# Get Modbus runtime status (running, frame/error counts).
+@method GET
+@path "/modbus/status"
+func get_modbus_status() -> ModbusStatus
+
 # Update symbol table.
 @method PUT
 @path "/symbols"

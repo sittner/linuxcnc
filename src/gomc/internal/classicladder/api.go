@@ -545,3 +545,113 @@ func copyStringToC(dst *C.char, src string, maxLen C.int) {
 }
 
 var errInvalidIndex = fmt.Errorf("invalid index")
+
+// --- Modbus API handlers ---
+
+func (m *classicladder) GetModbusComParams() (*api.ModbusComParams, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	cfg := m.modbus.cfg
+	return &api.ModbusComParams{
+		SerialPort:        cfg.SerialPort,
+		SerialSpeed:       int32(cfg.SerialSpeed),
+		SerialDataBits:    int32(cfg.SerialDataBits),
+		SerialStopBits:    int32(cfg.SerialStopBits),
+		SerialParity:      int32(cfg.SerialParity),
+		SerialUseRts:      cfg.SerialUseRTS,
+		ElementOffset:     int32(cfg.ElementOffset),
+		TimeInterFrame:    int32(cfg.TimeInterFrame),
+		TimeOutReceipt:    int32(cfg.TimeOutReceipt),
+		TimeAfterTransmit: int32(cfg.TimeAfterTransmit),
+		DebugLevel:        int32(cfg.DebugLevel),
+		MapCoilRead:       int32(cfg.MapCoilRead),
+		MapCoilWrite:      int32(cfg.MapCoilWrite),
+		MapInputs:         int32(cfg.MapInputs),
+		MapHolding:        int32(cfg.MapHolding),
+		MapRegisterRead:   int32(cfg.MapRegisterRead),
+		MapRegisterWrite:  int32(cfg.MapRegisterWrite),
+	}, nil
+}
+
+func (m *classicladder) SetModbusComParams(params api.ModbusComParams) (int32, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	wasRunning := m.modbus.running
+	if wasRunning {
+		m.modbus.stop()
+	}
+	m.modbus.cfg.SerialPort = params.SerialPort
+	m.modbus.cfg.SerialSpeed = int(params.SerialSpeed)
+	m.modbus.cfg.SerialDataBits = int(params.SerialDataBits)
+	m.modbus.cfg.SerialStopBits = int(params.SerialStopBits)
+	m.modbus.cfg.SerialParity = int(params.SerialParity)
+	m.modbus.cfg.SerialUseRTS = params.SerialUseRts
+	m.modbus.cfg.ElementOffset = int(params.ElementOffset)
+	m.modbus.cfg.TimeInterFrame = int(params.TimeInterFrame)
+	m.modbus.cfg.TimeOutReceipt = int(params.TimeOutReceipt)
+	m.modbus.cfg.TimeAfterTransmit = int(params.TimeAfterTransmit)
+	m.modbus.cfg.DebugLevel = int(params.DebugLevel)
+	m.modbus.cfg.MapCoilRead = int(params.MapCoilRead)
+	m.modbus.cfg.MapCoilWrite = int(params.MapCoilWrite)
+	m.modbus.cfg.MapInputs = int(params.MapInputs)
+	m.modbus.cfg.MapHolding = int(params.MapHolding)
+	m.modbus.cfg.MapRegisterRead = int(params.MapRegisterRead)
+	m.modbus.cfg.MapRegisterWrite = int(params.MapRegisterWrite)
+	if wasRunning {
+		m.modbus.start()
+	}
+	return 0, nil
+}
+
+func (m *classicladder) GetModbusRequests() ([]api.ModbusRequest, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	reqs := make([]api.ModbusRequest, len(m.modbus.cfg.Requests))
+	for i, r := range m.modbus.cfg.Requests {
+		reqs[i] = api.ModbusRequest{
+			SlaveAddr:          r.SlaveAddr,
+			TypeReq:            api.ModbusReqType(r.TypeReq),
+			FirstModbusElement: int32(r.FirstModbusElement),
+			NbrModbusElements:  int32(r.NbrModbusElements),
+			LogicInverted:      r.LogicInverted,
+			OffsetVarMapped:    int32(r.OffsetVarMapped),
+		}
+	}
+	return reqs, nil
+}
+
+func (m *classicladder) SetModbusRequests(requests []api.ModbusRequest) (int32, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	wasRunning := m.modbus.running
+	if wasRunning {
+		m.modbus.stop()
+	}
+	m.modbus.cfg.Requests = make([]modbusRequest, len(requests))
+	for i, r := range requests {
+		m.modbus.cfg.Requests[i] = modbusRequest{
+			SlaveAddr:          r.SlaveAddr,
+			TypeReq:            int(r.TypeReq),
+			FirstModbusElement: int(r.FirstModbusElement),
+			NbrModbusElements:  int(r.NbrModbusElements),
+			LogicInverted:      r.LogicInverted,
+			OffsetVarMapped:    int(r.OffsetVarMapped),
+		}
+	}
+	if wasRunning {
+		m.modbus.start()
+	}
+	return 0, nil
+}
+
+func (m *classicladder) GetModbusStatus() (*api.ModbusStatus, error) {
+	m.modbus.mu.Lock()
+	defer m.modbus.mu.Unlock()
+	return &api.ModbusStatus{
+		Running:    m.modbus.running,
+		CurrentReq: int32(m.modbus.currentReq),
+		FrameCount: int32(m.modbus.frameCount),
+		ErrorCount: int32(m.modbus.errorCount),
+		SlavePort:  int32(m.slavePort),
+	}, nil
+}
