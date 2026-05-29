@@ -935,8 +935,7 @@ class LivePlotter:
         # When the server signals that preview-relevant state changed
         # (offsets, program loaded, tool table), reload the preview.
         preview_seq = getattr(self.stat, 'preview_seq', 0)
-        if (not running()
-                and preview_seq != getattr(o, 'last_preview_seq', None)):
+        if preview_seq != getattr(o, 'last_preview_seq', None):
             o.last_preview_seq = preview_seq
             # Multi-client sync: if another client loaded a different file,
             # update text editor and loaded_file (without re-sending
@@ -945,7 +944,7 @@ class LivePlotter:
             if remote_file and remote_file != loaded_file:
                 load_text_and_set_file(remote_file)
             if loaded_file:
-                root_window.after_idle(refresh_preview)
+                root_window.after_idle(refresh_preview_if_idle)
         if (self.logger.npts != self.lastpts
                 or limits != o.last_limits
                 or self.stat.actual_position != o.last_position
@@ -1962,16 +1961,33 @@ def reload_file(refilter=True):
     if line:
         o.set_highlight_line(line)
 
+def refresh_preview_if_idle():
+    """Schedule refresh_preview, skipping synch if running."""
+    s.poll()
+    if not loaded_file:
+        return
+    if running(do_poll=False):
+        # Preview interpreter is independent — generate preview without
+        # synching the execution interpreter (which would block/timeout).
+        _do_refresh_preview(skip_synch=True)
+    else:
+        _do_refresh_preview(skip_synch=False)
+
 def refresh_preview():
     """Re-generate preview with current offsets without reloading the file."""
     if running(): return
     s.poll()
     if not loaded_file:
         return
-    # Ensure the var file reflects the current interpreter parameters
-    # (e.g. after G10 L20 touchoff which updates in-memory params only).
-    c.task_plan_synch()
-    c.wait_complete()
+    _do_refresh_preview(skip_synch=False)
+
+def _do_refresh_preview(skip_synch=False):
+    """Internal: generate preview, optionally skipping interpreter synch."""
+    if not skip_synch:
+        # Ensure the var file reflects the current interpreter parameters
+        # (e.g. after G10 L20 touchoff which updates in-memory params only).
+        c.task_plan_synch()
+        c.wait_complete()
     f = loaded_file
     program_filter = get_filter(f)
     if program_filter:
@@ -3934,9 +3950,7 @@ except Exception:
     pass
 
 c.set_block_delete(vars.block_delete.get())
-c.wait_complete()
 c.set_optional_stop(vars.optional_stop.get())
-c.wait_complete()
 
 o = MyOpengl(widgets.preview_frame, width=400, height=300, double=1, depth=1)
 o.last_line = 1
@@ -4086,8 +4100,14 @@ elif "AXIS_OPEN_FILE" in os.environ:
 elif s.file:
     # Server already has a program loaded (e.g. from [DISPLAY]OPEN_FILE or
     # another UI instance). Load its preview without calling program_open again.
+    # If the system is currently running (auto mode), avoid open_file_guts which
+    # calls task_plan_synch/wait_complete/program_open that block or timeout.
     initialfile = s.file
     addrecent = False
+    if running(do_poll=False):
+        load_text_and_set_file(initialfile)
+        root_window.after_idle(refresh_preview_if_idle)
+        initialfile = None  # skip open_file_guts below
 elif lathe:
     initialfile = os.path.join(BASE, "share", "axis", "images","axis-lathe.ngc")
     addrecent = False
@@ -4095,7 +4115,7 @@ else:
     initialfile = os.path.join(BASE, "share", "axis", "images", "axis.ngc")
     addrecent = False
 
-if os.path.exists(initialfile):
+if initialfile and os.path.exists(initialfile):
     open_file_guts(initialfile, False, addrecent)
 
 if lathe:
