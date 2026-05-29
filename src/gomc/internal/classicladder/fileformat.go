@@ -103,6 +103,14 @@ func (m *classicladder) loadCLPFile(path string) error {
 		m.parseSequential(content)
 	}
 
+	// Load Modbus configuration
+	if content, ok := files["com_params.txt"]; ok {
+		m.parseComParams(content)
+	}
+	if content, ok := files["modbusioconf.csv"]; ok {
+		m.parseModbusIOConf(content)
+	}
+
 	// Compile all arithmetic expressions to bytecode
 	if errs := m.compileAllExpressions(); len(errs) > 0 {
 		for _, e := range errs {
@@ -680,4 +688,97 @@ func (m *classicladder) parseSequential(content string) {
 	}
 	// Activate init steps
 	C.cl_prepare_sequential(m.rt)
+}
+
+func (m *classicladder) parseComParams(content string) {
+	cfg := &m.modbus.cfg
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || line[0] == '#' || line[0] == ';' {
+			continue
+		}
+		if idx := strings.IndexByte(line, '='); idx > 0 {
+			key := line[:idx]
+			val := strings.TrimSpace(line[idx+1:])
+			switch key {
+			case "MODBUS_MASTER_SERIAL_PORT":
+				cfg.SerialPort = val
+			case "MODBUS_MASTER_SERIAL_SPEED":
+				cfg.SerialSpeed = atoi(val)
+			case "MODBUS_MASTER_SERIAL_DATABITS":
+				cfg.SerialDataBits = atoi(val)
+			case "MODBUS_MASTER_SERIAL_STOPBITS":
+				cfg.SerialStopBits = atoi(val)
+			case "MODBUS_MASTER_SERIAL_PARITY":
+				cfg.SerialParity = atoi(val)
+			case "MODBUS_ELEMENT_OFFSET":
+				cfg.ElementOffset = atoi(val)
+			case "MODBUS_MASTER_SERIAL_USE_RTS_TO_SEND":
+				cfg.SerialUseRTS = atoi(val) != 0
+			case "MODBUS_MASTER_TIME_INTER_FRAME":
+				cfg.TimeInterFrame = atoi(val)
+			case "MODBUS_MASTER_TIME_OUT_RECEIPT":
+				cfg.TimeOutReceipt = atoi(val)
+			case "MODBUS_MASTER_TIME_AFTER_TRANSMIT":
+				cfg.TimeAfterTransmit = atoi(val)
+			case "MODBUS_DEBUG_LEVEL":
+				cfg.DebugLevel = atoi(val)
+			case "MODBUS_MAP_COIL_READ":
+				cfg.MapCoilRead = atoi(val)
+			case "MODBUS_MAP_COIL_WRITE":
+				cfg.MapCoilWrite = atoi(val)
+			case "MODBUS_MAP_INPUT":
+				cfg.MapInputs = atoi(val)
+			case "MODBUS_MAP_HOLDING":
+				cfg.MapHolding = atoi(val)
+			case "MODBUS_MAP_REGISTER_READ":
+				cfg.MapRegisterRead = atoi(val)
+			case "MODBUS_MAP_REGISTER_WRITE":
+				cfg.MapRegisterWrite = atoi(val)
+			}
+		}
+	}
+}
+
+func (m *classicladder) parseModbusIOConf(content string) {
+	var reqs []modbusRequest
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || line[0] == ';' || line[0] == '#' {
+			continue
+		}
+
+		var req modbusRequest
+		// If line contains a dot, first field is IP address (comma-separated from rest)
+		if strings.Contains(line, ".") {
+			idx := strings.IndexByte(line, ',')
+			if idx < 0 {
+				continue
+			}
+			req.SlaveAddr = line[:idx]
+			parts := strings.Split(line[idx+1:], ",")
+			if len(parts) < 5 {
+				continue
+			}
+			req.TypeReq = atoi(parts[0])
+			req.FirstModbusElement = atoi(parts[1])
+			req.NbrModbusElements = atoi(parts[2])
+			req.LogicInverted = atoi(parts[3]) != 0
+			req.OffsetVarMapped = atoi(parts[4])
+		} else {
+			// Serial: all numeric, first field is slave number
+			parts := strings.Split(line, ",")
+			if len(parts) < 6 {
+				continue
+			}
+			req.SlaveAddr = strings.TrimSpace(parts[0])
+			req.TypeReq = atoi(parts[1])
+			req.FirstModbusElement = atoi(parts[2])
+			req.NbrModbusElements = atoi(parts[3])
+			req.LogicInverted = atoi(parts[4]) != 0
+			req.OffsetVarMapped = atoi(parts[5])
+		}
+		reqs = append(reqs, req)
+	}
+	m.modbus.cfg.Requests = reqs
 }

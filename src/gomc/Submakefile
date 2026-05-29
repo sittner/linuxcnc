@@ -105,7 +105,7 @@ gomc/go.mod: gomc/go.mod.in
 	$(Q)test -f $@ || cp $< $@
 
 gomc/go.sum: gomc/go.mod
-	$(Q)test -f $@ || cd gomc && $(GO) get nhooyr.io/websocket@v1.8.17
+	$(Q)test -f $@ || cd gomc && $(GO) mod download
 
 $(IMPORTS_GENERATED): gomc/packages.conf ../bin/modcompile
 	$(Q)cd gomc && $(TOP)/bin/modcompile regenerate-imports

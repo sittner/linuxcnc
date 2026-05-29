@@ -53,6 +53,7 @@ type classicladder struct {
 	name        string
 	functName   string
 	projectFile string
+	modbus      *modbusMaster
 }
 
 func newClassicLadder(ini *inifile.IniFile, logger *slog.Logger, name string, args []string) (gomc.Module, error) {
@@ -169,6 +170,7 @@ func newClassicLadder(ini *inifile.IniFile, logger *slog.Logger, name string, ar
 		name:        name,
 		functName:   functName,
 		projectFile: projectFile,
+		modbus:      newModbusMaster(rt, logger),
 	}
 
 	// Register REST API
@@ -200,10 +202,13 @@ func (m *classicladder) Start() error {
 		}
 		m.setState(C.CL_STATE_RUN)
 	}
+	// Start Modbus master if configured
+	m.modbus.start()
 	return nil
 }
 
 func (m *classicladder) Stop() {
+	m.modbus.stop()
 	C.hal_exit(m.compID)
 	C.classicladder_rt_free(m.rt)
 }

@@ -38,6 +38,11 @@ func (m *classicladder) GetStatus() (*api.Status, error) {
 
 func (m *classicladder) SetState(state api.LadderState) (int32, error) {
 	m.setState(int(state))
+	if state == api.LadderState_RUN {
+		m.modbus.start()
+	} else {
+		m.modbus.stop()
+	}
 	return 0, nil
 }
 
@@ -113,10 +118,12 @@ func (m *classicladder) SetVariable(varType int32, offset int32, value int32) (i
 func (m *classicladder) LoadProject(path string) (int32, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.modbus.stop()
 	if err := m.loadCLPFile(path); err != nil {
 		return -1, err
 	}
 	m.bumpGeneration()
+	m.modbus.start()
 	return 0, nil
 }
 
