@@ -38,12 +38,14 @@ func InitCPUPool(logger *slog.Logger) error {
 		return err
 	}
 
-	// Build pool: isolated physical cores, sorted descending (highest first).
+	// Build pool: isolated CPUs, preferring physical cores but including HT
+	// siblings when both siblings of a core are isolated.  If only the
+	// non-primary sibling is isolated (common: isolcpus=2,3 on a 4-logical-CPU
+	// system where 0,2 and 1,3 are sibling pairs), we still use it — the
+	// kernel has already removed it from the general scheduler.
 	var avail []int
 	for _, cpu := range topo.isolated {
-		if topo.physicalCores[cpu] {
-			avail = append(avail, cpu)
-		}
+		avail = append(avail, cpu)
 	}
 	sort.Sort(sort.Reverse(sort.IntSlice(avail)))
 
