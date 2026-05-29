@@ -50,6 +50,54 @@
 /* Arithmetic expression max length */
 #define CL_ARITHM_EXPR_SIZE 50
 
+/* Bytecode VM constants */
+#define CL_EXPR_MAX_CODE    128  /* max bytecode instructions per expression */
+#define CL_EXPR_STACK_DEPTH 16   /* evaluation stack depth */
+
+/* Bytecode opcodes */
+enum cl_opcode {
+    CL_OP_NOP = 0,
+    CL_OP_PUSH_CONST,      /* operand: int32 constant */
+    CL_OP_LOAD_VAR,        /* operand: (type<<16 | offset) */
+    CL_OP_LOAD_VAR_IDX,    /* operand: (type<<16 | base_offset), index from stack top */
+    CL_OP_STORE_VAR,       /* operand: (type<<16 | offset) — pops value from stack */
+    CL_OP_STORE_VAR_IDX,   /* operand: (type<<16 | base_offset), index+value from stack */
+    CL_OP_ADD,
+    CL_OP_SUB,
+    CL_OP_MUL,
+    CL_OP_DIV,
+    CL_OP_MOD,
+    CL_OP_POW,
+    CL_OP_AND,             /* bitwise */
+    CL_OP_OR,              /* bitwise */
+    CL_OP_XOR,             /* bitwise */
+    CL_OP_NOT,             /* logical not (unary) */
+    CL_OP_NEG,             /* arithmetic negate (unary) */
+    CL_OP_CMP_LT,
+    CL_OP_CMP_GT,
+    CL_OP_CMP_EQ,
+    CL_OP_CMP_LE,
+    CL_OP_CMP_GE,
+    CL_OP_CMP_NE,
+    CL_OP_ABS,             /* unary: abs(top) */
+    CL_OP_MINI,            /* binary: min(a,b) */
+    CL_OP_MAXI,            /* binary: max(a,b) */
+};
+
+/* A single bytecode instruction */
+typedef struct {
+    uint8_t  opcode;       /* cl_opcode */
+    int32_t  operand;      /* constant value, or packed var ref */
+} cl_instruction_t;
+
+/* Compiled expression (lives alongside the source string) */
+typedef struct {
+    uint8_t          kind;   /* 0=compare, 1=operate */
+    uint8_t          len;    /* number of instructions */
+    uint8_t          valid;  /* 1 if compilation succeeded */
+    cl_instruction_t code[CL_EXPR_MAX_CODE];
+} cl_compiled_expr_t;
+
 /* Labels/comments */
 #define CL_LGT_LABEL   10
 #define CL_LGT_COMMENT 30
@@ -255,6 +303,7 @@ typedef struct {
     cl_rung_t           rungs[CL_MAX_RUNGS];
     cl_section_t        sections[CL_MAX_SECTIONS];
     cl_arithm_expr_t    arithm_exprs[CL_MAX_ARITHM_EXPR];
+    cl_compiled_expr_t  compiled_exprs[CL_MAX_ARITHM_EXPR];
 
     /* Runtime data — written by RT, read by Go for monitoring */
     cl_timer_t          timers[CL_MAX_TIMERS];
@@ -297,5 +346,11 @@ void classicladder_rt_init_data(classicladder_rt_t *rt);
 
 /* Write a variable (for forcing from UI). Thread-safe for single-writer. */
 void write_var_ext(classicladder_rt_t *rt, int type, int offset, int value);
+
+/* Evaluate a compiled COMPAR expression. Returns 1 (true) or 0 (false). */
+int cl_eval_compare(classicladder_rt_t *rt, int expr_index);
+
+/* Evaluate a compiled OPERATE expression. Writes result to target var. */
+void cl_eval_operate(classicladder_rt_t *rt, int expr_index);
 
 #endif /* CLASSICLADDER_RT_H */

@@ -429,11 +429,11 @@ static void eval_rung(classicladder_rt_t *rt, cl_rung_t *rung) {
                 output_state = rt->timers_iec[ele->var_num].output;
                 break;
             case CL_ELE_COMPAR:
-                /* TODO: arithmetic comparison evaluation */
-                output_state = input_state;
+                output_state = cl_eval_compare(rt, ele->var_num) && input_state;
                 break;
             case CL_ELE_OUTPUT_OPERATE:
-                /* TODO: arithmetic operation evaluation */
+                if (input_state)
+                    cl_eval_operate(rt, ele->var_num);
                 output_state = input_state;
                 break;
             case CL_ELE_OUTPUT_JUMP:
@@ -570,4 +570,139 @@ void classicladder_rt_init_data(classicladder_rt_t *rt) {
 
 void write_var_ext(classicladder_rt_t *rt, int type, int offset, int value) {
     write_var(rt, type, offset, value);
+}
+
+/* --- Bytecode expression evaluator (RT-safe: no malloc, no string ops) --- */
+
+static int ipow(int base, int exp) {
+    if (exp < 0) return 0;
+    int result = 1;
+    while (exp > 0) {
+        if (exp & 1) result *= base;
+        base *= base;
+        exp >>= 1;
+    }
+    return result;
+}
+
+static int eval_bytecode(classicladder_rt_t *rt, const cl_compiled_expr_t *ce) {
+    int32_t stack[CL_EXPR_STACK_DEPTH];
+    int sp = 0;
+    int a, b;
+
+    for (int i = 0; i < ce->len; i++) {
+        const cl_instruction_t *ins = &ce->code[i];
+        switch (ins->opcode) {
+        case CL_OP_PUSH_CONST:
+            if (sp >= CL_EXPR_STACK_DEPTH) return 0;
+            stack[sp++] = ins->operand;
+            break;
+        case CL_OP_LOAD_VAR:
+            if (sp >= CL_EXPR_STACK_DEPTH) return 0;
+            stack[sp++] = read_var(rt, (ins->operand >> 16) & 0xFFFF,
+                                   ins->operand & 0xFFFF);
+            break;
+        case CL_OP_LOAD_VAR_IDX:
+            if (sp < 1) return 0;
+            a = stack[--sp]; /* index value */
+            if (sp >= CL_EXPR_STACK_DEPTH) return 0;
+            stack[sp++] = read_var(rt, (ins->operand >> 16) & 0xFFFF,
+                                   (ins->operand & 0xFFFF) + a);
+            break;
+        case CL_OP_STORE_VAR:
+            if (sp < 1) return 0;
+            a = stack[--sp];
+            write_var(rt, (ins->operand >> 16) & 0xFFFF,
+                      ins->operand & 0xFFFF, a);
+            break;
+        case CL_OP_STORE_VAR_IDX:
+            if (sp < 2) return 0;
+            a = stack[--sp]; /* value */
+            b = stack[--sp]; /* index */
+            write_var(rt, (ins->operand >> 16) & 0xFFFF,
+                      (ins->operand & 0xFFFF) + b, a);
+            break;
+        case CL_OP_ADD:
+            if (sp < 2) return 0;
+            sp--; stack[sp-1] = stack[sp-1] + stack[sp]; break;
+        case CL_OP_SUB:
+            if (sp < 2) return 0;
+            sp--; stack[sp-1] = stack[sp-1] - stack[sp]; break;
+        case CL_OP_MUL:
+            if (sp < 2) return 0;
+            sp--; stack[sp-1] = stack[sp-1] * stack[sp]; break;
+        case CL_OP_DIV:
+            if (sp < 2) return 0;
+            sp--; stack[sp-1] = stack[sp] ? stack[sp-1] / stack[sp] : 0; break;
+        case CL_OP_MOD:
+            if (sp < 2) return 0;
+            sp--; stack[sp-1] = stack[sp] ? stack[sp-1] % stack[sp] : 0; break;
+        case CL_OP_POW:
+            if (sp < 2) return 0;
+            sp--; stack[sp-1] = ipow(stack[sp-1], stack[sp]); break;
+        case CL_OP_AND:
+            if (sp < 2) return 0;
+            sp--; stack[sp-1] = stack[sp-1] & stack[sp]; break;
+        case CL_OP_OR:
+            if (sp < 2) return 0;
+            sp--; stack[sp-1] = stack[sp-1] | stack[sp]; break;
+        case CL_OP_XOR:
+            if (sp < 2) return 0;
+            sp--; stack[sp-1] = stack[sp-1] ^ stack[sp]; break;
+        case CL_OP_NOT:
+            if (sp < 1) return 0;
+            stack[sp-1] = !stack[sp-1]; break;
+        case CL_OP_NEG:
+            if (sp < 1) return 0;
+            stack[sp-1] = -stack[sp-1]; break;
+        case CL_OP_CMP_LT:
+            if (sp < 2) return 0;
+            sp--; stack[sp-1] = stack[sp-1] < stack[sp]; break;
+        case CL_OP_CMP_GT:
+            if (sp < 2) return 0;
+            sp--; stack[sp-1] = stack[sp-1] > stack[sp]; break;
+        case CL_OP_CMP_EQ:
+            if (sp < 2) return 0;
+            sp--; stack[sp-1] = stack[sp-1] == stack[sp]; break;
+        case CL_OP_CMP_LE:
+            if (sp < 2) return 0;
+            sp--; stack[sp-1] = stack[sp-1] <= stack[sp]; break;
+        case CL_OP_CMP_GE:
+            if (sp < 2) return 0;
+            sp--; stack[sp-1] = stack[sp-1] >= stack[sp]; break;
+        case CL_OP_CMP_NE:
+            if (sp < 2) return 0;
+            sp--; stack[sp-1] = stack[sp-1] != stack[sp]; break;
+        case CL_OP_ABS:
+            if (sp < 1) return 0;
+            stack[sp-1] = stack[sp-1] < 0 ? -stack[sp-1] : stack[sp-1]; break;
+        case CL_OP_MINI:
+            if (sp < 2) return 0;
+            sp--; stack[sp-1] = stack[sp-1] < stack[sp] ? stack[sp-1] : stack[sp]; break;
+        case CL_OP_MAXI:
+            if (sp < 2) return 0;
+            sp--; stack[sp-1] = stack[sp-1] > stack[sp] ? stack[sp-1] : stack[sp]; break;
+        default:
+            return 0;
+        }
+    }
+    return sp > 0 ? stack[0] : 0;
+}
+
+int cl_eval_compare(classicladder_rt_t *rt, int expr_index) {
+    if (expr_index < 0 || expr_index >= CL_MAX_ARITHM_EXPR)
+        return 0;
+    const cl_compiled_expr_t *ce = &rt->compiled_exprs[expr_index];
+    if (!ce->valid || ce->len == 0)
+        return 0;
+    return eval_bytecode(rt, ce) ? 1 : 0;
+}
+
+void cl_eval_operate(classicladder_rt_t *rt, int expr_index) {
+    if (expr_index < 0 || expr_index >= CL_MAX_ARITHM_EXPR)
+        return;
+    const cl_compiled_expr_t *ce = &rt->compiled_exprs[expr_index];
+    if (!ce->valid || ce->len == 0)
+        return;
+    eval_bytecode(rt, ce);
 }

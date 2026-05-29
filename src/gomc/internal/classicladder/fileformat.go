@@ -98,6 +98,13 @@ func (m *classicladder) loadCLPFile(path string) error {
 		m.parseSymbols(content)
 	}
 
+	// Compile all arithmetic expressions to bytecode
+	if errs := m.compileAllExpressions(); len(errs) > 0 {
+		for _, e := range errs {
+			m.logger.Warn("expression compile error", "error", e)
+		}
+	}
+
 	m.logger.Info("loaded CLP project", "path", path)
 	return nil
 }

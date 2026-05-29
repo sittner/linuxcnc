@@ -30,6 +30,7 @@ import "C"
 import (
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -77,7 +78,52 @@ func newClassicLadder(ini *inifile.IniFile, logger *slog.Logger, name string, ar
 	}
 
 	// Parse args for size overrides (e.g. numRungs=200 numBits=500)
-	// TODO: parse key=value pairs from args
+	// and project file path (last positional arg or modbus_port=N)
+	var projectFile string
+	for _, arg := range args {
+		if !strings.Contains(arg, "=") {
+			// Positional arg = project file path
+			projectFile = arg
+			continue
+		}
+		parts := strings.SplitN(arg, "=", 2)
+		key, val := parts[0], parts[1]
+		v := C.int(atoi(val))
+		switch key {
+		case "numRungs":
+			sizes.nbr_rungs = v
+		case "numBits":
+			sizes.nbr_bits = v
+		case "numWords":
+			sizes.nbr_words = v
+		case "numTimers":
+			sizes.nbr_timers = v
+		case "numMonostables":
+			sizes.nbr_monostables = v
+		case "numCounters":
+			sizes.nbr_counters = v
+		case "numTimersIec":
+			sizes.nbr_timers_iec = v
+		case "numPhysInputs":
+			sizes.nbr_phys_inputs = v
+		case "numPhysOutputs":
+			sizes.nbr_phys_outputs = v
+		case "numArithmExpr":
+			sizes.nbr_arithm_expr = v
+		case "numSections":
+			sizes.nbr_sections = v
+		case "numSymbols":
+			sizes.nbr_symbols = v
+		case "numS32in":
+			sizes.nbr_s32_in = v
+		case "numS32out":
+			sizes.nbr_s32_out = v
+		case "numFloatIn":
+			sizes.nbr_float_in = v
+		case "numFloatOut":
+			sizes.nbr_float_out = v
+		}
+	}
 
 	rt := C.classicladder_rt_alloc(&sizes)
 	if rt == nil {
@@ -117,11 +163,12 @@ func newClassicLadder(ini *inifile.IniFile, logger *slog.Logger, name string, ar
 	C.hal_ready(compID)
 
 	m := &classicladder{
-		logger:    logger,
-		rt:        rt,
-		compID:    compID,
-		name:      name,
-		functName: functName,
+		logger:      logger,
+		rt:          rt,
+		compID:      compID,
+		name:        name,
+		functName:   functName,
+		projectFile: projectFile,
 	}
 
 	// Register REST API
@@ -145,8 +192,14 @@ func newClassicLadder(ini *inifile.IniFile, logger *slog.Logger, name string, ar
 }
 
 func (m *classicladder) Start() error {
-	// Load project file if specified in INI: [CLASSICLADDER]PROGRAM
-	// TODO: load from INI config
+	// Load project file if specified as module argument
+	if m.projectFile != "" {
+		if err := m.loadCLPFile(m.projectFile); err != nil {
+			m.logger.Error("failed to load project", "path", m.projectFile, "err", err)
+			return err
+		}
+		m.setState(C.CL_STATE_RUN)
+	}
 	return nil
 }
 
