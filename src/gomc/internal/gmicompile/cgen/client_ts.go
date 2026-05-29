@@ -187,9 +187,9 @@ func (g *clientTSGen) emitClientMethod(fn ast.Func) {
 			paramName := toCamelCaseTS(pp)
 			tsPath = strings.Replace(tsPath, "{"+pp+"}", "${encodeURIComponent(String("+paramName+"))}", 1)
 		}
-		g.printf("    const path = `%s`;\n", tsPath)
+		g.printf("    const apiPath = `%s`;\n", tsPath)
 	} else {
-		g.printf("    const path = '%s';\n", path)
+		g.printf("    const apiPath = '%s';\n", path)
 	}
 
 	// Query parameters (GET/DELETE)
@@ -206,7 +206,7 @@ func (g *clientTSGen) emitClientMethod(fn ast.Func) {
 			}
 		}
 		g.printf("    const qs = query.toString();\n")
-		g.printf("    const fullPath = qs ? `${path}?${qs}` : path;\n")
+		g.printf("    const fullPath = qs ? `${apiPath}?${qs}` : apiPath;\n")
 	}
 
 	// Body (POST/PUT/PATCH)
@@ -229,7 +229,7 @@ func (g *clientTSGen) emitClientMethod(fn ast.Func) {
 	}
 
 	// Path variable to use
-	pathVar := "path"
+	pathVar := "apiPath"
 	if hasQuery {
 		pathVar = "fullPath"
 	}

@@ -266,143 +266,143 @@ export class ClassicladderClient {
   // --- API Methods ---
 
   async getStatus(): Promise<Status> {
-    const path = '/status';
-    return await this.doRequest<Status>('GET', path) as Status;
+    const apiPath = '/status';
+    return await this.doRequest<Status>('GET', apiPath) as Status;
   }
 
   async setState(state: LadderState): Promise<number> {
-    const path = '/state';
+    const apiPath = '/state';
     const body = {
       state: state,
     };
-    return await this.doRequest<number>('POST', path, body) as number;
+    return await this.doRequest<number>('POST', apiPath, body) as number;
   }
 
   async getProgram(): Promise<Program> {
-    const path = '/program';
-    return await this.doRequest<Program>('GET', path) as Program;
+    const apiPath = '/program';
+    return await this.doRequest<Program>('GET', apiPath) as Program;
   }
 
   async setProgram(program: Program): Promise<number> {
-    const path = '/program';
+    const apiPath = '/program';
     const body = {
       program: program,
     };
-    return await this.doRequest<number>('PUT', path, body) as number;
+    return await this.doRequest<number>('PUT', apiPath, body) as number;
   }
 
   async getRung(index: number): Promise<Rung> {
-    const path = `/rung/${encodeURIComponent(String(index))}`;
-    return await this.doRequest<Rung>('GET', path) as Rung;
+    const apiPath = `/rung/${encodeURIComponent(String(index))}`;
+    return await this.doRequest<Rung>('GET', apiPath) as Rung;
   }
 
   async setRung(index: number, rung: Rung): Promise<number> {
-    const path = `/rung/${encodeURIComponent(String(index))}`;
+    const apiPath = `/rung/${encodeURIComponent(String(index))}`;
     const body = {
       rung: rung,
     };
-    return await this.doRequest<number>('PUT', path, body) as number;
+    return await this.doRequest<number>('PUT', apiPath, body) as number;
   }
 
   async getSection(index: number): Promise<Section> {
-    const path = `/section/${encodeURIComponent(String(index))}`;
-    return await this.doRequest<Section>('GET', path) as Section;
+    const apiPath = `/section/${encodeURIComponent(String(index))}`;
+    return await this.doRequest<Section>('GET', apiPath) as Section;
   }
 
   async setSection(index: number, section: Section): Promise<number> {
-    const path = `/section/${encodeURIComponent(String(index))}`;
+    const apiPath = `/section/${encodeURIComponent(String(index))}`;
     const body = {
       section: section,
     };
-    return await this.doRequest<number>('PUT', path, body) as number;
+    return await this.doRequest<number>('PUT', apiPath, body) as number;
   }
 
   async getVariables(): Promise<Variables> {
-    const path = '/variables';
-    return await this.doRequest<Variables>('GET', path) as Variables;
+    const apiPath = '/variables';
+    return await this.doRequest<Variables>('GET', apiPath) as Variables;
   }
 
   async setVariable(varType: number, offset: number, value: number): Promise<number> {
-    const path = '/variable';
+    const apiPath = '/variable';
     const body = {
       varType: varType,
       offset: offset,
       value: value,
     };
-    return await this.doRequest<number>('POST', path, body) as number;
+    return await this.doRequest<number>('POST', apiPath, body) as number;
   }
 
   async loadProject(path: string): Promise<number> {
-    const path = '/load';
+    const apiPath = '/load';
     const body = {
       path: path,
     };
-    return await this.doRequest<number>('POST', path, body) as number;
+    return await this.doRequest<number>('POST', apiPath, body) as number;
   }
 
   async saveProject(path: string): Promise<number> {
-    const path = '/save';
+    const apiPath = '/save';
     const body = {
       path: path,
     };
-    return await this.doRequest<number>('POST', path, body) as number;
+    return await this.doRequest<number>('POST', apiPath, body) as number;
   }
 
   async getSymbols(): Promise<Symbol[]> {
-    const path = '/symbols';
-    return await this.doRequest<Symbol[]>('GET', path) as Symbol[];
+    const apiPath = '/symbols';
+    return await this.doRequest<Symbol[]>('GET', apiPath) as Symbol[];
   }
 
   async getModbusComParams(): Promise<ModbusComParams> {
-    const path = '/modbus/com_params';
-    return await this.doRequest<ModbusComParams>('GET', path) as ModbusComParams;
+    const apiPath = '/modbus/com_params';
+    return await this.doRequest<ModbusComParams>('GET', apiPath) as ModbusComParams;
   }
 
   async setModbusComParams(params: ModbusComParams): Promise<number> {
-    const path = '/modbus/com_params';
+    const apiPath = '/modbus/com_params';
     const body = {
       params: params,
     };
-    return await this.doRequest<number>('PUT', path, body) as number;
+    return await this.doRequest<number>('PUT', apiPath, body) as number;
   }
 
   async getModbusRequests(): Promise<ModbusRequest[]> {
-    const path = '/modbus/requests';
-    return await this.doRequest<ModbusRequest[]>('GET', path) as ModbusRequest[];
+    const apiPath = '/modbus/requests';
+    return await this.doRequest<ModbusRequest[]>('GET', apiPath) as ModbusRequest[];
   }
 
   async setModbusRequests(requests: ModbusRequest[]): Promise<number> {
-    const path = '/modbus/requests';
+    const apiPath = '/modbus/requests';
     const body = {
       requests: requests,
     };
-    return await this.doRequest<number>('PUT', path, body) as number;
+    return await this.doRequest<number>('PUT', apiPath, body) as number;
   }
 
   async getModbusStatus(): Promise<ModbusStatus> {
-    const path = '/modbus/status';
-    return await this.doRequest<ModbusStatus>('GET', path) as ModbusStatus;
+    const apiPath = '/modbus/status';
+    return await this.doRequest<ModbusStatus>('GET', apiPath) as ModbusStatus;
   }
 
   async setSymbols(symbols: Symbol[]): Promise<number> {
-    const path = '/symbols';
+    const apiPath = '/symbols';
     const body = {
       symbols: symbols,
     };
-    return await this.doRequest<number>('PUT', path, body) as number;
+    return await this.doRequest<number>('PUT', apiPath, body) as number;
   }
 
   async getExpressions(): Promise<ArithmExpr[]> {
-    const path = '/expressions';
-    return await this.doRequest<ArithmExpr[]>('GET', path) as ArithmExpr[];
+    const apiPath = '/expressions';
+    return await this.doRequest<ArithmExpr[]>('GET', apiPath) as ArithmExpr[];
   }
 
   async setExpressions(exprs: ArithmExpr[]): Promise<number> {
-    const path = '/expressions';
+    const apiPath = '/expressions';
     const body = {
       exprs: exprs,
     };
-    return await this.doRequest<number>('PUT', path, body) as number;
+    return await this.doRequest<number>('PUT', apiPath, body) as number;
   }
 
 }
