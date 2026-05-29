@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import type { Rung, Element } from '../generated/classicladder_client';
+import { ladderStore, elementSize } from '../stores/ladder';
 
 const props = defineProps<{
   rung: Rung;
@@ -160,6 +161,26 @@ const H4 = Math.round(H / 4);
 function cx(col: number): number { return RAIL_W + col * W; }
 function cy(row: number): number { return row * H; }
 function cmy(row: number): number { return cy(row) + H2; }
+
+const hoverCell = ref<{ row: number; col: number } | null>(null);
+
+function onHover(row: number, col: number) {
+  hoverCell.value = { row, col };
+}
+function onLeave() {
+  hoverCell.value = null;
+}
+
+const hoverPreview = computed(() => {
+  if (!hoverCell.value) return null;
+  const tool = ladderStore.state.editTool;
+  if (tool < 0) return null; // no tool selected
+  const sz = elementSize(tool);
+  const { row, col } = hoverCell.value;
+  // Bounds check
+  if (col + sz.cols > COLS || row + sz.rows > ROWS) return null;
+  return { x: cx(col), y: cy(row), w: sz.cols * W, h: sz.rows * H };
+});
 </script>
 
 <template>
@@ -338,8 +359,16 @@ function cmy(row: number): number { return cy(row) + H2; }
       <template v-for="cell in cells" :key="`click-${cell.row}-${cell.col}`">
         <rect :x="cx(cell.col)" :y="cy(cell.row)" :width="W" :height="H"
               class="click-overlay"
-              @click="emit('cellClick', cell.row, cell.col)"/>
+              @click="emit('cellClick', cell.row, cell.col)"
+              @mouseenter="onHover(cell.row, cell.col)"
+              @mouseleave="onLeave()"/>
       </template>
+
+      <!-- Hover preview showing footprint of element to be placed -->
+      <rect v-if="hoverPreview"
+            :x="hoverPreview.x" :y="hoverPreview.y"
+            :width="hoverPreview.w" :height="hoverPreview.h"
+            class="hover-preview"/>
     </svg>
   </div>
 </template>
@@ -371,5 +400,6 @@ function cmy(row: number): number { return cy(row) + H2; }
 .clickable:hover .contact-bar { stroke: #b5f0c7; }
 .clickable:hover .coil-arc { stroke: #fce8b2; }
 .click-overlay { fill: transparent; cursor: pointer; }
-.click-overlay:hover { fill: rgba(137, 180, 250, 0.05); }
+.click-overlay:hover { fill: rgba(137, 180, 250, 0.03); }
+.hover-preview { fill: rgba(137, 180, 250, 0.12); stroke: #89b4fa; stroke-width: 1; stroke-dasharray: 3 2; pointer-events: none; }
 </style>
