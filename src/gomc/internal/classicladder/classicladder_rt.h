@@ -42,6 +42,11 @@
 #define CL_MAX_FLOAT_OUT        10
 #define CL_MAX_ERROR_BITS       10
 #define CL_MAX_STEPS            128
+#define CL_MAX_TRANSITIONS      256
+#define CL_MAX_SWITCHS          10
+#define CL_MAX_SEQ_COMMENTS     50
+#define CL_MAX_SEQ_PAGES        5
+#define CL_SEQ_COMMENT_LGT      51
 
 /* Rung grid dimensions */
 #define CL_RUNG_WIDTH  10
@@ -263,6 +268,39 @@ typedef struct {
     char comment[CL_LGT_SYMBOL_COMMENT];
 } cl_symbol_t;
 
+/* Sequential Function Chart (SFC/Grafcet) structures */
+typedef struct {
+    char init_step;      /* activated at init */
+    int  step_number;    /* logical step number (for VAR_STEP_ACTIVITY) */
+    int8_t num_page;     /* -1 if not used */
+    char posi_x;
+    char posi_y;
+    /* dynamic state */
+    char activated;
+    int  time_activated; /* ms */
+} cl_step_t;
+
+typedef struct {
+    int  var_type_condi;  /* condition variable type */
+    int  var_num_condi;   /* condition variable offset */
+    int16_t num_step_to_activ[CL_MAX_SWITCHS];
+    int16_t num_step_to_desactiv[CL_MAX_SWITCHS];
+    int16_t num_trans_linked_for_start[CL_MAX_SWITCHS];
+    int16_t num_trans_linked_for_end[CL_MAX_SWITCHS];
+    int8_t num_page;     /* -1 if not used */
+    char posi_x;
+    char posi_y;
+    /* dynamic state */
+    char activated;
+} cl_transition_t;
+
+typedef struct {
+    int8_t num_page;     /* -1 if not used */
+    char posi_x;
+    char posi_y;
+    char comment[CL_SEQ_COMMENT_LGT];
+} cl_seq_comment_t;
+
 /* PLC size configuration */
 typedef struct {
     int nbr_rungs;
@@ -304,6 +342,11 @@ typedef struct {
     cl_section_t        sections[CL_MAX_SECTIONS];
     cl_arithm_expr_t    arithm_exprs[CL_MAX_ARITHM_EXPR];
     cl_compiled_expr_t  compiled_exprs[CL_MAX_ARITHM_EXPR];
+
+    /* Sequential (SFC) data */
+    cl_step_t           steps[CL_MAX_STEPS];
+    cl_transition_t     transitions[CL_MAX_TRANSITIONS];
+    cl_seq_comment_t    seq_comments[CL_MAX_SEQ_COMMENTS];
 
     /* Runtime data — written by RT, read by Go for monitoring */
     cl_timer_t          timers[CL_MAX_TIMERS];
@@ -352,5 +395,11 @@ int cl_eval_compare(classicladder_rt_t *rt, int expr_index);
 
 /* Evaluate a compiled OPERATE expression. Writes result to target var. */
 void cl_eval_operate(classicladder_rt_t *rt, int expr_index);
+
+/* Initialize sequential data (set init steps active). */
+void cl_prepare_sequential(classicladder_rt_t *rt);
+
+/* Evaluate one sequential page. */
+void cl_refresh_sequential_page(classicladder_rt_t *rt, int page_nbr);
 
 #endif /* CLASSICLADDER_RT_H */

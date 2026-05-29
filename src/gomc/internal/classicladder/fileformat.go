@@ -98,6 +98,11 @@ func (m *classicladder) loadCLPFile(path string) error {
 		m.parseSymbols(content)
 	}
 
+	// Load sequential data
+	if content, ok := files["sequential.csv"]; ok {
+		m.parseSequential(content)
+	}
+
 	// Compile all arithmetic expressions to bytecode
 	if errs := m.compileAllExpressions(); len(errs) > 0 {
 		for _, e := range errs {
@@ -575,4 +580,104 @@ func atoi(s string) int {
 	s = strings.TrimSpace(s)
 	v, _ := strconv.Atoi(s)
 	return v
+}
+
+func (m *classicladder) parseSequential(content string) {
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || line[0] == ';' || line[0] == '#' {
+			continue
+		}
+		switch line[0] {
+		case 'S':
+			// Step: S<idx>,<init>,<stepnumber>,<page>,<x>,<y>
+			parts := strings.Split(line[1:], ",")
+			if len(parts) < 6 {
+				continue
+			}
+			idx := atoi(parts[0])
+			if idx < 0 || idx >= C.CL_MAX_STEPS {
+				continue
+			}
+			step := &m.rt.steps[idx]
+			step.init_step = C.char(atoi(parts[1]))
+			step.step_number = C.int(atoi(parts[2]))
+			step.num_page = C.int8_t(atoi(parts[3]))
+			step.posi_x = C.char(atoi(parts[4]))
+			step.posi_y = C.char(atoi(parts[5]))
+
+		case 'T':
+			// Transition: T<idx>,<activ0..9>,<desactiv0..9>,<linked_start0..9>,<linked_end0..9>,<page>,<x>,<y>
+			parts := strings.Split(line[1:], ",")
+			expected := 1 + 4*C.CL_MAX_SWITCHS + 3
+			if len(parts) < expected {
+				continue
+			}
+			idx := atoi(parts[0])
+			if idx < 0 || idx >= C.CL_MAX_TRANSITIONS {
+				continue
+			}
+			trans := &m.rt.transitions[idx]
+			p := 1
+			for j := 0; j < C.CL_MAX_SWITCHS; j++ {
+				trans.num_step_to_activ[j] = C.int16_t(atoi(parts[p]))
+				p++
+			}
+			for j := 0; j < C.CL_MAX_SWITCHS; j++ {
+				trans.num_step_to_desactiv[j] = C.int16_t(atoi(parts[p]))
+				p++
+			}
+			for j := 0; j < C.CL_MAX_SWITCHS; j++ {
+				trans.num_trans_linked_for_start[j] = C.int16_t(atoi(parts[p]))
+				p++
+			}
+			for j := 0; j < C.CL_MAX_SWITCHS; j++ {
+				trans.num_trans_linked_for_end[j] = C.int16_t(atoi(parts[p]))
+				p++
+			}
+			trans.num_page = C.int8_t(atoi(parts[p]))
+			p++
+			trans.posi_x = C.char(atoi(parts[p]))
+			p++
+			trans.posi_y = C.char(atoi(parts[p]))
+
+		case 'C':
+			// Condition: C<trans_idx>,0,<vartype>/<varoffset>
+			parts := strings.Split(line[1:], ",")
+			if len(parts) < 3 {
+				continue
+			}
+			idx := atoi(parts[0])
+			if idx < 0 || idx >= C.CL_MAX_TRANSITIONS {
+				continue
+			}
+			trans := &m.rt.transitions[idx]
+			// parts[2] is "type/offset"
+			varParts := strings.Split(strings.TrimSpace(parts[2]), "/")
+			if len(varParts) >= 2 {
+				trans.var_type_condi = C.int(atoi(varParts[0]))
+				trans.var_num_condi = C.int(atoi(varParts[1]))
+			}
+
+		case 'N':
+			// Comment: N<idx>,<page>,<x>,<y>,<text>
+			parts := strings.SplitN(line[1:], ",", 5)
+			if len(parts) < 4 {
+				continue
+			}
+			idx := atoi(parts[0])
+			if idx < 0 || idx >= C.CL_MAX_SEQ_COMMENTS {
+				continue
+			}
+			sc := &m.rt.seq_comments[idx]
+			sc.num_page = C.int8_t(atoi(parts[1]))
+			sc.posi_x = C.char(atoi(parts[2]))
+			sc.posi_y = C.char(atoi(parts[3]))
+			if len(parts) >= 5 {
+				copyGoStringToC(&sc.comment[0], parts[4], C.CL_SEQ_COMMENT_LGT)
+			}
+		}
+	}
+	// Activate init steps
+	C.cl_prepare_sequential(m.rt)
 }

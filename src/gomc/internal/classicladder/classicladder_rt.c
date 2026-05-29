@@ -467,20 +467,22 @@ static void eval_all_sections(classicladder_rt_t *rt) {
         cl_section_t *sec = &rt->sections[s];
         if (!sec->used)
             continue;
-        if (sec->language != CL_SECTION_LADDER)
-            continue; /* TODO: sequential support */
 
-        int rung_idx = sec->first_rung;
-        int safety = 0;
-        while (rung_idx >= 0 && rung_idx < rt->sizes.nbr_rungs && safety < CL_MAX_RUNGS) {
-            cl_rung_t *rung = &rt->rungs[rung_idx];
-            if (rung->used) {
-                eval_rung(rt, rung);
+        if (sec->language == CL_SECTION_LADDER) {
+            int rung_idx = sec->first_rung;
+            int safety = 0;
+            while (rung_idx >= 0 && rung_idx < rt->sizes.nbr_rungs && safety < CL_MAX_RUNGS) {
+                cl_rung_t *rung = &rt->rungs[rung_idx];
+                if (rung->used) {
+                    eval_rung(rt, rung);
+                }
+                if (rung_idx == sec->last_rung)
+                    break;
+                rung_idx = rung->next_rung;
+                safety++;
             }
-            if (rung_idx == sec->last_rung)
-                break;
-            rung_idx = rung->next_rung;
-            safety++;
+        } else if (sec->language == CL_SECTION_SEQUENTIAL) {
+            cl_refresh_sequential_page(rt, sec->sequential_page);
         }
     }
 }
@@ -555,6 +557,24 @@ void classicladder_rt_init_data(classicladder_rt_t *rt) {
     memset(rt->monostables, 0, sizeof(rt->monostables));
     memset(rt->counters, 0, sizeof(rt->counters));
     memset(rt->timers_iec, 0, sizeof(rt->timers_iec));
+    /* Initialize SFC: set all steps/transitions to unused */
+    for (int i = 0; i < CL_MAX_STEPS; i++) {
+        rt->steps[i].num_page = -1;
+        rt->steps[i].activated = 0;
+        rt->steps[i].time_activated = 0;
+    }
+    for (int i = 0; i < CL_MAX_TRANSITIONS; i++) {
+        rt->transitions[i].num_page = -1;
+        for (int j = 0; j < CL_MAX_SWITCHS; j++) {
+            rt->transitions[i].num_step_to_activ[j] = -1;
+            rt->transitions[i].num_step_to_desactiv[j] = -1;
+            rt->transitions[i].num_trans_linked_for_start[j] = -1;
+            rt->transitions[i].num_trans_linked_for_end[j] = -1;
+        }
+    }
+    for (int i = 0; i < CL_MAX_SEQ_COMMENTS; i++) {
+        rt->seq_comments[i].num_page = -1;
+    }
     /* Default timer presets */
     for (int i = 0; i < CL_MAX_TIMERS; i++) {
         rt->timers[i].base = 1; /* seconds */
@@ -705,4 +725,87 @@ void cl_eval_operate(classicladder_rt_t *rt, int expr_index) {
     if (!ce->valid || ce->len == 0)
         return;
     eval_bytecode(rt, ce);
+}
+
+/* --- Sequential Function Chart (SFC/Grafcet) evaluation --- */
+
+void cl_prepare_sequential(classicladder_rt_t *rt) {
+    for (int i = 0; i < CL_MAX_STEPS; i++) {
+        rt->steps[i].activated = 0;
+        rt->steps[i].time_activated = 0;
+        if (rt->steps[i].init_step && rt->steps[i].num_page >= 0)
+            rt->steps[i].activated = 1;
+    }
+    for (int i = 0; i < CL_MAX_TRANSITIONS; i++) {
+        rt->transitions[i].activated = 0;
+    }
+}
+
+static int refresh_transition(classicladder_rt_t *rt, cl_transition_t *trans) {
+    /* Read transition condition */
+    trans->activated = read_var(rt, trans->var_type_condi, trans->var_num_condi);
+    if (!trans->activated)
+        return 0;
+
+    /* Check all steps to deactivate are currently active */
+    int all_on = 1;
+    for (int i = 0; i < CL_MAX_SWITCHS && trans->num_step_to_desactiv[i] != -1; i++) {
+        int step_idx = trans->num_step_to_desactiv[i];
+        if (step_idx >= 0 && step_idx < CL_MAX_STEPS) {
+            if (!rt->steps[step_idx].activated) {
+                all_on = 0;
+                break;
+            }
+        }
+    }
+
+    if (!all_on)
+        return 0;
+
+    /* Transition fires: deactivate upstream steps */
+    for (int i = 0; i < CL_MAX_SWITCHS && trans->num_step_to_desactiv[i] != -1; i++) {
+        int step_idx = trans->num_step_to_desactiv[i];
+        if (step_idx >= 0 && step_idx < CL_MAX_STEPS)
+            rt->steps[step_idx].activated = 0;
+    }
+
+    /* Activate downstream steps */
+    for (int i = 0; i < CL_MAX_SWITCHS && trans->num_step_to_activ[i] != -1; i++) {
+        int step_idx = trans->num_step_to_activ[i];
+        if (step_idx >= 0 && step_idx < CL_MAX_STEPS)
+            rt->steps[step_idx].activated = 1;
+    }
+
+    return 1; /* state changed */
+}
+
+static void refresh_steps_vars(classicladder_rt_t *rt) {
+    for (int i = 0; i < CL_MAX_STEPS; i++) {
+        cl_step_t *step = &rt->steps[i];
+        if (step->num_page < 0)
+            continue;
+        if (step->activated)
+            step->time_activated += rt->periodic_refresh_ms;
+        else
+            step->time_activated = 0;
+        write_var(rt, CL_VAR_STEP_ACTIVITY, step->step_number, step->activated);
+        write_var(rt, CL_VAR_STEP_TIME, step->step_number, step->time_activated / 1000);
+    }
+}
+
+void cl_refresh_sequential_page(classicladder_rt_t *rt, int page_nbr) {
+    int state_changed;
+    int loop_safety = 0;
+    do {
+        state_changed = 0;
+        for (int i = 0; i < CL_MAX_TRANSITIONS; i++) {
+            cl_transition_t *trans = &rt->transitions[i];
+            if (trans->num_page != page_nbr)
+                continue;
+            if (refresh_transition(rt, trans))
+                state_changed = 1;
+        }
+        loop_safety++;
+    } while (state_changed && loop_safety < 50);
+    refresh_steps_vars(rt);
 }

@@ -75,3 +75,44 @@ func evalOperateForTest(ce C.cl_compiled_expr_t, offset int) int32 {
 
 	return int32(rt.var_words[offset])
 }
+
+// newTestRT allocates a minimal RT instance for tests.
+func newTestRT() *C.classicladder_rt_t {
+	sizes := C.cl_sizes_t{
+		nbr_rungs:        10,
+		nbr_bits:         100,
+		nbr_words:        100,
+		nbr_timers:       10,
+		nbr_monostables:  10,
+		nbr_counters:     10,
+		nbr_timers_iec:   10,
+		nbr_phys_inputs:  15,
+		nbr_phys_outputs: 15,
+		nbr_arithm_expr:  10,
+		nbr_sections:     10,
+		nbr_symbols:      10,
+		nbr_s32_in:       10,
+		nbr_s32_out:      10,
+		nbr_float_in:     10,
+		nbr_float_out:    10,
+		nbr_error_bits:   10,
+	}
+	rt := C.classicladder_rt_alloc(&sizes)
+	C.classicladder_rt_init_data(rt)
+	return rt
+}
+
+// freeTestRT frees a test RT instance.
+func freeTestRT(rt *C.classicladder_rt_t) {
+	C.classicladder_rt_free(rt)
+}
+
+// testPrepareSequential wraps the C function.
+func testPrepareSequential(rt *C.classicladder_rt_t) {
+	C.cl_prepare_sequential(rt)
+}
+
+// testRefreshSequentialPage wraps the C function.
+func testRefreshSequentialPage(rt *C.classicladder_rt_t, page int) {
+	C.cl_refresh_sequential_page(rt, C.int(page))
+}
