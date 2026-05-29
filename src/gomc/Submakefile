@@ -75,6 +75,7 @@ GMI_EMCSTAT_PUSH_GO := gomc/generated/gmi/emcstat/emcstat_push.go
 GMI_MOTCTL_CLIENT_GO := gomc/generated/gmi/motctl/motctl_client_cgo.go
 GMI_MOTSTAT_CLIENT_GO := gomc/generated/gmi/motstat/motstat_client_cgo.go
 GMI_EMCIO_CLIENT_GO := gomc/generated/gmi/emcio/emcio_client_cgo.go
+GMI_CLASSICLADDER_SERVER_GO := gomc/generated/gmi/classicladderapi/classicladder_server.go
 
 # Runtime files generated from .in bases on fresh checkouts.
 # packages.conf is generated from .in by filtering out disabled modules;
@@ -88,6 +89,7 @@ define filter_packages_conf
 	sed \
 	$(if $(filter yes,$(BUILD_ADSSERVER)),-e 's/ @GOMOD:ADSSERVER@//',-e '/@GOMOD:ADSSERVER@/d') \
 	$(if $(filter yes,$(BUILD_EMCGATEWAY)),-e 's/ @GOMOD:EMCGATEWAY@//',-e '/@GOMOD:EMCGATEWAY@/d') \
+	$(if $(filter yes,$(BUILD_CLASSICLADDER)),-e 's/ @GOMOD:CLASSICLADDER@//',-e '/@GOMOD:CLASSICLADDER@/d') \
 	$(if $(filter yes,$(BUILD_HALSCOPE)),-e 's/ @GOMOD:HALSCOPE@//',-e '/@GOMOD:HALSCOPE@/d') \
 	$(if $(filter yes,$(BUILD_EMCCALIB)),-e 's/ @GOMOD:EMCCALIB@//',-e '/@GOMOD:EMCCALIB@/d') \
 	$(if $(filter yes,$(BUILD_HALJSON)),-e 's/ @GOMOD:HALJSON@//',-e '/@GOMOD:HALJSON@/d') \
@@ -115,7 +117,7 @@ $(IMPORTS_GENERATED): gomc/packages.conf ../bin/modcompile
 # --disable-new-dtags forces DT_RPATH instead of DT_RUNPATH; RUNPATH is
 # ignored by the dynamic linker when the binary has file capabilities (setcap).
 # LIB_DIR is $(EMC2_HOME)/lib, defined in Makefile.inc.
-../bin/gomc-server: $(GOMC_SRC) $(GMI_KINS_GEN_GO) $(GMI_TOOLS_GEN_GO) $(GMI_EMCSTAT_PUSH_GO) $(GMI_MOTCTL_CLIENT_GO) $(GMI_MOTSTAT_CLIENT_GO) $(GMI_EMCIO_CLIENT_GO) $(IMPORTS_GENERATED) gomc/packages.conf gomc/go.sum ../lib/liblinuxcnchal.so ../lib/liblinuxcnc.a ../lib/libposemath.so ../lib/libtooldata.so.0 ../lib/librs274.so ../lib/liblinuxcncini.so Makefile.inc
+../bin/gomc-server: $(GOMC_SRC) $(GMI_KINS_GEN_GO) $(GMI_TOOLS_GEN_GO) $(GMI_EMCSTAT_PUSH_GO) $(GMI_MOTCTL_CLIENT_GO) $(GMI_MOTSTAT_CLIENT_GO) $(GMI_EMCIO_CLIENT_GO) $(GMI_CLASSICLADDER_SERVER_GO) $(IMPORTS_GENERATED) gomc/packages.conf gomc/go.sum ../lib/liblinuxcnchal.so ../lib/liblinuxcnc.a ../lib/libposemath.so ../lib/libtooldata.so.0 ../lib/librs274.so ../lib/liblinuxcncini.so Makefile.inc
 	$(ECHO) Building gomc-server
 	$(Q)cd gomc && CGO_LDFLAGS="-Wl,-rpath,$(LIB_DIR) -Wl,--disable-new-dtags" $(GO) build -ldflags "$(GOMC_LDFLAGS)" -o $(TOP)/bin/gomc-server ./cmd/gomc-server
 

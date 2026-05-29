@@ -17,6 +17,7 @@
 gomod internal/adsmodule @GOMOD:ADSSERVER@
 gomod internal/pyvcpmodule
 gomod internal/halscope @GOMOD:HALSCOPE@
+gomod internal/classicladder @GOMOD:CLASSICLADDER@
 gomod internal/emccalib @GOMOD:EMCCALIB@
 gomod internal/haljson @GOMOD:HALJSON@
 gomod internal/ngcpreview @GOMOD:NGCPREVIEW@

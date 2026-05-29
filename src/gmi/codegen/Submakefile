@@ -205,6 +205,19 @@ $(GMI_HALSCOPE_TS_WS): $(GMI_HALSCOPE_IDL) $(GMICOMPILE_BIN)
 
 TARGETS += $(GMI_HALSCOPE_TS) $(GMI_HALSCOPE_TS_WS)
 
+# --- classicladder API (server-go) ---
+
+GMI_CLASSICLADDER_IDL := gmi/idl/classicladder.gmi
+
+GMI_CLASSICLADDER_SERVER_GO := gomc/generated/gmi/classicladderapi/classicladder_server.go
+
+$(GMI_CLASSICLADDER_SERVER_GO): $(GMI_CLASSICLADDER_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI classicladder Go server from $(GMI_CLASSICLADDER_IDL)"
+	@mkdir -p $(dir $(GMI_CLASSICLADDER_SERVER_GO))
+	$(Q)$(GMICOMPILE) --server-go $(GMI_CLASSICLADDER_IDL) -o $(GMI_CLASSICLADDER_SERVER_GO)
+
+TARGETS += $(GMI_CLASSICLADDER_SERVER_GO)
+
 # --- halshow (uses halcmd API; TypeScript clients for the web UI) ---
 
 GMI_HALCMD_IDL := gmi/idl/halcmd.gmi

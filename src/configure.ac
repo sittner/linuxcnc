@@ -1553,6 +1553,7 @@ AC_SUBST([HAVE_GOLANG])
 HAVE_ADSSERVER=no
 HAVE_EMCGATEWAY=no
 HAVE_HALSCOPE=no
+HAVE_CLASSICLADDER=no
 HAVE_EMCCALIB=no
 HAVE_HALJSON=no
 HAVE_NGCPREVIEW=no
@@ -1581,6 +1582,14 @@ if test "x$HAVE_GOLANG" = "xyes"; then
         [enable_halscope=yes])
     if test "x$enable_halscope" = "xyes"; then
         HAVE_HALSCOPE=yes
+    fi
+
+    AC_ARG_ENABLE([classicladder-go],
+        AS_HELP_STRING([--enable-classicladder-go], [Build Classic Ladder PLC Go module (default: yes)]),
+        [enable_classicladder_go=$enableval],
+        [enable_classicladder_go=yes])
+    if test "x$enable_classicladder_go" = "xyes"; then
+        HAVE_CLASSICLADDER=yes
     fi
 
     AC_ARG_ENABLE([emccalib],
@@ -1619,6 +1628,7 @@ fi
 AC_SUBST([HAVE_ADSSERVER])
 AC_SUBST([HAVE_EMCGATEWAY])
 AC_SUBST([HAVE_HALSCOPE])
+AC_SUBST([HAVE_CLASSICLADDER])
 AC_SUBST([HAVE_EMCCALIB])
 AC_SUBST([HAVE_HALJSON])
 AC_SUBST([HAVE_NGCPREVIEW])
@@ -1786,6 +1796,7 @@ if test "x$HAVE_GOLANG" = "xyes"; then
 echo "    ADS server module:          $HAVE_ADSSERVER"
 echo "    EMC gateway module:         $HAVE_EMCGATEWAY"
 echo "    HAL oscilloscope module:    $HAVE_HALSCOPE"
+echo "    Classic Ladder PLC module:  $HAVE_CLASSICLADDER"
 echo "    Go milltask module:         $HAVE_MILLTASK_GO"
 echo "    Node.js (webapp build):     $HAVE_NODEJS"
 echo "    WebKit2GTK (gmcui):         $HAVE_WEBKIT2GTK"

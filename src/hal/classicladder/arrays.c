@@ -29,9 +29,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#ifdef STANDALONE_MODE
+#include "standalone_compat.h"
+#else
 //for emc next 2 lines
 #include "rtapi.h"
 #include "rtapi_string.h"
+#endif
 
 #include "classicladder.h"
 #include "files.h"
@@ -54,11 +58,15 @@
 
 
 #ifdef HAL_SUPPORT
+#ifndef STANDALONE_MODE
 #include "rtapi.h"
 #include "hal.h"
 #define CL_SHMEM_KEY 0x434C522b // "CLR+"
 int compId;
 static int ShmemId;
+#else
+int compId = 1;
+#endif
 #endif
 
 
@@ -159,6 +167,53 @@ int ClassicLadder_AllocAll(int is_creator)
    	 unsigned long *shmBase;
  	 plc_sizeinfo_s *pSizesInfos;
 
+#ifdef STANDALONE_MODE
+    {
+        // Standalone mode: always create using malloc
+        int numBits, numWords, numFloats;
+        pSizesInfos = &GeneralParamsMirror.SizesInfos;
+        numBits = pSizesInfos->nbr_bits + pSizesInfos->nbr_phys_inputs + pSizesInfos->nbr_phys_outputs + pSizesInfos->nbr_error_bits;
+        numWords = pSizesInfos->nbr_words+pSizesInfos->nbr_phys_words_inputs+pSizesInfos->nbr_phys_words_outputs;
+        numFloats = pSizesInfos->nbr_phys_float_inputs+pSizesInfos->nbr_phys_float_outputs;
+#ifdef SEQUENTIAL_SUPPORT
+        numBits += NBR_STEPS;
+        numWords += NBR_STEPS;
+#endif
+        bytes += pSizesInfos->nbr_rungs * sizeof(StrRung);
+        bytes += pSizesInfos->nbr_timers * sizeof(StrTimer);
+        bytes += pSizesInfos->nbr_monostables * sizeof(StrMonostable);
+        bytes += pSizesInfos->nbr_counters * sizeof(StrCounter);
+        bytes += pSizesInfos->nbr_timers_iec * sizeof(StrTimerIEC);
+        bytes += pSizesInfos->nbr_arithm_expr * sizeof(StrArithmExpr);
+        bytes += pSizesInfos->nbr_sections * sizeof(StrSection);
+        bytes += pSizesInfos->nbr_symbols * sizeof(StrSymbol);
+#ifdef SEQUENTIAL_SUPPORT
+        bytes += sizeof(StrSequential);
+#endif
+        bytes += numWords * sizeof(int);
+        bytes += numFloats * sizeof(double);
+        bytes += numBits * sizeof(TYPE_FOR_BOOL_VAR);
+
+        shmBase = (unsigned long *)calloc(1, bytes + sizeof(long));
+        if (!shmBase) {
+            fprintf(stderr, "Failed to allocate memory (%lu bytes)!\n", bytes);
+            return FALSE;
+        }
+        shmBase[0] = 0x434C522b;
+        shmBase[1] = bytes;
+        InfosGene = (StrInfosGene*)(shmBase+1);
+        InfosGene->GeneralParams.SizesInfos = *pSizesInfos;
+        memcpy( &InfosGene->GeneralParams, &GeneralParamsMirror, sizeof( StrGeneralParams ) );
+#ifdef GTK_INTERFACE
+        EditArithmExpr = (StrArithmExpr *)malloc( pSizesInfos->nbr_arithm_expr * sizeof(StrArithmExpr) );
+        if (!EditArithmExpr) {
+            fprintf(stderr, "Failed to alloc EditArithmExpr!\n");
+            free(shmBase);
+            return FALSE;
+        }
+#endif
+    }
+#else
     if (is_creator) {
         // RT module: calculate shmem size and create it
         int numBits, numWords, numFloats;
@@ -240,6 +295,7 @@ int ClassicLadder_AllocAll(int is_creator)
         }
 #endif
     }
+#endif /* !STANDALONE_MODE */
 
 // the rest is for both realtime and userspace program
 
@@ -304,7 +360,9 @@ void ClassicLadder_FreeAll(char CleanAndRemoveTmpDir)
 if ( CleanAndRemoveTmpDir )
 		CleanTmpLadderDirectory( TRUE/*RemoveTmpDirAtEnd*/ );
 #ifdef HAL_SUPPORT
+#ifndef STANDALONE_MODE
 	rtapi_shmem_delete(ShmemId,compId);
+#endif
 #endif	
 }
 
