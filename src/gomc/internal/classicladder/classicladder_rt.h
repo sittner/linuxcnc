@@ -390,6 +390,9 @@ void classicladder_rt_init_data(classicladder_rt_t *rt);
 /* Write a variable (for forcing from UI). Thread-safe for single-writer. */
 void write_var_ext(classicladder_rt_t *rt, int type, int offset, int value);
 
+/* Read a variable (for Modbus slave / external access). */
+int read_var_ext(classicladder_rt_t *rt, int type, int offset);
+
 /* Evaluate a compiled COMPAR expression. Returns 1 (true) or 0 (false). */
 int cl_eval_compare(classicladder_rt_t *rt, int expr_index);
 

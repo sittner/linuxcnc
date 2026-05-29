@@ -103,12 +103,13 @@ type modbusMaster struct {
 	rt     *C.classicladder_rt_t
 	logger *slog.Logger
 
-	mu         sync.Mutex
-	cancel     context.CancelFunc
-	running    bool
-	currentReq int
-	errorCount int
-	frameCount int
+	mu              sync.Mutex
+	cancel          context.CancelFunc
+	running         bool
+	currentReq      int
+	errorCount      int
+	frameCount      int
+	consecutiveErrs int
 
 	// Transport
 	serialPort serial.Port
@@ -260,12 +261,29 @@ func (m *modbusMaster) executeRequest(req *modbusRequest) {
 	if err != nil {
 		m.mu.Lock()
 		m.errorCount++
+		m.consecutiveErrs++
+		skipToNext := m.consecutiveErrs >= 3
+		if skipToNext {
+			m.consecutiveErrs = 0
+		}
 		m.mu.Unlock()
+		// Set error bit %E0
+		C.write_var_ext(m.rt, C.CL_VAR_ERROR_BIT, 0, 1)
 		if m.cfg.DebugLevel >= 1 {
 			m.logger.Warn("modbus error", "error", err, "errors", m.errorCount, "frames", m.frameCount)
 		}
+		if skipToNext {
+			// Force advance to next request after 3 consecutive errors
+			m.findNextRequest()
+		}
 		return
 	}
+
+	// Success — clear error bit and reset consecutive error counter
+	m.mu.Lock()
+	m.consecutiveErrs = 0
+	m.mu.Unlock()
+	C.write_var_ext(m.rt, C.CL_VAR_ERROR_BIT, 0, 0)
 
 	m.processResponse(req, resp)
 }
@@ -362,8 +380,8 @@ func (m *modbusMaster) buildRequest(req *modbusRequest) []byte {
 	case fcDiagnostics:
 		pdu = make([]byte, 5)
 		pdu[0] = fc
-		binary.BigEndian.PutUint16(pdu[1:], 0) // subfunction 0
-		binary.BigEndian.PutUint16(pdu[3:], 0)
+		binary.BigEndian.PutUint16(pdu[1:], 0)   // subfunction 0 (echo)
+		binary.BigEndian.PutUint16(pdu[3:], 257) // hardcoded test value
 
 	default:
 		return nil
@@ -575,6 +593,19 @@ func (m *modbusMaster) processResponse(req *modbusRequest, pdu []byte) {
 
 	case fcForceCoil, fcForceCoils, fcWriteReg, fcWriteRegs:
 		// Write responses are just echo confirmations — nothing to process
+
+	case fcDiagnostics:
+		// Echo test: response should contain data=257 at bytes [3:5]
+		if len(pdu) >= 5 {
+			echoVal := binary.BigEndian.Uint16(pdu[3:5])
+			if echoVal == 257 {
+				if m.cfg.DebugLevel >= 2 {
+					m.logger.Info("modbus echo from slave is correct", "slave", req.SlaveAddr)
+				}
+			} else {
+				m.logger.Warn("modbus echo from slave is WRONG", "slave", req.SlaveAddr, "got", echoVal)
+			}
+		}
 	}
 }
 

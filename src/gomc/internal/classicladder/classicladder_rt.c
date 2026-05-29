@@ -595,6 +595,10 @@ void write_var_ext(classicladder_rt_t *rt, int type, int offset, int value) {
     write_var(rt, type, offset, value);
 }
 
+int read_var_ext(classicladder_rt_t *rt, int type, int offset) {
+    return read_var(rt, type, offset);
+}
+
 /* --- Bytecode expression evaluator (RT-safe: no malloc, no string ops) --- */
 
 static int ipow(int base, int exp) {

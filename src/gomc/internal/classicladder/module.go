@@ -54,6 +54,8 @@ type classicladder struct {
 	functName   string
 	projectFile string
 	modbus      *modbusMaster
+	modbusSlave *modbusSlave
+	slavePort   int
 }
 
 func newClassicLadder(ini *inifile.IniFile, logger *slog.Logger, name string, args []string) (gomc.Module, error) {
@@ -81,6 +83,7 @@ func newClassicLadder(ini *inifile.IniFile, logger *slog.Logger, name string, ar
 	// Parse args for size overrides (e.g. numRungs=200 numBits=500)
 	// and project file path (last positional arg or modbus_port=N)
 	var projectFile string
+	var slavePort int
 	for _, arg := range args {
 		if !strings.Contains(arg, "=") {
 			// Positional arg = project file path
@@ -123,6 +126,8 @@ func newClassicLadder(ini *inifile.IniFile, logger *slog.Logger, name string, ar
 			sizes.nbr_float_in = v
 		case "numFloatOut":
 			sizes.nbr_float_out = v
+		case "modbus_port":
+			slavePort = atoi(val)
 		}
 	}
 
@@ -171,6 +176,8 @@ func newClassicLadder(ini *inifile.IniFile, logger *slog.Logger, name string, ar
 		functName:   functName,
 		projectFile: projectFile,
 		modbus:      newModbusMaster(rt, logger),
+		modbusSlave: newModbusSlave(rt, logger),
+		slavePort:   slavePort,
 	}
 
 	// Register REST API
@@ -204,11 +211,16 @@ func (m *classicladder) Start() error {
 	}
 	// Start Modbus master if configured
 	m.modbus.start()
+	// Start Modbus slave if configured
+	if m.slavePort > 0 {
+		m.modbusSlave.start(m.slavePort)
+	}
 	return nil
 }
 
 func (m *classicladder) Stop() {
 	m.modbus.stop()
+	m.modbusSlave.stop()
 	C.hal_exit(m.compID)
 	C.classicladder_rt_free(m.rt)
 }

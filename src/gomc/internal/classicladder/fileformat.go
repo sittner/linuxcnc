@@ -136,8 +136,11 @@ func (m *classicladder) saveCLPFile(path string) error {
 	// symbols.csv
 	m.writeFileSection(w, "symbols.csv", m.emitSymbols())
 
-	// com_params.txt (placeholder)
-	m.writeFileSection(w, "com_params.txt", "")
+	// com_params.txt
+	m.writeFileSection(w, "com_params.txt", m.emitComParams())
+
+	// modbusioconf.csv
+	m.writeFileSection(w, "modbusioconf.csv", m.emitModbusIOConf())
 
 	// timers_iec.csv
 	m.writeFileSection(w, "timers_iec.csv", m.emitTimersIEC())
@@ -164,6 +167,9 @@ func (m *classicladder) saveCLPFile(path string) error {
 			m.writeFileSection(w, name, m.emitRung(i))
 		}
 	}
+
+	// sequential.csv
+	m.writeFileSection(w, "sequential.csv", m.emitSequential())
 
 	// general.txt
 	m.writeFileSection(w, "general.txt", m.emitGeneral())
@@ -781,4 +787,138 @@ func (m *classicladder) parseModbusIOConf(content string) {
 		reqs = append(reqs, req)
 	}
 	m.modbus.cfg.Requests = reqs
+}
+
+func (m *classicladder) emitComParams() string {
+	cfg := &m.modbus.cfg
+	if cfg.SerialPort == "" && len(cfg.Requests) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	if cfg.SerialPort != "" {
+		fmt.Fprintf(&b, "MODBUS_MASTER_SERIAL_PORT=%s\n", cfg.SerialPort)
+		fmt.Fprintf(&b, "MODBUS_MASTER_SERIAL_SPEED=%d\n", cfg.SerialSpeed)
+		if cfg.SerialDataBits != 0 {
+			fmt.Fprintf(&b, "MODBUS_MASTER_SERIAL_DATABITS=%d\n", cfg.SerialDataBits)
+		}
+		if cfg.SerialStopBits != 0 {
+			fmt.Fprintf(&b, "MODBUS_MASTER_SERIAL_STOPBITS=%d\n", cfg.SerialStopBits)
+		}
+		fmt.Fprintf(&b, "MODBUS_MASTER_SERIAL_PARITY=%d\n", cfg.SerialParity)
+	}
+	fmt.Fprintf(&b, "MODBUS_ELEMENT_OFFSET=%d\n", cfg.ElementOffset)
+	if cfg.SerialUseRTS {
+		fmt.Fprintln(&b, "MODBUS_MASTER_SERIAL_USE_RTS_TO_SEND=1")
+	} else {
+		fmt.Fprintln(&b, "MODBUS_MASTER_SERIAL_USE_RTS_TO_SEND=0")
+	}
+	fmt.Fprintf(&b, "MODBUS_MASTER_TIME_INTER_FRAME=%d\n", cfg.TimeInterFrame)
+	fmt.Fprintf(&b, "MODBUS_MASTER_TIME_OUT_RECEIPT=%d\n", cfg.TimeOutReceipt)
+	fmt.Fprintf(&b, "MODBUS_MASTER_TIME_AFTER_TRANSMIT=%d\n", cfg.TimeAfterTransmit)
+	fmt.Fprintf(&b, "MODBUS_DEBUG_LEVEL=%d\n", cfg.DebugLevel)
+	fmt.Fprintf(&b, "MODBUS_MAP_COIL_READ=%d\n", cfg.MapCoilRead)
+	fmt.Fprintf(&b, "MODBUS_MAP_COIL_WRITE=%d\n", cfg.MapCoilWrite)
+	fmt.Fprintf(&b, "MODBUS_MAP_INPUT=%d\n", cfg.MapInputs)
+	fmt.Fprintf(&b, "MODBUS_MAP_HOLDING=%d\n", cfg.MapHolding)
+	fmt.Fprintf(&b, "MODBUS_MAP_REGISTER_READ=%d\n", cfg.MapRegisterRead)
+	fmt.Fprintf(&b, "MODBUS_MAP_REGISTER_WRITE=%d\n", cfg.MapRegisterWrite)
+	return b.String()
+}
+
+func (m *classicladder) emitModbusIOConf() string {
+	if len(m.modbus.cfg.Requests) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintln(&b, "#VER=1.0")
+	for _, req := range m.modbus.cfg.Requests {
+		if req.SlaveAddr == "" {
+			continue
+		}
+		inverted := 0
+		if req.LogicInverted {
+			inverted = 1
+		}
+		// If address contains a dot, it's TCP (IP addr is the first field)
+		if strings.Contains(req.SlaveAddr, ".") {
+			fmt.Fprintf(&b, "%s,%d,%d,%d,%d,%d\n",
+				req.SlaveAddr, req.TypeReq, req.FirstModbusElement,
+				req.NbrModbusElements, inverted, req.OffsetVarMapped)
+		} else {
+			fmt.Fprintf(&b, "%s,%d,%d,%d,%d,%d\n",
+				req.SlaveAddr, req.TypeReq, req.FirstModbusElement,
+				req.NbrModbusElements, inverted, req.OffsetVarMapped)
+		}
+	}
+	return b.String()
+}
+
+func (m *classicladder) emitSequential() string {
+	var b strings.Builder
+	fmt.Fprintln(&b, "#VER=1.0")
+
+	// Steps
+	for i := 0; i < C.CL_MAX_STEPS; i++ {
+		step := &m.rt.steps[i]
+		if step.step_number == -1 && step.init_step == 0 && step.num_page == 0 {
+			continue
+		}
+		fmt.Fprintf(&b, "S%d,%d,%d,%d,%d,%d\n", i,
+			int(step.init_step), int(step.step_number),
+			int(step.num_page), int(step.posi_x), int(step.posi_y))
+	}
+
+	// Transitions
+	for i := 0; i < C.CL_MAX_TRANSITIONS; i++ {
+		trans := &m.rt.transitions[i]
+		// Check if transition is used (has at least one non-negative step ref)
+		used := false
+		for j := 0; j < C.CL_MAX_SWITCHS; j++ {
+			if trans.num_step_to_activ[j] >= 0 || trans.num_step_to_desactiv[j] >= 0 {
+				used = true
+				break
+			}
+		}
+		if !used {
+			continue
+		}
+		fmt.Fprintf(&b, "T%d", i)
+		for j := 0; j < C.CL_MAX_SWITCHS; j++ {
+			fmt.Fprintf(&b, ",%d", int(trans.num_step_to_activ[j]))
+		}
+		for j := 0; j < C.CL_MAX_SWITCHS; j++ {
+			fmt.Fprintf(&b, ",%d", int(trans.num_step_to_desactiv[j]))
+		}
+		for j := 0; j < C.CL_MAX_SWITCHS; j++ {
+			fmt.Fprintf(&b, ",%d", int(trans.num_trans_linked_for_start[j]))
+		}
+		for j := 0; j < C.CL_MAX_SWITCHS; j++ {
+			fmt.Fprintf(&b, ",%d", int(trans.num_trans_linked_for_end[j]))
+		}
+		fmt.Fprintf(&b, ",%d,%d,%d\n",
+			int(trans.num_page), int(trans.posi_x), int(trans.posi_y))
+
+		// Condition line
+		if trans.var_type_condi != 0 || trans.var_num_condi != 0 {
+			fmt.Fprintf(&b, "C%d,0,%d/%d\n", i,
+				int(trans.var_type_condi), int(trans.var_num_condi))
+		}
+	}
+
+	// Comments
+	for i := 0; i < C.CL_MAX_SEQ_COMMENTS; i++ {
+		sc := &m.rt.seq_comments[i]
+		if sc.num_page == 0 && sc.posi_x == 0 && sc.posi_y == 0 {
+			continue
+		}
+		comment := C.GoStringN(&sc.comment[0], C.CL_SEQ_COMMENT_LGT)
+		// Trim null bytes
+		if idx := strings.IndexByte(comment, 0); idx >= 0 {
+			comment = comment[:idx]
+		}
+		fmt.Fprintf(&b, "N%d,%d,%d,%d,%s\n", i,
+			int(sc.num_page), int(sc.posi_x), int(sc.posi_y), comment)
+	}
+
+	return b.String()
 }
