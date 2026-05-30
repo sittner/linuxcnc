@@ -163,7 +163,15 @@ func pin_read(name: string) -> PinInfo
 | Slices | `[]T` | `[]PinInfo` |
 | Nullable | `T?` | `string?`, `PinInfo?` |
 | By-ref params | `byref name: T` | `byref joints: [16]f64` |
+| Out params | `name: T out` | `result: i32 out` |
 | Functions | `func name(params) -> ReturnType` | `func forward(...) -> i32` |
+
+**Parameter qualifiers:**
+- `byref` — True in/out: passed as `*T` in Go, pointer in C. Caller provides value, callee may modify.
+- `out` — Output only: excluded from Go method signature, appears as additional return values.
+  The generated trampoline writes back to the C out-pointer after the Go call returns.
+  For void functions with out-params, Go returns values directly (no error in tuple).
+  For non-void functions with out-params, the function return comes first, then out-params, then error.
 
 **Directives:**
 - `@api name` — API name (required)
@@ -255,6 +263,13 @@ type HalCallbacks interface {
 // the generic registry.Register().
 func RegisterHalAPI(instance string, impl HalCallbacks) error
 ```
+
+When used as a C→Go bridge (e.g. canon callbacks), `--server-go` also generates:
+- `//export` trampolines callable from C (CGO function pointers)
+- `BuildCallbacks()` returning a C struct of function pointers
+- `XxxCommands(impl)` returning `[]CommandMeta` for WebSocket exposure
+- Void functions generate trampolines with no return value
+- `out` parameters become additional Go return values (excluded from params)
 
 ### Generated C Client Code (`--client-c`)
 
@@ -771,13 +786,7 @@ src/gomc/                   # Go module: github.com/sittner/linuxcnc/src/gomc
 │   │   ├── launcher.go      # Main server struct + startup
 │   │   ├── rest_server.go   # REST API server start/stop ([GMC]REST_ADDR)
 │   │   └── cleanup.go       # Shutdown sequence
-│   ├── emcgateway/           # NML↔GMI gateway (Step 5.5)
-│   │   ├── module.go        # init(), NML init/shutdown, stat/error watch, auto-loaded by launcher
-│   │   ├── types.go         # Go stat/joint/spindle structs, JSON tags
-│   │   ├── convert.go       # C stat struct → Go struct conversion
-│   │   ├── commands.go      # 25 NML command handlers (set_state, jog, mdi, etc.)
-│   │   ├── tools.go         # Tool table REST API (GET/PUT via tooldata_mmap C shim)
-│   │   └── poslog.go        # Server-side position sampler goroutine (100Hz)
+│   ├── emcgateway/           # DELETED — replaced by Go milltask (internal/task)
 │   ├── halrest/             # Server-side REST handler for halcmd API (Step 4.5)
 │   │   └── halrest.go       # Dispatches REST calls to internal/halcmd
 │   ├── halscope/            # Halscope gomod with embedded C RT (Step 5.8)
@@ -876,6 +885,11 @@ Foundation for everything else. Fully testable in isolation.
 - [x] `types.go` — `DispatchFunc`, `FuncMeta`, `APIMeta`, `RegisteredAPI`
 - [x] `registry.go` — `Register()`, `GetAPI()`, thread-safe instance map
 - [x] `server.go` — generic HTTP handler, path matching, JSON error responses
+- [x] `ws_handler.go` — WebSocket watch/command infrastructure, `CommandsFromAPI()` helper
+
+`CommandsFromAPI(api)` wraps all `DispatchFunc` entries of a registered API
+as WebSocket `CommandMeta` handlers, enabling simple one-liner command
+registration without duplicating dispatch logic.
 
 **Tests:** 37 passing
 - [x] Unit: registry Register/GetAPI, duplicate rejection, version mismatch (9 tests)
@@ -896,11 +910,36 @@ Generate Go code that plugs into the apiserver from Step 1.
 - [x] Generate Go dispatch wrappers (`DispatchFunc` per function)
 - [x] Generate `Register*API()` wrapper calling `apiserver.Register()`
 - [x] Generate Go struct types from IDL `type` declarations
+- [x] Generate `//export` trampolines + `BuildCallbacks()` for C→Go bridge
+- [x] Generate `XxxCommands(impl)` for WS command exposure (typed, no dispatch table)
+- [x] Void functions: no error return in Go interface, trampoline returns void
+- [x] `out` parameters: excluded from Go method params, appear as return values
+- [x] `TypeArray` support: fixed arrays passed as pointer in C, `unsafe.Slice` in Go
+- [x] `[]Struct` (slice of named type): C array + length, converted via unsafe.Slice loop
 
 **Tests:** 3 passing
 - [x] Unit: golden-file comparison of generated .go output vs expected
 - [x] Unit: keyword escape handling (Go reserved words)
 - [x] Unit: non-REST API generation (no dispatch wrappers)
+
+**Canon bridge (largest --server-go user):**
+
+The canon callback table (`gmi/idl/canon.gmi`, 143 functions) is generated
+via `--server-go`, producing `//export` C trampolines that the C milltask
+calls directly. This replaced a hand-written 1200-line bridge. Features
+exercised: void functions (most canon callbacks), `out` params (e.g.
+`GET_EXTERNAL_POSITION`), `TypeArray` for `[9]f64` joint arrays, `byref`
+for mutable array parameters.
+
+**String memory ownership convention:**
+
+Generated `--server-go` bridges for C→Go direction follow these rules:
+- `const char *` fields in C structs = borrowed pointers into C internal
+  state. `C.GoString()` copies the data safely. No free needed.
+- `C.CString()` allocations in Go→C direction = caller-owns. The generated
+  `_retAllocs` list is intentionally not freed (C caller owns returned data).
+- For `--server-c` (Go→C dispatch): string fields marshaled via
+  `C.CString()` are freed after the C callback returns.
 
 ### Step 3: gmicompile `--server-c` + cgo Bridge (COMPLETE)
 
@@ -1527,7 +1566,14 @@ The `_query()` method accepts a list for future bulk optimization if needed.
 - Instance name is `"ini"` (no numeric suffix — instance identity is the name itself,
   consistent with halcmd, pyvcp, and all other singleton APIs)
 
-### Step 5.5: NML Gateway — stat/command/error via GMI (COMPLETE)
+### Step 5.5: NML Gateway — stat/command/error via GMI (COMPLETE → DELETED)
+
+> **Note (2026):** The `internal/emcgateway/` gomod has been deleted. Its
+> functionality is now handled directly by the Go milltask (`internal/task/`),
+> which implements the same stat/command/error APIs natively without NML.
+> The section below is retained for historical context on the design decisions
+> that shaped the current Python client wrappers (`gmi.Stat`, `gmi.Command`,
+> `gmi.ErrorChannel`).
 
 Replace the remaining `liblinuxcnc` dependency in axis.py by exposing
 `linuxcnc.stat()`, `linuxcnc.command()`, and `linuxcnc.error_channel()`
@@ -1556,10 +1602,10 @@ axis.py (pure REST/WS)       gomc-server
     │                               │
     ├─ WS: watch errors ◄─────────►│  error/info message push
     │                               │
-    │                          emcgateway (gomod)
+    │                          task module (internal/task)
     │                               │
-    │                          NML C API (via cgo)
-    │                               │  stat: emcStatus poll → struct → JSON
+    │                          Canon API (via generated --server-go bridge)
+    │                               │  stat: direct struct → JSON
     │                               │  cmd:  GMI call → NML message → task
     │                               │  err:  NML error poll → watch push
     │                               │
@@ -1882,11 +1928,10 @@ func get_errors() -> []ErrorMessage
    - `linuxcnc.nmlfile` handling removed
    - Kept: `linuxcnc.version`, `linuxcnc.positionlogger` (deferred to Step 6)
 
-6. � **Build system** — Remaining work:
+6. ✅ **Build system** — Remaining work:
    - Compile `nml_shim.cc` and link into gomc-server (CGO_LDFLAGS) ✅
-   - Add `gomod internal/emcgateway` to `packages.conf.in` ✅
-   - Auto-load emcgateway when `[TASK]TASK` is set (launcher.go) ✅
-   - Run gmicompile on IDL files for Go dispatch generation (deferred — hand-written gateway sufficient)
+   - Task module registers APIs directly at startup (no separate gomod) ✅
+   - Canon bridge generated via `--server-go` from `canon.gmi` (143 functions) ✅
 
 7. 🔲 **Tests** — Gateway endpoint tests (deferred to Step 6)
 
@@ -1939,9 +1984,9 @@ instead of Python.
 8. **pprof profiling**: Permanent `/debug/pprof/` endpoints added to the
    API server for runtime CPU/memory profiling. Zero overhead when idle.
 
-9. **Auto-load emcgateway**: The launcher auto-loads `emcgateway` when
-   `[TASK]TASK` is configured, eliminating the need for `load emcgateway`
-   in HAL files. All ~80 axis sim configs work without modification.
+9. **Task module auto-registration**: The task module registers its APIs
+   (stat/command/error/canon) at startup, eliminating the need for separate
+   gateway modules. All ~80 axis sim configs work without modification.
 
 10. **Tool table REST API**: `GET/PUT /api/v1/tools/` endpoints backed by
     `tooldata_mmap` via a C shim (`tool_shim.h/cc`). Python `gmi.tools`
@@ -1958,7 +2003,7 @@ instead of Python.
 - [x] `gmi/idl/emccmd.gmi` — command enums (AutoCmd, JogType, SpindleCmd), command functions
 - [x] `gmi/idl/emcerror.gmi` — error types/enums, error watch function
 - [x] `emc/nml_intf/nml_shim.cc` + `nml_shim.h` — C shim wrapping NML C++ API with `extern "C"`
-- [x] `internal/emcgateway/` — gomod implementing callbacks via cgo→NML shim
+- [x] `internal/emcgateway/` — gomod implementing callbacks via cgo→NML shim (DELETED — replaced by internal/task)
 - [x] `src/gmi/python/stat.py` — `Stat` class (watch-based, drop-in for `linuxcnc.stat()`)
 - [x] `src/gmi/python/command.py` — `Command` class (REST/WS, drop-in for `linuxcnc.command()`)
 - [x] `src/gmi/python/error.py` — `ErrorChannel` class (watch-based, drop-in for `linuxcnc.error_channel()`)
@@ -1978,7 +2023,7 @@ instead of Python.
 - [x] `gmi/__init__.py` — `gmi.version` (from `LINUXCNCVERSION` env var),
       `gmi.positionlogger()` factory function
 - [ ] Generate Go dispatch from IDL files (gmicompile runs — deferred, hand-written gateway sufficient)
-- [x] End-to-end: axis.py starts and runs with all sim configs via auto-loaded emcgateway
+- [x] End-to-end: axis.py starts and runs with all sim configs via task module APIs
 
 **Position Logger Architecture:**
 
