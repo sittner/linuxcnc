@@ -9,8 +9,10 @@ import (
 	"strings"
 	"unsafe"
 
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emccmd"
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcerror"
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcio"
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcstat"
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/motctl"
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/motstat"
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
@@ -47,17 +49,24 @@ func factory(ini *inifile.IniFile, logger *slog.Logger, name string, args []stri
 
 	// Register C-compatible callback structs so C modules (halui) can
 	// call emccmd/emcstat via the standard api_get mechanism.
-	// The CGO dispatch packages (emcstat, emccmd) register their metas in
-	// init() — those metas know how to dispatch through C function pointers.
 	reg := apiserver.DefaultRegistry()
 	if reg == nil {
 		return nil, fmt.Errorf("milltask: no API registry available")
 	}
-	cleanup, err := m.registerCAPIs(reg, name)
-	if err != nil {
-		return nil, fmt.Errorf("milltask: %w", err)
+	if err := emccmd.RegisterEmccmdAPI(reg, name, m); err != nil {
+		return nil, fmt.Errorf("milltask: emccmd register: %w", err)
 	}
-	m.apiCleanup = cleanup
+	if err := emcstat.RegisterEmcstatAPI(reg, name, m); err != nil {
+		return nil, fmt.Errorf("milltask: emcstat register: %w", err)
+	}
+	m.apiCleanup = func() {
+		if ptr, err := reg.GetAPI("emccmd", name, 0); err == nil {
+			emccmd.FreeEmccmdCallbacks(ptr)
+		}
+		if ptr, err := reg.GetAPI("emcstat", name, 0); err == nil {
+			emcstat.FreeEmcstatCallbacks(ptr)
+		}
+	}
 
 	// Register WebSocket watches and commands (direct Go path, no C thunk).
 	m.registerWatches(name)
