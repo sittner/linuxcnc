@@ -119,8 +119,8 @@ func (g *clientTSGen) emitClient() {
 	g.printf("  private readonly baseUrl: string;\n\n")
 
 	// Constructor
-	g.printf("  constructor(baseUrl: string) {\n")
-	g.printf("    this.baseUrl = baseUrl.replace(/\\/+$/, '') + '/api/v1/%s';\n", g.api.Prefix)
+	g.printf("  constructor(baseUrl: string, instance: string = '%s') {\n", g.api.Prefix)
+	g.printf("    this.baseUrl = baseUrl.replace(/\\/+$/, '') + '/api/v1/' + instance;\n")
 	g.printf("  }\n\n")
 
 	// _doRequest helper

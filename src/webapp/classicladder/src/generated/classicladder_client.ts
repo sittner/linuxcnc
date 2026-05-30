@@ -232,8 +232,8 @@ export class APIError extends Error {
 export class ClassicladderClient {
   private readonly baseUrl: string;
 
-  constructor(baseUrl: string) {
-    this.baseUrl = baseUrl.replace(/\/+$/, '') + '/api/v1/classicladder';
+  constructor(baseUrl: string, instance: string = 'classicladder') {
+    this.baseUrl = baseUrl.replace(/\/+$/, '') + '/api/v1/' + instance;
   }
 
   private async doRequest<T>(method: string, path: string, body?: unknown): Promise<T | undefined> {

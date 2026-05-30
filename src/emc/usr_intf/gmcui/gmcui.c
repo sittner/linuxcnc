@@ -22,6 +22,8 @@
 
 #define DEFAULT_REST_URL "http://127.0.0.1:5080"
 #define ENV_REST_URL     "GMC_REST_URL"
+#define ENV_INSTANCE     "GMC_INSTANCE"
+#define DEFAULT_INSTANCE "milltask"
 
 /* Built-in app profiles, selected by symlink name. */
 typedef struct {
@@ -108,7 +110,10 @@ int main(int argc, char *argv[])
             return 1;
         }
         const char *base = get_base_url();
-        snprintf(url_buf, sizeof(url_buf), "%s%s", base, profile->path);
+        const char *inst = getenv(ENV_INSTANCE);
+        if (!inst || !*inst)
+            inst = DEFAULT_INSTANCE;
+        snprintf(url_buf, sizeof(url_buf), "%s%s?instance=%s", base, profile->path, inst);
         url = url_buf;
     }
 

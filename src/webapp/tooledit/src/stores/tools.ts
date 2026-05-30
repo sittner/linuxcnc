@@ -7,7 +7,8 @@ export interface ToolEditState {
   error: string | null;
 }
 
-const client = new ToolsClient(window.location.origin);
+const instance = new URLSearchParams(window.location.search).get('instance') || 'milltask';
+const client = new ToolsClient(window.location.origin, instance);
 
 const state = reactive<ToolEditState>({
   tools: [],
