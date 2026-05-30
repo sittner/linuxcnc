@@ -114,6 +114,8 @@ struct iocontrol_module {
 
     // Configuration (read from INI via env->get_ini in New)
     bool io_debug;
+    int debug;
+    double io_cycle_time;
     char io_tool_table_file[LINELEN];
     int random_toolchanger;
     tooldb_t io_db_mode;
@@ -145,20 +147,20 @@ static int iniLoad(iocontrol_module *m)
 
     val = env->ini->get(env->ini->ctx, "EMC", "DEBUG");
     if (val) {
-        if (1 != sscanf(val, "%i", &emc_debug)) {
-            emc_debug = 0;
+        if (1 != sscanf(val, "%i", &m->debug)) {
+            m->debug = 0;
         }
     } else {
-        emc_debug = 0;
+        m->debug = 0;
     }
 
     val = env->ini->get(env->ini->ctx, "EMCIO", "CYCLE_TIME");
     if (val) {
-        double temp = emc_io_cycle_time;
-        if (1 != sscanf(val, "%lf", &emc_io_cycle_time)) {
-            emc_io_cycle_time = temp;
+        double temp = m->io_cycle_time;
+        if (1 != sscanf(val, "%lf", &m->io_cycle_time)) {
+            m->io_cycle_time = temp;
             gomc_log_warnf(m->env->log, m->name, "invalid [EMCIO] CYCLE_TIME (%s); using default %f",
-                        val, emc_io_cycle_time);
+                        val, m->io_cycle_time);
         }
     }
 
@@ -483,7 +485,7 @@ static int32_t gmi_set_debug(void *ctx, int32_t debug)
 {
     iocontrol_module *m = (iocontrol_module *)ctx;
     gomc_log_debugf(m->env->log, m->name, "gmi_set_debug debug=%d", debug);
-    emc_debug = debug;
+    m->debug = debug;
     return 0;
 }
 
@@ -609,7 +611,7 @@ static int32_t gmi_tool_prepare(void *ctx, int32_t toolno)
             *(d->tool_prepare) = 0;
             return 0;
         }
-        usleep((useconds_t)(emc_io_cycle_time * 1e6));
+        usleep((useconds_t)(m->io_cycle_time * 1e6));
     }
     return -1;  // shutdown
 }
@@ -673,7 +675,7 @@ static int32_t gmi_tool_load(void *ctx)
             *(d->tool_change) = 0;
             return 0;
         }
-        usleep((useconds_t)(emc_io_cycle_time * 1e6));
+        usleep((useconds_t)(m->io_cycle_time * 1e6));
     }
     return -1;  // shutdown
 }
@@ -796,7 +798,7 @@ static emcio_io_status_t gmi_get_status(void *ctx)
     s.coolant.mist = m->emcioStatus.coolant.mist;
     s.coolant.flood = m->emcioStatus.coolant.flood;
     s.lube_on = m->emcioStatus.lube.on;
-    s.debug = emc_debug;
+    s.debug = m->debug;
 
     return s;
 }
@@ -874,7 +876,8 @@ extern "C" int New(const cmod_env_t *env, const char *name,
     m->env = env;
     strncpy(m->name, name, sizeof(m->name) - 1);
 
-    // Default tool table
+    // Defaults
+    m->io_cycle_time = 0.100;
     strncpy(m->io_tool_table_file, "tool.tbl", sizeof(m->io_tool_table_file) - 1);
 
     // Debug flag from environment (legacy)

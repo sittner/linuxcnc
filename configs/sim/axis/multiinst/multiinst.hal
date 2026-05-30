@@ -13,12 +13,13 @@ load homemod <home2> mot_instance=mot2
 load trivkins <kins2> coordinates=XYZ
 load motmod <mot2> num_spindles=1 kins_instance=kins2 tp_instance=tp2 home_instance=home2
 
-# Infrastructure
-load io <iocontrol>
+# IO controllers
+load io <io1>
+load io <io2>
 
 # Two milltask instances
-load milltask <mill1> halui=halui
-load milltask <mill2> halui=halui2
+load milltask <mill1> halui=halui motion_instance=mot1 iocontrol_instance=io1
+load milltask <mill2> halui=halui2 motion_instance=mot2 iocontrol_instance=io2
 
 # Preview instances
 load ngcpreview <mill1-preview> namespace=mill1
@@ -33,7 +34,8 @@ addf mot2.motion-command-handler servo-thread
 addf mot2.motion-controller servo-thread
 
 # ESTOP loop-back
-net estop-loop iocontrol.user-enable-out iocontrol.emc-enable-in
+net estop-loop1 io1.user-enable-out io1.emc-enable-in
+net estop-loop2 io2.user-enable-out io2.emc-enable-in
 
 # === Motion controller 1 (mot1) ===
 # Position loop-back
