@@ -49,6 +49,31 @@ type CommandMeta struct {
 	Handler CommandFunc
 }
 
+// CommandsFromAPI creates CommandMeta entries for every dispatchable function
+// in the given registered API. This exposes a REST API's functions as WS
+// commands without manual per-function wiring.
+func CommandsFromAPI(api *RegisteredAPI) []CommandMeta {
+	if api == nil || api.Meta == nil {
+		return nil
+	}
+	cmds := make([]CommandMeta, 0, len(api.Meta.Funcs))
+	for _, fn := range api.Meta.Funcs {
+		if fn.Dispatch == nil {
+			continue
+		}
+		fn := fn // capture loop variable
+		cb := api.Callbacks
+		cmds = append(cmds, CommandMeta{
+			Name: fn.Name,
+			Handler: func(req json.RawMessage) (json.RawMessage, error) {
+				res, err := fn.Dispatch(cb, []byte(req))
+				return json.RawMessage(res), err
+			},
+		})
+	}
+	return cmds
+}
+
 // WatchAPI holds registered watch functions and commands for one API instance.
 type WatchAPI struct {
 	APIName  string
