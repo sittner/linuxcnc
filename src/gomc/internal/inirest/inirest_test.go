@@ -3,7 +3,7 @@ package inirest
 import (
 	"testing"
 
-	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/iniapi"
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/ini"
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
 	"github.com/sittner/linuxcnc/src/gomc/pkg/inifile"
 )
@@ -43,7 +43,7 @@ MACHINE = Test Machine
 func TestQuerySingleValue(t *testing.T) {
 	impl := setupTestINI(t)
 
-	results, err := impl.Query([]iniapi.IniQueryItem{
+	results, err := impl.Query([]ini.IniQueryItem{
 		{Section: "DISPLAY", Key: "GEOMETRY"},
 	})
 	if err != nil {
@@ -60,7 +60,7 @@ func TestQuerySingleValue(t *testing.T) {
 func TestQueryMissingKey(t *testing.T) {
 	impl := setupTestINI(t)
 
-	results, err := impl.Query([]iniapi.IniQueryItem{
+	results, err := impl.Query([]ini.IniQueryItem{
 		{Section: "DISPLAY", Key: "NONEXISTENT"},
 	})
 	if err != nil {
@@ -77,7 +77,7 @@ func TestQueryMissingKey(t *testing.T) {
 func TestQueryEmptyValue(t *testing.T) {
 	impl := setupTestINI(t)
 
-	results, err := impl.Query([]iniapi.IniQueryItem{
+	results, err := impl.Query([]ini.IniQueryItem{
 		{Section: "DISPLAY", Key: "LATHE"},
 	})
 	if err != nil {
@@ -97,7 +97,7 @@ func TestQueryEmptyValue(t *testing.T) {
 func TestQueryFindAll(t *testing.T) {
 	impl := setupTestINI(t)
 
-	results, err := impl.Query([]iniapi.IniQueryItem{
+	results, err := impl.Query([]ini.IniQueryItem{
 		{Section: "FILTER", Key: "PROGRAM_EXTENSION", All: boolPtr(true)},
 	})
 	if err != nil {
@@ -120,7 +120,7 @@ func TestQueryFindAll(t *testing.T) {
 func TestQueryFindAllMissing(t *testing.T) {
 	impl := setupTestINI(t)
 
-	results, err := impl.Query([]iniapi.IniQueryItem{
+	results, err := impl.Query([]ini.IniQueryItem{
 		{Section: "FILTER", Key: "NONEXISTENT", All: boolPtr(true)},
 	})
 	if err != nil {
@@ -139,7 +139,7 @@ func TestQueryFindAllMissing(t *testing.T) {
 func TestQueryBulk(t *testing.T) {
 	impl := setupTestINI(t)
 
-	results, err := impl.Query([]iniapi.IniQueryItem{
+	results, err := impl.Query([]ini.IniQueryItem{
 		{Section: "DISPLAY", Key: "GEOMETRY"},
 		{Section: "DISPLAY", Key: "MAX_FEED_OVERRIDE"},
 		{Section: "EMC", Key: "MACHINE"},

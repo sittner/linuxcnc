@@ -15,11 +15,11 @@ import (
 	"fmt"
 	"unsafe"
 
-	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/toolsapi"
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/tools"
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
 )
 
-// toolsImpl implements toolsapi.ToolsCallbacks via the tool_shim C interface.
+// toolsImpl implements tools.ToolsCallbacks via the tool_shim C interface.
 type toolsImpl struct {
 	toolTableFile    string
 	milltaskInstance string
@@ -27,11 +27,11 @@ type toolsImpl struct {
 }
 
 func init() {
-	apiserver.RegisterMeta(toolsapi.ToolsMeta)
+	apiserver.RegisterMeta(tools.ToolsMeta)
 }
 
-func shimToToolEntry(s *C.tool_shim_entry_t) toolsapi.ToolEntry {
-	return toolsapi.ToolEntry{
+func shimToToolEntry(s *C.tool_shim_entry_t) tools.ToolEntry {
+	return tools.ToolEntry{
 		Toolno:      int32(s.toolno),
 		Pocketno:    int32(s.pocketno),
 		XOffset:     float64(s.x_offset),
@@ -51,7 +51,7 @@ func shimToToolEntry(s *C.tool_shim_entry_t) toolsapi.ToolEntry {
 	}
 }
 
-func toolEntryToShim(e *toolsapi.ToolEntry) C.tool_shim_entry_t {
+func toolEntryToShim(e *tools.ToolEntry) C.tool_shim_entry_t {
 	var s C.tool_shim_entry_t
 	s.toolno = C.int(e.Toolno)
 	s.pocketno = C.int(e.Pocketno)
@@ -87,12 +87,12 @@ func ensureToolMmap() error {
 	return nil
 }
 
-func (t *toolsImpl) ListTools() ([]toolsapi.ToolEntry, error) {
+func (t *toolsImpl) ListTools() ([]tools.ToolEntry, error) {
 	if err := ensureToolMmap(); err != nil {
 		return nil, err
 	}
 	lastIdx := int(C.tool_shim_last_index())
-	tools := make([]toolsapi.ToolEntry, 0, lastIdx)
+	tools := make([]tools.ToolEntry, 0, lastIdx)
 	for i := 0; i <= lastIdx; i++ {
 		var s C.tool_shim_entry_t
 		if C.tool_shim_get(C.int(i), &s) == 0 && int(s.toolno) > 0 {
@@ -102,7 +102,7 @@ func (t *toolsImpl) ListTools() ([]toolsapi.ToolEntry, error) {
 	return tools, nil
 }
 
-func (t *toolsImpl) GetTool(toolno int32) (*toolsapi.ToolEntry, error) {
+func (t *toolsImpl) GetTool(toolno int32) (*tools.ToolEntry, error) {
 	if err := ensureToolMmap(); err != nil {
 		return nil, err
 	}
@@ -118,7 +118,7 @@ func (t *toolsImpl) GetTool(toolno int32) (*toolsapi.ToolEntry, error) {
 	return &entry, nil
 }
 
-func (t *toolsImpl) PutTool(toolno int32, entry toolsapi.ToolEntry) (*toolsapi.PutToolResult, error) {
+func (t *toolsImpl) PutTool(toolno int32, entry tools.ToolEntry) (*tools.PutToolResult, error) {
 	if err := ensureToolMmap(); err != nil {
 		return nil, err
 	}
@@ -145,10 +145,10 @@ func (t *toolsImpl) PutTool(toolno int32, entry toolsapi.ToolEntry) (*toolsapi.P
 		C.tool_shim_save(cFile)
 		C.free(unsafe.Pointer(cFile))
 	}
-	return &toolsapi.PutToolResult{Ok: true, Index: int32(idx)}, nil
+	return &tools.PutToolResult{Ok: true, Index: int32(idx)}, nil
 }
 
-func (t *toolsImpl) DeleteTool(toolno int32) (*toolsapi.CmdResult, error) {
+func (t *toolsImpl) DeleteTool(toolno int32) (*tools.CmdResult, error) {
 	if err := ensureToolMmap(); err != nil {
 		return nil, err
 	}
@@ -166,10 +166,10 @@ func (t *toolsImpl) DeleteTool(toolno int32) (*toolsapi.CmdResult, error) {
 		C.tool_shim_save(cFile)
 		C.free(unsafe.Pointer(cFile))
 	}
-	return &toolsapi.CmdResult{Ok: "true"}, nil
+	return &tools.CmdResult{Ok: "true"}, nil
 }
 
-func (t *toolsImpl) ReloadTools() (*toolsapi.CmdResult, error) {
+func (t *toolsImpl) ReloadTools() (*tools.CmdResult, error) {
 	if t.emccmd == nil {
 		ptr, err := apiserver.DefaultRegistry().GetAPI("emccmd", t.milltaskInstance, 1)
 		if err != nil {
@@ -188,5 +188,5 @@ func (t *toolsImpl) ReloadTools() (*toolsapi.CmdResult, error) {
 		C.tool_shim_load(cFile)
 		C.free(unsafe.Pointer(cFile))
 	}
-	return &toolsapi.CmdResult{Ok: "true"}, nil
+	return &tools.CmdResult{Ok: "true"}, nil
 }

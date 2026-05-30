@@ -89,11 +89,11 @@ func (t *Task) messageFlags() (hasAny, hasError, hasText, hasDisplay bool) {
 	defer t.mu.Unlock()
 	for _, msg := range t.messageList {
 		switch emcerror.ErrorKind(msg.Kind) {
-		case emcerror.NML_ERROR, emcerror.OPERATOR_ERROR:
+		case emcerror.ErrorKind_NML_ERROR, emcerror.ErrorKind_OPERATOR_ERROR:
 			hasError = true
-		case emcerror.NML_TEXT, emcerror.OPERATOR_TEXT:
+		case emcerror.ErrorKind_NML_TEXT, emcerror.ErrorKind_OPERATOR_TEXT:
 			hasText = true
-		case emcerror.NML_DISPLAY, emcerror.OPERATOR_DISPLAY:
+		case emcerror.ErrorKind_NML_DISPLAY, emcerror.ErrorKind_OPERATOR_DISPLAY:
 			hasDisplay = true
 		}
 	}

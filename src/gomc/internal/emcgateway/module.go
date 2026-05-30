@@ -24,8 +24,8 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcstatapi"
-	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/toolsapi"
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcstat"
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/tools"
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
 	"github.com/sittner/linuxcnc/src/gomc/pkg/gomc"
 	"github.com/sittner/linuxcnc/src/gomc/pkg/inifile"
@@ -77,7 +77,7 @@ func newEmcGateway(ini *inifile.IniFile, logger *slog.Logger, name string, args 
 	}
 
 	// Register REST API backed by PushWatch (skip if already registered by C milltask).
-	if err := emcstatapi.RegisterEmcstatAPI(apiserver.DefaultRegistry(), milltaskInstance, gw); err != nil {
+	if err := emcstat.RegisterEmcstatAPI(apiserver.DefaultRegistry(), milltaskInstance, gw); err != nil {
 		logger.Info("emcstat REST already registered (C milltask), skipping", "err", err)
 	}
 
@@ -88,7 +88,7 @@ func newEmcGateway(ini *inifile.IniFile, logger *slog.Logger, name string, args 
 		C.tool_shim_load(cFile)
 		C.free(unsafe.Pointer(cFile))
 	}
-	if err := toolsapi.RegisterToolsAPI(apiserver.DefaultRegistry(), milltaskInstance, &toolsImpl{
+	if err := tools.RegisterToolsAPI(apiserver.DefaultRegistry(), milltaskInstance, &toolsImpl{
 		toolTableFile:    toolFile,
 		milltaskInstance: milltaskInstance,
 	}); err != nil {
@@ -152,9 +152,9 @@ func newEmcGateway(ini *inifile.IniFile, logger *slog.Logger, name string, args 
 	return gw, nil
 }
 
-// GetStat implements emcstatapi.EmcstatCallbacks for REST GET.
+// GetStat implements emcstat.EmcstatCallbacks for REST GET.
 // Returns the latest pushed stat data.
-func (gw *emcGateway) GetStat() (*emcstatapi.StatFull, error) {
+func (gw *emcGateway) GetStat() (*emcstat.StatFull, error) {
 	data, err := gw.pw.WatchFunc()
 	if err != nil {
 		return nil, err
@@ -162,7 +162,7 @@ func (gw *emcGateway) GetStat() (*emcstatapi.StatFull, error) {
 	if data == nil {
 		return nil, fmt.Errorf("no stat data available yet")
 	}
-	var s emcstatapi.StatFull
+	var s emcstat.StatFull
 	if err := json.Unmarshal(data, &s); err != nil {
 		return nil, err
 	}

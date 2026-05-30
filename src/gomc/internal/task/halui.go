@@ -1664,13 +1664,13 @@ func (h *halUI) checkMessages(t *Task) {
 	h.old.notificationsClear = h.notificationsClear.Get()
 
 	if v := h.notificationsClearInfo.Get(); risingEdge(v, h.old.notificationsClearInfo) {
-		_ = t.ackMessagesByKinds(emcerror.NML_TEXT, emcerror.OPERATOR_TEXT,
-			emcerror.NML_DISPLAY, emcerror.OPERATOR_DISPLAY)
+		_ = t.ackMessagesByKinds(emcerror.ErrorKind_NML_TEXT, emcerror.ErrorKind_OPERATOR_TEXT,
+			emcerror.ErrorKind_NML_DISPLAY, emcerror.ErrorKind_OPERATOR_DISPLAY)
 	}
 	h.old.notificationsClearInfo = h.notificationsClearInfo.Get()
 
 	if v := h.notificationsClearError.Get(); risingEdge(v, h.old.notificationsClearError) {
-		_ = t.ackMessagesByKinds(emcerror.NML_ERROR, emcerror.OPERATOR_ERROR)
+		_ = t.ackMessagesByKinds(emcerror.ErrorKind_NML_ERROR, emcerror.ErrorKind_OPERATOR_ERROR)
 	}
 	h.old.notificationsClearError = h.notificationsClearError.Get()
 
@@ -1681,17 +1681,17 @@ func (h *halUI) checkMessages(t *Task) {
 	h.old.msgAckAll = h.msgAckAll.Get()
 
 	if v := h.msgAckError.Get(); risingEdge(v, h.old.msgAckError) {
-		_ = t.ackMessagesByKinds(emcerror.NML_ERROR, emcerror.OPERATOR_ERROR)
+		_ = t.ackMessagesByKinds(emcerror.ErrorKind_NML_ERROR, emcerror.ErrorKind_OPERATOR_ERROR)
 	}
 	h.old.msgAckError = h.msgAckError.Get()
 
 	if v := h.msgAckText.Get(); risingEdge(v, h.old.msgAckText) {
-		_ = t.ackMessagesByKinds(emcerror.NML_TEXT, emcerror.OPERATOR_TEXT)
+		_ = t.ackMessagesByKinds(emcerror.ErrorKind_NML_TEXT, emcerror.ErrorKind_OPERATOR_TEXT)
 	}
 	h.old.msgAckText = h.msgAckText.Get()
 
 	if v := h.msgAckDisplay.Get(); risingEdge(v, h.old.msgAckDisplay) {
-		_ = t.ackMessagesByKinds(emcerror.NML_DISPLAY, emcerror.OPERATOR_DISPLAY)
+		_ = t.ackMessagesByKinds(emcerror.ErrorKind_NML_DISPLAY, emcerror.ErrorKind_OPERATOR_DISPLAY)
 	}
 	h.old.msgAckDisplay = h.msgAckDisplay.Get()
 

@@ -951,9 +951,10 @@ Usage:
 Options:
     --help           Show this help message
     --parse          Parse only — print AST as JSON
-    --server-c       Generate C server header (types, callback typedefs)
+    --server-c       Generate C server header only (types, callback typedefs)
+    --server-meta    Generate Go META dispatch (cgo types, converters, dispatch, init)
+    --server-go      Generate Go provider interface + cbridge
     --client-c       Generate C REST client (header + source)
-    --server-go      Generate Go server handlers
     --client-go      Generate Go REST client
     --client-python  Generate Python REST client
     --client-ts      Generate TypeScript REST client
@@ -966,6 +967,7 @@ type gmiMode int
 const (
 	gmiModeParse gmiMode = iota
 	gmiModeServerC
+	gmiModeServerMeta
 	gmiModeClientC
 	gmiModeServerGo
 	gmiModeClientGo
@@ -997,6 +999,8 @@ func cmdGMI(args []string) {
 			m = gmiModeParse
 		case "--server-c":
 			m = gmiModeServerC
+		case "--server-meta":
+			m = gmiModeServerMeta
 		case "--client-c":
 			m = gmiModeClientC
 		case "--server-go":
@@ -1061,6 +1065,8 @@ func processGMIFile(file string, m gmiMode, outputPath string) error {
 		return enc.Encode(api)
 	case gmiModeServerC:
 		return gmiGenerateServerC(api, outputPath)
+	case gmiModeServerMeta:
+		return gmiGenerateServerMeta(api, outputPath)
 	case gmiModeClientC:
 		if !api.RestExport {
 			return fmt.Errorf("%s: --client-c requires @rest_export true", file)
@@ -1119,19 +1125,24 @@ func gmiGenerateServerC(api *gmiast.API, outputPath string) error {
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "generated %s\n", outputPath)
+	return nil
+}
 
-	// Generate Go cgo dispatch file alongside the header.
+func gmiGenerateServerMeta(api *gmiast.API, outputPath string) error {
+	if outputPath == "" {
+		outputPath = api.Name + "_cgo.go"
+	}
+
 	dir := filepath.Dir(outputPath)
-	goPath := filepath.Join(dir, api.Name+"_cgo.go")
-
 	pkgName := api.Name
 	if dir != "." && dir != "" {
 		pkgName = filepath.Base(dir)
 	}
 
-	headerFile := filepath.Base(outputPath)
+	headerFile := api.Name + "_api.h"
 
-	gf, err := os.Create(goPath)
+	// Generate Go cgo dispatch file (types, converters, dispatch, META, init).
+	gf, err := os.Create(outputPath)
 	if err != nil {
 		return err
 	}
@@ -1140,7 +1151,7 @@ func gmiGenerateServerC(api *gmiast.API, outputPath string) error {
 	if err := gmicgen.GenerateDispatchC(gf, api, pkgName, headerFile); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "generated %s\n", goPath)
+	fmt.Fprintf(os.Stderr, "generated %s\n", outputPath)
 
 	// Generate publish ring header + Go drain if the API has @publish functions.
 	pubPath := filepath.Join(dir, api.Name+"_pub.h")
@@ -1245,7 +1256,7 @@ func gmiGenerateClientC(api *gmiast.API, outputPath string) error {
 
 func gmiGenerateServerGo(api *gmiast.API, outputPath string) error {
 	if outputPath == "" {
-		outputPath = api.Name + "_api.go"
+		outputPath = api.Name + "_bridge.go"
 	}
 
 	pkgName := api.Name
@@ -1259,7 +1270,12 @@ func gmiGenerateServerGo(api *gmiast.API, outputPath string) error {
 	}
 	defer f.Close()
 
-	if err := gmicgen.GenerateServerGo(f, api, pkgName); err != nil {
+	if err := gmicgen.GenerateBridgeGo(f, api, pkgName); err != nil {
+		return err
+	}
+
+	// Append Commands and WatchRegister functions (they reference the Callbacks interface above)
+	if err := gmicgen.GenerateServerGoExtra(f, api, pkgName); err != nil {
 		return err
 	}
 

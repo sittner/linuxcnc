@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"unsafe"
 
-	api "github.com/sittner/linuxcnc/src/gomc/generated/gmi/classicladderapi"
+	api "github.com/sittner/linuxcnc/src/gomc/generated/gmi/classicladder"
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
 )
 

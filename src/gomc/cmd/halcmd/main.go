@@ -22,7 +22,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/halcmd"
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/halcmdclient"
 )
 
 const (
@@ -31,7 +31,7 @@ const (
 )
 
 var (
-	client     *halcmd.HalcmdClient
+	client     *halcmdclient.HalcmdClient
 	echoMode   bool
 	keepGoing  bool
 	quietMode  bool
@@ -45,7 +45,7 @@ func main() {
 		restURL = defaultRestURL
 	}
 
-	client = halcmd.NewHalcmdClient(restURL)
+	client = halcmdclient.NewHalcmdClient(restURL)
 
 	args := os.Args[1:]
 
@@ -90,7 +90,7 @@ func main() {
 			if len(args) < 2 {
 				fatal("-U requires a URL")
 			}
-			client = halcmd.NewHalcmdClient(args[1])
+			client = halcmdclient.NewHalcmdClient(args[1])
 			args = args[2:]
 		default:
 			fatal("unknown option: " + args[0])
@@ -1227,7 +1227,7 @@ func cmdAlias(args []string) error {
 	name := args[1]
 	alias := args[2]
 
-	var result *halcmd.CmdResult
+	var result *halcmdclient.CmdResult
 	var err error
 	switch what {
 	case "pin":
@@ -1250,7 +1250,7 @@ func cmdUnalias(args []string) error {
 	what := strings.ToLower(args[0])
 	name := args[1]
 
-	var result *halcmd.CmdResult
+	var result *halcmdclient.CmdResult
 	var err error
 	switch what {
 	case "pin":
@@ -1350,7 +1350,7 @@ func cmdUnretain(args []string) error {
 }
 
 // checkResult returns an error if the result indicates failure
-func checkResult(result *halcmd.CmdResult) error {
+func checkResult(result *halcmdclient.CmdResult) error {
 	if result == nil {
 		return fmt.Errorf("no response from server")
 	}

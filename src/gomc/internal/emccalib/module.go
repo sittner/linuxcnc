@@ -15,7 +15,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emccalibapi"
+	emccalibapi "github.com/sittner/linuxcnc/src/gomc/generated/gmi/emccalib"
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
 	"github.com/sittner/linuxcnc/src/gomc/internal/calibreg"
 	"github.com/sittner/linuxcnc/src/gomc/internal/halcmd"
@@ -42,8 +42,8 @@ type emccalib struct {
 	logger   *slog.Logger
 	ini      *inifile.IniFile
 	mu       sync.Mutex
-	tunables []tunable            // all discovered tunables
-	index    map[string]*tunable  // "SECTION\x00KEY" → tunable ptr
+	tunables []tunable           // all discovered tunables
+	index    map[string]*tunable // "SECTION\x00KEY" → tunable ptr
 }
 
 func newEmccalib(ini *inifile.IniFile, logger *slog.Logger, name string, args []string) (gomc.Module, error) {

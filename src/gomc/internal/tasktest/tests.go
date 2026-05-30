@@ -199,49 +199,49 @@ const waitTimeout = 500 * time.Millisecond
 
 // ensureEstop puts the machine in ESTOP state.
 func (h *testHarness) ensureEstop() {
-	h.setState(int32(emcstat.ESTOP))
+	h.setState(int32(emcstat.TaskState_ESTOP))
 	time.Sleep(settle)
 }
 
 // ensureOn brings the machine to state ON.
 func (h *testHarness) ensureOn() {
 	stat, _ := h.getStat()
-	if stat.Task.State == emcstat.ON {
+	if stat.Task.State == emcstat.TaskState_ON {
 		return
 	}
-	if stat.Task.State == emcstat.ESTOP {
-		h.setState(int32(emcstat.ESTOP_RESET))
-		h.waitForState(emcstat.ESTOP_RESET, waitTimeout)
+	if stat.Task.State == emcstat.TaskState_ESTOP {
+		h.setState(int32(emcstat.TaskState_ESTOP_RESET))
+		h.waitForState(emcstat.TaskState_ESTOP_RESET, waitTimeout)
 	}
-	if stat.Task.State == emcstat.OFF {
-		h.setState(int32(emcstat.ON))
-		h.waitForState(emcstat.ON, waitTimeout)
+	if stat.Task.State == emcstat.TaskState_OFF {
+		h.setState(int32(emcstat.TaskState_ON))
+		h.waitForState(emcstat.TaskState_ON, waitTimeout)
 		h.waitForMotionEnabled(waitTimeout)
 		return
 	}
-	h.setState(int32(emcstat.ON))
-	h.waitForState(emcstat.ON, waitTimeout)
+	h.setState(int32(emcstat.TaskState_ON))
+	h.waitForState(emcstat.TaskState_ON, waitTimeout)
 	h.waitForMotionEnabled(waitTimeout)
 }
 
 // ensureManual brings machine ON in MANUAL mode.
 func (h *testHarness) ensureManual() {
 	h.ensureOn()
-	h.setMode(int32(emcstat.MANUAL))
+	h.setMode(int32(emcstat.TaskMode_MANUAL))
 	time.Sleep(settle)
 }
 
 // ensureAuto brings machine ON in AUTO mode.
 func (h *testHarness) ensureAuto() {
 	h.ensureOn()
-	h.setMode(int32(emcstat.AUTO))
+	h.setMode(int32(emcstat.TaskMode_AUTO))
 	time.Sleep(settle)
 }
 
 // ensureMdi brings machine ON in MDI mode.
 func (h *testHarness) ensureMdi() {
 	h.ensureOn()
-	h.setMode(int32(emcstat.MDI))
+	h.setMode(int32(emcstat.TaskMode_MDI))
 	time.Sleep(settle)
 }
 
@@ -258,13 +258,13 @@ func (h *testHarness) ensureHomed() {
 	}
 	if !allHomed {
 		// ESTOP cycle ensures clean state for homing
-		h.setState(int32(emcstat.ESTOP))
+		h.setState(int32(emcstat.TaskState_ESTOP))
 		time.Sleep(settle)
-		h.setState(int32(emcstat.ESTOP_RESET))
-		h.waitForState(emcstat.ESTOP_RESET, waitTimeout)
-		h.setState(int32(emcstat.ON))
-		h.waitForState(emcstat.ON, waitTimeout)
-		h.setMode(int32(emcstat.MANUAL))
+		h.setState(int32(emcstat.TaskState_ESTOP_RESET))
+		h.waitForState(emcstat.TaskState_ESTOP_RESET, waitTimeout)
+		h.setState(int32(emcstat.TaskState_ON))
+		h.waitForState(emcstat.TaskState_ON, waitTimeout)
+		h.setMode(int32(emcstat.TaskMode_MANUAL))
 		time.Sleep(settle)
 		h.teleopEnable(false) // free mode required for homing
 		time.Sleep(settle)
@@ -276,7 +276,7 @@ func (h *testHarness) ensureHomed() {
 		}
 	}
 	// Always ensure MANUAL mode + teleop enabled
-	h.setMode(int32(emcstat.MANUAL))
+	h.setMode(int32(emcstat.TaskMode_MANUAL))
 	time.Sleep(settle)
 	h.teleopEnable(true)
 	time.Sleep(settle)
@@ -293,8 +293,8 @@ func (h *testHarness) testInitialState(r *testResults) {
 		r.fail(name, fmt.Sprintf("getStat: %v", err))
 		return
 	}
-	if stat.Task.State != emcstat.ESTOP {
-		r.fail(name, fmt.Sprintf("expected ESTOP(%d), got %d", emcstat.ESTOP, stat.Task.State))
+	if stat.Task.State != emcstat.TaskState_ESTOP {
+		r.fail(name, fmt.Sprintf("expected ESTOP(%d), got %d", emcstat.TaskState_ESTOP, stat.Task.State))
 		return
 	}
 	r.pass(name)
@@ -305,24 +305,24 @@ func (h *testHarness) testStateTransitions(r *testResults) {
 	h.ensureEstop()
 
 	// ESTOP → ESTOP_RESET
-	rc, err := h.setState(int32(emcstat.ESTOP_RESET))
+	rc, err := h.setState(int32(emcstat.TaskState_ESTOP_RESET))
 	if err != nil || !isOK(rc) {
 		r.fail(name, fmt.Sprintf("ESTOP→ESTOP_RESET: rc=%d err=%v", rc, err))
 		return
 	}
-	if err := h.waitForState(emcstat.ESTOP_RESET, waitTimeout); err != nil {
+	if err := h.waitForState(emcstat.TaskState_ESTOP_RESET, waitTimeout); err != nil {
 		stat, _ := h.getStat()
 		r.fail(name, fmt.Sprintf("wait ESTOP_RESET: state=%d", stat.Task.State))
 		return
 	}
 
 	// ESTOP_RESET → ON
-	rc, err = h.setState(int32(emcstat.ON))
+	rc, err = h.setState(int32(emcstat.TaskState_ON))
 	if err != nil || !isOK(rc) {
 		r.fail(name, fmt.Sprintf("ESTOP_RESET→ON: rc=%d err=%v", rc, err))
 		return
 	}
-	if err := h.waitForState(emcstat.ON, waitTimeout); err != nil {
+	if err := h.waitForState(emcstat.TaskState_ON, waitTimeout); err != nil {
 		stat, _ := h.getStat()
 		r.fail(name, fmt.Sprintf("wait ON: state=%d", stat.Task.State))
 		return
@@ -334,12 +334,12 @@ func (h *testHarness) testStateEstopFromOn(r *testResults) {
 	const name = "state/estop_from_on"
 	h.ensureOn()
 
-	rc, err := h.setState(int32(emcstat.ESTOP))
+	rc, err := h.setState(int32(emcstat.TaskState_ESTOP))
 	if err != nil || !isOK(rc) {
 		r.fail(name, fmt.Sprintf("ON→ESTOP: rc=%d err=%v", rc, err))
 		return
 	}
-	if err := h.waitForState(emcstat.ESTOP, waitTimeout); err != nil {
+	if err := h.waitForState(emcstat.TaskState_ESTOP, waitTimeout); err != nil {
 		r.fail(name, "state didn't reach ESTOP")
 		return
 	}
@@ -350,12 +350,12 @@ func (h *testHarness) testStateOffFromOn(r *testResults) {
 	const name = "state/off_from_on"
 	h.ensureOn()
 
-	rc, err := h.setState(int32(emcstat.OFF))
+	rc, err := h.setState(int32(emcstat.TaskState_OFF))
 	if err != nil || !isOK(rc) {
 		r.fail(name, fmt.Sprintf("ON→OFF: rc=%d err=%v", rc, err))
 		return
 	}
-	if err := h.waitForState(emcstat.OFF, waitTimeout); err != nil {
+	if err := h.waitForState(emcstat.TaskState_OFF, waitTimeout); err != nil {
 		stat, _ := h.getStat()
 		r.fail(name, fmt.Sprintf("wait OFF: state=%d", stat.Task.State))
 		return
@@ -366,15 +366,15 @@ func (h *testHarness) testStateOffFromOn(r *testResults) {
 func (h *testHarness) testStateOnFromOff(r *testResults) {
 	const name = "state/on_from_off"
 	h.ensureOn()
-	h.setState(int32(emcstat.OFF))
-	h.waitForState(emcstat.OFF, waitTimeout)
+	h.setState(int32(emcstat.TaskState_OFF))
+	h.waitForState(emcstat.TaskState_OFF, waitTimeout)
 
-	rc, err := h.setState(int32(emcstat.ON))
+	rc, err := h.setState(int32(emcstat.TaskState_ON))
 	if err != nil || !isOK(rc) {
 		r.fail(name, fmt.Sprintf("OFF→ON: rc=%d err=%v", rc, err))
 		return
 	}
-	if err := h.waitForState(emcstat.ON, waitTimeout); err != nil {
+	if err := h.waitForState(emcstat.TaskState_ON, waitTimeout); err != nil {
 		r.fail(name, "state didn't reach ON from OFF")
 		return
 	}
@@ -385,17 +385,17 @@ func (h *testHarness) testStateDoubleEstopReset(r *testResults) {
 	const name = "state/double_estop_reset"
 	h.ensureEstop()
 
-	h.setState(int32(emcstat.ESTOP_RESET))
-	h.waitForState(emcstat.ESTOP_RESET, waitTimeout)
+	h.setState(int32(emcstat.TaskState_ESTOP_RESET))
+	h.waitForState(emcstat.TaskState_ESTOP_RESET, waitTimeout)
 
 	// Second ESTOP_RESET should be harmless
-	rc, err := h.setState(int32(emcstat.ESTOP_RESET))
+	rc, err := h.setState(int32(emcstat.TaskState_ESTOP_RESET))
 	if err != nil || !isOK(rc) {
 		r.fail(name, fmt.Sprintf("double ESTOP_RESET: rc=%d err=%v", rc, err))
 		return
 	}
 	stat, _ := h.getStat()
-	if stat.Task.State != emcstat.ESTOP_RESET {
+	if stat.Task.State != emcstat.TaskState_ESTOP_RESET {
 		r.fail(name, fmt.Sprintf("state after double reset: %d", stat.Task.State))
 		return
 	}
@@ -407,13 +407,13 @@ func (h *testHarness) testStateOnIdempotent(r *testResults) {
 	h.ensureOn()
 
 	// ON when already ON should be harmless
-	rc, err := h.setState(int32(emcstat.ON))
+	rc, err := h.setState(int32(emcstat.TaskState_ON))
 	if err != nil || !isOK(rc) {
 		r.fail(name, fmt.Sprintf("ON→ON: rc=%d err=%v", rc, err))
 		return
 	}
 	stat, _ := h.getStat()
-	if stat.Task.State != emcstat.ON {
+	if stat.Task.State != emcstat.TaskState_ON {
 		r.fail(name, fmt.Sprintf("state after ON→ON: %d", stat.Task.State))
 		return
 	}
@@ -428,26 +428,26 @@ func (h *testHarness) testModeSwitchManualAutoMdi(r *testResults) {
 	const name = "mode/manual_auto_mdi_cycle"
 	h.ensureOn()
 
-	h.setMode(int32(emcstat.AUTO))
+	h.setMode(int32(emcstat.TaskMode_AUTO))
 	time.Sleep(settle)
 	stat, _ := h.getStat()
-	if stat.Task.Mode != emcstat.AUTO {
+	if stat.Task.Mode != emcstat.TaskMode_AUTO {
 		r.fail(name, fmt.Sprintf("mode after AUTO: %d", stat.Task.Mode))
 		return
 	}
 
-	h.setMode(int32(emcstat.MDI))
+	h.setMode(int32(emcstat.TaskMode_MDI))
 	time.Sleep(settle)
 	stat, _ = h.getStat()
-	if stat.Task.Mode != emcstat.MDI {
+	if stat.Task.Mode != emcstat.TaskMode_MDI {
 		r.fail(name, fmt.Sprintf("mode after MDI: %d", stat.Task.Mode))
 		return
 	}
 
-	h.setMode(int32(emcstat.MANUAL))
+	h.setMode(int32(emcstat.TaskMode_MANUAL))
 	time.Sleep(settle)
 	stat, _ = h.getStat()
-	if stat.Task.Mode != emcstat.MANUAL {
+	if stat.Task.Mode != emcstat.TaskMode_MANUAL {
 		r.fail(name, fmt.Sprintf("mode after MANUAL: %d", stat.Task.Mode))
 		return
 	}
@@ -458,15 +458,15 @@ func (h *testHarness) testModeAutoFromManual(r *testResults) {
 	const name = "mode/auto_from_manual"
 	h.ensureManual()
 
-	rc, err := h.setMode(int32(emcstat.AUTO))
+	rc, err := h.setMode(int32(emcstat.TaskMode_AUTO))
 	if err != nil || !isOK(rc) {
 		r.fail(name, fmt.Sprintf("setMode(AUTO): rc=%d err=%v", rc, err))
 		return
 	}
 	time.Sleep(settle)
 	stat, _ := h.getStat()
-	if stat.Task.Mode != emcstat.AUTO {
-		r.fail(name, fmt.Sprintf("mode=%d, want AUTO(%d)", stat.Task.Mode, emcstat.AUTO))
+	if stat.Task.Mode != emcstat.TaskMode_AUTO {
+		r.fail(name, fmt.Sprintf("mode=%d, want AUTO(%d)", stat.Task.Mode, emcstat.TaskMode_AUTO))
 		return
 	}
 	r.pass(name)
@@ -476,15 +476,15 @@ func (h *testHarness) testModeMdiFromAuto(r *testResults) {
 	const name = "mode/mdi_from_auto"
 	h.ensureAuto()
 
-	rc, err := h.setMode(int32(emcstat.MDI))
+	rc, err := h.setMode(int32(emcstat.TaskMode_MDI))
 	if err != nil || !isOK(rc) {
 		r.fail(name, fmt.Sprintf("setMode(MDI): rc=%d err=%v", rc, err))
 		return
 	}
 	time.Sleep(settle)
 	stat, _ := h.getStat()
-	if stat.Task.Mode != emcstat.MDI {
-		r.fail(name, fmt.Sprintf("mode=%d, want MDI(%d)", stat.Task.Mode, emcstat.MDI))
+	if stat.Task.Mode != emcstat.TaskMode_MDI {
+		r.fail(name, fmt.Sprintf("mode=%d, want MDI(%d)", stat.Task.Mode, emcstat.TaskMode_MDI))
 		return
 	}
 	r.pass(name)
@@ -494,15 +494,15 @@ func (h *testHarness) testModeManualFromMdi(r *testResults) {
 	const name = "mode/manual_from_mdi"
 	h.ensureMdi()
 
-	rc, err := h.setMode(int32(emcstat.MANUAL))
+	rc, err := h.setMode(int32(emcstat.TaskMode_MANUAL))
 	if err != nil || !isOK(rc) {
 		r.fail(name, fmt.Sprintf("setMode(MANUAL): rc=%d err=%v", rc, err))
 		return
 	}
 	time.Sleep(settle)
 	stat, _ := h.getStat()
-	if stat.Task.Mode != emcstat.MANUAL {
-		r.fail(name, fmt.Sprintf("mode=%d, want MANUAL(%d)", stat.Task.Mode, emcstat.MANUAL))
+	if stat.Task.Mode != emcstat.TaskMode_MANUAL {
+		r.fail(name, fmt.Sprintf("mode=%d, want MANUAL(%d)", stat.Task.Mode, emcstat.TaskMode_MANUAL))
 		return
 	}
 	r.pass(name)
@@ -512,13 +512,13 @@ func (h *testHarness) testModeSwitchIdempotent(r *testResults) {
 	const name = "mode/switch_idempotent"
 	h.ensureManual()
 
-	rc, err := h.setMode(int32(emcstat.MANUAL))
+	rc, err := h.setMode(int32(emcstat.TaskMode_MANUAL))
 	if err != nil || !isOK(rc) {
 		r.fail(name, fmt.Sprintf("MANUAL→MANUAL: rc=%d err=%v", rc, err))
 		return
 	}
 	stat, _ := h.getStat()
-	if stat.Task.Mode != emcstat.MANUAL {
+	if stat.Task.Mode != emcstat.TaskMode_MANUAL {
 		r.fail(name, fmt.Sprintf("mode=%d after idempotent switch", stat.Task.Mode))
 		return
 	}
@@ -546,8 +546,8 @@ func (h *testHarness) testMotionDisabledAfterEstop(r *testResults) {
 	h.ensureOn()
 	h.waitForMotionEnabled(waitTimeout)
 
-	h.setState(int32(emcstat.ESTOP))
-	h.waitForState(emcstat.ESTOP, waitTimeout)
+	h.setState(int32(emcstat.TaskState_ESTOP))
+	h.waitForState(emcstat.TaskState_ESTOP, waitTimeout)
 	time.Sleep(settle)
 
 	stat, _ := h.getStat()
@@ -561,11 +561,11 @@ func (h *testHarness) testMotionDisabledAfterEstop(r *testResults) {
 func (h *testHarness) testMotionCoordInAuto(r *testResults) {
 	const name = "motion/coord_in_auto"
 	h.ensureOn()
-	h.setMode(int32(emcstat.AUTO))
+	h.setMode(int32(emcstat.TaskMode_AUTO))
 
-	if err := h.waitForMotionMode(emcstat.COORD, waitTimeout); err != nil {
+	if err := h.waitForMotionMode(emcstat.TrajMode_COORD, waitTimeout); err != nil {
 		stat, _ := h.getStat()
-		r.fail(name, fmt.Sprintf("motion mode=%d, want COORD(%d)", stat.Motion.Mode, emcstat.COORD))
+		r.fail(name, fmt.Sprintf("motion mode=%d, want COORD(%d)", stat.Motion.Mode, emcstat.TrajMode_COORD))
 		return
 	}
 	r.pass(name)
@@ -574,16 +574,16 @@ func (h *testHarness) testMotionCoordInAuto(r *testResults) {
 func (h *testHarness) testMotionFreeInManual(r *testResults) {
 	const name = "motion/free_in_manual"
 	h.ensureOn()
-	h.setMode(int32(emcstat.AUTO))
-	h.waitForMotionMode(emcstat.COORD, waitTimeout)
+	h.setMode(int32(emcstat.TaskMode_AUTO))
+	h.waitForMotionMode(emcstat.TrajMode_COORD, waitTimeout)
 
-	h.setMode(int32(emcstat.MANUAL))
+	h.setMode(int32(emcstat.TaskMode_MANUAL))
 	time.Sleep(settle)
 
 	stat, _ := h.getStat()
 	// In manual mode, motion should be FREE or TELEOP (depending on kinematics)
-	if stat.Motion.Mode != emcstat.FREE && stat.Motion.Mode != emcstat.TELEOP {
-		r.fail(name, fmt.Sprintf("motion mode=%d, want FREE(%d) or TELEOP(%d)", stat.Motion.Mode, emcstat.FREE, emcstat.TELEOP))
+	if stat.Motion.Mode != emcstat.TrajMode_FREE && stat.Motion.Mode != emcstat.TrajMode_TELEOP {
+		r.fail(name, fmt.Sprintf("motion mode=%d, want FREE(%d) or TELEOP(%d)", stat.Motion.Mode, emcstat.TrajMode_FREE, emcstat.TrajMode_TELEOP))
 		return
 	}
 	r.pass(name)
@@ -600,8 +600,8 @@ func (h *testHarness) testMotionTeleopEnable(r *testResults) {
 	}
 	time.Sleep(settle)
 	stat, _ := h.getStat()
-	if stat.Motion.Mode != emcstat.TELEOP {
-		r.fail(name, fmt.Sprintf("motion mode=%d, want TELEOP(%d)", stat.Motion.Mode, emcstat.TELEOP))
+	if stat.Motion.Mode != emcstat.TrajMode_TELEOP {
+		r.fail(name, fmt.Sprintf("motion mode=%d, want TELEOP(%d)", stat.Motion.Mode, emcstat.TrajMode_TELEOP))
 		return
 	}
 	r.pass(name)
@@ -620,8 +620,8 @@ func (h *testHarness) testMotionTeleopDisable(r *testResults) {
 	}
 	time.Sleep(settle)
 	stat, _ := h.getStat()
-	if stat.Motion.Mode != emcstat.FREE {
-		r.fail(name, fmt.Sprintf("motion mode=%d, want FREE(%d)", stat.Motion.Mode, emcstat.FREE))
+	if stat.Motion.Mode != emcstat.TrajMode_FREE {
+		r.fail(name, fmt.Sprintf("motion mode=%d, want FREE(%d)", stat.Motion.Mode, emcstat.TrajMode_FREE))
 		return
 	}
 	r.pass(name)
@@ -764,8 +764,8 @@ func (h *testHarness) testJogRejectedInAuto(r *testResults) {
 func (h *testHarness) testJogRejectedWhenDisabled(r *testResults) {
 	const name = "jog/rejected_when_disabled"
 	h.ensureEstop()
-	h.setState(int32(emcstat.ESTOP_RESET))
-	h.waitForState(emcstat.ESTOP_RESET, waitTimeout)
+	h.setState(int32(emcstat.TaskState_ESTOP_RESET))
+	h.waitForState(emcstat.TaskState_ESTOP_RESET, waitTimeout)
 	// Machine is in ESTOP_RESET (not ON) — motion should be disabled
 
 	rc, _ := h.jog(int32(1), 0, 100.0, 0)
@@ -921,7 +921,7 @@ func (h *testHarness) testProgramRun(r *testResults) {
 	const name = "program/run"
 	h.ensureHomed()
 	h.ensureAuto()
-	h.waitForInterpState(emcstat.IDLE, 2*time.Second)
+	h.waitForInterpState(emcstat.InterpState_IDLE, 2*time.Second)
 
 	rc, err := h.programOpen("/home/sascha/source/linuxcnc/configs/sim/test/test.ngc")
 	if err != nil || !isOK(rc) {
@@ -929,7 +929,7 @@ func (h *testHarness) testProgramRun(r *testResults) {
 		return
 	}
 	// Wait for interpreter to be ready after open
-	h.waitForInterpState(emcstat.IDLE, 2*time.Second)
+	h.waitForInterpState(emcstat.InterpState_IDLE, 2*time.Second)
 
 	// Record position before run
 	statBefore, _ := h.getStat()
@@ -942,7 +942,7 @@ func (h *testHarness) testProgramRun(r *testResults) {
 
 	// Wait for program to complete (interp goes back to IDLE)
 	// test.ngc has 4 moves of 10mm at F100 (1.667mm/s) = ~24s total
-	if err := h.waitForInterpState(emcstat.IDLE, 30*time.Second); err != nil {
+	if err := h.waitForInterpState(emcstat.InterpState_IDLE, 30*time.Second); err != nil {
 		r.fail(name, fmt.Sprintf("timeout waiting for program completion: %v", err))
 		return
 	}
@@ -959,7 +959,7 @@ func (h *testHarness) testProgramRun(r *testResults) {
 
 	// Verify program completed without error
 	stat, _ := h.getStat()
-	if stat.Task.ExecState == emcstat.ERROR {
+	if stat.Task.ExecState == emcstat.ExecState_ERROR {
 		r.fail(name, fmt.Sprintf("program ended with exec error; motion.mode=%d enabled=%v",
 			stat.Motion.Mode, stat.Motion.Enabled))
 		return
@@ -1010,7 +1010,7 @@ func (h *testHarness) testProgramPauseResume(r *testResults) {
 	stat, _ := h.getStat()
 	if !stat.Task.TaskPaused {
 		// May have already completed
-		if stat.Task.InterpState == emcstat.IDLE {
+		if stat.Task.InterpState == emcstat.InterpState_IDLE {
 			r.pass(name) // program finished before pause took effect
 			return
 		}
@@ -1034,7 +1034,7 @@ func (h *testHarness) testProgramPauseResume(r *testResults) {
 	}
 
 	// Wait for completion
-	h.waitForInterpState(emcstat.IDLE, 10*time.Second)
+	h.waitForInterpState(emcstat.InterpState_IDLE, 10*time.Second)
 	r.pass(name)
 }
 
@@ -1044,7 +1044,7 @@ func (h *testHarness) testProgramStep(r *testResults) {
 	time.Sleep(settle)
 	h.ensureHomed()
 	h.ensureAuto()
-	h.waitForInterpState(emcstat.IDLE, 2*time.Second)
+	h.waitForInterpState(emcstat.InterpState_IDLE, 2*time.Second)
 
 	rc, _ := h.programOpen("/home/sascha/source/linuxcnc/configs/sim/test/test.ngc")
 	if !isOK(rc) {
@@ -1063,7 +1063,7 @@ func (h *testHarness) testProgramStep(r *testResults) {
 
 	stat, _ := h.getStat()
 	// After step, should be paused (waiting for next step) or done (single-line)
-	if stat.Task.Line == 0 && stat.Task.InterpState == emcstat.IDLE {
+	if stat.Task.Line == 0 && stat.Task.InterpState == emcstat.InterpState_IDLE {
 		r.fail(name, "step had no effect (line=0, idle)")
 		return
 	}
@@ -1079,7 +1079,7 @@ func (h *testHarness) testProgramRunRequiresAutoMode(r *testResults) {
 
 	stat, _ := h.getStat()
 	// Command should either be rejected (rc=error) or have no effect (still manual, idle)
-	if stat.Task.Mode == emcstat.MANUAL && stat.Task.InterpState == emcstat.IDLE {
+	if stat.Task.Mode == emcstat.TaskMode_MANUAL && stat.Task.InterpState == emcstat.InterpState_IDLE {
 		r.pass(name)
 		return
 	}
@@ -1103,7 +1103,7 @@ func (h *testHarness) testProgramRunRequiresFileOpen(r *testResults) {
 
 	stat, _ := h.getStat()
 	// Should either be rejected or have no effect (stay idle)
-	if stat.Task.InterpState == emcstat.IDLE {
+	if stat.Task.InterpState == emcstat.InterpState_IDLE {
 		r.pass(name)
 		return
 	}
@@ -1122,11 +1122,11 @@ func (h *testHarness) testMdiExecute(r *testResults) {
 	const name = "mdi/execute_g0"
 	h.ensureHomed()
 	h.abort() // ensure clean state — cancel any in-progress motion from previous tests
-	h.waitForInterpState(emcstat.IDLE, 2*time.Second)
+	h.waitForInterpState(emcstat.InterpState_IDLE, 2*time.Second)
 	h.waitForInPosition(5 * time.Second)
 	h.ensureMdi()
 	// Wait for interpreter to be idle before sending MDI
-	h.waitForInterpState(emcstat.IDLE, 2*time.Second)
+	h.waitForInterpState(emcstat.InterpState_IDLE, 2*time.Second)
 
 	rc, err := h.mdi("G0 X5")
 	if err != nil || !isOK(rc) {
@@ -1135,7 +1135,7 @@ func (h *testHarness) testMdiExecute(r *testResults) {
 	}
 
 	// Wait for MDI to complete: interp idle + motion done
-	h.waitForInterpState(emcstat.IDLE, 5*time.Second)
+	h.waitForInterpState(emcstat.InterpState_IDLE, 5*time.Second)
 	// Give motion enough time to execute and report final position
 	time.Sleep(2 * time.Second)
 
@@ -1156,7 +1156,7 @@ func (h *testHarness) testMdiRequiresMdiMode(r *testResults) {
 
 	stat, _ := h.getStat()
 	// Should be rejected or have no effect
-	if stat.Task.Mode == emcstat.MANUAL && stat.Task.InterpState == emcstat.IDLE {
+	if stat.Task.Mode == emcstat.TaskMode_MANUAL && stat.Task.InterpState == emcstat.InterpState_IDLE {
 		r.pass(name)
 		return
 	}
@@ -1175,7 +1175,7 @@ func (h *testHarness) testMdiRequiresOn(r *testResults) {
 	if isOK(rc) {
 		time.Sleep(settle)
 		stat, _ := h.getStat()
-		if stat.Task.State == emcstat.ESTOP {
+		if stat.Task.State == emcstat.TaskState_ESTOP {
 			r.pass(name) // command accepted but didn't execute
 			return
 		}
@@ -1193,7 +1193,7 @@ func (h *testHarness) testSpindleForward(r *testResults) {
 	const name = "spindle/forward"
 	h.ensureHomed()
 	h.ensureMdi()
-	h.waitForInterpState(emcstat.IDLE, 2*time.Second)
+	h.waitForInterpState(emcstat.InterpState_IDLE, 2*time.Second)
 
 	// Use MDI to start spindle (emccmd spindle may not work in all modes)
 	rc, err := h.mdi("M3 S1000")
@@ -1201,7 +1201,7 @@ func (h *testHarness) testSpindleForward(r *testResults) {
 		r.fail(name, fmt.Sprintf("mdi(M3 S1000): rc=%d err=%v", rc, err))
 		return
 	}
-	h.waitForInterpState(emcstat.IDLE, 5*time.Second)
+	h.waitForInterpState(emcstat.InterpState_IDLE, 5*time.Second)
 	time.Sleep(200 * time.Millisecond)
 
 	stat, _ := h.getStat()
@@ -1230,7 +1230,7 @@ func (h *testHarness) testSpindleReverse(r *testResults) {
 	const name = "spindle/reverse"
 	h.ensureHomed()
 	h.ensureMdi()
-	h.waitForInterpState(emcstat.IDLE, 2*time.Second)
+	h.waitForInterpState(emcstat.InterpState_IDLE, 2*time.Second)
 
 	// Use MDI to start spindle reverse
 	rc, err := h.mdi("M4 S500")
@@ -1238,7 +1238,7 @@ func (h *testHarness) testSpindleReverse(r *testResults) {
 		r.fail(name, fmt.Sprintf("mdi(M4 S500): rc=%d err=%v", rc, err))
 		return
 	}
-	h.waitForInterpState(emcstat.IDLE, 5*time.Second)
+	h.waitForInterpState(emcstat.InterpState_IDLE, 5*time.Second)
 	time.Sleep(200 * time.Millisecond)
 
 	stat, _ := h.getStat()
@@ -1709,8 +1709,8 @@ func (h *testHarness) testAbortDuringMdi(r *testResults) {
 	stat, _ := h.getStat()
 
 	// Should be idle after abort
-	if stat.Task.InterpState != emcstat.IDLE {
-		r.fail(name, fmt.Sprintf("interp_state=%d after abort, want IDLE(%d)", stat.Task.InterpState, emcstat.IDLE))
+	if stat.Task.InterpState != emcstat.InterpState_IDLE {
+		r.fail(name, fmt.Sprintf("interp_state=%d after abort, want IDLE(%d)", stat.Task.InterpState, emcstat.InterpState_IDLE))
 		return
 	}
 

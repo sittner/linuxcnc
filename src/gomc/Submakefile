@@ -70,12 +70,12 @@ GOMC_SRC := $(GOMC_SRC_BASE) \
 # empty on a fresh build (files don't exist yet at parse time), so we list
 # concrete prerequisites here to ensure codegen runs first.
 GMI_KINS_GEN_GO := gomc/generated/gmi/kins/kins_cgo.go
-GMI_TOOLS_GEN_GO := gomc/generated/gmi/toolsapi/tools_server.go
+GMI_TOOLS_GEN_GO := gomc/generated/gmi/tools/tools_cgo.go
 GMI_EMCSTAT_PUSH_GO := gomc/generated/gmi/emcstat/emcstat_push.go
 GMI_MOTCTL_CLIENT_GO := gomc/generated/gmi/motctl/motctl_client_cgo.go
 GMI_MOTSTAT_CLIENT_GO := gomc/generated/gmi/motstat/motstat_client_cgo.go
 GMI_EMCIO_CLIENT_GO := gomc/generated/gmi/emcio/emcio_client_cgo.go
-GMI_CLASSICLADDER_SERVER_GO := gomc/generated/gmi/classicladderapi/classicladder_server.go
+GMI_CLASSICLADDER_SERVER_GO := gomc/generated/gmi/classicladder/classicladder_cgo.go
 
 # Runtime files generated from .in bases on fresh checkouts.
 # packages.conf is generated from .in by filtering out disabled modules;
@@ -220,13 +220,7 @@ TARGETS += ../bin/modcompile
 # halcmd — HAL command-line tool (REST-based, replaces legacy C halcmd/halrmt)
 # ---------------------------------------------------------------------------
 
-GMI_HALCMD_GEN_GO := gomc/generated/gmi/halcmd/halcmd_client.go
-
-$(GMI_HALCMD_GEN_GO): gmi/idl/halcmd.gmi ../bin/modcompile
-	$(ECHO) Generating halcmd REST client
-	@mkdir -p $(dir $@)
-	$(Q)../bin/modcompile gmi --client-go $(TOP)/src/gmi/idl/halcmd.gmi -o $@
-	$(Q)../bin/modcompile add-gmi generated/gmi/halcmd
+GMI_HALCMD_GEN_GO := gomc/generated/gmi/halcmdclient/halcmd_client.go
 
 ../bin/halcmd: $(GOMC_SRC_BASE) $(GMI_HALCMD_GEN_GO) Makefile.inc
 	$(ECHO) Building halcmd - Go REST client

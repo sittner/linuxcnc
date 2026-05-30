@@ -3,7 +3,7 @@ package halrest
 import (
 	"fmt"
 
-	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/halcmdapi"
+	halcmdapi "github.com/sittner/linuxcnc/src/gomc/generated/gmi/halcmd"
 	"github.com/sittner/linuxcnc/src/gomc/internal/halcmd"
 	hal "github.com/sittner/linuxcnc/src/gomc/pkg/hal"
 )

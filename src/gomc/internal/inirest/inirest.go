@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/iniapi"
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/ini"
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
 	"github.com/sittner/linuxcnc/src/gomc/pkg/inifile"
 )
@@ -15,29 +15,29 @@ type iniImpl struct {
 	ini *inifile.IniFile
 }
 
-func (im *iniImpl) Query(items []iniapi.IniQueryItem) ([]iniapi.IniQueryResult, error) {
+func (im *iniImpl) Query(items []ini.IniQueryItem) ([]ini.IniQueryResult, error) {
 	if im.ini == nil {
 		return nil, fmt.Errorf("INI file not loaded")
 	}
 
-	results := make([]iniapi.IniQueryResult, len(items))
+	results := make([]ini.IniQueryResult, len(items))
 	for i, q := range items {
-		ini := im.ini
+		iniFile := im.ini
 		if q.Namespace != "" {
-			ini = ini.WithNamespace(q.Namespace)
+			iniFile = iniFile.WithNamespace(q.Namespace)
 		}
 		if q.All != nil && *q.All {
-			vals := ini.GetAll(q.Section, q.Key)
+			vals := iniFile.GetAll(q.Section, q.Key)
 			if vals == nil {
 				vals = []string{}
 			}
-			results[i] = iniapi.IniQueryResult{Values: vals}
+			results[i] = ini.IniQueryResult{Values: vals}
 		} else {
-			v := ini.Get(q.Section, q.Key)
+			v := iniFile.Get(q.Section, q.Key)
 			if v == "" && !im.keyExists(q.Section, q.Key) {
-				results[i] = iniapi.IniQueryResult{}
+				results[i] = ini.IniQueryResult{}
 			} else {
-				results[i] = iniapi.IniQueryResult{Value: v}
+				results[i] = ini.IniQueryResult{Value: v}
 			}
 		}
 	}
@@ -79,7 +79,7 @@ func (im *iniImpl) keyExists(section, key string) bool {
 
 // Register registers the INI REST API with the given registry.
 func Register(reg *apiserver.Registry, parsed *inifile.IniFile) error {
-	apiserver.RegisterMeta(iniapi.IniMeta)
+	apiserver.RegisterMeta(ini.IniMeta)
 	impl := &iniImpl{ini: parsed}
-	return iniapi.RegisterIniAPI(reg, "ini", impl)
+	return ini.RegisterIniAPI(reg, "ini", impl)
 }

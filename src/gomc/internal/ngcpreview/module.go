@@ -659,7 +659,7 @@ import (
 	"strings"
 	"unsafe"
 
-	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/ngcpreviewapi"
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/ngcpreview"
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
 	"github.com/sittner/linuxcnc/src/gomc/pkg/gomc"
 	"github.com/sittner/linuxcnc/src/gomc/pkg/inifile"
@@ -667,7 +667,7 @@ import (
 
 func init() {
 	gomc.RegisterModule("ngcpreview", newNgcPreview)
-	apiserver.RegisterMeta(ngcpreviewapi.NgcpreviewMeta)
+	apiserver.RegisterMeta(ngcpreview.NgcpreviewMeta)
 }
 
 type ngcPreview struct {
@@ -707,7 +707,7 @@ func newNgcPreview(ini *inifile.IniFile, logger *slog.Logger, name string, args 
 	}
 	linearUnits := parseLinearUnits(nsIni.Get("TRAJ", "LINEAR_UNITS"))
 	m := &ngcPreview{logger: logger, parameterFile: paramFile, linearUnits: linearUnits}
-	ngcpreviewapi.RegisterNgcpreviewAPI(apiserver.DefaultRegistry(), name, m)
+	ngcpreview.RegisterNgcpreviewAPI(apiserver.DefaultRegistry(), name, m)
 	logger.Info("ngcpreview module loaded and API registered", "instance", name, "parameterFile", paramFile)
 	return m, nil
 }
@@ -733,8 +733,8 @@ func shimErrorText(h *C.interp_handle_t, rc C.int) string {
 	return C.GoString(&buf[0])
 }
 
-// GenPreview implements ngcpreviewapi.NgcpreviewCallbacks.
-func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode string) (*ngcpreviewapi.PreviewResult, error) {
+// GenPreview implements ngcpreview.NgcpreviewCallbacks.
+func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode string) (*ngcpreview.PreviewResult, error) {
 	// Create a fresh interpreter
 	h := C.interp_shim_new()
 	if h == nil {
@@ -769,7 +769,7 @@ func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode stri
 	rc := C.interp_shim_init(h)
 	if rc != C.INTERP_SHIM_OK {
 		errText := shimErrorText(h, rc)
-		return &ngcpreviewapi.PreviewResult{
+		return &ngcpreview.PreviewResult{
 			Error: fmt.Sprintf("interpreter init failed: %d (%s)", rc, errText),
 		}, nil
 	}
@@ -780,7 +780,7 @@ func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode stri
 	C.free(unsafe.Pointer(cFile))
 	if rc != C.INTERP_SHIM_OK {
 		errText := shimErrorText(h, rc)
-		return &ngcpreviewapi.PreviewResult{
+		return &ngcpreview.PreviewResult{
 			Error: fmt.Sprintf("open failed: %d (%s)", rc, errText),
 		}, nil
 	}
@@ -799,7 +799,7 @@ func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode stri
 				rc = C.interp_shim_execute(h)
 			}
 			if rc > C.INTERP_SHIM_ENDFILE {
-				return &ngcpreviewapi.PreviewResult{
+				return &ngcpreview.PreviewResult{
 					Error: fmt.Sprintf("initcodes execution failed: %d", rc),
 				}, nil
 			}
@@ -815,7 +815,7 @@ func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode stri
 			rc = C.interp_shim_execute(h)
 		}
 		if rc != C.INTERP_SHIM_OK {
-			return &ngcpreviewapi.PreviewResult{
+			return &ngcpreview.PreviewResult{
 				Error: fmt.Sprintf("unitcode execution failed: %d", rc),
 			}, nil
 		}
@@ -862,7 +862,7 @@ func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode stri
 		errText := shimErrorText(h, lastReadRC)
 		errMsg = fmt.Sprintf("line %d: read error %d: %s", maxLine+1, lastReadRC, errText)
 	}
-	result := &ngcpreviewapi.PreviewResult{
+	result := &ngcpreview.PreviewResult{
 		MaxLine: maxLine,
 		Error:   errMsg,
 	}
@@ -870,25 +870,25 @@ func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode stri
 	// Convert segments
 	nSegs := int(ctx.seg_count)
 	if nSegs > 0 {
-		result.Segments = make([]ngcpreviewapi.Segment, nSegs)
+		result.Segments = make([]ngcpreview.Segment, nSegs)
 		segs := unsafe.Slice(ctx.segments, nSegs)
 		for i := 0; i < nSegs; i++ {
 			s := &segs[i]
-			result.Segments[i] = ngcpreviewapi.Segment{
-				Type:   ngcpreviewapi.SegmentType(s._type),
+			result.Segments[i] = ngcpreview.Segment{
+				Type:   ngcpreview.SegmentType(s._type),
 				LineNo: int32(s.line_no),
-				Start: ngcpreviewapi.Position{
+				Start: ngcpreview.Position{
 					X: sanitize(float64(s.start[0])), Y: sanitize(float64(s.start[1])), Z: sanitize(float64(s.start[2])),
 					A: sanitize(float64(s.start[3])), B: sanitize(float64(s.start[4])), C: sanitize(float64(s.start[5])),
 					U: sanitize(float64(s.start[6])), V: sanitize(float64(s.start[7])), W: sanitize(float64(s.start[8])),
 				},
-				End: ngcpreviewapi.Position{
+				End: ngcpreview.Position{
 					X: sanitize(float64(s.end[0])), Y: sanitize(float64(s.end[1])), Z: sanitize(float64(s.end[2])),
 					A: sanitize(float64(s.end[3])), B: sanitize(float64(s.end[4])), C: sanitize(float64(s.end[5])),
 					U: sanitize(float64(s.end[6])), V: sanitize(float64(s.end[7])), W: sanitize(float64(s.end[8])),
 				},
 				Feedrate: sanitize(float64(s.feedrate)),
-				ToolOffset: ngcpreviewapi.Position{
+				ToolOffset: ngcpreview.Position{
 					X: sanitize(float64(s.tool_offset[0])), Y: sanitize(float64(s.tool_offset[1])), Z: sanitize(float64(s.tool_offset[2])),
 					A: sanitize(float64(s.tool_offset[3])), B: sanitize(float64(s.tool_offset[4])), C: sanitize(float64(s.tool_offset[5])),
 					U: sanitize(float64(s.tool_offset[6])), V: sanitize(float64(s.tool_offset[7])), W: sanitize(float64(s.tool_offset[8])),
@@ -904,15 +904,15 @@ func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode stri
 	// Convert dwells
 	nDwells := int(ctx.dwell_count)
 	if nDwells > 0 {
-		result.Dwells = make([]ngcpreviewapi.Dwell, nDwells)
+		result.Dwells = make([]ngcpreview.Dwell, nDwells)
 		dwells := unsafe.Slice(ctx.dwells, nDwells)
 		for i := 0; i < nDwells; i++ {
 			d := &dwells[i]
-			result.Dwells[i] = ngcpreviewapi.Dwell{
+			result.Dwells[i] = ngcpreview.Dwell{
 				LineNo:  int32(d.line_no),
 				Seconds: float64(d.seconds),
 				Plane:   int32(d.plane),
-				Pos: ngcpreviewapi.Position{
+				Pos: ngcpreview.Position{
 					X: float64(d.pos[0]), Y: float64(d.pos[1]), Z: float64(d.pos[2]),
 					A: float64(d.pos[3]), B: float64(d.pos[4]), C: float64(d.pos[5]),
 					U: float64(d.pos[6]), V: float64(d.pos[7]), W: float64(d.pos[8]),
@@ -924,11 +924,11 @@ func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode stri
 	// Convert tool changes
 	nTC := int(ctx.tc_count)
 	if nTC > 0 {
-		result.ToolChanges = make([]ngcpreviewapi.ToolChange, nTC)
+		result.ToolChanges = make([]ngcpreview.ToolChange, nTC)
 		tcs := unsafe.Slice(ctx.tool_changes, nTC)
 		for i := 0; i < nTC; i++ {
 			tc := &tcs[i]
-			result.ToolChanges[i] = ngcpreviewapi.ToolChange{
+			result.ToolChanges[i] = ngcpreview.ToolChange{
 				LineNo: int32(tc.line_no),
 				ToolNo: int32(tc.tool_no),
 			}
@@ -937,12 +937,12 @@ func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode stri
 
 	// Set active offsets (captured from SET_G5X_OFFSET / SET_G92_OFFSET canon calls)
 	result.G5xIndex = int32(ctx.g5x_index)
-	result.G5xOffset = ngcpreviewapi.Position{
+	result.G5xOffset = ngcpreview.Position{
 		X: sanitize(float64(ctx.g5x_offset[0])), Y: sanitize(float64(ctx.g5x_offset[1])), Z: sanitize(float64(ctx.g5x_offset[2])),
 		A: sanitize(float64(ctx.g5x_offset[3])), B: sanitize(float64(ctx.g5x_offset[4])), C: sanitize(float64(ctx.g5x_offset[5])),
 		U: sanitize(float64(ctx.g5x_offset[6])), V: sanitize(float64(ctx.g5x_offset[7])), W: sanitize(float64(ctx.g5x_offset[8])),
 	}
-	result.G92Offset = ngcpreviewapi.Position{
+	result.G92Offset = ngcpreview.Position{
 		X: sanitize(float64(ctx.g92_offset[0])), Y: sanitize(float64(ctx.g92_offset[1])), Z: sanitize(float64(ctx.g92_offset[2])),
 		A: sanitize(float64(ctx.g92_offset[3])), B: sanitize(float64(ctx.g92_offset[4])), C: sanitize(float64(ctx.g92_offset[5])),
 		U: sanitize(float64(ctx.g92_offset[6])), V: sanitize(float64(ctx.g92_offset[7])), W: sanitize(float64(ctx.g92_offset[8])),

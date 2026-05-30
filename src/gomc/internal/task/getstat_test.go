@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcstatapi"
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcstat"
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/motstat"
 )
 
@@ -82,13 +82,13 @@ func TestGetStat_TaskState(t *testing.T) {
 
 	stat := task.BuildStat()
 
-	if stat.Task.State != emcstatapi.TaskState_ON {
-		t.Errorf("Task.State = %d, want ON(%d)", stat.Task.State, emcstatapi.TaskState_ON)
+	if stat.Task.State != emcstat.TaskState_ON {
+		t.Errorf("Task.State = %d, want ON(%d)", stat.Task.State, emcstat.TaskState_ON)
 	}
-	if stat.Task.Mode != emcstatapi.TaskMode_MDI {
-		t.Errorf("Task.Mode = %d, want MDI(%d)", stat.Task.Mode, emcstatapi.TaskMode_MDI)
+	if stat.Task.Mode != emcstat.TaskMode_MDI {
+		t.Errorf("Task.Mode = %d, want MDI(%d)", stat.Task.Mode, emcstat.TaskMode_MDI)
 	}
-	if stat.Task.InterpState != emcstatapi.InterpState_IDLE {
+	if stat.Task.InterpState != emcstat.InterpState_IDLE {
 		t.Errorf("Task.InterpState = %d, want IDLE", stat.Task.InterpState)
 	}
 }
@@ -246,7 +246,7 @@ func TestGetStat_ScalarFields(t *testing.T) {
 
 	stat := task.BuildStat()
 
-	if stat.KinematicsType != emcstatapi.KinematicsType_IDENTITY {
+	if stat.KinematicsType != emcstat.KinematicsType_IDENTITY {
 		t.Errorf("KinematicsType = %d, want IDENTITY(1)", stat.KinematicsType)
 	}
 	if stat.LinearUnits != 1.0 {
@@ -261,7 +261,7 @@ func TestGetStat_NilTask(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stat.Task.State != emcstatapi.TaskState_ESTOP {
+	if stat.Task.State != emcstat.TaskState_ESTOP {
 		t.Errorf("nil task: State = %d, want ESTOP", stat.Task.State)
 	}
 }

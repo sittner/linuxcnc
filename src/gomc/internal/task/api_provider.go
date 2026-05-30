@@ -3,13 +3,13 @@ package task
 import (
 	"fmt"
 
-	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emccmdapi"
-	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcstatapi"
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emccmd"
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcstat"
 )
 
 // Compile-time interface checks.
-var _ emccmdapi.EmccmdCallbacks = (*milltaskModule)(nil)
-var _ emcstatapi.EmcstatCallbacks = (*milltaskModule)(nil)
+var _ emccmd.EmccmdCallbacks = (*milltaskModule)(nil)
+var _ emcstat.EmcstatCallbacks = (*milltaskModule)(nil)
 
 // errNotReady is returned by command handlers before Start() completes.
 var errNotReady = fmt.Errorf("milltask: not ready")
@@ -45,7 +45,7 @@ func (m *milltaskModule) SetMode(mode int32) (int32, error) {
 	return rcsDone, m.task.SetMode(mode)
 }
 
-func (m *milltaskModule) AutoCmd(cmd emccmdapi.AutoCmd, line int32) (int32, error) {
+func (m *milltaskModule) AutoCmd(cmd emccmd.AutoCmd, line int32) (int32, error) {
 	if err := m.ready(); err != nil {
 		return rcsError, err
 	}
@@ -59,7 +59,7 @@ func (m *milltaskModule) Mdi(command string) (int32, error) {
 	return rcsDone, m.task.MDI(command)
 }
 
-func (m *milltaskModule) Jog(jogType emccmdapi.JogType, jjogmode bool, axisOrJoint int32, velocity float64, distance float64) (int32, error) {
+func (m *milltaskModule) Jog(jogType emccmd.JogType, jjogmode bool, axisOrJoint int32, velocity float64, distance float64) (int32, error) {
 	if err := m.ready(); err != nil {
 		return rcsError, err
 	}
@@ -73,7 +73,7 @@ func (m *milltaskModule) JogStop(jjogmode bool, axisOrJoint int32) (int32, error
 	return rcsDone, m.task.JogStop(jjogmode, axisOrJoint)
 }
 
-func (m *milltaskModule) Spindle(cmd emccmdapi.SpindleCmd, speed float64, spindleNum int32, wait int32) (int32, error) {
+func (m *milltaskModule) Spindle(cmd emccmd.SpindleCmd, speed float64, spindleNum int32, wait int32) (int32, error) {
 	if err := m.ready(); err != nil {
 		return rcsError, err
 	}
@@ -256,15 +256,15 @@ func (m *milltaskModule) SetAjogSpeed(speed float64) (int32, error) {
 
 // --- EmcstatCallbacks implementation ---
 
-func (m *milltaskModule) GetStat() (*emcstatapi.StatFull, error) {
+func (m *milltaskModule) GetStat() (*emcstat.StatFull, error) {
 	t := m.task
 	if t == nil {
-		return &emcstatapi.StatFull{
-			Task: emcstatapi.StatTaskInfo{
-				State:       emcstatapi.TaskState_ESTOP,
-				Mode:        emcstatapi.TaskMode_MANUAL,
-				InterpState: emcstatapi.InterpState_IDLE,
-				ExecState:   emcstatapi.ExecState_DONE,
+		return &emcstat.StatFull{
+			Task: emcstat.StatTaskInfo{
+				State:       emcstat.TaskState_ESTOP,
+				Mode:        emcstat.TaskMode_MANUAL,
+				InterpState: emcstat.InterpState_IDLE,
+				ExecState:   emcstat.ExecState_DONE,
 			},
 		}, nil
 	}

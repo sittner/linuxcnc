@@ -15,6 +15,16 @@ func GenerateServerGo(w io.Writer, api *ast.API, packageName string) error {
 	return g.generate()
 }
 
+// GenerateServerGoExtra writes only the Commands and WatchRegister functions.
+// It is appended to the bridge file which already has the package header and interface.
+func GenerateServerGoExtra(w io.Writer, api *ast.API, packageName string) error {
+	g := &serverGoGen{w: w, api: api, pkg: packageName}
+	g.emitWatchCallbacksInterface()
+	g.emitCommands()
+	g.emitWatchRegister()
+	return g.err
+}
+
 type serverGoGen struct {
 	w   io.Writer
 	api *ast.API
@@ -460,10 +470,7 @@ func (g *serverGoGen) emitCommands() {
 
 	g.printf("// --- WebSocket Commands ---\n\n")
 	g.printf("// %s generates WS command metadata from the callbacks implementation.\n", funcName)
-	g.printf("// Each REST/command dispatch function is wrapped as a CommandMeta.\n")
 	g.printf("func %s(impl %s) []apiserver.CommandMeta {\n", funcName, ifaceName)
-	g.printf("\tcb := impl\n")
-	g.printf("\tcbPtr := unsafe.Pointer(&cb)\n")
 	g.printf("\treturn []apiserver.CommandMeta{\n")
 	for _, fn := range g.api.Funcs {
 		if fn.Watch && fn.Method == "" {
@@ -472,10 +479,47 @@ func (g *serverGoGen) emitCommands() {
 		if fn.Publish {
 			continue // @publish function — no dispatch command
 		}
-		dispatchName := g.api.Name + "Dispatch" + toPascalCase(fn.Name)
+		methodName := toPascalCase(fn.Name)
+
 		g.printf("\t\t{Name: %q, Handler: func(req json.RawMessage) (json.RawMessage, error) {\n", fn.Name)
-		g.printf("\t\t\tres, err := %s(cbPtr, []byte(req))\n", dispatchName)
-		g.printf("\t\t\treturn json.RawMessage(res), err\n")
+
+		// Unmarshal params if any
+		if len(fn.Params) > 0 {
+			g.printf("\t\t\tvar params struct {\n")
+			for _, p := range fn.Params {
+				fieldName := toPascalCase(p.Name)
+				fieldType := g.toGoType(p.Type)
+				g.printf("\t\t\t\t%s %s `json:\"%s\"`\n", fieldName, fieldType, p.Name)
+			}
+			g.printf("\t\t\t}\n")
+			g.printf("\t\t\tif len(req) > 0 {\n")
+			g.printf("\t\t\t\tif err := json.Unmarshal(req, &params); err != nil {\n")
+			g.printf("\t\t\t\t\treturn nil, err\n")
+			g.printf("\t\t\t\t}\n")
+			g.printf("\t\t\t}\n")
+		}
+
+		// Build call args
+		args := make([]string, 0, len(fn.Params))
+		for _, p := range fn.Params {
+			args = append(args, "params."+toPascalCase(p.Name))
+		}
+		callArgs := strings.Join(args, ", ")
+
+		// Call the interface method
+		if fn.Return == nil {
+			g.printf("\t\t\tif err := impl.%s(%s); err != nil {\n", methodName, callArgs)
+			g.printf("\t\t\t\treturn nil, err\n")
+			g.printf("\t\t\t}\n")
+			g.printf("\t\t\treturn nil, nil\n")
+		} else {
+			g.printf("\t\t\tresult, err := impl.%s(%s)\n", methodName, callArgs)
+			g.printf("\t\t\tif err != nil {\n")
+			g.printf("\t\t\t\treturn nil, err\n")
+			g.printf("\t\t\t}\n")
+			g.printf("\t\t\treturn json.Marshal(result)\n")
+		}
+
 		g.printf("\t\t}},\n")
 	}
 	g.printf("\t}\n")

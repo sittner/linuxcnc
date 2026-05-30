@@ -81,7 +81,7 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/halscopeapi"
+	halscopeapi "github.com/sittner/linuxcnc/src/gomc/generated/gmi/halscope"
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
 	"github.com/sittner/linuxcnc/src/gomc/pkg/gomc"
 	"github.com/sittner/linuxcnc/src/gomc/pkg/inifile"

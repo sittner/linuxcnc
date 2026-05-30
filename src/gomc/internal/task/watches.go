@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emccmdapi"
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emccmd"
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcerror"
-	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcstatapi"
-	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/toolsapi"
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcstat"
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/tools"
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
 )
 
@@ -19,7 +19,7 @@ func (m *milltaskModule) registerWatches(name string) {
 	wreg := apiserver.DefaultWatchRegistry()
 
 	// emcstat: get_stat watch + get_positions watch + poslogger commands.
-	emcstatCmds := emcstatapi.EmcstatCommands(m)
+	emcstatCmds := emcstat.EmcstatCommands(m)
 	emcstatCmds = append(emcstatCmds,
 		apiserver.CommandMeta{Name: "start_logger", Handler: m.cmdStartLogger},
 		apiserver.CommandMeta{Name: "stop_logger", Handler: m.cmdStopLogger},
@@ -54,7 +54,7 @@ func (m *milltaskModule) registerWatches(name string) {
 	wreg.Register(&apiserver.WatchAPI{
 		APIName:  "emccmd",
 		Instance: name,
-		Commands: emccmdapi.EmccmdCommands(m),
+		Commands: emccmd.EmccmdCommands(m),
 	})
 
 	// messages: shared current message list for UI notifications.
@@ -86,7 +86,7 @@ func (m *milltaskModule) registerTools() {
 
 	reg := apiserver.DefaultRegistry()
 	if reg != nil {
-		toolsapi.RegisterToolsAPI(reg, m.name, &toolsImpl{
+		tools.RegisterToolsAPI(reg, m.name, &toolsImpl{
 			toolTableFile: toolFile,
 			module:        m,
 		})
@@ -155,7 +155,7 @@ func (m *milltaskModule) cmdAckErrorMessages(req json.RawMessage) (json.RawMessa
 	if m.task == nil {
 		return json.RawMessage(`{"removed":0}`), nil
 	}
-	removed := m.task.ackMessagesByKinds(emcerror.NML_ERROR, emcerror.OPERATOR_ERROR)
+	removed := m.task.ackMessagesByKinds(emcerror.ErrorKind_NML_ERROR, emcerror.ErrorKind_OPERATOR_ERROR)
 	return json.Marshal(map[string]int{"removed": removed})
 }
 
@@ -163,7 +163,7 @@ func (m *milltaskModule) cmdAckTextMessages(req json.RawMessage) (json.RawMessag
 	if m.task == nil {
 		return json.RawMessage(`{"removed":0}`), nil
 	}
-	removed := m.task.ackMessagesByKinds(emcerror.NML_TEXT, emcerror.OPERATOR_TEXT)
+	removed := m.task.ackMessagesByKinds(emcerror.ErrorKind_NML_TEXT, emcerror.ErrorKind_OPERATOR_TEXT)
 	return json.Marshal(map[string]int{"removed": removed})
 }
 
@@ -171,7 +171,7 @@ func (m *milltaskModule) cmdAckDisplayMessages(req json.RawMessage) (json.RawMes
 	if m.task == nil {
 		return json.RawMessage(`{"removed":0}`), nil
 	}
-	removed := m.task.ackMessagesByKinds(emcerror.NML_DISPLAY, emcerror.OPERATOR_DISPLAY)
+	removed := m.task.ackMessagesByKinds(emcerror.ErrorKind_NML_DISPLAY, emcerror.ErrorKind_OPERATOR_DISPLAY)
 	return json.Marshal(map[string]int{"removed": removed})
 }
 
@@ -187,14 +187,14 @@ func (m *milltaskModule) cmdPublishMessage(req json.RawMessage) (json.RawMessage
 		_ = json.Unmarshal(req, &args)
 	}
 	if args.Kind == 0 {
-		args.Kind = int32(emcerror.OPERATOR_TEXT)
+		args.Kind = int32(emcerror.ErrorKind_OPERATOR_TEXT)
 	}
 	// Publish to both the drain (for /errors watchers) and the message list.
 	if m.task.errors != nil {
 		switch emcerror.ErrorKind(args.Kind) {
-		case emcerror.NML_ERROR, emcerror.OPERATOR_ERROR:
+		case emcerror.ErrorKind_NML_ERROR, emcerror.ErrorKind_OPERATOR_ERROR:
 			m.task.errors.OperatorError(args.Text)
-		case emcerror.NML_DISPLAY, emcerror.OPERATOR_DISPLAY:
+		case emcerror.ErrorKind_NML_DISPLAY, emcerror.ErrorKind_OPERATOR_DISPLAY:
 			m.task.errors.OperatorDisplay(args.Text)
 		default:
 			m.task.errors.OperatorText(args.Text)

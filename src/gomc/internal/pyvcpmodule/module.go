@@ -23,7 +23,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/pyvcpapi"
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/pyvcp"
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
 	"github.com/sittner/linuxcnc/src/gomc/pkg/gomc"
 	"github.com/sittner/linuxcnc/src/gomc/pkg/hal"
@@ -34,7 +34,7 @@ func init() {
 	gomc.RegisterModule("pyvcp", newPyVCPModule)
 
 	// Register REST meta so the HTTP server knows about pyvcp routes.
-	apiserver.RegisterMeta(pyvcpapi.PyvcpMeta)
+	apiserver.RegisterMeta(pyvcp.PyvcpMeta)
 }
 
 // pyvcpModule implements gomc.Module for a PyVCP panel.
@@ -104,7 +104,7 @@ func newPyVCPModule(ini *inifile.IniFile, logger *slog.Logger, name string, args
 
 	// Register the API instance with the apiserver registry.
 	cb := &pyvcpCallbacks{panel: p, comp: comp}
-	if err := pyvcpapi.RegisterPyvcpAPI(apiserver.DefaultRegistry(), name, cb); err != nil {
+	if err := pyvcp.RegisterPyvcpAPI(apiserver.DefaultRegistry(), name, cb); err != nil {
 		return nil, fmt.Errorf("pyvcp %q: api register: %w", name, err)
 	}
 
@@ -112,9 +112,9 @@ func newPyVCPModule(ini *inifile.IniFile, logger *slog.Logger, name string, args
 	if apiserver.DefaultWatchRegistry() == nil {
 		apiserver.SetDefaultWatchRegistry(apiserver.NewWatchRegistry())
 	}
-	pyvcpapi.RegisterPyvcpWatch(
+	pyvcp.RegisterPyvcpWatch(
 		apiserver.DefaultWatchRegistry(), name, cb,
-		pyvcpapi.PyvcpCommands(cb),
+		pyvcp.PyvcpCommands(cb),
 	)
 
 	logger.Info("PyVCP panel initialized", "name", name, "pins", len(p.pins))
@@ -162,7 +162,7 @@ func (r *panelRegistry_) list() []string {
 }
 
 // pyvcpCallbacks holds the state for one panel's API callbacks.
-// Implements pyvcpapi.PyvcpCallbacks and pyvcpapi.PyvcpWatchCallbacks.
+// Implements pyvcp.PyvcpCallbacks and pyvcp.PyvcpWatchCallbacks.
 type pyvcpCallbacks struct {
 	panel *panel
 	comp  *hal.Component
@@ -174,20 +174,20 @@ func (cb *pyvcpCallbacks) ListPanels() ([]string, error) {
 	return panelRegistry.list(), nil
 }
 
-func (cb *pyvcpCallbacks) GetPanel(name string) (*pyvcpapi.PanelInfo, error) {
+func (cb *pyvcpCallbacks) GetPanel(name string) (*pyvcp.PanelInfo, error) {
 	p := panelRegistry.get(name)
 	if p == nil {
 		return nil, fmt.Errorf("panel %q not found", name)
 	}
-	defs := make([]pyvcpapi.PinDef, len(p.pins))
+	defs := make([]pyvcp.PinDef, len(p.pins))
 	for i, pin := range p.pins {
-		defs[i] = pyvcpapi.PinDef{
+		defs[i] = pyvcp.PinDef{
 			Name:    pin.name,
-			HalType: pyvcpapi.HalType(pin.halType),
-			Dir:     pyvcpapi.PinDir(pin.dir),
+			HalType: pyvcp.HalType(pin.halType),
+			Dir:     pyvcp.PinDir(pin.dir),
 		}
 	}
-	return &pyvcpapi.PanelInfo{
+	return &pyvcp.PanelInfo{
 		Name: p.name,
 		Xml:  p.xml,
 		Pins: defs,
@@ -205,10 +205,10 @@ func (cb *pyvcpCallbacks) SetPin(panel string, name string, value string) (bool,
 
 // --- PyvcpWatchCallbacks implementation (WS watch) ---
 
-func (cb *pyvcpCallbacks) WatchPins() ([]pyvcpapi.PinValue, error) {
-	values := make([]pyvcpapi.PinValue, len(cb.panel.pins))
+func (cb *pyvcpCallbacks) WatchPins() ([]pyvcp.PinValue, error) {
+	values := make([]pyvcp.PinValue, len(cb.panel.pins))
 	for i, pin := range cb.panel.pins {
-		values[i] = pyvcpapi.PinValue{
+		values[i] = pyvcp.PinValue{
 			Name:  pin.name,
 			Value: pin.readValue(),
 		}

@@ -346,18 +346,18 @@ type drainErrorPublisher struct {
 }
 
 func (p *drainErrorPublisher) OperatorError(text string) {
-	p.drain.PublishError(emcerror.OPERATOR_ERROR, text)
-	p.task.appendMessage(emcerror.OPERATOR_ERROR, text)
+	p.drain.PublishError(emcerror.ErrorKind_OPERATOR_ERROR, text)
+	p.task.appendMessage(emcerror.ErrorKind_OPERATOR_ERROR, text)
 }
 
 func (p *drainErrorPublisher) OperatorText(text string) {
-	p.drain.PublishError(emcerror.OPERATOR_TEXT, text)
-	p.task.appendMessage(emcerror.OPERATOR_TEXT, text)
+	p.drain.PublishError(emcerror.ErrorKind_OPERATOR_TEXT, text)
+	p.task.appendMessage(emcerror.ErrorKind_OPERATOR_TEXT, text)
 }
 
 func (p *drainErrorPublisher) OperatorDisplay(text string) {
-	p.drain.PublishError(emcerror.OPERATOR_DISPLAY, text)
-	p.task.appendMessage(emcerror.OPERATOR_DISPLAY, text)
+	p.drain.PublishError(emcerror.ErrorKind_OPERATOR_DISPLAY, text)
+	p.task.appendMessage(emcerror.ErrorKind_OPERATOR_DISPLAY, text)
 }
 
 // loadDefaultProgram opens the program specified by [DISPLAY]OPEN_FILE

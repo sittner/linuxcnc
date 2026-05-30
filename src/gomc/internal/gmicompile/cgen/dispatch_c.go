@@ -231,7 +231,7 @@ func (g *dispatchCGen) emitGoTypes() {
 			g.printf("type %s int32\n\n", goName)
 			g.printf("const (\n")
 			for _, v := range e.Values {
-				g.printf("\t%s %s = %d\n", v.Name, goName, v.Value)
+				g.printf("\t%s_%s %s = %d\n", goName, v.Name, goName, v.Value)
 			}
 			g.printf(")\n\n")
 		}
@@ -337,7 +337,11 @@ func (g *dispatchCGen) emitFieldCToGo(goField, cExpr string, t ast.TypeRef) {
 				g.printf("\t\t%s: C.GoString(%s),\n", goField, cExpr)
 			}
 		case ast.PrimBool:
-			g.printf("\t\t%s: bool(%s),\n", goField, cExpr)
+			if t.Nullable {
+				g.printf("\t\t%s: func() *bool { v := bool(%s); return &v }(),\n", goField, cExpr)
+			} else {
+				g.printf("\t\t%s: bool(%s),\n", goField, cExpr)
+			}
 		case ast.PrimI8:
 			g.printf("\t\t%s: int8(%s),\n", goField, cExpr)
 		case ast.PrimU8:
@@ -544,19 +548,39 @@ func (g *dispatchCGen) emitFieldGoToC(cField, goExpr string, t ast.TypeRef) {
 			g.printf("\t*freeList = append(*freeList, unsafe.Pointer(%s))\n", tmp)
 			g.printf("\t%s = %s\n", cField, tmp)
 		case ast.PrimBool:
-			g.printf("\t%s = C.bool(%s)\n", cField, goExpr)
+			if t.Nullable {
+				g.printf("\tif %s != nil { %s = C.bool(*%s) }\n", goExpr, cField, goExpr)
+			} else {
+				g.printf("\t%s = C.bool(%s)\n", cField, goExpr)
+			}
 		case ast.PrimI8:
 			g.printf("\t%s = C.int8_t(%s)\n", cField, goExpr)
 		case ast.PrimU8:
 			g.printf("\t%s = C.uint8_t(%s)\n", cField, goExpr)
 		case ast.PrimI32:
-			g.printf("\t%s = C.int32_t(%s)\n", cField, goExpr)
+			if t.Nullable {
+				g.printf("\tif %s != nil { %s = C.int32_t(*%s) }\n", goExpr, cField, goExpr)
+			} else {
+				g.printf("\t%s = C.int32_t(%s)\n", cField, goExpr)
+			}
 		case ast.PrimU32:
-			g.printf("\t%s = C.uint32_t(%s)\n", cField, goExpr)
+			if t.Nullable {
+				g.printf("\tif %s != nil { %s = C.uint32_t(*%s) }\n", goExpr, cField, goExpr)
+			} else {
+				g.printf("\t%s = C.uint32_t(%s)\n", cField, goExpr)
+			}
 		case ast.PrimI64:
-			g.printf("\t%s = C.int64_t(%s)\n", cField, goExpr)
+			if t.Nullable {
+				g.printf("\tif %s != nil { %s = C.int64_t(*%s) }\n", goExpr, cField, goExpr)
+			} else {
+				g.printf("\t%s = C.int64_t(%s)\n", cField, goExpr)
+			}
 		case ast.PrimU64:
-			g.printf("\t%s = C.uint64_t(%s)\n", cField, goExpr)
+			if t.Nullable {
+				g.printf("\tif %s != nil { %s = C.uint64_t(*%s) }\n", goExpr, cField, goExpr)
+			} else {
+				g.printf("\t%s = C.uint64_t(%s)\n", cField, goExpr)
+			}
 		case ast.PrimF32:
 			g.printf("\t%s = C.float(%s)\n", cField, goExpr)
 		case ast.PrimF64:
@@ -570,6 +594,53 @@ func (g *dispatchCGen) emitFieldGoToC(cField, goExpr string, t ast.TypeRef) {
 			converter := toLowerCamelRaw(t.Name) + "GoToC"
 			g.printf("\t%s = %s(%s, freeList)\n", cField, converter, goExpr)
 		}
+	case ast.TypeSlice:
+		// Slice field: allocate C array, convert elements, set pointer + length.
+		g.tmpSeq++
+		nVar := fmt.Sprintf("_n%d", g.tmpSeq)
+		arrVar := fmt.Sprintf("_arr%d", g.tmpSeq)
+		g.printf("\t%s := len(%s)\n", nVar, goExpr)
+		g.printf("\tif %s > 0 {\n", nVar)
+		lenField := cField + "_len"
+		g.printf("\t\t%s = C.size_t(%s)\n", lenField, nVar)
+		if t.Elem.Kind == ast.TypePrimitive && t.Elem.Name == ast.PrimString {
+			// []string → allocate **C.char array
+			g.printf("\t\t%s := (**C.char)(C.calloc(C.size_t(%s), C.size_t(unsafe.Sizeof((*C.char)(nil)))))\n", arrVar, nVar)
+			g.printf("\t\t*freeList = append(*freeList, unsafe.Pointer(%s))\n", arrVar)
+			g.printf("\t\t_sl%d := unsafe.Slice(%s, %s)\n", g.tmpSeq, arrVar, nVar)
+			g.printf("\t\tfor _i%d := range %s {\n", g.tmpSeq, goExpr)
+			g.printf("\t\t\t_sl%d[_i%d] = C.CString(%s[_i%d])\n", g.tmpSeq, g.tmpSeq, goExpr, g.tmpSeq)
+			g.printf("\t\t\t*freeList = append(*freeList, unsafe.Pointer(_sl%d[_i%d]))\n", g.tmpSeq, g.tmpSeq)
+			g.printf("\t\t}\n")
+			g.printf("\t\t%s = %s\n", cField, arrVar)
+		} else if t.Elem.Kind == ast.TypeNamed && !g.isEnum(t.Elem.Name) {
+			// []Struct → allocate array of C structs
+			elemCType := fmt.Sprintf("C.%s_%s_t", g.api.Name, toSnakeCase(t.Elem.Name))
+			converter := toLowerCamelRaw(t.Elem.Name) + "GoToC"
+			g.printf("\t\t%s := (*%s)(C.calloc(C.size_t(%s), C.size_t(unsafe.Sizeof(%s{}))))\n", arrVar, elemCType, nVar, elemCType)
+			g.printf("\t\t*freeList = append(*freeList, unsafe.Pointer(%s))\n", arrVar)
+			g.printf("\t\t_sl%d := unsafe.Slice(%s, %s)\n", g.tmpSeq, arrVar, nVar)
+			g.printf("\t\tfor _i%d := range %s {\n", g.tmpSeq, goExpr)
+			g.printf("\t\t\t_sl%d[_i%d] = %s(%s[_i%d], freeList)\n", g.tmpSeq, g.tmpSeq, converter, goExpr, g.tmpSeq)
+			g.printf("\t\t}\n")
+			g.printf("\t\t%s = %s\n", cField, arrVar)
+		} else {
+			// []primitive (non-string) → allocate array of C type
+			elemCType := cTypeForAPICgo(g.api.Name, *t.Elem)
+			// Use appropriate zero value for Sizeof (bool needs special handling)
+			zeroVal := elemCType + "(0)"
+			if t.Elem.Name == ast.PrimBool {
+				zeroVal = elemCType + "(false)"
+			}
+			g.printf("\t\t%s := (*%s)(C.calloc(C.size_t(%s), C.size_t(unsafe.Sizeof(%s))))\n", arrVar, elemCType, nVar, zeroVal)
+			g.printf("\t\t*freeList = append(*freeList, unsafe.Pointer(%s))\n", arrVar)
+			g.printf("\t\t_sl%d := unsafe.Slice(%s, %s)\n", g.tmpSeq, arrVar, nVar)
+			g.printf("\t\tfor _i%d := range %s {\n", g.tmpSeq, goExpr)
+			g.printf("\t\t\t_sl%d[_i%d] = %s(%s[_i%d])\n", g.tmpSeq, g.tmpSeq, elemCType, goExpr, g.tmpSeq)
+			g.printf("\t\t}\n")
+			g.printf("\t\t%s = %s\n", cField, arrVar)
+		}
+		g.printf("\t}\n")
 	}
 }
 
@@ -668,19 +739,44 @@ func (g *dispatchCGen) emitParamGoToC(cVar, goVar string, p ast.Param) {
 			g.printf("\t%s := C.CString(%s)\n", cVar, goVar)
 			g.printf("\t_freeList = append(_freeList, unsafe.Pointer(%s))\n", cVar)
 		case ast.PrimBool:
-			g.printf("\t%s := C.bool(%s)\n", cVar, goVar)
+			if t.Nullable {
+				g.printf("\tvar %s C.bool\n", cVar)
+				g.printf("\tif %s != nil { %s = C.bool(*%s) }\n", goVar, cVar, goVar)
+			} else {
+				g.printf("\t%s := C.bool(%s)\n", cVar, goVar)
+			}
 		case ast.PrimI8:
 			g.printf("\t%s := C.int8_t(%s)\n", cVar, goVar)
 		case ast.PrimU8:
 			g.printf("\t%s := C.uint8_t(%s)\n", cVar, goVar)
 		case ast.PrimI32:
-			g.printf("\t%s := C.int32_t(%s)\n", cVar, goVar)
+			if t.Nullable {
+				g.printf("\tvar %s C.int32_t\n", cVar)
+				g.printf("\tif %s != nil { %s = C.int32_t(*%s) }\n", goVar, cVar, goVar)
+			} else {
+				g.printf("\t%s := C.int32_t(%s)\n", cVar, goVar)
+			}
 		case ast.PrimU32:
-			g.printf("\t%s := C.uint32_t(%s)\n", cVar, goVar)
+			if t.Nullable {
+				g.printf("\tvar %s C.uint32_t\n", cVar)
+				g.printf("\tif %s != nil { %s = C.uint32_t(*%s) }\n", goVar, cVar, goVar)
+			} else {
+				g.printf("\t%s := C.uint32_t(%s)\n", cVar, goVar)
+			}
 		case ast.PrimI64:
-			g.printf("\t%s := C.int64_t(%s)\n", cVar, goVar)
+			if t.Nullable {
+				g.printf("\tvar %s C.int64_t\n", cVar)
+				g.printf("\tif %s != nil { %s = C.int64_t(*%s) }\n", goVar, cVar, goVar)
+			} else {
+				g.printf("\t%s := C.int64_t(%s)\n", cVar, goVar)
+			}
 		case ast.PrimU64:
-			g.printf("\t%s := C.uint64_t(%s)\n", cVar, goVar)
+			if t.Nullable {
+				g.printf("\tvar %s C.uint64_t\n", cVar)
+				g.printf("\tif %s != nil { %s = C.uint64_t(*%s) }\n", goVar, cVar, goVar)
+			} else {
+				g.printf("\t%s := C.uint64_t(%s)\n", cVar, goVar)
+			}
 		case ast.PrimF32:
 			g.printf("\t%s := C.float(%s)\n", cVar, goVar)
 		case ast.PrimF64:
@@ -713,7 +809,7 @@ func (g *dispatchCGen) emitParamGoToC(cVar, goVar string, p ast.Param) {
 	case ast.TypeSlice:
 		if t.Elem != nil && t.Elem.Kind == ast.TypePrimitive && t.Elem.Name == ast.PrimString {
 			// []string → char** + count
-			g.printf("\t%sLen := C.int(len(%s))\n", cVar, goVar)
+			g.printf("\t%sLen := C.size_t(len(%s))\n", cVar, goVar)
 			g.printf("\t%s := (**C.char)(C.malloc(C.size_t(len(%s)) * C.size_t(unsafe.Sizeof((*C.char)(nil)))))\n", cVar, goVar)
 			g.printf("\tdefer C.free(unsafe.Pointer(%s))\n", cVar)
 			g.printf("\t%sSlice := unsafe.Slice(%s, len(%s))\n", cVar, cVar, goVar)

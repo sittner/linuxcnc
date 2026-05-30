@@ -96,13 +96,13 @@ import (
 	"runtime/cgo"
 	"unsafe"
 
-	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emccmdapi"
-	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcstatapi"
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emccmd"
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcstat"
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
 )
 
 // positionGoToC converts a Go Position to a C emcstat_position_t.
-func positionGoToC(p emcstatapi.Position) C.emcstat_position_t {
+func positionGoToC(p emcstat.Position) C.emcstat_position_t {
 	return C.emcstat_position_t{
 		x: C.double(p.X), y: C.double(p.Y), z: C.double(p.Z),
 		a: C.double(p.A), b: C.double(p.B), c: C.double(p.C),
@@ -164,7 +164,7 @@ func goTaskSetMode(ctx unsafe.Pointer, mode C.int32_t) C.int32_t {
 //export goTaskAutoCmd
 func goTaskAutoCmd(ctx unsafe.Pointer, cmd C.emccmd_auto_cmd_t, line C.int32_t) C.int32_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
-	r, err := m.AutoCmd(emccmdapi.AutoCmd(cmd), int32(line))
+	r, err := m.AutoCmd(emccmd.AutoCmd(cmd), int32(line))
 	if err != nil {
 		return -1
 	}
@@ -185,7 +185,7 @@ func goTaskMdi(ctx unsafe.Pointer, command *C.char) C.int32_t {
 func goTaskJog(ctx unsafe.Pointer, jogType C.emccmd_jog_type_t, jjogmode C.bool,
 	axisOrJoint C.int32_t, velocity C.double, distance C.double) C.int32_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
-	r, err := m.Jog(emccmdapi.JogType(jogType), bool(jjogmode), int32(axisOrJoint), float64(velocity), float64(distance))
+	r, err := m.Jog(emccmd.JogType(jogType), bool(jjogmode), int32(axisOrJoint), float64(velocity), float64(distance))
 	if err != nil {
 		return -1
 	}
@@ -206,7 +206,7 @@ func goTaskJogStop(ctx unsafe.Pointer, jjogmode C.bool, axisOrJoint C.int32_t) C
 func goTaskSpindle(ctx unsafe.Pointer, cmd C.emccmd_spindle_cmd_t, speed C.double,
 	spindleNum C.int32_t, wait C.int32_t) C.int32_t {
 	m := cgo.Handle(ctx).Value().(*milltaskModule)
-	r, err := m.Spindle(emccmdapi.SpindleCmd(cmd), float64(speed), int32(spindleNum), int32(wait))
+	r, err := m.Spindle(emccmd.SpindleCmd(cmd), float64(speed), int32(spindleNum), int32(wait))
 	if err != nil {
 		return -1
 	}

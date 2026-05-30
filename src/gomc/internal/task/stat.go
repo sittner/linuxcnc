@@ -1,13 +1,13 @@
 package task
 
 import (
-	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcstatapi"
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcstat"
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/motstat"
 )
 
 // BuildStat constructs a complete StatFull from task state + motion status.
 // This is the single source of truth for all stat consumers (REST, WS, halui).
-func (t *Task) BuildStat() *emcstatapi.StatFull {
+func (t *Task) BuildStat() *emcstat.StatFull {
 	t.mu.Lock()
 	// Refresh active G/M codes from interpreter (C milltask does this every cycle).
 	if t.interp != nil {
@@ -27,12 +27,12 @@ func (t *Task) BuildStat() *emcstatapi.StatFull {
 	default:
 		rcsStatus = 2 // RCS_EXEC (any waiting state)
 	}
-	stat := &emcstatapi.StatFull{
-		Task: emcstatapi.StatTaskInfo{
-			Mode:              emcstatapi.TaskMode(t.mode),
-			State:             emcstatapi.TaskState(t.state),
-			InterpState:       emcstatapi.InterpState(t.interpState),
-			ExecState:         emcstatapi.ExecState(t.execState),
+	stat := &emcstat.StatFull{
+		Task: emcstat.StatTaskInfo{
+			Mode:              emcstat.TaskMode(t.mode),
+			State:             emcstat.TaskState(t.state),
+			InterpState:       emcstat.InterpState(t.interpState),
+			ExecState:         emcstat.ExecState(t.execState),
 			File:              t.programFile,
 			OptionalStop:      t.optionalStop,
 			BlockDelete:       t.blockDelete,
@@ -50,7 +50,7 @@ func (t *Task) BuildStat() *emcstatapi.StatFull {
 		LinearUnits:    t.linearUnits,
 		State:          rcsStatus,
 		RcsStatus:      rcsStatus,
-		KinematicsType: emcstatapi.KinematicsType_IDENTITY,
+		KinematicsType: emcstat.KinematicsType_IDENTITY,
 		JogAxis:        t.jogAxis,
 		JogIncrement:   t.jogIncrement,
 		JogSpeed:       t.jogSpeed,
@@ -58,12 +58,12 @@ func (t *Task) BuildStat() *emcstatapi.StatFull {
 		ActiveGcodes:   append([]int32(nil), t.activeGcodes...),
 		ActiveMcodes:   append([]int32(nil), t.activeMcodes...),
 		ActiveSettings: append([]float64(nil), t.activeSettings...),
-		G5xOffset: emcstatapi.Position{
+		G5xOffset: emcstat.Position{
 			X: cs.g5xOffset.X, Y: cs.g5xOffset.Y, Z: cs.g5xOffset.Z,
 			A: cs.g5xOffset.A, B: cs.g5xOffset.B, C: cs.g5xOffset.C,
 			U: cs.g5xOffset.U, V: cs.g5xOffset.V, W: cs.g5xOffset.W,
 		},
-		G92Offset: emcstatapi.Position{
+		G92Offset: emcstat.Position{
 			X: cs.g92Offset.X, Y: cs.g92Offset.Y, Z: cs.g92Offset.Z,
 			A: cs.g92Offset.A, B: cs.g92Offset.B, C: cs.g92Offset.C,
 			U: cs.g92Offset.U, V: cs.g92Offset.V, W: cs.g92Offset.W,
@@ -79,13 +79,13 @@ func (t *Task) BuildStat() *emcstatapi.StatFull {
 	// Always allocate axes/joints/spindle slices so consumers never see nil.
 	nAxes := countAxes(axisMask)
 	if nAxes > 0 {
-		stat.Axis = make([]emcstatapi.AxisInfo, nAxes)
+		stat.Axis = make([]emcstat.AxisInfo, nAxes)
 	}
 	if numJoints > 0 {
-		stat.Joints = make([]emcstatapi.JointInfo, numJoints)
+		stat.Joints = make([]emcstat.JointInfo, numJoints)
 	}
 	if numSpindles > 0 {
-		stat.Spindle = make([]emcstatapi.SpindleInfo, numSpindles)
+		stat.Spindle = make([]emcstat.SpindleInfo, numSpindles)
 	}
 
 	// Read motion status (lock-free, reads from shared memory).
@@ -107,16 +107,16 @@ func (t *Task) BuildStat() *emcstatapi.StatFull {
 	}
 
 	// Kinematics type from motion module.
-	stat.KinematicsType = emcstatapi.KinematicsType(ms.KinType)
+	stat.KinematicsType = emcstat.KinematicsType(ms.KinType)
 
 	// Motion info.
 	switch {
 	case ms.Coord != 0:
-		stat.Motion.Mode = emcstatapi.TrajMode_COORD
+		stat.Motion.Mode = emcstat.TrajMode_COORD
 	case ms.Teleop != 0:
-		stat.Motion.Mode = emcstatapi.TrajMode_TELEOP
+		stat.Motion.Mode = emcstat.TrajMode_TELEOP
 	default:
-		stat.Motion.Mode = emcstatapi.TrajMode_FREE
+		stat.Motion.Mode = emcstat.TrajMode_FREE
 	}
 	stat.Motion.Enabled = ms.Enabled != 0
 	stat.Motion.InPosition = ms.Inpos != 0
@@ -131,7 +131,7 @@ func (t *Task) BuildStat() *emcstatapi.StatFull {
 	stat.Motion.MotionLine = ms.Id
 	stat.Motion.MotionType = ms.MotionType
 	stat.Task.MotionLine = ms.Id
-	stat.Motion.Dtg = emcstatapi.Position{
+	stat.Motion.Dtg = emcstat.Position{
 		X: ms.Dtg.X, Y: ms.Dtg.Y, Z: ms.Dtg.Z,
 		A: ms.Dtg.A, B: ms.Dtg.B, C: ms.Dtg.C,
 		U: ms.Dtg.U, V: ms.Dtg.V, W: ms.Dtg.W,
@@ -161,7 +161,7 @@ func (t *Task) BuildStat() *emcstatapi.StatFull {
 	// Joints array.
 	for i := 0; i < numJoints; i++ {
 		j := &ms.Joints[i]
-		stat.Joints[i] = emcstatapi.JointInfo{
+		stat.Joints[i] = emcstat.JointInfo{
 			Homed:          j.Homed != 0,
 			Homing:         j.Homing != 0,
 			Enabled:        j.Enabled != 0,
@@ -186,7 +186,7 @@ func (t *Task) BuildStat() *emcstatapi.StatFull {
 	// Axes array (from axis_mask).
 	for i := 0; i < nAxes && i < 9; i++ {
 		ax := &ms.Axes[i]
-		stat.Axis[i] = emcstatapi.AxisInfo{
+		stat.Axis[i] = emcstat.AxisInfo{
 			MinPositionLimit: ax.MinPosLimit,
 			MaxPositionLimit: ax.MaxPosLimit,
 			Velocity:         ax.VelLimit,
@@ -196,7 +196,7 @@ func (t *Task) BuildStat() *emcstatapi.StatFull {
 	// Spindles.
 	for i := 0; i < numSpindles && i < 8; i++ {
 		sp := &ms.Spindles[i]
-		stat.Spindle[i] = emcstatapi.SpindleInfo{
+		stat.Spindle[i] = emcstat.SpindleInfo{
 			Speed:           sp.Speed,
 			Direction:       sp.Direction,
 			Brake:           sp.Brake != 0,
@@ -212,9 +212,9 @@ func (t *Task) BuildStat() *emcstatapi.StatFull {
 	return stat
 }
 
-// poseToPosition converts a motstat.Pose to emcstatapi.Position.
-func poseToPosition(p motstat.Pose) emcstatapi.Position {
-	return emcstatapi.Position{
+// poseToPosition converts a motstat.Pose to emcstat.Position.
+func poseToPosition(p motstat.Pose) emcstat.Position {
+	return emcstat.Position{
 		X: p.X, Y: p.Y, Z: p.Z,
 		A: p.A, B: p.B, C: p.C,
 		U: p.U, V: p.V, W: p.W,

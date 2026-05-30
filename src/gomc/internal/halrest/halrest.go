@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/halcmdapi"
+	halcmdapi "github.com/sittner/linuxcnc/src/gomc/generated/gmi/halcmd"
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
 	"github.com/sittner/linuxcnc/src/gomc/internal/halcmd"
 )
