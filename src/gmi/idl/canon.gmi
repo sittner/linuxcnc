@@ -452,7 +452,7 @@ func get_external_tool_slot() -> i32
 func get_external_selected_tool_slot() -> i32
 
 @doc "Get tool table entry (pocket → toolno, offsets, geometry)"
-func get_external_tool_table(pocket: i32, toolno: i32 byref, offset: [9]f64 byref, diameter: f64 byref, frontangle: f64 byref, backangle: f64 byref, orientation: i32 byref) -> i32
+func get_external_tool_table(pocket: i32, toolno: i32 out, offset: [9]f64 out, diameter: f64 out, frontangle: f64 out, backangle: f64 out, orientation: i32 out) -> i32
 
 @doc "Get tool changer fault status"
 func get_external_tc_fault() -> i32
@@ -488,10 +488,10 @@ func get_external_feed_hold_enable() -> i32
 func get_external_plane() -> i32
 
 @doc "Get parameter file name"
-func get_external_parameter_file_name(buf: string byref)
+func get_external_parameter_file_name(buf: string out)
 
 @doc "Get whether external offset is applied"
 func get_external_offset_applied() -> i32
 
 @doc "Get external offsets (9-element pose)"
-func get_external_offsets(offsets: [9]f64 byref)
+func get_external_offsets(offsets: [9]f64 out)

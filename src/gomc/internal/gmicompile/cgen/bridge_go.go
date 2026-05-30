@@ -232,28 +232,170 @@ func (g *bridgeGoGen) emitOneTrampoline(apiName, ifaceName string, fn ast.Func) 
 		}
 	}
 
+	// Check for out-params
+	var outParams []ast.Param
+	for _, p := range fn.Params {
+		if p.IsOut {
+			outParams = append(outParams, p)
+		}
+	}
+	hasOutParams := len(outParams) > 0
+
 	g.printf("//export %s\n", exportName)
 	g.printf("func %s(%s)%s {\n", exportName, strings.Join(cParams, ", "), cRet)
 
 	// Recover the Go impl from cgo.Handle
 	g.printf("\timpl := cgo.Handle(ctx).Value().(%s)\n", ifaceName)
 
-	// Convert C params → Go
+	// Convert C params → Go (out params return "" and are skipped)
 	var goArgs []string
 	for _, p := range fn.Params {
 		goArg := g.emitParamCToGo(apiName, p)
-		goArgs = append(goArgs, goArg)
+		if goArg != "" {
+			goArgs = append(goArgs, goArg)
+		}
 	}
 	callArgs := strings.Join(goArgs, ", ")
 
+	// If there are out-params, use a unified multi-return call pattern
+	if hasOutParams {
+		g.emitTrampolineWithOutParams(apiName, fn, methodName, callArgs, outParams)
+	} else {
+		g.emitTrampolineStandardCall(apiName, fn, methodName, callArgs)
+	}
+
+	g.printf("}\n\n")
+}
+
+// emitTrampolineWithOutParams handles trampolines where the Go method returns
+// extra values for out-params, which must be written back to C pointers.
+func (g *bridgeGoGen) emitTrampolineWithOutParams(apiName string, fn ast.Func, methodName, callArgs string, outParams []ast.Param) {
+	// Build the LHS of the multi-return assignment
+	var lhsParts []string
+	if fn.Return != nil {
+		lhsParts = append(lhsParts, "_result")
+	}
+	for i := range outParams {
+		lhsParts = append(lhsParts, fmt.Sprintf("_out%d", i))
+	}
+	// Only include error if C function has a return type
+	if fn.Return != nil {
+		lhsParts = append(lhsParts, "_err")
+	}
+
+	if len(lhsParts) == 1 {
+		g.printf("\t%s := impl.%s(%s)\n", lhsParts[0], methodName, callArgs)
+	} else {
+		lhs := strings.Join(lhsParts, ", ")
+		g.printf("\t%s := impl.%s(%s)\n", lhs, methodName, callArgs)
+	}
+
+	// Error handling (only for non-void functions)
+	if fn.Return != nil {
+		if fn.Return.Kind == ast.TypeSlice {
+			fnSnake := toSnakeCase(fn.Name)
+			resultType := fmt.Sprintf("C.%s_%s_result_t", apiName, fnSnake)
+			g.printf("\tif _err != nil {\n")
+			g.printf("\t\tvar zero %s\n", resultType)
+			g.printf("\t\treturn zero\n")
+			g.printf("\t}\n")
+		} else {
+			g.printf("\tif _err != nil {\n")
+			g.printf("\t\treturn -1\n")
+			g.printf("\t}\n")
+		}
+	}
+
+	// Write back out-params to C pointers
+	for i, p := range outParams {
+		outVar := fmt.Sprintf("_out%d", i)
+		cName := escapeGoKeyword(p.Name)
+		g.emitOutParamWriteback(apiName, p, outVar, cName)
+	}
+
+	// Return the primary result (only for non-void functions)
+	if fn.Return != nil {
+		if fn.Return.Kind == ast.TypePrimitive && fn.Return.Name == ast.PrimI32 {
+			g.printf("\treturn C.int32_t(_result)\n")
+		} else if fn.Return.Kind == ast.TypePrimitive && fn.Return.Name == ast.PrimString {
+			g.printf("\treturn C.CString(_result)\n")
+		} else if fn.Return.Kind == ast.TypeNamed {
+			converter := toLowerCamelRaw(fn.Return.Name) + "GoToC"
+			g.printf("\tvar _retAllocs []unsafe.Pointer\n")
+			g.printf("\treturn %s(*_result, &_retAllocs)\n", converter)
+		} else {
+			cType := cTypeForAPICgo(apiName, *fn.Return)
+			g.printf("\treturn %s(_result)\n", cType)
+		}
+	}
+}
+
+// emitOutParamWriteback writes code to copy a Go return value back into a C out-pointer.
+func (g *bridgeGoGen) emitOutParamWriteback(apiName string, p ast.Param, goVar, cName string) {
+	switch p.Type.Kind {
+	case ast.TypePrimitive:
+		switch p.Type.Name {
+		case ast.PrimString:
+			// string out: char **buf → *buf = C.CString(val)
+			g.printf("\tif %s != nil {\n", cName)
+			g.printf("\t\t*%s = C.CString(%s)\n", cName, goVar)
+			g.printf("\t}\n")
+		case ast.PrimI32:
+			g.printf("\tif %s != nil {\n", cName)
+			g.printf("\t\t*%s = C.int32_t(%s)\n", cName, goVar)
+			g.printf("\t}\n")
+		case ast.PrimU32:
+			g.printf("\tif %s != nil {\n", cName)
+			g.printf("\t\t*%s = C.uint32_t(%s)\n", cName, goVar)
+			g.printf("\t}\n")
+		case ast.PrimI64:
+			g.printf("\tif %s != nil {\n", cName)
+			g.printf("\t\t*%s = C.int64_t(%s)\n", cName, goVar)
+			g.printf("\t}\n")
+		case ast.PrimU64:
+			g.printf("\tif %s != nil {\n", cName)
+			g.printf("\t\t*%s = C.uint64_t(%s)\n", cName, goVar)
+			g.printf("\t}\n")
+		case ast.PrimF32:
+			g.printf("\tif %s != nil {\n", cName)
+			g.printf("\t\t*%s = C.float(%s)\n", cName, goVar)
+			g.printf("\t}\n")
+		case ast.PrimF64:
+			g.printf("\tif %s != nil {\n", cName)
+			g.printf("\t\t*%s = C.double(%s)\n", cName, goVar)
+			g.printf("\t}\n")
+		default:
+			cType := cTypeForAPICgo(apiName, p.Type)
+			g.printf("\tif %s != nil {\n", cName)
+			g.printf("\t\t*%s = %s(%s)\n", cName, cType, goVar)
+			g.printf("\t}\n")
+		}
+	case ast.TypeArray:
+		// Fixed array out: write elements back to C pointer
+		n := p.Type.ArrayLen
+		g.printf("\t{\n")
+		g.printf("\t\t_arr := unsafe.Slice(%s, %d)\n", cName, n)
+		elemCType := cTypeForAPICgo(apiName, *p.Type.Elem)
+		g.printf("\t\tfor i := range _arr {\n")
+		g.printf("\t\t\t_arr[i] = %s(%s[i])\n", elemCType, goVar)
+		g.printf("\t\t}\n")
+		g.printf("\t}\n")
+	case ast.TypeNamed:
+		// Struct out: use GoToC converter and write back
+		converter := toLowerCamelRaw(p.Type.Name) + "GoToC"
+		g.printf("\t{\n")
+		g.printf("\t\tvar _freeList []unsafe.Pointer\n")
+		g.printf("\t\t*%s = %s(%s, &_freeList)\n", cName, converter, goVar)
+		g.printf("\t}\n")
+	}
+}
+
+// emitTrampolineStandardCall handles the original trampoline pattern (no out-params).
+func (g *bridgeGoGen) emitTrampolineStandardCall(apiName string, fn ast.Func, methodName, callArgs string) {
 	// Call the Go method
 	if fn.Return == nil {
-		// Returns error only → map to int32 (0=ok, -1=err) if the C signature expects i32
-		g.printf("\terr := impl.%s(%s)\n", methodName, callArgs)
-		g.printf("\tif err != nil {\n")
-		g.printf("\t\treturn -1\n")
-		g.printf("\t}\n")
-		g.printf("\treturn 0\n")
+		// Void function — just call, no return
+		g.printf("\timpl.%s(%s)\n", methodName, callArgs)
 	} else if fn.Return.Kind == ast.TypeSlice {
 		// Slice return — allocate C array, convert elements, return _result_t
 		fnSnake := toSnakeCase(fn.Name)
@@ -270,21 +412,17 @@ func (g *bridgeGoGen) emitOneTrampoline(apiName, ifaceName string, fn ast.Func) 
 		g.printf("\t\treturn %s{}\n", resultType)
 		g.printf("\t}\n")
 		if isStringSlice {
-			// String slices: allocate array of *C.char pointers
 			g.printf("\tcArr := (**C.char)(C.calloc(C.size_t(n), C.size_t(unsafe.Sizeof((*C.char)(nil)))))\n")
 		} else {
 			g.printf("\tcArr := (*%s)(C.calloc(C.size_t(n), C.size_t(unsafe.Sizeof(%s{}))))\n", elemCType, elemCType)
 		}
-		// NOTE: cArr is NOT added to _freeList — the caller owns and frees the returned slice data.
 		g.printf("\tcSlice := unsafe.Slice(cArr, n)\n")
 		if fn.Return.Elem.Kind == ast.TypePrimitive && fn.Return.Elem.Name == ast.PrimString {
-			// String slice: each element needs C.CString (caller frees)
 			g.printf("\tfor i := range result {\n")
 			g.printf("\t\tcSlice[i] = C.CString(result[i])\n")
 			g.printf("\t}\n")
 		} else if fn.Return.Elem.Kind == ast.TypeNamed && !g.isEnum(fn.Return.Elem.Name) {
 			converter := toLowerCamelRaw(fn.Return.Elem.Name) + "GoToC"
-			// Use a no-op freeList — caller owns the returned struct memory including nested strings
 			g.printf("\tvar _retFreeList []unsafe.Pointer // not freed: caller owns return data\n")
 			g.printf("\tfor i := range result {\n")
 			g.printf("\t\tcSlice[i] = %s(result[i], &_retFreeList)\n", converter)
@@ -299,15 +437,12 @@ func (g *bridgeGoGen) emitOneTrampoline(apiName, ifaceName string, fn ast.Func) 
 		g.printf("\tout.len = C.size_t(n)\n")
 		g.printf("\treturn out\n")
 	} else if fn.Return.Kind == ast.TypePrimitive && fn.Return.Name == ast.PrimI32 {
-		// i32 return — could be error code or value
 		g.printf("\tresult, err := impl.%s(%s)\n", methodName, callArgs)
 		g.printf("\tif err != nil {\n")
 		g.printf("\t\treturn -1\n")
 		g.printf("\t}\n")
 		g.printf("\treturn C.int32_t(result)\n")
 	} else if fn.Return.Kind == ast.TypeNamed {
-		// Struct return — convert Go struct to C struct.
-		// Caller owns the returned struct and frees its fields.
 		converter := toLowerCamelRaw(fn.Return.Name) + "GoToC"
 		g.printf("\tvar _retAllocs []unsafe.Pointer // caller owns returned data\n")
 		g.printf("\tresult, err := impl.%s(%s)\n", methodName, callArgs)
@@ -317,14 +452,12 @@ func (g *bridgeGoGen) emitOneTrampoline(apiName, ifaceName string, fn ast.Func) 
 		g.printf("\t}\n")
 		g.printf("\treturn %s(*result, &_retAllocs)\n", converter)
 	} else if fn.Return.Kind == ast.TypePrimitive && fn.Return.Name == ast.PrimString {
-		// String return — use C.CString
 		g.printf("\tresult, err := impl.%s(%s)\n", methodName, callArgs)
 		g.printf("\tif err != nil {\n")
 		g.printf("\t\treturn nil\n")
 		g.printf("\t}\n")
 		g.printf("\treturn C.CString(result)\n")
 	} else {
-		// Other primitive returns
 		cType := cTypeForAPICgo(apiName, *fn.Return)
 		g.printf("\tresult, err := impl.%s(%s)\n", methodName, callArgs)
 		g.printf("\tif err != nil {\n")
@@ -333,8 +466,6 @@ func (g *bridgeGoGen) emitOneTrampoline(apiName, ifaceName string, fn ast.Func) 
 		g.printf("\t}\n")
 		g.printf("\treturn %s(result)\n", cType)
 	}
-
-	g.printf("}\n\n")
 }
 
 // trampolineParam returns the Go parameter declaration for a trampoline (C types).
@@ -367,6 +498,10 @@ func (g *bridgeGoGen) trampolineParam(apiName string, p ast.Param) string {
 	case ast.TypeSlice:
 		elemCType := cTypeForAPICgo(apiName, *p.Type.Elem)
 		return fmt.Sprintf("%s *%s", name, elemCType)
+	case ast.TypeArray:
+		// Fixed arrays: in C they decay to pointers. Always passed as pointer.
+		elemCType := cTypeForAPICgo(apiName, *p.Type.Elem)
+		return fmt.Sprintf("%s *%s", name, elemCType)
 	}
 	return fmt.Sprintf("%s C.int", name)
 }
@@ -376,6 +511,11 @@ func (g *bridgeGoGen) trampolineParam(apiName string, p ast.Param) string {
 func (g *bridgeGoGen) emitParamCToGo(apiName string, p ast.Param) string {
 	name := escapeGoKeyword(p.Name)
 	goVar := "go" + toPascalCase(name)
+
+	// Out params: no input conversion needed — they're written back after the call.
+	if p.IsOut {
+		return ""
+	}
 
 	if p.IsPtr {
 		// opaque ptr: pass as uint64 (same as client_cgo convention)
@@ -490,6 +630,33 @@ func (g *bridgeGoGen) emitParamCToGo(apiName string, p ast.Param) string {
 			}
 		}
 		return goVar
+	case ast.TypeArray:
+		// Fixed-size array: pointer in C → Go fixed array
+		n := p.Type.ArrayLen
+		goElemType := primitiveToGoType(p.Type.Elem.Name)
+		if p.Type.Elem.Kind == ast.TypeNamed {
+			goElemType = toPascalCase(p.Type.Elem.Name)
+		}
+		if p.ByRef {
+			// in/out: read current value, pass as pointer to Go
+			g.printf("\tvar %s [%d]%s\n", goVar, n, goElemType)
+			g.printf("\t{\n")
+			g.printf("\t\t_arr := unsafe.Slice(%s, %d)\n", name, n)
+			g.printf("\t\tfor i := range _arr {\n")
+			g.printf("\t\t\t%s[i] = %s(_arr[i])\n", goVar, goElemType)
+			g.printf("\t\t}\n")
+			g.printf("\t}\n")
+			return "&" + goVar
+		}
+		// by-value: convert C array to Go array
+		g.printf("\tvar %s [%d]%s\n", goVar, n, goElemType)
+		g.printf("\t{\n")
+		g.printf("\t\t_arr := unsafe.Slice(%s, %d)\n", name, n)
+		g.printf("\t\tfor i := range _arr {\n")
+		g.printf("\t\t\t%s[i] = %s(_arr[i])\n", goVar, goElemType)
+		g.printf("\t\t}\n")
+		g.printf("\t}\n")
+		return goVar
 	}
 	return name
 }
@@ -508,6 +675,10 @@ func (g *bridgeGoGen) goMethodParams(fn ast.Func) string {
 			paramType = "uint64"
 		} else if p.ByRef && p.Type.Kind == ast.TypeNamed && !g.isEnum(p.Type.Name) {
 			paramType = "*" + toPascalCase(p.Type.Name)
+		} else if p.ByRef && p.Type.Kind == ast.TypeArray {
+			paramType = "*" + goTypeForDispatch(p.Type)
+		} else if p.ByRef && p.Type.Kind == ast.TypePrimitive && p.Type.Name == ast.PrimString {
+			paramType = "*string"
 		} else {
 			paramType = goTypeForDispatch(p.Type)
 		}
@@ -517,14 +688,34 @@ func (g *bridgeGoGen) goMethodParams(fn ast.Func) string {
 }
 
 func (g *bridgeGoGen) goMethodReturn(fn ast.Func) string {
-	if fn.Return == nil {
-		return "error"
+	// Collect return types: declared return + out-params + optional error.
+	// Error is only included if the C function returns a value (non-void).
+	var rets []string
+	if fn.Return != nil {
+		retType := goTypeForDispatch(*fn.Return)
+		if fn.Return.Kind == ast.TypeNamed {
+			rets = append(rets, "*"+retType)
+		} else {
+			rets = append(rets, retType)
+		}
 	}
-	retType := goTypeForDispatch(*fn.Return)
-	if fn.Return.Kind == ast.TypeNamed {
-		return fmt.Sprintf("(*%s, error)", retType)
+	for _, p := range fn.Params {
+		if p.IsOut {
+			rets = append(rets, goTypeForDispatch(p.Type))
+		}
 	}
-	return fmt.Sprintf("(%s, error)", retType)
+	// Only add error if the C function has a return type (non-void).
+	// Void functions cannot signal errors through the C ABI.
+	if fn.Return != nil {
+		rets = append(rets, "error")
+	}
+	if len(rets) == 0 {
+		return "" // void, no out-params
+	}
+	if len(rets) == 1 {
+		return rets[0]
+	}
+	return "(" + strings.Join(rets, ", ") + ")"
 }
 
 func (g *bridgeGoGen) isEnum(name string) bool {
@@ -550,8 +741,8 @@ func (g *bridgeGoGen) emitExternDecl(apiName string, fn ast.Func) {
 	fnSnake := toSnakeCase(fn.Name)
 	exportName := fmt.Sprintf("%s_bridge_%s", apiName, fnSnake)
 
-	// Return type — slice returns use <api>_<func>_result_t wrapper
-	retType := "int32_t" // default for error-only functions
+	// Return type — void if no return declared, else the declared C type
+	retType := "void"
 	if fn.Return != nil {
 		if fn.Return.Kind == ast.TypeSlice {
 			retType = fmt.Sprintf("%s_%s_result_t", apiName, fnSnake)
@@ -600,6 +791,9 @@ func (g *bridgeGoGen) cParamDecl(apiName string, p ast.Param) string {
 	case ast.TypePrimitive:
 		cType := primitiveToCType(p.Type.Name)
 		if p.Type.Name == ast.PrimString {
+			if p.ByRef || p.IsOut {
+				return "char **" + name
+			}
 			return "char *" + name
 		}
 		if p.ByRef || p.IsOut {
@@ -628,6 +822,13 @@ func (g *bridgeGoGen) cParamDecl(apiName string, p ast.Param) string {
 			elemCType = ct
 		}
 		return elemCType + " *" + name
+	case ast.TypeArray:
+		// Fixed arrays: C declaration uses array syntax or pointer
+		elemCType := primitiveToCType(p.Type.Elem.Name)
+		if p.Type.Elem.Kind == ast.TypeNamed {
+			elemCType = fmt.Sprintf("%s_%s_t", apiName, toSnakeCase(p.Type.Elem.Name))
+		}
+		return elemCType + " " + name + fmt.Sprintf("[%d]", p.Type.ArrayLen)
 	}
 	return "int " + name
 }

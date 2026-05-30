@@ -5,6 +5,8 @@ import (
 	"math"
 	"time"
 	"unsafe"
+
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/canon"
 )
 
 // Canon unit systems.
@@ -256,6 +258,9 @@ type Canon struct {
 	discard           bool // when true, enqueue is a no-op (used during seek)
 }
 
+// Compile-time check that Canon implements the generated CanonCallbacks interface.
+var _ canon.CanonCallbacks = (*Canon)(nil)
+
 // NewCanon creates a Canon instance tied to a Task.
 func NewCanon(t *Task) *Canon {
 	cs := NewCanonState()
@@ -323,7 +328,7 @@ func (c *Canon) SetG92Offset(x, y, z, a, b, _c, u, v, w float64) {
 	c.task.previewSeq++
 }
 
-func (c *Canon) SetXYRotation(t float64) {
+func (c *Canon) SetXyRotation(t float64) {
 	c.state.xyRotation = t
 	c.task.previewSeq++
 }
@@ -401,7 +406,7 @@ func (c *Canon) UpdateTag(tagPtr uint64) {
 	}
 }
 
-func (c *Canon) UseLengthOffset(x, y, z, a, b, _c, u, v, w float64) {
+func (c *Canon) UseToolLengthOffset(x, y, z, a, b, _c, u, v, w float64) {
 	s := c.state
 	s.toolOffset = Pose{
 		X: x, Y: y, Z: z,
@@ -688,9 +693,9 @@ func (c *Canon) ProgramEnd() {
 func (c *Canon) Comment(s string)   {}
 func (c *Canon) Message(s string)   { c.task.logger.Info("MSG: " + s) }
 func (c *Canon) LogMsg(s string)    {}
-func (c *Canon) LogOpen(s string)   {}
-func (c *Canon) LogAppend(s string) {}
-func (c *Canon) LogClose()          {}
+func (c *Canon) Logopen(s string)   {}
+func (c *Canon) Logappend(s string) {}
+func (c *Canon) Logclose()          {}
 
 func (c *Canon) CanonError(msg string) {
 	c.task.logger.Error("canon error", "msg", msg)
@@ -700,22 +705,22 @@ func (c *Canon) SetBlockDelete(enabled int32) {
 	c.state.blockDelete = enabled != 0
 }
 
-func (c *Canon) GetBlockDelete() int32 {
+func (c *Canon) GetBlockDelete() (int32, error) {
 	if c.state.blockDelete {
-		return 1
+		return 1, nil
 	}
-	return 0
+	return 0, nil
 }
 
 func (c *Canon) SetOptionalProgramStop(enabled int32) {
 	c.state.optionalProgramStop = enabled != 0
 }
 
-func (c *Canon) GetOptionalProgramStop() int32 {
+func (c *Canon) GetOptionalProgramStop() (int32, error) {
 	if c.state.optionalProgramStop {
-		return 1
+		return 1, nil
 	}
-	return 0
+	return 0, nil
 }
 
 func (c *Canon) OnReset() {
@@ -749,7 +754,7 @@ func (c *Canon) ClampAxis(axis int32)   {}
 func (c *Canon) UnclampAxis(axis int32) {}
 func (c *Canon) PalletShuttle()         {}
 
-func (c *Canon) WaitInput(index, inputType, waitType int32, timeout float64) int32 {
+func (c *Canon) WaitInput(index, inputType, waitType int32, timeout float64) (int32, error) {
 	// M66: Wait for digital/analog input condition.
 	// inputType: 1=digital, 2=analog
 	// waitType: 0=immediate, 1=rise, 2=fall, 3=high, 4=low
@@ -757,12 +762,12 @@ func (c *Canon) WaitInput(index, inputType, waitType int32, timeout float64) int
 	// Returns: 0 on success, -1 on error/timeout
 
 	if c.task.status == nil {
-		return -1
+		return -1, nil
 	}
 
 	// Immediate mode — just return, interp will read via GetExternalDigitalInput/AnalogInput
 	if timeout == 0 || waitType == 0 {
-		return 0
+		return 0, nil
 	}
 
 	deadline := time.Now().Add(time.Duration(timeout * float64(time.Second)))
@@ -772,7 +777,7 @@ func (c *Canon) WaitInput(index, inputType, waitType int32, timeout float64) int
 	for {
 		select {
 		case <-c.task.seqAbort:
-			return -1
+			return -1, nil
 		case <-ticker.C:
 			ms, err := c.task.status.GetStatus()
 			if err != nil {
@@ -782,7 +787,7 @@ func (c *Canon) WaitInput(index, inputType, waitType int32, timeout float64) int
 			var satisfied bool
 			if inputType == 1 { // digital
 				if index < 0 || index >= 64 {
-					return -1
+					return -1, nil
 				}
 				val := ms.SynchDi[index]
 				switch waitType {
@@ -797,7 +802,7 @@ func (c *Canon) WaitInput(index, inputType, waitType int32, timeout float64) int
 				}
 			} else { // analog
 				if index < 0 || index >= 64 {
-					return -1
+					return -1, nil
 				}
 				val := ms.AnalogInput[index]
 				// For analog: rise=above 0, fall=below 0, high=above 0, low=below/equal 0
@@ -810,21 +815,21 @@ func (c *Canon) WaitInput(index, inputType, waitType int32, timeout float64) int
 			}
 
 			if satisfied {
-				return 0
+				return 0, nil
 			}
 			if time.Now().After(deadline) {
-				return -1
+				return -1, nil
 			}
 		}
 	}
 }
 
-func (c *Canon) LockRotary(lineno, joint int32) int32 {
+func (c *Canon) LockRotary(lineno, joint int32) (int32, error) {
 	c.state.rotaryUnlockForTraverse = -1
-	return 0
+	return 0, nil
 }
 
-func (c *Canon) UnlockRotary(lineno, joint int32) int32 {
+func (c *Canon) UnlockRotary(lineno, joint int32) (int32, error) {
 	// Enqueue a zero-length traverse to interrupt blending and reach final
 	// position before unlocking (matches C canon UNLOCK_ROTARY behavior).
 	s := c.state
@@ -841,7 +846,7 @@ func (c *Canon) UnlockRotary(lineno, joint int32) int32 {
 	c.enqueue(cmd)
 	// The next traverse will carry this joint number for unlock/lock.
 	c.state.rotaryUnlockForTraverse = joint
-	return 0
+	return 0, nil
 }
 
 func (c *Canon) SetParameterFileName(name string) {
@@ -888,10 +893,8 @@ func (c *Canon) NurbsFeed(lineno int32, controlPoints []ControlPoint, k uint32) 
 	}
 }
 
-// ControlPoint is a NURBS control point.
-type ControlPoint struct {
-	X, Y, W float64
-}
+// ControlPoint is an alias for the generated canon.ControlPoint type.
+type ControlPoint = canon.ControlPoint
 
 // --- NURBS helper functions ---
 

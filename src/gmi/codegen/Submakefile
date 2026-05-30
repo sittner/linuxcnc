@@ -98,9 +98,11 @@ $(GMI_CANON_GEN)/canon_api.h: $(GMI_CANON_IDL) $(GMICOMPILE_BIN)
 	@mkdir -p $(GMI_CANON_GEN)
 	$(Q)$(GMICOMPILE) --server-c $(GMI_CANON_IDL) -o $(GMI_CANON_GEN)/canon_api.h
 	$(Q)$(GMICOMPILE) --server-meta $(GMI_CANON_IDL) -o $(GMI_CANON_GEN)/canon_cgo.go
+	$(Q)$(GMICOMPILE) --server-go $(GMI_CANON_IDL) -o $(GMI_CANON_GEN)/canon_bridge.go
 	$(Q)$(GMICOMPILE_BIN) add-gmi generated/gmi/canon
 
 $(GMI_CANON_GEN)/canon_cgo.go: $(GMI_CANON_GEN)/canon_api.h ;
+$(GMI_CANON_GEN)/canon_bridge.go: $(GMI_CANON_GEN)/canon_api.h ;
 
 TARGETS += $(GMI_CANON_GEN)/canon_api.h
 

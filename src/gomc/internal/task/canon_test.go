@@ -217,13 +217,13 @@ func TestCanon_Getters(t *testing.T) {
 	c.SetFeedRate(60) // 60 in/min
 
 	// GetExternalFeedRate should return in program units/min
-	rate := c.GetExternalFeedRate()
+	rate, _ := c.GetExternalFeedRate()
 	if math.Abs(rate-60) > 0.01 {
 		t.Fatalf("expected 60, got %f", rate)
 	}
 
 	// GetExternalLengthUnits for inches = 1/25.4
-	lu := c.GetExternalLengthUnits()
+	lu, _ := c.GetExternalLengthUnits()
 	expected := 1.0 / 25.4
 	if math.Abs(lu-expected) > 1e-6 {
 		t.Fatalf("expected %f, got %f", expected, lu)
@@ -231,11 +231,13 @@ func TestCanon_Getters(t *testing.T) {
 
 	// Position getter
 	c.state.endPoint = Pose{X: 25.4, Y: 50.8, Z: 0}
-	if math.Abs(c.GetExternalPositionX()-1.0) > 1e-6 {
-		t.Fatalf("expected 1.0 inch, got %f", c.GetExternalPositionX())
+	posX, _ := c.GetExternalPositionX()
+	if math.Abs(posX-1.0) > 1e-6 {
+		t.Fatalf("expected 1.0 inch, got %f", posX)
 	}
-	if math.Abs(c.GetExternalPositionY()-2.0) > 1e-6 {
-		t.Fatalf("expected 2.0 inches, got %f", c.GetExternalPositionY())
+	posY, _ := c.GetExternalPositionY()
+	if math.Abs(posY-2.0) > 1e-6 {
+		t.Fatalf("expected 2.0 inches, got %f", posY)
 	}
 }
 

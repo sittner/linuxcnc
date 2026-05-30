@@ -479,6 +479,18 @@ func (g *serverGoGen) emitCommands() {
 		if fn.Publish {
 			continue // @publish function — no dispatch command
 		}
+		// Skip functions with out-params — they have complex multi-return
+		// signatures that don't map cleanly to a single JSON result.
+		hasOutParams := false
+		for _, p := range fn.Params {
+			if p.IsOut {
+				hasOutParams = true
+				break
+			}
+		}
+		if hasOutParams {
+			continue
+		}
 		methodName := toPascalCase(fn.Name)
 
 		g.printf("\t\t{Name: %q, Handler: func(req json.RawMessage) (json.RawMessage, error) {\n", fn.Name)
@@ -508,9 +520,8 @@ func (g *serverGoGen) emitCommands() {
 
 		// Call the interface method
 		if fn.Return == nil {
-			g.printf("\t\t\tif err := impl.%s(%s); err != nil {\n", methodName, callArgs)
-			g.printf("\t\t\t\treturn nil, err\n")
-			g.printf("\t\t\t}\n")
+			// Void method — no return values
+			g.printf("\t\t\timpl.%s(%s)\n", methodName, callArgs)
 			g.printf("\t\t\treturn nil, nil\n")
 		} else {
 			g.printf("\t\t\tresult, err := impl.%s(%s)\n", methodName, callArgs)
