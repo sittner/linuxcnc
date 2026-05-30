@@ -1551,7 +1551,6 @@ AC_SUBST([HAVE_GOLANG])
 
 # Optional Go modules (only meaningful when HAVE_GOLANG=yes)
 HAVE_ADSSERVER=no
-HAVE_EMCGATEWAY=no
 HAVE_HALSCOPE=no
 HAVE_CLASSICLADDER=no
 HAVE_EMCCALIB=no
@@ -1566,14 +1565,6 @@ if test "x$HAVE_GOLANG" = "xyes"; then
         [enable_adsserver=yes])
     if test "x$enable_adsserver" = "xyes"; then
         HAVE_ADSSERVER=yes
-    fi
-
-    AC_ARG_ENABLE([emcgateway],
-        AS_HELP_STRING([--enable-emcgateway], [Build EMC gateway Go module (default: yes)]),
-        [enable_emcgateway=$enableval],
-        [enable_emcgateway=yes])
-    if test "x$enable_emcgateway" = "xyes"; then
-        HAVE_EMCGATEWAY=yes
     fi
 
     AC_ARG_ENABLE([halscope],
@@ -1626,7 +1617,6 @@ if test "x$HAVE_GOLANG" = "xyes"; then
 fi
 
 AC_SUBST([HAVE_ADSSERVER])
-AC_SUBST([HAVE_EMCGATEWAY])
 AC_SUBST([HAVE_HALSCOPE])
 AC_SUBST([HAVE_CLASSICLADDER])
 AC_SUBST([HAVE_EMCCALIB])
@@ -1794,7 +1784,6 @@ echo ""
 echo "  Build Golang HAL components: $HAVE_GOLANG"
 if test "x$HAVE_GOLANG" = "xyes"; then
 echo "    ADS server module:          $HAVE_ADSSERVER"
-echo "    EMC gateway module:         $HAVE_EMCGATEWAY"
 echo "    HAL oscilloscope module:    $HAVE_HALSCOPE"
 echo "    Classic Ladder PLC module:  $HAVE_CLASSICLADDER"
 echo "    Go milltask module:         $HAVE_MILLTASK_GO"

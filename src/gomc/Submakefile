@@ -88,7 +88,6 @@ GMI_CLASSICLADDER_SERVER_GO := gomc/generated/gmi/classicladder/classicladder_cg
 define filter_packages_conf
 	sed \
 	$(if $(filter yes,$(BUILD_ADSSERVER)),-e 's/ @GOMOD:ADSSERVER@//',-e '/@GOMOD:ADSSERVER@/d') \
-	$(if $(filter yes,$(BUILD_EMCGATEWAY)),-e 's/ @GOMOD:EMCGATEWAY@//',-e '/@GOMOD:EMCGATEWAY@/d') \
 	$(if $(filter yes,$(BUILD_CLASSICLADDER)),-e 's/ @GOMOD:CLASSICLADDER@//',-e '/@GOMOD:CLASSICLADDER@/d') \
 	$(if $(filter yes,$(BUILD_HALSCOPE)),-e 's/ @GOMOD:HALSCOPE@//',-e '/@GOMOD:HALSCOPE@/d') \
 	$(if $(filter yes,$(BUILD_EMCCALIB)),-e 's/ @GOMOD:EMCCALIB@//',-e '/@GOMOD:EMCCALIB@/d') \

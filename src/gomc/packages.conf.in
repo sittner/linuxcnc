@@ -21,7 +21,6 @@ gomod internal/classicladder @GOMOD:CLASSICLADDER@
 gomod internal/emccalib @GOMOD:EMCCALIB@
 gomod internal/haljson @GOMOD:HALJSON@
 gomod internal/ngcpreview @GOMOD:NGCPREVIEW@
-gomod internal/emcgateway @GOMOD:EMCGATEWAY@
 gomod internal/task @GOMOD:MILLTASK_GO@
 gomod internal/tasktest
 
