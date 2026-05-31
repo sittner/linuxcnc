@@ -78,76 +78,6 @@ func TestTokenizeLine(t *testing.T) {
 	}
 }
 
-// --- TestParseLoadRT ---
-
-func TestParseLoadRT(t *testing.T) {
-	loc := SourceLoc{File: "test.hal", Line: 1}
-
-	t.Run("basic module", func(t *testing.T) {
-		tok, err := parseLoadRT([]string{"motmod"}, loc)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		lt := tok.Data.(*LoadRTToken)
-		if lt.Comp != "motmod" {
-			t.Errorf("Comp = %q, want %q", lt.Comp, "motmod")
-		}
-	})
-
-	t.Run("count=5", func(t *testing.T) {
-		tok, err := parseLoadRT([]string{"and2", "count=5"}, loc)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		lt := tok.Data.(*LoadRTToken)
-		if lt.Count != 5 {
-			t.Errorf("Count = %d, want 5", lt.Count)
-		}
-	})
-
-	t.Run("names=a,b,c", func(t *testing.T) {
-		tok, err := parseLoadRT([]string{"pid", "names=a,b,c"}, loc)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		lt := tok.Data.(*LoadRTToken)
-		want := []string{"a", "b", "c"}
-		if len(lt.Names) != len(want) {
-			t.Fatalf("Names = %v, want %v", lt.Names, want)
-		}
-		for i, n := range want {
-			if lt.Names[i] != n {
-				t.Errorf("Names[%d] = %q, want %q", i, lt.Names[i], n)
-			}
-		}
-	})
-
-	t.Run("extra key=value params", func(t *testing.T) {
-		tok, err := parseLoadRT([]string{"pid", "period=1000000"}, loc)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		lt := tok.Data.(*LoadRTToken)
-		if lt.Params["period"] != "1000000" {
-			t.Errorf("Params[period] = %q, want %q", lt.Params["period"], "1000000")
-		}
-	})
-
-	t.Run("missing module name error", func(t *testing.T) {
-		_, err := parseLoadRT([]string{}, loc)
-		if err == nil {
-			t.Error("expected error, got nil")
-		}
-	})
-
-	t.Run("invalid count error", func(t *testing.T) {
-		_, err := parseLoadRT([]string{"and2", "count=abc"}, loc)
-		if err == nil {
-			t.Error("expected error, got nil")
-		}
-	})
-}
-
 // --- TestParseLoadUSRError ---
 
 func TestParseLoadUSRError(t *testing.T) {
@@ -308,9 +238,6 @@ func TestSingleFileParser_load_classified(t *testing.T) {
 	}
 	if lt.Path != "/tmp/foo.so" {
 		t.Errorf("Path = %q, want %q", lt.Path, "/tmp/foo.so")
-	}
-	if len(result.LoadRT) != 0 {
-		t.Errorf("expected 0 LoadRT tokens, got %d", len(result.LoadRT))
 	}
 	if len(result.HALCmd) != 0 {
 		t.Errorf("expected 0 HALCmd tokens, got %d", len(result.HALCmd))
@@ -996,13 +923,10 @@ func TestParseLine(t *testing.T) {
 		}
 	})
 
-	t.Run("case-insensitive loadrt", func(t *testing.T) {
-		tok, err := parseLine([]string{"LoadRT", "motmod"}, loc)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if _, ok := tok.Data.(*LoadRTToken); !ok {
-			t.Error("expected *LoadRTToken")
+	t.Run("case-insensitive loadrt returns error", func(t *testing.T) {
+		_, err := parseLine([]string{"LoadRT", "motmod"}, loc)
+		if err == nil {
+			t.Error("expected error for loadrt, got nil")
 		}
 	})
 
@@ -1021,7 +945,6 @@ func TestParseLine(t *testing.T) {
 		tokens []string
 		kind   string
 	}{
-		{[]string{"loadrt", "mod"}, "*halparse.LoadRTToken"},
 		{[]string{"net", "sig"}, "*halparse.NetToken"},
 		{[]string{"setp", "a", "b"}, "*halparse.SetPToken"},
 		{[]string{"sets", "a", "b"}, "*halparse.SetSToken"},
@@ -1041,8 +964,6 @@ func TestParseLine(t *testing.T) {
 		{[]string{"stop"}, "*halparse.StopToken"},
 		{[]string{"lock"}, "*halparse.LockToken"},
 		{[]string{"unlock"}, "*halparse.UnlockToken"},
-		{[]string{"unloadrt", "c"}, "*halparse.UnloadRTToken"},
-		{[]string{"unload", "c"}, "*halparse.UnloadToken"},
 		{[]string{"list", "pin"}, "*halparse.ListToken"},
 		{[]string{"show"}, "*halparse.ShowToken"},
 		{[]string{"save"}, "*halparse.SaveToken"},
@@ -1162,7 +1083,7 @@ func TestSingleFileParser(t *testing.T) {
 	t.Run("basic file with multiple commands", func(t *testing.T) {
 		files := map[string]string{
 			"test.hal": strings.Join([]string{
-				"loadrt pid names=pid.0",
+				"setp pid.0.Pgain 500",
 				"setp pid.0.Pgain 1000",
 				"addf pid.0.do-pid-calcs servo-thread",
 			}, "\n"),
@@ -1176,11 +1097,8 @@ func TestSingleFileParser(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(result.LoadRT) != 1 {
-			t.Errorf("LoadRT count = %d, want 1", len(result.LoadRT))
-		}
-		if len(result.HALCmd) != 2 {
-			t.Errorf("HALCmd count = %d, want 2", len(result.HALCmd))
+		if len(result.HALCmd) != 3 {
+			t.Errorf("HALCmd count = %d, want 3", len(result.HALCmd))
 		}
 	})
 
@@ -1201,7 +1119,7 @@ func TestSingleFileParser(t *testing.T) {
 
 	t.Run("template expansion", func(t *testing.T) {
 		files := map[string]string{
-			"test.hal": `loadrt pid count={{.Joints}}`,
+			"test.hal": `setp pid.count {{.Joints}}`,
 		}
 		tmplData := &HalTemplateData{
 			INI:    map[string]map[string]string{},
@@ -1218,18 +1136,18 @@ func TestSingleFileParser(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(result.LoadRT) != 1 {
-			t.Fatalf("LoadRT count = %d, want 1", len(result.LoadRT))
+		if len(result.HALCmd) != 1 {
+			t.Fatalf("HALCmd count = %d, want 1", len(result.HALCmd))
 		}
-		lt := result.LoadRT[0].Data.(*LoadRTToken)
-		if lt.Count != 3 {
-			t.Errorf("Count = %d, want 3 (from template expansion)", lt.Count)
+		st := result.HALCmd[0].Data.(*SetPToken)
+		if st.Value != "3" {
+			t.Errorf("Value = %q, want %q (from template expansion)", st.Value, "3")
 		}
 	})
 
 	t.Run("INI substitution", func(t *testing.T) {
 		files := map[string]string{
-			"test.hal": "loadrt pid count=[KINS]JOINTS",
+			"test.hal": "setp pid.count [KINS]JOINTS",
 		}
 		ini := &mockINI{data: map[string]map[string]string{
 			"KINS": {"JOINTS": "4"},
@@ -1244,19 +1162,19 @@ func TestSingleFileParser(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(result.LoadRT) != 1 {
-			t.Fatalf("LoadRT count = %d, want 1", len(result.LoadRT))
+		if len(result.HALCmd) != 1 {
+			t.Fatalf("HALCmd count = %d, want 1", len(result.HALCmd))
 		}
-		lt := result.LoadRT[0].Data.(*LoadRTToken)
-		if lt.Count != 4 {
-			t.Errorf("Count = %d, want 4 (from INI substitution)", lt.Count)
+		st := result.HALCmd[0].Data.(*SetPToken)
+		if st.Value != "4" {
+			t.Errorf("Value = %q, want %q (from INI substitution)", st.Value, "4")
 		}
 	})
 
 	t.Run("source recursion merges results", func(t *testing.T) {
 		files := map[string]string{
 			"main.hal":  "source child.hal\nsetp comp.pin 1",
-			"child.hal": "loadrt pid names=pid.0",
+			"child.hal": "setp pid.0.Pgain 100",
 		}
 		sp := &SingleFileParser{
 			readFile: func(path string) (string, error) {
@@ -1271,11 +1189,8 @@ func TestSingleFileParser(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(result.LoadRT) != 1 {
-			t.Errorf("LoadRT count = %d, want 1", len(result.LoadRT))
-		}
-		if len(result.HALCmd) != 1 {
-			t.Errorf("HALCmd count = %d, want 1", len(result.HALCmd))
+		if len(result.HALCmd) != 2 {
+			t.Errorf("HALCmd count = %d, want 2", len(result.HALCmd))
 		}
 	})
 
@@ -1324,7 +1239,7 @@ func TestSingleFileParser(t *testing.T) {
 
 	t.Run("line continuation", func(t *testing.T) {
 		files := map[string]string{
-			"test.hal": "loadrt pid \\\n    names=pid.0,pid.1",
+			"test.hal": "setp very.long.pin.name \\\n    3.14159",
 		}
 		sp := &SingleFileParser{
 			readFile: func(path string) (string, error) {
@@ -1335,12 +1250,15 @@ func TestSingleFileParser(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(result.LoadRT) != 1 {
-			t.Fatalf("LoadRT count = %d, want 1", len(result.LoadRT))
+		if len(result.HALCmd) != 1 {
+			t.Fatalf("HALCmd count = %d, want 1", len(result.HALCmd))
 		}
-		lt := result.LoadRT[0].Data.(*LoadRTToken)
-		if len(lt.Names) != 2 {
-			t.Errorf("Names = %v, want [pid.0, pid.1]", lt.Names)
+		st := result.HALCmd[0].Data.(*SetPToken)
+		if st.Name != "very.long.pin.name" {
+			t.Errorf("Name = %q, want %q", st.Name, "very.long.pin.name")
+		}
+		if st.Value != "3.14159" {
+			t.Errorf("Value = %q, want %q", st.Value, "3.14159")
 		}
 	})
 
@@ -1459,14 +1377,14 @@ func TestMultiFileParser(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(result.LoadRT) != 0 || len(result.HALCmd) != 0 {
+		if len(result.HALCmd) != 0 {
 			t.Error("expected empty result for empty file list")
 		}
 	})
 
 	t.Run("single file result matches SingleFileParser", func(t *testing.T) {
 		files := map[string]string{
-			"a.hal": "loadrt pid names=pid.0\nsetp pid.0.Pgain 100",
+			"a.hal": "setp pid.0.Pgain 100\nsetp pid.0.Igain 50",
 		}
 		rf := makeReadFile(files)
 
@@ -1476,18 +1394,15 @@ func TestMultiFileParser(t *testing.T) {
 			t.Fatalf("SingleFileParser: %v", err)
 		}
 
-		// Use internal SingleFileParsers via a wrapper
-		// Since MultiFileParser doesn't expose readFile injection, we test
-		// the same behavior by comparing SingleFileParser results
-		if len(spResult.LoadRT) != 1 || len(spResult.HALCmd) != 1 {
-			t.Errorf("unexpected counts: LoadRT=%d HALCmd=%d", len(spResult.LoadRT), len(spResult.HALCmd))
+		if len(spResult.HALCmd) != 2 {
+			t.Errorf("unexpected count: HALCmd=%d", len(spResult.HALCmd))
 		}
 	})
 
 	t.Run("multiple files tokens merged in order", func(t *testing.T) {
 		files := map[string]string{
-			"a.hal": "loadrt pid names=pid.0\nsetp pid.0.Pgain 100",
-			"b.hal": "loadrt and2 count=2\naddf pid.0.do-pid-calcs servo-thread",
+			"a.hal": "setp pid.0.Pgain 100\naddf pid.0.do-pid-calcs servo-thread",
+			"b.hal": "setp pid.1.Pgain 200\naddf pid.1.do-pid-calcs servo-thread",
 		}
 		rf := makeReadFile(files)
 
@@ -1499,21 +1414,16 @@ func TestMultiFileParser(t *testing.T) {
 
 		// Simulate what MultiFileParser does
 		merged := &ParseResult{}
-		merged.LoadRT = append(merged.LoadRT, resultA.LoadRT...)
-		merged.LoadRT = append(merged.LoadRT, resultB.LoadRT...)
 		merged.HALCmd = append(merged.HALCmd, resultA.HALCmd...)
 		merged.HALCmd = append(merged.HALCmd, resultB.HALCmd...)
 
-		if len(merged.LoadRT) != 2 {
-			t.Errorf("merged LoadRT count = %d, want 2", len(merged.LoadRT))
+		if len(merged.HALCmd) != 4 {
+			t.Errorf("merged HALCmd count = %d, want 4", len(merged.HALCmd))
 		}
-		if len(merged.HALCmd) != 2 {
-			t.Errorf("merged HALCmd count = %d, want 2", len(merged.HALCmd))
-		}
-		// Order preserved: pid.0 first
-		lt := merged.LoadRT[0].Data.(*LoadRTToken)
-		if lt.Comp != "pid" {
-			t.Errorf("first LoadRT Comp = %q, want %q", lt.Comp, "pid")
+		// Order preserved: pid.0.Pgain first
+		st := merged.HALCmd[0].Data.(*SetPToken)
+		if st.Name != "pid.0.Pgain" {
+			t.Errorf("first HALCmd Name = %q, want %q", st.Name, "pid.0.Pgain")
 		}
 	})
 
@@ -1537,55 +1447,6 @@ func TestMultiFileParser(t *testing.T) {
 			if tok.Location.Line != i+1 {
 				t.Errorf("token[%d] Line = %d, want %d", i, tok.Location.Line, i+1)
 			}
-		}
-	})
-}
-
-// --- TestCollectLoadRTToken ---
-
-func TestCollectLoadRTToken(t *testing.T) {
-	t.Run("basic conversion", func(t *testing.T) {
-		c := NewTwopassCollector()
-		tok := &LoadRTToken{
-			Comp:   "pid",
-			Count:  2,
-			Names:  []string{},
-			Params: make(map[string]string),
-		}
-		c.CollectLoadRTToken(tok)
-		cmds := c.MergedLoadRTCommands()
-		if len(cmds) != 1 || cmds[0][0] != "pid" {
-			t.Errorf("unexpected commands: %v", cmds)
-		}
-		// Should have count=2 in args
-		found := false
-		for _, arg := range cmds[0] {
-			if arg == "count=2" {
-				found = true
-			}
-		}
-		if !found {
-			t.Errorf("expected count=2 in %v", cmds[0])
-		}
-	})
-
-	t.Run("names are passed through", func(t *testing.T) {
-		c := NewTwopassCollector()
-		tok := &LoadRTToken{
-			Comp:   "pid",
-			Names:  []string{"pid.0", "pid.1"},
-			Params: make(map[string]string),
-		}
-		c.CollectLoadRTToken(tok)
-		cmds := c.MergedLoadRTCommands()
-		found := false
-		for _, arg := range cmds[0] {
-			if arg == "names=pid.0,pid.1" {
-				found = true
-			}
-		}
-		if !found {
-			t.Errorf("expected names=pid.0,pid.1 in %v", cmds[0])
 		}
 	})
 }

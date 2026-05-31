@@ -6,7 +6,7 @@ import (
 )
 
 func TestRenderHalTemplate_NoDirectives(t *testing.T) {
-	input := "loadrt trivkins\naddf servo-thread\nstart\n"
+	input := "setp trivkins.scale 1.0\naddf servo-thread\nstart\n"
 	out, err := RenderHalTemplate("test.hal", input, &HalTemplateData{})
 	if err != nil {
 		t.Fatal(err)
@@ -57,7 +57,7 @@ func TestRenderHalTemplate_RangeAxes(t *testing.T) {
 		Axes: []string{"X", "Y", "Z"},
 		INI:  map[string]map[string]string{},
 	}
-	input := "{{range .Axes}}loadrt pid names=pid.{{lower .}}\n{{end}}"
+	input := "{{range .Axes}}setp pid.{{lower .}}.enable 1\n{{end}}"
 	out, err := RenderHalTemplate("test.hal", input, data)
 	if err != nil {
 		t.Fatal(err)
@@ -149,7 +149,7 @@ func TestRenderHalTemplate_DivByZero(t *testing.T) {
 // an error rather than panicking or returning empty output.
 func TestRenderHalTemplate_ParseError(t *testing.T) {
 	data := &HalTemplateData{INI: map[string]map[string]string{}}
-	input := "loadrt pid {{range .Axes}" // missing {{end}}
+	input := "setp pid.gain {{range .Axes}" // missing {{end}}
 	_, err := RenderHalTemplate("test.hal", input, data)
 	if err == nil {
 		t.Error("expected parse error for malformed template, got nil")

@@ -250,21 +250,6 @@ func DelF(funct, thread string) error {
 	return halDelF(funct, thread)
 }
 
-// ===== RT component management =====
-
-// LoadRT loads a realtime HAL module (kernel module or RTAPI component).
-// Additional arguments are passed to the module.
-// Equivalent to "halcmd loadrt <mod> [args...]".
-func LoadRT(mod string, args ...string) error {
-	return halLoadRT(mod, args)
-}
-
-// UnloadRT unloads a realtime HAL module.
-// Equivalent to "halcmd unloadrt <mod>".
-func UnloadRT(mod string) error {
-	return halUnloadRT(mod)
-}
-
 // ===== Alias commands =====
 
 // Alias creates an alternate name for a HAL pin or parameter.

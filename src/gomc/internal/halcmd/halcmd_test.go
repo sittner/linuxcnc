@@ -162,20 +162,6 @@ func TestDelFSignature(t *testing.T) {
 	_ = fn
 }
 
-// ===== RT component management signature tests =====
-
-// TestLoadRTSignature verifies that LoadRT has the correct signature.
-func TestLoadRTSignature(t *testing.T) {
-	var fn func(string, ...string) error = halcmd.LoadRT
-	_ = fn
-}
-
-// TestUnloadRTSignature verifies that UnloadRT has the correct signature.
-func TestUnloadRTSignature(t *testing.T) {
-	var fn func(string) error = halcmd.UnloadRT
-	_ = fn
-}
-
 // ===== Lock/unlock signature tests =====
 
 // TestLockSignature verifies that Lock has the correct signature.

@@ -98,7 +98,7 @@ func (l *Launcher) ensureLogRing() {
 //  3. Validates cross-section INI dependencies (validateDependencies).
 //  4. Starts the realtime environment.
 //  5. Initializes HAL (hal_init).
-//  6. Executes [HAL]HALFILE entries (load → loadrt → initCModules → net/addf/setp).
+//  6. Executes [HAL]HALFILE entries (load → initCModules → net/addf/setp).
 //  7. Executes [HAL]HALCMD entries.
 //  8. Loads retained signals if any are present.
 //  9. Locks HAL memory (if configured).
@@ -276,9 +276,7 @@ func (l *Launcher) Run() (runErr error) {
 		return fmt.Errorf("HAL file parsing failed: %w", err)
 	}
 
-	// Load components in dependency order:
-	//  1. load   — plugin modules that prepare shared state for RT modules
-	//  2. loadrt — realtime components (merged via twopass)
+	// Load plugin modules (cmod or Go).
 	if err := halResult.IterLoads(func(path string, name string, args []string) error {
 		cmodPath := resolveCModulePath(path)
 		if cModuleExists(cmodPath) {
@@ -290,13 +288,6 @@ func (l *Launcher) Run() (runErr error) {
 			return fmt.Errorf("plugin module loading failed: %w", err)
 		}
 		l.logger.Warn("plugin module loading error (continuing)", "error", err)
-	}
-
-	if err := halResult.ExecLoadRT(); err != nil {
-		if !l.opts.ContinueOnError {
-			return fmt.Errorf("HAL loadrt failed: %w", err)
-		}
-		l.logger.Warn("HAL loadrt error (continuing)", "error", err)
 	}
 
 	// Phase 1b: Initialize all plugin modules (Init phase).

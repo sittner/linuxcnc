@@ -86,16 +86,6 @@ const (
 	SaveAll
 )
 
-// LoadRTToken represents a "loadrt" command.
-type LoadRTToken struct {
-	Comp   string            // module name
-	Count  int               // parsed from count=N; 0 if absent
-	Names  []string          // parsed from names=a,b,c; nil if absent
-	Params map[string]string // remaining key=value args (module-specific)
-}
-
-func (*LoadRTToken) tokenData() {}
-
 // NetToken represents a "net" command.
 type NetToken struct {
 	Signal string   // signal name (first argument)
@@ -249,15 +239,6 @@ type UnlockToken struct {
 
 func (*UnlockToken) tokenData() {}
 
-// UnloadRTToken represents an "unloadrt" command.
-type UnloadRTToken struct{ Comp string }
-
-func (*UnloadRTToken) tokenData() {}
-
-// UnloadToken represents an "unload" command (dispatches to RT).
-type UnloadToken struct{ Comp string }
-
-func (*UnloadToken) tokenData() {}
 
 // ListToken represents a "list" command.
 type ListToken struct {
@@ -348,12 +329,10 @@ type INILookup interface {
 }
 
 // ParseResult holds the execution buckets produced by MultiFileParser.
-// LoadRT tokens are merged via TwopassCollector before execution.
 // Loads tokens are from the "load" command; they are exclusively for Go
 // plugins and resolved against EMC2_GOMOD_DIR by the launcher.
 // HALCmd tokens are everything else, executed in order after components start.
 type ParseResult struct {
-	LoadRT  []Token
 	Loads   []Token // "load" command tokens (*LoadToken) — Go plugins only
 	HALCmd  []Token
 }

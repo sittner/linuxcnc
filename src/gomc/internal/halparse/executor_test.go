@@ -40,7 +40,6 @@ func TestExecuteToken_AllTypes(t *testing.T) {
 		tok   Token
 		check func(*testing.T, Token)
 	}{
-		{"LoadRT", Token{loc, &LoadRTToken{Comp: "pid", Count: 1}}, noCGO},
 		{"Net", Token{loc, &NetToken{Signal: "sig", Pins: []string{"p.pin"}}}, noCGO},
 		{"SetP", Token{loc, &SetPToken{Name: "x.y", Value: "1"}}, noCGO},
 		{"SetS", Token{loc, &SetSToken{Name: "s", Value: "0"}}, noCGO},
@@ -60,8 +59,6 @@ func TestExecuteToken_AllTypes(t *testing.T) {
 		{"Stop", Token{loc, &StopToken{}}, noCGO},
 		{"Lock", Token{loc, &LockToken{Level: LockAll}}, noCGO},
 		{"Unlock", Token{loc, &UnlockToken{Level: LockNone}}, noCGO},
-		{"UnloadRT", Token{loc, &UnloadRTToken{Comp: "c"}}, noCGO},
-		{"Unload", Token{loc, &UnloadToken{Comp: "c"}}, noCGO},
 		{"List", Token{loc, &ListToken{ObjType: ObjPin}}, noCGO},
 		{"Show", Token{loc, &ShowToken{ObjType: ObjAll}}, noCGO},
 		{"Save", Token{loc, &SaveToken{SaveType: SaveAll}}, noCGO},
@@ -115,41 +112,6 @@ func TestExecutionError_Unwrap(t *testing.T) {
 	}
 	if !errors.Is(e, halcmd.ErrNoCGO) {
 		t.Error("errors.Is(execErr, ErrNoCGO) returned false, want true")
-	}
-}
-
-// TestBuildLoadRTArgs verifies the helper reconstructs args from a LoadRTToken.
-func TestBuildLoadRTArgs(t *testing.T) {
-	d := &LoadRTToken{
-		Comp:   "pid",
-		Count:  3,
-		Names:  []string{"a", "b"},
-		Params: map[string]string{"debug": "1", "cfg": "foo"},
-	}
-	args := buildLoadRTArgs(d)
-
-	mustContain := func(s string) {
-		t.Helper()
-		for _, a := range args {
-			if a == s {
-				return
-			}
-		}
-		t.Errorf("expected arg %q in %v", s, args)
-	}
-
-	mustContain("count=3")
-	mustContain("names=a,b")
-	mustContain("debug=1")
-	mustContain("cfg=foo")
-}
-
-// TestBuildLoadRTArgs_Empty verifies empty token produces empty args.
-func TestBuildLoadRTArgs_Empty(t *testing.T) {
-	d := &LoadRTToken{Comp: "and2"}
-	args := buildLoadRTArgs(d)
-	if len(args) != 0 {
-		t.Errorf("expected no args for empty token, got %v", args)
 	}
 }
 
@@ -230,45 +192,11 @@ func TestParseResultExecute(t *testing.T) {
 	}
 }
 
-// TestParseResultLoad_Empty verifies that an empty ParseResult's Load returns nil.
-func TestParseResultLoad_Empty(t *testing.T) {
-	r := &ParseResult{}
-	if err := r.ExecLoadRT(); err != nil {
-		t.Errorf("expected nil for empty ParseResult ExecLoadRT, got %v", err)
-	}
-}
-
 // TestParseResultExecute_Empty verifies that an empty ParseResult's Execute returns nil.
 func TestParseResultExecute_Empty(t *testing.T) {
 	r := &ParseResult{}
 	if err := r.Execute(); err != nil {
 		t.Errorf("expected nil for empty ParseResult Execute, got %v", err)
-	}
-}
-
-// TestParseResultLoad_LoadRTMerge verifies that two LoadRTTokens for the
-// same module are merged into a single LoadRT call (one error, not two).
-func TestParseResultLoad_LoadRTMerge(t *testing.T) {
-	r := &ParseResult{
-		LoadRT: []Token{
-			{
-				Location: SourceLoc{File: "test.hal", Line: 1},
-				Data:     &LoadRTToken{Comp: "and2", Count: 2},
-			},
-			{
-				Location: SourceLoc{File: "test.hal", Line: 5},
-				Data:     &LoadRTToken{Comp: "and2", Count: 3},
-			},
-		},
-	}
-	err := r.ExecLoadRT()
-	// Both tokens are for the same module; TwopassCollector merges them into a
-	// single LoadRT("and2", "count=3") call.  The call fails with ErrNoCGO.
-	if err == nil {
-		t.Fatal("expected error from merged loadrt, got nil")
-	}
-	if !errors.Is(err, halcmd.ErrNoCGO) {
-		t.Errorf("expected ErrNoCGO, got %v", err)
 	}
 }
 

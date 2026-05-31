@@ -324,40 +324,6 @@ func parseAliasKind(s string, loc SourceLoc) (AliasKind, *ParseError) {
 
 // --- per-command parse functions ---
 
-func parseLoadRT(tokens []string, loc SourceLoc) (Token, *ParseError) {
-	if len(tokens) < 1 {
-		return Token{}, &ParseError{Loc: loc, Msg: "loadrt: missing module name"}
-	}
-	tok := &LoadRTToken{
-		Comp:   tokens[0],
-		Params: make(map[string]string),
-	}
-	for _, arg := range tokens[1:] {
-		key, value, hasEquals := strings.Cut(arg, "=")
-		if !hasEquals {
-			continue
-		}
-		switch key {
-		case "count":
-			n, err := strconv.Atoi(strings.TrimSpace(value))
-			if err != nil {
-				return Token{}, &ParseError{Loc: loc, Msg: fmt.Sprintf("loadrt: invalid count value: %q", value)}
-			}
-			tok.Count = n
-		case "names":
-			for _, name := range strings.Split(value, ",") {
-				name = strings.TrimSpace(name)
-				if name != "" {
-					tok.Names = append(tok.Names, name)
-				}
-			}
-		default:
-			tok.Params[key] = value
-		}
-	}
-	return Token{Location: loc, Data: tok}, nil
-}
-
 func parseNet(tokens []string, loc SourceLoc) (Token, *ParseError) {
 	if len(tokens) < 1 {
 		return Token{}, &ParseError{Loc: loc, Msg: "net: missing signal name"}
@@ -584,20 +550,6 @@ func parseUnlock(tokens []string, loc SourceLoc) (Token, *ParseError) {
 	return Token{Location: loc, Data: &UnlockToken{Level: level}}, nil
 }
 
-func parseUnloadRT(tokens []string, loc SourceLoc) (Token, *ParseError) {
-	if len(tokens) != 1 {
-		return Token{}, &ParseError{Loc: loc, Msg: fmt.Sprintf("unloadrt: expected 1 argument, got %d", len(tokens))}
-	}
-	return Token{Location: loc, Data: &UnloadRTToken{Comp: tokens[0]}}, nil
-}
-
-func parseUnload(tokens []string, loc SourceLoc) (Token, *ParseError) {
-	if len(tokens) != 1 {
-		return Token{}, &ParseError{Loc: loc, Msg: fmt.Sprintf("unload: expected 1 argument, got %d", len(tokens))}
-	}
-	return Token{Location: loc, Data: &UnloadToken{Comp: tokens[0]}}, nil
-}
-
 func parseList(tokens []string, loc SourceLoc) (Token, *ParseError) {
 	if len(tokens) < 1 {
 		return Token{}, &ParseError{Loc: loc, Msg: "list: missing object type"}
@@ -727,7 +679,7 @@ func parseLine(tokens []string, loc SourceLoc) (Token, *ParseError) {
 
 	switch cmd {
 	case "loadrt":
-		return parseLoadRT(args, loc)
+		return Token{}, &ParseError{Loc: loc, Msg: "loadrt is no longer supported; use 'load' for cmod plugins"}
 	case "loadusr":
 		return Token{}, &ParseError{Loc: loc, Msg: "loadusr is no longer supported; start user-space components externally"}
 	case "net":
@@ -777,11 +729,11 @@ func parseLine(tokens []string, loc SourceLoc) (Token, *ParseError) {
 	case "unlock":
 		return parseUnlock(args, loc)
 	case "unloadrt":
-		return parseUnloadRT(args, loc)
+		return Token{}, &ParseError{Loc: loc, Msg: "unloadrt is no longer supported; use 'unload' instead"}
 	case "unloadusr":
 		return Token{}, &ParseError{Loc: loc, Msg: "unloadusr is no longer supported; user-space components are managed externally"}
 	case "unload":
-		return parseUnload(args, loc)
+		return Token{}, &ParseError{Loc: loc, Msg: "unload is no longer supported"}
 	case "waitusr":
 		return Token{}, &ParseError{Loc: loc, Msg: "waitusr is no longer supported; user-space components are managed externally"}
 	case "list":
@@ -913,7 +865,6 @@ func (sp *SingleFileParser) Parse(path string) (*ParseResult, error) {
 			if parseErr != nil {
 				return nil, parseErr
 			}
-			result.LoadRT = append(result.LoadRT, childResult.LoadRT...)
 			result.Loads = append(result.Loads, childResult.Loads...)
 			result.HALCmd = append(result.HALCmd, childResult.HALCmd...)
 			continue
@@ -927,8 +878,6 @@ func (sp *SingleFileParser) Parse(path string) (*ParseResult, error) {
 
 		// Classify into the appropriate bucket
 		switch tok.Data.(type) {
-		case *LoadRTToken:
-			result.LoadRT = append(result.LoadRT, tok)
 		case *LoadToken:
 			result.Loads = append(result.Loads, tok)
 		default:
@@ -993,7 +942,6 @@ func (mp *MultiFileParser) Parse(paths []string) (*ParseResult, error) {
 		if err != nil {
 			return nil, err
 		}
-		result.LoadRT = append(result.LoadRT, fileResult.LoadRT...)
 		result.Loads = append(result.Loads, fileResult.Loads...)
 		result.HALCmd = append(result.HALCmd, fileResult.HALCmd...)
 	}

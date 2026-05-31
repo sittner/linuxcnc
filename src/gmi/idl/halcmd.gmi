@@ -228,20 +228,6 @@ func net(signal: string, pins: []string) -> CmdResult
 
 # ─── Module Commands ───
 
-# Load realtime module (loadrt)
-@method "POST"
-@path "/loadrt"
-@rt_safe "false"
-func loadrt(module: string, args: []string?) -> CmdResult
-
-# Unload realtime module (unloadrt)
-@method "DELETE"
-@path "/loadrt/{module}"
-@rt_safe "false"
-func unloadrt(module: string) -> CmdResult
-
-
-
 # Load cmod plugin (load)
 @method "POST"
 @path "/load"

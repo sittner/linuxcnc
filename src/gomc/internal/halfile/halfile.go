@@ -112,10 +112,6 @@ func (e *Executor) IniLookup() halparse.INILookup {
 // This split allows the launcher to insert protocol component initialization
 // (ADS, etc.) between component loading and HAL wiring.
 //
-// [HAL]TWOPASS support: the Go MultiFileParser collects all loadrt tokens
-// across every file into a merged set before executing them, which is the
-// Go-native equivalent of the legacy TCL twopass mechanism.
-//
 // TCL (.tcl) HAL files are not supported and cause a hard error.
 func (e *Executor) ParseAll() (*halparse.ParseResult, error) {
 	if e.ini == nil {
@@ -192,9 +188,6 @@ func (e *Executor) ExecuteHalCommands() error {
 		if err != nil {
 			return fmt.Errorf("parsing HALCMD %q: %w", cmd, err)
 		}
-		if err := result.ExecLoadRT(); err != nil {
-			return fmt.Errorf("loading HALCMD %q: %w", cmd, err)
-		}
 		if err := result.Execute(); err != nil {
 			return fmt.Errorf("executing HALCMD %q: %w", cmd, err)
 		}
@@ -230,9 +223,6 @@ func (e *Executor) ExecuteShutdown() error {
 	result, err := sp.Parse(resolved)
 	if err != nil {
 		return fmt.Errorf("parsing HAL shutdown script %q: %w", resolved, err)
-	}
-	if err := result.ExecLoadRT(); err != nil {
-		return fmt.Errorf("loading HAL shutdown script %q: %w", resolved, err)
 	}
 	return result.Execute()
 }
@@ -280,9 +270,6 @@ func (e *Executor) ExecutePostGUI() error {
 	result, err := mp.Parse(paths)
 	if err != nil {
 		return fmt.Errorf("parsing POSTGUI_HALFILE: %w", err)
-	}
-	if err := result.ExecLoadRT(); err != nil {
-		return fmt.Errorf("loading POSTGUI_HALFILE: %w", err)
 	}
 	return result.Execute()
 }

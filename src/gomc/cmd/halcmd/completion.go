@@ -141,7 +141,7 @@ func splitWords(s string) []string {
 var subcommands = []string{
 	"show", "list", "status", "getp", "setp", "gets", "sets", "ptype", "stype",
 	"newsig", "delsig", "net", "linksp", "linkps", "linkpp", "unlinkp",
-	"load", "loadrt", "unloadrt", "loadusr", "unloadusr", "waitusr", "unload",
+	"load", "loadusr", "unloadusr", "waitusr", "unload",
 	"newthread", "delthread", "addf", "delf", "start", "stop",
 	"alias", "unalias", "lock", "unlock", "debug", "save",
 	"retain", "unretain",
@@ -241,14 +241,6 @@ func completeArg(cmd string, argPos int, prefix string, prevArgs []string) []str
 		}
 
 	// Module loading
-	case "loadrt":
-		if argPos == 1 {
-			return completeRTModules(prefix)
-		}
-	case "unloadrt":
-		if argPos == 1 {
-			return completeRTComponents(prefix)
-		}
 	case "unloadusr", "waitusr":
 		if argPos == 1 {
 			return completeUsrComponents(prefix)
@@ -427,21 +419,6 @@ func completeComponents(prefix string) []string {
 	return names
 }
 
-func completeRTComponents(prefix string) []string {
-	pattern := prefix + "*"
-	comps, err := client.ListComponents(&pattern)
-	if err != nil {
-		return nil
-	}
-	var names []string
-	for _, c := range comps {
-		if c.Pid == nil || *c.Pid == 0 {
-			names = append(names, c.Name)
-		}
-	}
-	return names
-}
-
 func completeUsrComponents(prefix string) []string {
 	pattern := prefix + "*"
 	comps, err := client.ListComponents(&pattern)
@@ -495,34 +472,6 @@ func completeUsedFunctions(prefix string) []string {
 	for _, f := range funcs {
 		if f.Users > 0 {
 			names = append(names, f.Name)
-		}
-	}
-	return names
-}
-
-func completeRTModules(prefix string) []string {
-	// List .so files from HAL_RTMOD_DIR or the rtlib directory
-	rtlibDir := os.Getenv("HAL_RTMOD_DIR")
-	if rtlibDir == "" {
-		rtlibDir = os.Getenv("RTLIB_DIR")
-	}
-	if rtlibDir == "" {
-		return nil
-	}
-
-	entries, err := os.ReadDir(rtlibDir)
-	if err != nil {
-		return nil
-	}
-
-	var names []string
-	for _, e := range entries {
-		name := e.Name()
-		if strings.HasSuffix(name, ".so") {
-			modName := strings.TrimSuffix(name, ".so")
-			if strings.HasPrefix(modName, prefix) {
-				names = append(names, modName)
-			}
 		}
 	}
 	return names

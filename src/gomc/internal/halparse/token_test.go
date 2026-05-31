@@ -8,7 +8,6 @@ import (
 
 // Compile-time interface compliance checks for all 35 token structs.
 var (
-	_ TokenData = (*LoadRTToken)(nil)
 	_ TokenData = (*NetToken)(nil)
 	_ TokenData = (*SetPToken)(nil)
 	_ TokenData = (*SetSToken)(nil)
@@ -28,8 +27,6 @@ var (
 	_ TokenData = (*StopToken)(nil)
 	_ TokenData = (*LockToken)(nil)
 	_ TokenData = (*UnlockToken)(nil)
-	_ TokenData = (*UnloadRTToken)(nil)
-	_ TokenData = (*UnloadToken)(nil)
 	_ TokenData = (*ListToken)(nil)
 	_ TokenData = (*ShowToken)(nil)
 	_ TokenData = (*SaveToken)(nil)
@@ -67,24 +64,6 @@ func TestTokenHoldsData(t *testing.T) {
 		}
 		if nt.Signal != "mysig" {
 			t.Errorf("Signal = %q, want %q", nt.Signal, "mysig")
-		}
-	})
-
-	t.Run("LoadRTToken", func(t *testing.T) {
-		tok := Token{
-			Location: loc,
-			Data: &LoadRTToken{
-				Comp:  "hal_lib",
-				Count: 2,
-				Names: []string{"a", "b"},
-			},
-		}
-		lt, ok := tok.Data.(*LoadRTToken)
-		if !ok {
-			t.Fatal("type assertion to *LoadRTToken failed")
-		}
-		if lt.Comp != "hal_lib" {
-			t.Errorf("Comp = %q, want %q", lt.Comp, "hal_lib")
 		}
 	})
 

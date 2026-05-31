@@ -2,7 +2,6 @@ package halparse
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
 	halcmd "github.com/sittner/linuxcnc/src/gomc/internal/halcmd"
@@ -25,8 +24,6 @@ func (e *ExecutionError) Unwrap() error { return e.Err }
 func executeToken(tok Token) error {
 	var err error
 	switch d := tok.Data.(type) {
-	case *LoadRTToken:
-		err = halcmd.LoadRT(d.Comp, buildLoadRTArgs(d)...)
 	case *NetToken:
 		err = halcmd.Net(d.Signal, d.Pins...)
 	case *SetPToken:
@@ -77,10 +74,6 @@ func executeToken(tok Token) error {
 		// e.g. "unlock all" (level=255) → set lock to 0 (LockNone)
 		// e.g. "unlock tune" (level=3)  → set lock to LockAll &^ 3
 		err = halcmd.SetLock(int(LockAll) &^ int(d.Level))
-	case *UnloadRTToken:
-		err = halcmd.UnloadRT(d.Comp)
-	case *UnloadToken:
-		err = halcmd.UnloadRT(d.Comp)
 	case *ListToken:
 		_, err = halcmd.List(halObjTypeToString(d.ObjType), d.Patterns...)
 	case *ShowToken:
@@ -116,36 +109,6 @@ func executeToken(tok Token) error {
 	}
 	if err != nil {
 		return &ExecutionError{Loc: tok.Location, Err: err}
-	}
-	return nil
-}
-
-// ExecLoadRT executes the loadrt phase: all "loadrt" commands are merged via
-// TwopassCollector and then loaded.  Call this after ExecLoadUSR and after any
-// plugin modules have been loaded.
-func (r *ParseResult) ExecLoadRT() error {
-	collector := NewTwopassCollector()
-	for _, tok := range r.LoadRT {
-		if d, ok := tok.Data.(*LoadRTToken); ok {
-			collector.CollectLoadRTToken(d)
-		}
-	}
-	mergedCmds := collector.MergedLoadRTCommands()
-	for _, cmd := range mergedCmds {
-		if len(cmd) == 0 {
-			continue
-		}
-		if err := halcmd.LoadRT(cmd[0], cmd[1:]...); err != nil {
-			loc := SourceLoc{}
-			// Find the first LoadRT token for this module to get a source loc
-			for _, tok := range r.LoadRT {
-				if d, ok := tok.Data.(*LoadRTToken); ok && d.Comp == cmd[0] {
-					loc = tok.Location
-					break
-				}
-			}
-			return &ExecutionError{Loc: loc, Err: err}
-		}
 	}
 	return nil
 }
@@ -192,31 +155,6 @@ func (r *ParseResult) IterLoads(fn func(path string, name string, args []string)
 		}
 	}
 	return nil
-}
-
-// buildLoadRTArgs reconstructs the string args from a LoadRTToken for LoadRT().
-// This is used only by executeToken() for direct single-token dispatch (e.g.
-// interactive halcmd calls). ParseResult.LoadRT() does NOT use this function;
-// it feeds LoadRTTokens through TwopassCollector.CollectLoadRTToken() →
-// MergedLoadRTCommands() instead.
-func buildLoadRTArgs(d *LoadRTToken) []string {
-	var args []string
-	if d.Count > 0 {
-		args = append(args, fmt.Sprintf("count=%d", d.Count))
-	}
-	if len(d.Names) > 0 {
-		args = append(args, fmt.Sprintf("names=%s", strings.Join(d.Names, ",")))
-	}
-	// Sort Params keys for deterministic ordering
-	keys := make([]string, 0, len(d.Params))
-	for k := range d.Params {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		args = append(args, fmt.Sprintf("%s=%s", k, d.Params[k]))
-	}
-	return args
 }
 
 // aliasKindStr converts an AliasKind enum to the string accepted by Alias()/UnAlias().

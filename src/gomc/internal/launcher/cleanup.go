@@ -29,7 +29,7 @@ func (l *Launcher) cleanup() {
 //  1. RtapiAppInit
 //  2. hal.NewComponent (launcher)
 //  3. createThreads (hal_create_thread_cpu)
-//  4. load modules (cmod New, loadrt)
+//  4. load modules (cmod New)
 //  5. wire HAL (addf, net, setp)
 //  6. startThreads               <- RT functions start executing
 //  7. startGoModules, startCModules
@@ -41,7 +41,7 @@ func (l *Launcher) cleanup() {
 //  3. SHUTDOWN halfile
 //  4. destroyCModules             (reverse of 4, frees EC masters etc.)
 //  5. destroyGoModules            (reverse of 4)
-//  6. UnloadAll                   (reverse of 4, unloads loadrt components)
+//  6. UnloadAll                   (reverse of 4, unloads components)
 //  7. wait for unload             (userspace processes may still be exiting)
 //  8. halComp.Exit                (reverse of 2)
 //
@@ -112,7 +112,7 @@ func (l *Launcher) doCleanup() {
 		l.logger.Debug("destroying Go plugin modules")
 		l.destroyGoModules()
 
-		// Step 9 — Unload all HAL components (loadrt).
+		// Step 9 — Unload all HAL components.
 		l.logger.Debug("unloading HAL components")
 		if err := halcmd.UnloadAll(0); err != nil {
 			l.logger.Debug("hal unload all returned error", "error", err)

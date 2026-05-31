@@ -345,20 +345,6 @@ func (h *halcmdImpl) Load(module string, args []string) (*halcmdapi.CmdResult, e
 	return okCmd(), nil
 }
 
-func (h *halcmdImpl) Loadrt(module string, args []string) (*halcmdapi.CmdResult, error) {
-	if err := halcmd.LoadRT(module, args...); err != nil {
-		return errCmd(err)
-	}
-	return okCmd(), nil
-}
-
-func (h *halcmdImpl) Unloadrt(module string) (*halcmdapi.CmdResult, error) {
-	if err := halcmd.UnloadRT(module); err != nil {
-		return errCmd(err)
-	}
-	return okCmd(), nil
-}
-
 func (h *halcmdImpl) Newthread(name string, periodNs int64, fp *bool, cpuId *int32) (*halcmdapi.CmdResult, error) {
 	usesFP := 0
 	if fp != nil && *fp {

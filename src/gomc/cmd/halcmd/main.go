@@ -146,8 +146,6 @@ Commands:
   unlinkp <pin>           Unlink pin from signal
   
   load <mod> [args]       Load cmod plugin
-  loadrt <mod> [args]     Load realtime module
-  unloadrt <mod>          Unload realtime module
   loadusr [-W] [-i] <cmd> Load user component
   unloadusr <comp>        Unload user component
   waitusr <comp>          Wait for user component
@@ -393,9 +391,9 @@ func executeCommand(args []string) error {
 	case "load":
 		return cmdLoad(args)
 	case "loadrt":
-		return cmdLoadRT(args)
+		return fmt.Errorf("loadrt is no longer supported; use 'load' for cmod plugins")
 	case "unloadrt":
-		return cmdUnloadRT(args)
+		return fmt.Errorf("unloadrt is no longer supported; use 'unload' instead")
 	case "loadusr":
 		return fmt.Errorf("loadusr is no longer supported; start user-space components externally")
 	case "unloadusr":
@@ -403,7 +401,7 @@ func executeCommand(args []string) error {
 	case "waitusr":
 		return fmt.Errorf("waitusr is no longer supported; user-space components are managed externally")
 	case "unload":
-		return cmdUnloadRT(args)
+		return fmt.Errorf("unload is no longer supported; use 'unload' instead")
 
 	// Threads
 	case "newthread":
@@ -509,15 +507,11 @@ var commandHelp = map[string]string{
   Link two pins together (creates an implicit signal).`,
 	"unlinkp": `unlinkp <pin>
   Unlink a pin from its signal.`,
-	"loadrt": `loadrt <module> [args...]
-  Load a realtime HAL module.
-  Example: loadrt threads name1=servo-thread period1=1000000`,
-	"unloadrt": `unloadrt <module>
-  Unload a realtime module.`,
+	"loadrt": `loadrt is no longer supported; use 'load' for cmod plugins.`,
+	"unloadrt": `unloadrt is no longer supported; use 'unload' instead.`,
 	"load": `load <module> [args...]
   Load a cmod plugin module into gomc-server.`,
-	"unload": `unload <component>
-  Unload a component (alias for unloadrt).`,
+	"unload": `unload is no longer supported.`,
 	"newthread": `newthread <name> <period-ns> [fp] [cpu=N]
   Create a new realtime thread.
   period-ns is the period in nanoseconds.
@@ -1087,40 +1081,6 @@ func cmdLoad(args []string) error {
 		fmt.Println(*result.Output)
 	}
 	return nil
-}
-
-func cmdLoadRT(args []string) error {
-	if len(args) < 1 {
-		return fmt.Errorf("loadrt requires module name")
-	}
-	module := args[0]
-	var modArgs []*string
-	for _, a := range args[1:] {
-		s := a
-		modArgs = append(modArgs, &s)
-	}
-	result, err := client.Loadrt(module, modArgs)
-	if err != nil {
-		return err
-	}
-	if err := checkResult(result); err != nil {
-		return err
-	}
-	if result.Output != nil && *result.Output != "" && !quietMode {
-		fmt.Println(*result.Output)
-	}
-	return nil
-}
-
-func cmdUnloadRT(args []string) error {
-	if len(args) < 1 {
-		return fmt.Errorf("unloadrt requires module name")
-	}
-	result, err := client.Unloadrt(args[0])
-	if err != nil {
-		return err
-	}
-	return checkResult(result)
 }
 
 func cmdNewThread(args []string) error {
