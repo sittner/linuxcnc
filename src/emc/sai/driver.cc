@@ -39,7 +39,11 @@
 #include <rtapi_string.h>
 
 #include <saicanon.hh>
-#include "tooldata.hh"
+
+/* SAI tool table (sai_tooltable.cc) */
+extern int tooldata_load(const char *filename, char **);
+struct EMC_TOOL_STAT;
+extern int tool_mmap_creator(const EMC_TOOL_STAT *, int);
 
 extern const canon_callbacks_t *saicanon_get_callbacks(void);
 
@@ -586,16 +590,7 @@ int main (int argc, char ** argv)
   _outfile = stdout; /* may be reset below */
   go_flag = 0;
 
-#ifdef TOOL_NML //{
-  tool_nml_register((CANON_TOOL_TABLE*)& _sai._tools);
-#else //}{
-  const int random_toolchanger = 0;
-  tool_mmap_creator((EMC_TOOL_STAT*)NULL,random_toolchanger);
-  /* Notes:
-  **   1) sai does not use toolInSpindle,pocketPrepped
-  **   2) sai does not distinguish changer type
-  */
-#endif //}
+  tool_mmap_creator(NULL, 0); /* no-op stub, inits tool array */
 
   while(1) {
       int c = getopt(argc, argv, "p:t:v:bsn:gi:l:T");

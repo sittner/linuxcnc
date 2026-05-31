@@ -32,7 +32,14 @@
 ********************************************************************/
 
 #include <saicanon.hh>
-#include "tooldata.hh"
+#include "emctool.h"
+
+/* SAI tool table API (sai_tooltable.cc) */
+extern "C" {
+enum toolidx_t { IDX_OK = 0, IDX_NEW, IDX_FAIL };
+toolidx_t tooldata_get(CANON_TOOL_TABLE *pdata, int idx);
+toolidx_t tooldata_put(CANON_TOOL_TABLE tdata, int idx);
+}
 
 #include "rs274ngc.hh"
 #include "rs274ngc_interp.hh"

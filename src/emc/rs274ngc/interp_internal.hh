@@ -30,7 +30,6 @@
 #include "interp_parameter_def.hh"
 #include "interp_fwd.hh"
 #include "interp_base.hh"
-#include "tooldata.hh"
 #include "canon_interface.hh"
 
 #define _(s) gettext(s)
