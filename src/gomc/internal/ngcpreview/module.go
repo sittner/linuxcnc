@@ -726,10 +726,11 @@ func init() {
 }
 
 type ngcPreview struct {
-	logger        *slog.Logger
-	parameterFile string  // from [RS274NGC]PARAMETER_FILE
-	linearUnits   float64 // from [TRAJ]LINEAR_UNITS: 1.0 for mm, 1/25.4 for inch
-	ttClient      *tooltable.TooltableClient
+	logger         *slog.Logger
+	parameterFile  string  // from [RS274NGC]PARAMETER_FILE
+	linearUnits    float64 // from [TRAJ]LINEAR_UNITS: 1.0 for mm, 1/25.4 for inch
+	ttInstanceName string  // tooltable instance to look up (default "tooltable")
+	ttClient       *tooltable.TooltableClient
 }
 
 func parseLinearUnits(s string) float64 {
@@ -749,9 +750,12 @@ func parseLinearUnits(s string) float64 {
 func newNgcPreview(ini *inifile.IniFile, logger *slog.Logger, name string, args []string) (gomc.Module, error) {
 	// Allow overriding INI namespace via "namespace=xxx" argument.
 	ns := name
+	ttInst := "tooltable"
 	for _, arg := range args {
 		if strings.HasPrefix(arg, "namespace=") {
 			ns = strings.TrimPrefix(arg, "namespace=")
+		} else if strings.HasPrefix(arg, "tooltable_instance=") {
+			ttInst = strings.TrimPrefix(arg, "tooltable_instance=")
 		}
 	}
 	nsIni := ini.WithNamespace(ns)
@@ -762,7 +766,7 @@ func newNgcPreview(ini *inifile.IniFile, logger *slog.Logger, name string, args 
 		paramFile = filepath.Join(iniDir, paramFile)
 	}
 	linearUnits := parseLinearUnits(nsIni.Get("TRAJ", "LINEAR_UNITS"))
-	m := &ngcPreview{logger: logger, parameterFile: paramFile, linearUnits: linearUnits}
+	m := &ngcPreview{logger: logger, parameterFile: paramFile, linearUnits: linearUnits, ttInstanceName: ttInst}
 	ngcpreview.RegisterNgcpreviewAPI(apiserver.DefaultRegistry(), name, m)
 	logger.Info("ngcpreview module loaded and API registered", "instance", name, "parameterFile", paramFile)
 	return m, nil
@@ -771,7 +775,7 @@ func newNgcPreview(ini *inifile.IniFile, logger *slog.Logger, name string, args 
 func (m *ngcPreview) Start() error {
 	// Look up tooltable API for tool data during preview generation.
 	reg := apiserver.DefaultRegistry()
-	ttCbs, err := reg.GetAPI("tooltable", "tooltable", 1)
+	ttCbs, err := reg.GetAPI("tooltable", m.ttInstanceName, 1)
 	if err != nil {
 		m.logger.Warn("ngcpreview: tooltable API not available, tool data will be empty", "err", err)
 	} else {

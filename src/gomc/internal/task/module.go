@@ -45,6 +45,10 @@ func factory(ini *inifile.IniFile, logger *slog.Logger, name string, args []stri
 		switch k {
 		case "halui":
 			m.haluiPrefix = v
+		case "iocontrol_instance":
+			m.ioInstance = v
+		case "tooltable_instance":
+			m.ttInstance = v
 		}
 	}
 
@@ -90,6 +94,8 @@ type milltaskModule struct {
 	mon               *monitor
 	stopped           bool
 	haluiPrefix       string                     // if set, export halui pins with this component name
+	ioInstance        string                     // io controller instance name (default "iocontrol")
+	ttInstance        string                     // tooltable instance name (default "tooltable")
 	iniAccessorHandle cgo.Handle                 // CGo handle for the INI accessor (must be freed)
 	ttClient          *tooltable.TooltableClient // tooltable GMI client
 }
@@ -106,8 +112,11 @@ func (m *milltaskModule) Start() error {
 		motInstance = "motmod"
 	}
 
-	// Determine IO controller instance name (always "iocontrol").
-	ioInstance := "iocontrol"
+	// Determine IO controller instance name.
+	ioInstance := m.ioInstance
+	if ioInstance == "" {
+		ioInstance = "iocontrol"
+	}
 
 	// Look up registered GMI callbacks.
 	motctlCbs, err := reg.GetAPI("motctl", motInstance, 1)
@@ -123,8 +132,11 @@ func (m *milltaskModule) Start() error {
 		return fmt.Errorf("milltask: emcio API lookup (%s): %w", ioInstance, err)
 	}
 
-	// Look up tooltable API (default instance "tooltable").
-	ttInstance := "tooltable"
+	// Look up tooltable API.
+	ttInstance := m.ttInstance
+	if ttInstance == "" {
+		ttInstance = "tooltable"
+	}
 	ttCbs, err := reg.GetAPI("tooltable", ttInstance, 1)
 	if err != nil {
 		return fmt.Errorf("milltask: tooltable API lookup (%s): %w", ttInstance, err)
