@@ -33,8 +33,20 @@
 #include "motion.h"
 #include "motion_struct.h"
 #include "motion_types.h"
-#include "mot_priv.h"
+#include "mot_hal_types.h"
 #include "axis.h"
+
+/* motion flag macros using this module's emcmotStatus global */
+#define GET_MOTION_ERROR_FLAG()      GET_MOTION_ERROR_FLAG_P(emcmotStatus)
+#define SET_MOTION_ERROR_FLAG(fl)    SET_MOTION_ERROR_FLAG_P(emcmotStatus, fl)
+#define GET_MOTION_COORD_FLAG()      GET_MOTION_COORD_FLAG_P(emcmotStatus)
+#define SET_MOTION_COORD_FLAG(fl)    SET_MOTION_COORD_FLAG_P(emcmotStatus, fl)
+#define GET_MOTION_TELEOP_FLAG()     GET_MOTION_TELEOP_FLAG_P(emcmotStatus)
+#define SET_MOTION_TELEOP_FLAG(fl)   SET_MOTION_TELEOP_FLAG_P(emcmotStatus, fl)
+#define GET_MOTION_INPOS_FLAG()      GET_MOTION_INPOS_FLAG_P(emcmotStatus)
+#define SET_MOTION_INPOS_FLAG(fl)    SET_MOTION_INPOS_FLAG_P(emcmotStatus, fl)
+#define GET_MOTION_ENABLE_FLAG()     GET_MOTION_ENABLE_FLAG_P(emcmotStatus)
+#define SET_MOTION_ENABLE_FLAG(fl)   SET_MOTION_ENABLE_FLAG_P(emcmotStatus, fl)
 
 static axis_inst_t *ml_axis_inst;
 
