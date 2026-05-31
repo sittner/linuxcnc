@@ -81,9 +81,8 @@ include an option for suppressing superfluous commands.
 #include <set>
 #include <stdexcept>
 #include <new>
-#include <rtapi_string.h>	// rtapi_strlcpy()
+#include <cstdio>
 
-#include "rtapi.h"
 #include "rs274ngc.hh"
 #include "rs274ngc_return.hh"
 #include "interp_internal.hh"	// interpreter private definitions
@@ -872,7 +871,7 @@ int Interp::init()
           _setup.subroutines[dct] = NULL;
       if ((val = ini_get("RS274NGC", "SUBROUTINE_PATH")) != NULL) {
           char tmpdirs[PATH_MAX+1];
-          rtapi_strxcpy(tmpdirs, val);
+          snprintf(tmpdirs, sizeof(tmpdirs), "%s", val);
           char *nextdir = strtok(tmpdirs, ":");
           int dct = 0;
           while (nextdir != NULL && dct < MAX_SUB_DIRS) {
@@ -925,7 +924,7 @@ int Interp::init()
   _setup.canon.use_length_units(_setup.length_units);
   _setup.canon.get_external_parameter_file_name(filename, LINELEN);
   if (filename[0] == 0)
-    rtapi_strxcpy(filename, RS274NGC_PARAMETER_FILE_NAME_DEFAULT);
+    snprintf(filename, sizeof(filename), "%s", RS274NGC_PARAMETER_FILE_NAME_DEFAULT);
   CHP(restore_parameters(filename));
   pars = _setup.parameters;
   _setup.origin_index = (int) (pars[5220] + 0.0001);
@@ -1220,7 +1219,7 @@ int Interp::open(const char *filename) //!< string: the name of the input NC-pro
     _setup.percent_flag = false;
     _setup.sequence_number = 0; // Going back to line 0
   }
-  rtapi_strxcpy(_setup.filename, filename);
+  snprintf(_setup.filename, sizeof(_setup.filename), "%s", filename);
   reset();
   return INTERP_OK;
 }
@@ -1507,7 +1506,7 @@ int Interp::unwind_call(int status, const char *file, int line, const char *func
 		_setup.file_pointer = fopen(sub->filename, "r");
 		logDebug("unwind_call: reopening '%s' at %ld",
 			 sub->filename, sub->position);
-		rtapi_strxcpy(_setup.filename, sub->filename);
+		snprintf(_setup.filename, sizeof(_setup.filename), "%s", sub->filename);
 	    }
 	    fseek(_setup.file_pointer, sub->position, SEEK_SET);
 	}

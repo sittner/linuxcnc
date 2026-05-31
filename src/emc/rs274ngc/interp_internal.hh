@@ -26,7 +26,8 @@
 #include "libintl.h"
 
 #include <cmath>
-#include <rtapi_string.h>	// rtapi_strlcpy()
+#include <cstdio>    // snprintf
+#include <cstring>   // strcasecmp, strlen
 #include "interp_parameter_def.hh"
 #include "interp_fwd.hh"
 #include "interp_base.hh"
@@ -878,7 +879,7 @@ macros totally crash-proof. If the function call stack is deeper than
     do {                                                   \
         setError (fmt, ## __VA_ARGS__);                    \
         _setup.stack_index = 0;                            \
-        (rtapi_strlcpy(_setup.stack[_setup.stack_index], __PRETTY_FUNCTION__, STACK_ENTRY_LEN)); \
+        (snprintf(_setup.stack[_setup.stack_index], STACK_ENTRY_LEN, "%s", __PRETTY_FUNCTION__)); \
         _setup.stack[_setup.stack_index][STACK_ENTRY_LEN-1] = 0; \
         _setup.stack_index++; \
         _setup.stack[_setup.stack_index][0] = 0;           \
@@ -889,7 +890,7 @@ macros totally crash-proof. If the function call stack is deeper than
     do {                                                   \
         setError (fmt, ## __VA_ARGS__);                    \
         _setup.stack_index = 0;                            \
-        (rtapi_strlcpy(_setup.stack[_setup.stack_index], __PRETTY_FUNCTION__, STACK_ENTRY_LEN)); \
+        (snprintf(_setup.stack[_setup.stack_index], STACK_ENTRY_LEN, "%s", __PRETTY_FUNCTION__)); \
         _setup.stack[_setup.stack_index][STACK_ENTRY_LEN-1] = 0; \
         _setup.stack_index++; \
         _setup.stack[_setup.stack_index][0] = 0;           \
@@ -900,7 +901,7 @@ macros totally crash-proof. If the function call stack is deeper than
 #define ERN(error_code)                                    \
     do {                                                   \
         _setup.stack_index = 0;                            \
-        (rtapi_strlcpy(_setup.stack[_setup.stack_index], __PRETTY_FUNCTION__, STACK_ENTRY_LEN)); \
+        (snprintf(_setup.stack[_setup.stack_index], STACK_ENTRY_LEN, "%s", __PRETTY_FUNCTION__)); \
         _setup.stack[_setup.stack_index][STACK_ENTRY_LEN-1] = 0; \
         _setup.stack_index++; \
         _setup.stack[_setup.stack_index][0] = 0;           \
@@ -912,7 +913,7 @@ macros totally crash-proof. If the function call stack is deeper than
 #define ERP(error_code)                                        \
     do {                                                       \
         if (_setup.stack_index < STACK_LEN - 1) {                         \
-            (rtapi_strlcpy(_setup.stack[_setup.stack_index], __PRETTY_FUNCTION__, STACK_ENTRY_LEN)); \
+            (snprintf(_setup.stack[_setup.stack_index], STACK_ENTRY_LEN, "%s", __PRETTY_FUNCTION__)); \
             _setup.stack[_setup.stack_index][STACK_ENTRY_LEN-1] = 0;    \
             _setup.stack_index++;                                       \
             _setup.stack[_setup.stack_index][0] = 0;           \

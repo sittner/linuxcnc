@@ -48,7 +48,7 @@ toolidx_t tooldata_put(CANON_TOOL_TABLE tdata, int idx);
 #include <stdarg.h>
 #include <stdlib.h>
 #include <errno.h>
-#include <rtapi_string.h>
+#include <cstdio>
 
 #define CANON_API_CGO
 #include "gomc/generated/gmi/canon/canon_api.h"
@@ -1362,6 +1362,9 @@ static void sc_get_external_parameter_file_name(void *ctx, const char **buf) {
     *buf = filename;
 }
 static int32_t sc_get_external_offset_applied(void *ctx) { return GET_EXTERNAL_OFFSET_APPLIED(); }
+static double sc_get_external_hal_value(void *ctx, const char *name, int32_t *found) {
+    (void)ctx; (void)name; *found = 0; return 0.0;
+}
 static void sc_get_external_offsets(void *ctx, double offsets[9]) {
     EmcPose o = GET_EXTERNAL_OFFSETS();
     offsets[0] = o.tran.x; offsets[1] = o.tran.y; offsets[2] = o.tran.z;
@@ -1513,6 +1516,7 @@ static const canon_callbacks_t saicanon_table = {
     .get_external_parameter_file_name = sc_get_external_parameter_file_name,
     .get_external_offset_applied = sc_get_external_offset_applied,
     .get_external_offsets = sc_get_external_offsets,
+    .get_external_hal_value = sc_get_external_hal_value,
 };
 
 const canon_callbacks_t *saicanon_get_callbacks(void) {

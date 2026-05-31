@@ -1,5 +1,7 @@
 package task
 
+import "github.com/sittner/linuxcnc/src/gomc/pkg/hal"
+
 // Canon getter callbacks — called by the interpreter to query current state.
 // These read from the Task's MotionStatus interface or from canon state.
 
@@ -373,4 +375,11 @@ func (c *Canon) GetExternalOffsets() [9]float64 {
 
 func (c *Canon) GetUserDefinedResult() (float64, error) {
 	return 0, nil
+}
+func (c *Canon) GetExternalHalValue(name string) (float64, int32, error) {
+	val, found := hal.LookupValue(name)
+	if found {
+		return val, 1, nil
+	}
+	return 0, 0, nil
 }

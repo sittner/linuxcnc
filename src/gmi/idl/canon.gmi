@@ -498,3 +498,8 @@ func get_external_offset_applied() -> i32
 
 @doc "Get external offsets (9-element pose)"
 func get_external_offsets(offsets: [9]f64 out)
+
+# ─── HAL Access ───
+
+@doc "Get HAL pin/signal/param value by name. Returns value as f64, sets found=1 if found."
+func get_external_hal_value(name: string, found: i32 out) -> f64

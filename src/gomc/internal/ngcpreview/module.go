@@ -309,6 +309,10 @@ static double pc_nop_rdi(void *ctx, int32_t a) { (void)ctx; (void)a; return 0.0;
 static double pc_nop_rdid(void *ctx, int32_t a, double b) { (void)ctx; (void)a; (void)b; return b; }
 static int32_t pc_nop_riid(void *ctx, int32_t a, int32_t b) { (void)ctx; (void)a; return b; }
 
+static double pc_nop_hal_value(void *ctx, const char *name, int32_t *found) {
+    (void)ctx; (void)name; *found = 0; return 0.0;
+}
+
 static void pc_get_position(void *vctx, double pos[9]) {
     preview_ctx_t *ctx = (preview_ctx_t*)vctx;
     memcpy(pos, ctx->pos, 9 * sizeof(double));
@@ -698,6 +702,7 @@ static canon_callbacks_t make_preview_canon(preview_ctx_t *ctx) {
     cb.get_external_offset_applied = pc_nop_ri;
     cb.get_external_offsets = pc_get_offsets;
     cb.get_user_defined_result = pc_get_user_defined_result;
+    cb.get_external_hal_value = pc_nop_hal_value;
 
     return cb;
 }

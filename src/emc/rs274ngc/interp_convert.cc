@@ -35,7 +35,6 @@
 #include "interp_internal.hh"
 #include "interp_queue.hh"
 #include "interp_parameter_def.hh"
-#include <rtapi_string.h>
 
 #include "units.h"
 #define TOOL_INSIDE_ARC(side, turn) (((side)==LEFT&&(turn)>0)||((side)==RIGHT&&(turn)<0))
@@ -1429,12 +1428,12 @@ int Interp::convert_param_comment(char *comment, char *expanded, int len)
                 int n = snprintf(valbuf, VAL_LEN, format, pvalue);
                 bool fail = (n >= VAL_LEN || n < 0);
                 if(fail)
-                    rtapi_strxcpy(valbuf, "######");
+                    snprintf(valbuf, sizeof(valbuf), "%s", "######");
 
             }
             else
             {
-                rtapi_strxcpy(valbuf, "######");
+                snprintf(valbuf, sizeof(valbuf), "%s", "######");
             }
             logDebug("found:%d value:|%s|", found, valbuf);
 
@@ -3108,7 +3107,7 @@ int Interp::restore_settings(setup_pointer settings,
 	    int status = execute(s);
 	    if (status != INTERP_OK) {
 		char currentError[LINELEN+1];
-		rtapi_strxcpy(currentError,getSavedError());
+		snprintf(currentError, sizeof(currentError), "%s", getSavedError());
 		CHKS(status, _("M7x: restore_settings failed executing: '%s': %s"), s, currentError);
 	    }
 	}

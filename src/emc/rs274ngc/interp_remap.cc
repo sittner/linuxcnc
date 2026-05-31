@@ -24,7 +24,6 @@
 #include "rs274ngc_return.hh"
 #include "rs274ngc_interp.hh"
 #include "interp_internal.hh"
-#include <rtapi_string.h>
 
 
 
@@ -268,14 +267,14 @@ int Interp::add_parameters(setup_pointer settings,
 
     s = missing;
     if (*s) {
-	rtapi_strxcat(tail," missing: ");
+	{size_t _l=strlen(tail); snprintf(tail+_l, sizeof(tail)-_l, "%s", " missing: ");};
     }
     while (*s) {
 	errored = true;
 	char c  = toupper(*s);
 	size_t len = strlen(tail);
 	if (len < sizeof(tail) - 1) { tail[len] = c; tail[len + 1] = '\0'; }
-	if (*(s+1)) rtapi_strxcat(tail,",");
+	if (*(s+1)) {size_t _l=strlen(tail); snprintf(tail+_l, sizeof(tail)-_l, "%s", ",");};
 	s++;
     }
     // special cases:
@@ -289,7 +288,7 @@ int Interp::add_parameters(setup_pointer settings,
 	if (settings->feed_rate > 0.0) {
 	    STORE("f",settings->feed_rate);
 	} else {
-	    rtapi_strxcat(tail,"F>0,");
+	    {size_t _l=strlen(tail); snprintf(tail+_l, sizeof(tail)-_l, "%s", "F>0,");};
 	    errored = true;
 	}
     }
@@ -299,7 +298,7 @@ int Interp::add_parameters(setup_pointer settings,
 	if (settings->speed[0] > 0.0) {
 	    STORE("s",settings->speed[0]);
 	} else {
-	    rtapi_strxcat(tail,"S>0,");
+	    {size_t _l=strlen(tail); snprintf(tail+_l, sizeof(tail)-_l, "%s", "S>0,");};
 	    errored = true;
 	}
     }
@@ -343,7 +342,7 @@ int Interp::parse_remap(const char *inistring, int lineno)
     memset((void *)&r, 0, sizeof(remap));
     r.modal_group = -1; // mark as unset, required param for m/g
     r.motion_code = INT_MIN;
-    rtapi_strxcpy(iniline, inistring);
+    snprintf(iniline, sizeof(iniline), "%s", inistring);
     // strip trailing comments
     if ((s = strchr(iniline, '#')) != NULL) {
 	*s = '\0';

@@ -28,7 +28,7 @@
 #include "interp_return.hh"
 #include "interp_internal.hh"
 #include "rs274ngc_interp.hh"
-#include <rtapi_string.h>	// rtapi_strlcpy()
+#include <cassert>
 
 //========================================================================
 // Functions for control stuff (O-words)
@@ -52,7 +52,7 @@ int Interp::findFile( // ARGUMENTS
     snprintf(targetPath, PATH_MAX, "%s/%s", direct, target);
     file = fopen(targetPath, "r");
     if (file) {
-        rtapi_strlcpy(foundFileDirect, direct, PATH_MAX);
+        snprintf(foundFileDirect, PATH_MAX, "%s", direct);
         fclose(file);
         return INTERP_OK;
     }
@@ -418,7 +418,7 @@ int Interp::execute_return(setup_pointer settings, context_pointer current_frame
 	    if (previous_frame->position == -1) {
 		if (settings->file_pointer) fclose(settings->file_pointer);
 		settings->file_pointer = NULL;
-		rtapi_strxcpy(settings->filename, "");
+		snprintf(settings->filename, sizeof(settings->filename), "%s", "");
 	    } else {
 		if(settings->file_pointer == NULL) {
 		    ERS(NCE_FILE_NOT_OPEN);
@@ -432,7 +432,7 @@ int Interp::execute_return(setup_pointer settings, context_pointer current_frame
 			    previous_frame->filename,
 			    strerror(errno));
 		    }
-		    rtapi_strxcpy(settings->filename, previous_frame->filename);
+		    snprintf(settings->filename, sizeof(settings->filename), "%s", previous_frame->filename);
 		}
 		fseek(settings->file_pointer, previous_frame->position, SEEK_SET);
 		settings->sequence_number = previous_frame->sequence_number;

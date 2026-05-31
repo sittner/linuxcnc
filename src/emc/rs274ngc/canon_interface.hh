@@ -311,6 +311,10 @@ public:
             filename[0] = '\0';
         }
     }
+
+    double get_external_hal_value(const char *name, int32_t *found) {
+        return cb->get_external_hal_value(cb->ctx, name, found);
+    }
 };
 
 #endif // CANON_INTERFACE_HH

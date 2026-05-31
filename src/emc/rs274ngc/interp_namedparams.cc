@@ -40,9 +40,6 @@
 #include "interp_internal.hh"
 #include "rs274ngc_interp.hh"
 
-// for HAL pin variables
-#include "hal.h"
-
 enum predefined_named_parameters {
     NP_LINE,
     NP_MOTION_MODE,
@@ -229,71 +226,40 @@ int Interp::fetch_ini_param( const char *nameBuf, int *status, double *value)
 // the shortest possible INI variable is '_hal[x]' or 7 chars long .
 int Interp::fetch_hal_param( const char *nameBuf, int *status, double *value)
 {
-    static int comp_id;
-    int retval;
-    hal_type_t type = HAL_TYPE_UNINITIALIZED;
-    hal_data_u* ptr;
-    bool conn;
-    char hal_name[HAL_NAME_LEN];
-
     *status = 0;
-    if (!comp_id) {
-	char hal_comp[HAL_NAME_LEN];
-	snprintf(hal_comp, sizeof(hal_comp),"interp%d",getpid());
-	comp_id = hal_init(hal_comp); // manpage says: NULL ok - which fails miserably
-	CHKS(comp_id < 0,_("fetch_hal_param: hal_init(%s): %d"), hal_comp,comp_id);
-	CHKS((retval = hal_ready(comp_id)), _("fetch_hal_param: hal_ready(): %d"),retval);
-    }
-    char *s;
     int n = strlen(nameBuf);
-    if ((n > 6) &&
-	((s = (char *) strchr(&nameBuf[5],']')) != NULL)) {
+    if (n <= 6)
+        return INTERP_OK;
 
-	int closeBracket = s - nameBuf;
+    char *s = (char *) strchr(&nameBuf[5], ']');
+    if (!s)
+        return INTERP_OK;
 
-	strncpy(hal_name, &nameBuf[5], closeBracket);
-	hal_name[closeBracket - 5] = '\0';
-	if (nameBuf[closeBracket + 1]) {
-	    logOword("%s: trailing garbage after closing bracket", hal_name);
-	    *status = 0;
-	    ERS("%s: trailing garbage after closing bracket", nameBuf);
-	}
-	// the result of these lookups could be cached in the parameter struct, but I'm not sure
-	// this is a good idea - a removed pin/signal will not be noticed
+    int closeBracket = s - nameBuf;
+    char hal_name[128];
+    int name_len = closeBracket - 5;
+    if (name_len >= (int)sizeof(hal_name))
+        ERS("HAL name too long in #<%s>", nameBuf);
+    strncpy(hal_name, &nameBuf[5], name_len);
+    hal_name[name_len] = '\0';
 
-	// I dont think that's needed - no change in pins/sigs/params
-	// rtapi_mutex_get(&(hal_data->mutex)); 
-        // rtapi_mutex_give(&(hal_data->mutex));
-
-        if (hal_get_pin_value_by_name(hal_name, &type, &ptr, &conn) == 0) {
-            if (!conn)
-		logOword("%s: no signal connected", hal_name);
-	    goto assign;
-	}
-        if (hal_get_signal_value_by_name(hal_name, &type, &ptr, &conn) == 0) {
-	    if (!conn)
-		logOword("%s: signal has no writer", hal_name);
-	    goto assign;
-	}
-        if (hal_get_param_value_by_name(hal_name, &type, &ptr) == 0) {
-	    goto assign;
-	}
-	*status = 0;
-	ERS("Named hal parameter #<%s> not found", nameBuf);
+    if (nameBuf[closeBracket + 1]) {
+        logOword("%s: trailing garbage after closing bracket", hal_name);
+        *status = 0;
+        ERS("%s: trailing garbage after closing bracket", nameBuf);
     }
-    return INTERP_OK;
 
-    assign:
-    switch (type) {
-    case HAL_BIT: *value = (double) (ptr->b); break;
-    case HAL_U32: *value = (double) (ptr->u); break;
-    case HAL_S32: *value = (double) (ptr->s); break;
-    case HAL_FLOAT: *value = (double) (ptr->f); break;
-    default: return -1;
+    int32_t found = 0;
+    double val = _setup.canon.get_external_hal_value(hal_name, &found);
+    if (!found) {
+        *status = 0;
+        ERS("Named hal parameter #<%s> not found", nameBuf);
     }
+
+    *value = val;
     logOword("%s: value=%f", hal_name, *value);
     *status = 1;
-    return INTERP_OK; 
+    return INTERP_OK;
 }
 
 int Interp::find_named_param(
