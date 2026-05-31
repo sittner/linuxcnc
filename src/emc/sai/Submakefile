@@ -12,7 +12,7 @@ $(call TOOBJSDEPS, $(SAISRCS)): gomc/generated/gmi/interp_ext/interp_ext_api.h g
 INCLUDES += emc/sai
 
 ../bin/rs274: $(call TOOBJS, $(SAISRCS)) ../lib/librs274.so.0 \
-	../lib/liblinuxcnchal.so.0 ../lib/liblinuxcncini.so.0 ../lib/libtooldata.so.0
+	../lib/liblinuxcnchal.so.0 ../lib/libiniparse.so.0 ../lib/libtooldata.so.0
 	$(ECHO) Linking $(notdir $@)
 	$(Q)$(CXX) -o $@ $^ $(ULFLAGS) $(READLINE_LIBS) $(LDFLAGS)
 
