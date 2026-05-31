@@ -171,33 +171,7 @@ GOMC_PKG_FILES := \
 HAL_GO_CGO_CFLAGS := -I$(TOP)/src -I$(TOP)/src/hal -I$(TOP)/src/rtapi -I$(TOP)/include
 HAL_GO_CGO_LDFLAGS := -L$(TOP)/lib -llinuxcnchal
 
-HAL_GO_EXAMPLES := ../bin/passthrough ../bin/str-sender ../bin/str-receiver
-
-../bin/passthrough: $(GOMC_SRC) gomc/pkg/hal/examples/passthrough/main.go gomc/pkg/hal/examples/passthrough/go.mod gomc/go.sum ../lib/liblinuxcnchal.so
-	$(ECHO) Building hal-go passthrough example
-	$(Q)cd gomc/pkg/hal/examples/passthrough && $(GO) mod tidy && \
-	CGO_ENABLED=1 \
-	CGO_CFLAGS="$(HAL_GO_CGO_CFLAGS)" \
-	CGO_LDFLAGS="$(HAL_GO_CGO_LDFLAGS)" \
-	$(GO) build -o $(TOP)/bin/passthrough .
-
-../bin/str-sender: $(GOMC_SRC) gomc/pkg/hal/tests/str-sender/main.go gomc/pkg/hal/tests/str-sender/go.mod gomc/go.sum ../lib/liblinuxcnchal.so
-	$(ECHO) Building hal-go str-sender test component
-	$(Q)cd gomc/pkg/hal/tests/str-sender && $(GO) mod tidy && \
-	CGO_ENABLED=1 \
-	CGO_CFLAGS="$(HAL_GO_CGO_CFLAGS)" \
-	CGO_LDFLAGS="$(HAL_GO_CGO_LDFLAGS)" \
-	$(GO) build -o $(TOP)/bin/str-sender .
-
-../bin/str-receiver: $(GOMC_SRC) gomc/pkg/hal/tests/str-receiver/main.go gomc/pkg/hal/tests/str-receiver/go.mod gomc/go.sum ../lib/liblinuxcnchal.so
-	$(ECHO) Building hal-go str-receiver test component
-	$(Q)cd gomc/pkg/hal/tests/str-receiver && $(GO) mod tidy && \
-	CGO_ENABLED=1 \
-	CGO_CFLAGS="$(HAL_GO_CGO_CFLAGS)" \
-	CGO_LDFLAGS="$(HAL_GO_CGO_LDFLAGS)" \
-	$(GO) build -o $(TOP)/bin/str-receiver .
-
-TARGETS += ../bin/gomc-server ../bin/ads-xml-gen $(GOMC_PKG_FILES) $(HAL_GO_EXAMPLES)
+TARGETS += ../bin/gomc-server ../bin/ads-xml-gen $(GOMC_PKG_FILES)
 
 # ---------------------------------------------------------------------------
 # modcompile — .comp → cmod C code generator
@@ -265,8 +239,6 @@ gomc-install: ../bin/gomc-server ../bin/ads-xml-gen ../bin/modcompile ../bin/hal
 	$(DIR) $(DESTDIR)$(datadir)/linuxcnc/gomc
 	$(Q)cd gomc && find . \
 		-name '*_test.go' -prune -o \
-		-path './pkg/hal/examples' -prune -o \
-		-path './pkg/hal/tests' -prune -o \
 		-path './internal/gmi/kinstest' -prune -o \
 		-type f \( -name '*.go' -o -name 'go.mod' -o -name 'go.mod.in' -o -name 'go.sum' -o -name 'packages.conf' -o -name 'packages.conf.in' \) \
 		-print | while read f; do \
