@@ -1051,6 +1051,11 @@ func (t *Task) SetBlockDelete(on bool) error {
 func (t *Task) LoadToolTable() error {
 	err := t.io.ToolLoadTable("")
 	if err == nil {
+		// Synch interpreter so it re-reads tool_table[] from the
+		// tooltable module via GET_EXTERNAL_TOOL_TABLE callbacks.
+		if t.interp != nil {
+			_ = t.interp.Synch()
+		}
 		t.mu.Lock()
 		t.previewSeq++
 		t.mu.Unlock()

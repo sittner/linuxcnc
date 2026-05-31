@@ -2,18 +2,18 @@ IOSRCS := emc/iotask/ioControl.cc
 IOV2SRCS := emc/iotask/ioControl_v2.cc
 USERSRCS += $(IOSRCS) $(IOV2SRCS)
 
-$(call TOOBJS, $(IOSRCS)): EXTRAFLAGS += -fPIC -Igomc/generated/gmi/emcio -Igomc/pkg/cmodule
-$(call TOOBJSDEPS, $(IOSRCS)): gomc/generated/gmi/emcio/emcio_api.h
+$(call TOOBJS, $(IOSRCS)): EXTRAFLAGS += -fPIC -Igomc/generated/gmi/emcio -Igomc/generated/gmi/tooltable -Igomc/pkg/cmodule
+$(call TOOBJSDEPS, $(IOSRCS)): gomc/generated/gmi/emcio/emcio_api.h gomc/generated/gmi/tooltable/tooltable_api.h
 ../cmod/io.so: $(call TOOBJS, $(IOSRCS)) ../lib/liblinuxcnc.a \
-           ../lib/liblinuxcncini.so.0 ../lib/libtooldata.so.0
+           ../lib/liblinuxcncini.so.0
 	$(ECHO) Linking $(notdir $@)
 	@mkdir -p ../cmod
 	@$(CXX) -shared -o $@ $^ $(LDFLAGS)
 
-$(call TOOBJS, $(IOV2SRCS)): EXTRAFLAGS += -fPIC -Igomc/generated/gmi/emcio -Igomc/pkg/cmodule
-$(call TOOBJSDEPS, $(IOV2SRCS)): gomc/generated/gmi/emcio/emcio_api.h
+$(call TOOBJS, $(IOV2SRCS)): EXTRAFLAGS += -fPIC -Igomc/generated/gmi/emcio -Igomc/generated/gmi/tooltable -Igomc/pkg/cmodule
+$(call TOOBJSDEPS, $(IOV2SRCS)): gomc/generated/gmi/emcio/emcio_api.h gomc/generated/gmi/tooltable/tooltable_api.h
 ../cmod/iov2.so: $(call TOOBJS, $(IOV2SRCS)) ../lib/liblinuxcnc.a \
-           ../lib/liblinuxcncini.so.0 ../lib/libtooldata.so.0
+           ../lib/liblinuxcncini.so.0
 	$(ECHO) Linking $(notdir $@)
 	@mkdir -p ../cmod
 	@$(CXX) -shared -o $@ $^ $(LDFLAGS)

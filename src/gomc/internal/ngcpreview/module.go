@@ -4,11 +4,12 @@
 package ngcpreview
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/../../../emc/rs274ngc -I${SRCDIR}/../../../emc/nml_intf -I${SRCDIR}/../../../emc/motion -I${SRCDIR}/../../../emc/task -I${SRCDIR}/../../../rtapi -I${SRCDIR}/../../../../include -I${SRCDIR}/../../generated/gmi/canon -I${SRCDIR}/../../.. -I${SRCDIR}/../../../emc/tooldata -I${SRCDIR}/../../generated/gmi/interp_ext -I${SRCDIR}/../../generated/gmi/interp_ctx -I${SRCDIR}/../../pkg/cmodule
-#cgo LDFLAGS: -L${SRCDIR}/../../../../lib -Wl,--allow-shlib-undefined -lrs274 -lposemath -llinuxcncini -ltooldata -llinuxcnc -lstdc++ -lm
+#cgo CFLAGS: -I${SRCDIR}/../../../emc/rs274ngc -I${SRCDIR}/../../../emc/nml_intf -I${SRCDIR}/../../../emc/motion -I${SRCDIR}/../../../emc/task -I${SRCDIR}/../../../rtapi -I${SRCDIR}/../../../../include -I${SRCDIR}/../../generated/gmi/canon -I${SRCDIR}/../../.. -I${SRCDIR}/../../generated/gmi/interp_ext -I${SRCDIR}/../../generated/gmi/interp_ctx -I${SRCDIR}/../../pkg/cmodule
+#cgo LDFLAGS: -L${SRCDIR}/../../../../lib -Wl,--allow-shlib-undefined -lrs274 -lposemath -llinuxcncini -llinuxcnc -lstdc++ -lm
 
 #include <stdlib.h>
 #include <string.h>
+#include "emctool.h"
 #include "interp_shim.h"
 #include "canon_api.h"
 
@@ -68,6 +69,18 @@ typedef struct {
 
     // Machine linear units (from [TRAJ]LINEAR_UNITS): 1.0 for mm, 1/25.4 for inch
     double linear_units;
+
+    // Tool table cache (indexed by pocket)
+    int tool_count; // number of populated entries
+    struct {
+        int32_t toolno;
+        int32_t pocketno;
+        double offset[9];
+        double diameter;
+        double frontangle;
+        double backangle;
+        int32_t orientation;
+    } tools[CANON_POCKETS_MAX];
 } preview_ctx_t;
 
 typedef struct preview_segment {
@@ -337,14 +350,36 @@ static void pc_get_offsets(void *ctx, double off[9]) {
     (void)ctx;
 }
 
-static int32_t pc_get_tool_table(void *ctx, int32_t pocket,
+static int32_t pc_get_tool_table(void *vctx, int32_t pocket,
     int32_t *toolno, double offset[9], double *diameter,
     double *frontangle, double *backangle, int32_t *orientation) {
-    (void)ctx;
-    *toolno = 0;
-    memset(offset, 0, 9 * sizeof(double));
-    *diameter = 0; *frontangle = 0; *backangle = 0; *orientation = 0;
+    preview_ctx_t *ctx = (preview_ctx_t*)vctx;
+    if (pocket >= 0 && pocket < CANON_POCKETS_MAX) {
+        *toolno = ctx->tools[pocket].toolno;
+        memcpy(offset, ctx->tools[pocket].offset, 9 * sizeof(double));
+        *diameter = ctx->tools[pocket].diameter;
+        *frontangle = ctx->tools[pocket].frontangle;
+        *backangle = ctx->tools[pocket].backangle;
+        *orientation = ctx->tools[pocket].orientation;
+    } else {
+        *toolno = 0;
+        memset(offset, 0, 9 * sizeof(double));
+        *diameter = 0; *frontangle = 0; *backangle = 0; *orientation = 0;
+    }
     return 0;
+}
+
+static void ctx_set_tool(preview_ctx_t *ctx, int32_t pocket, int32_t toolno,
+    double *offset, double diameter, double frontangle, double backangle,
+    int32_t orientation) {
+    if (pocket < 0 || pocket >= CANON_POCKETS_MAX) return;
+    ctx->tools[pocket].toolno = toolno;
+    ctx->tools[pocket].pocketno = pocket;
+    memcpy(ctx->tools[pocket].offset, offset, 9 * sizeof(double));
+    ctx->tools[pocket].diameter = diameter;
+    ctx->tools[pocket].frontangle = frontangle;
+    ctx->tools[pocket].backangle = backangle;
+    ctx->tools[pocket].orientation = orientation;
 }
 
 static void pc_set_param_file(void *vctx, const char *name) {
@@ -660,6 +695,7 @@ import (
 	"unsafe"
 
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/ngcpreview"
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/tooltable"
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
 	"github.com/sittner/linuxcnc/src/gomc/pkg/gomc"
 	"github.com/sittner/linuxcnc/src/gomc/pkg/inifile"
@@ -674,6 +710,7 @@ type ngcPreview struct {
 	logger        *slog.Logger
 	parameterFile string  // from [RS274NGC]PARAMETER_FILE
 	linearUnits   float64 // from [TRAJ]LINEAR_UNITS: 1.0 for mm, 1/25.4 for inch
+	ttClient      *tooltable.TooltableClient
 }
 
 func parseLinearUnits(s string) float64 {
@@ -713,6 +750,14 @@ func newNgcPreview(ini *inifile.IniFile, logger *slog.Logger, name string, args 
 }
 
 func (m *ngcPreview) Start() error {
+	// Look up tooltable API for tool data during preview generation.
+	reg := apiserver.DefaultRegistry()
+	ttCbs, err := reg.GetAPI("tooltable", "tooltable", 1)
+	if err != nil {
+		m.logger.Warn("ngcpreview: tooltable API not available, tool data will be empty", "err", err)
+	} else {
+		m.ttClient = tooltable.NewTooltableClient(unsafe.Pointer(ttCbs))
+	}
 	return nil
 }
 
@@ -752,6 +797,29 @@ func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode stri
 	}
 	ctx.linear_units = C.double(m.linearUnits)
 	ctx.plane = 1 // default XY plane
+
+	// Pre-populate tool table from tooltable API
+	if m.ttClient != nil {
+		entries, err := m.ttClient.ListTools()
+		if err == nil {
+			for i := range entries {
+				pocket := entries[i].Pocketno
+				if pocket < 0 || int(pocket) >= int(C.CANON_POCKETS_MAX) {
+					continue
+				}
+				off := [9]C.double{
+					C.double(entries[i].XOffset), C.double(entries[i].YOffset), C.double(entries[i].ZOffset),
+					C.double(entries[i].AOffset), C.double(entries[i].BOffset), C.double(entries[i].COffset),
+					C.double(entries[i].UOffset), C.double(entries[i].VOffset), C.double(entries[i].WOffset),
+				}
+				C.ctx_set_tool(ctx, C.int32_t(pocket), C.int32_t(entries[i].Toolno),
+					&off[0], C.double(entries[i].Diameter),
+					C.double(entries[i].Frontangle), C.double(entries[i].Backangle),
+					C.int32_t(entries[i].Orientation))
+			}
+		}
+	}
+
 	defer func() {
 		C.free(unsafe.Pointer(ctx.segments))
 		C.free(unsafe.Pointer(ctx.dwells))

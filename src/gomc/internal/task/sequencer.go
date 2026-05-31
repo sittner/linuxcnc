@@ -234,7 +234,16 @@ func (t *Task) sequencerLoop() {
 						continue
 					}
 				default:
-					// Non-motion command failed — fatal
+					// Non-motion command failed — check if it was due to abort
+					select {
+					case <-t.seqAbort:
+						// Abort was requested — command failure is expected, not an error
+						t.logger.Info("sequencer command aborted", "cmd", cmd.String())
+						t.setExecState(ExecDone)
+						t.setInterpState(InterpIdle)
+						return
+					default:
+					}
 					t.logger.Error("sequencer command failed", "cmd", cmd.String(), "err", err)
 					t.operatorError(fmt.Sprintf("Command failed: %s: %s", cmd.String(), err))
 					t.setExecState(ExecError)

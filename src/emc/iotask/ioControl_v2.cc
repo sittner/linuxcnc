@@ -69,15 +69,13 @@
 
 #include "emc.hh"                /* EMC NML struct types */
 #include "emc_nml.hh"
-#include "emcglb.h"                /* EMC_NMLFILE, EMC_INIFILE, TOOL_TABLE_FILE */
-#include <unistd.h>
-#include <rtapi_string.h>
-#include "tooldata.hh"
+#include "emcglb.h"
 
 #include "gomc/pkg/cmodule/gomc_env.h"
 #include "gomc/generated/gmi/emcio/emcio_api.h"
+#include "gomc/generated/gmi/tooltable/tooltable_api.h"
 
-#define UNEXPECTED_MSG fprintf(stderr,"UNEXPECTED %s %d",__FILE__,__LINE__);
+#define UNEXPECTED_MSG fprintf(stderr,"UNEXPECTED %s %d\n",__FILE__,__LINE__);
 
 typedef enum {
     V1 = 1,
@@ -124,41 +122,19 @@ struct iocontrol_str {
     // iocontrolv2 -> toolchanger
     gomc_hal_bit_t *emc_abort;         /* output, signals emc-originated abort to toolchanger */
     gomc_hal_bit_t *emc_abort_ack;         /* input, handshake line to acknowledge abort_tool_change */
-    gomc_hal_s32_t *emc_reason;             /* output, convey cause for EMC-originated abort to toolchanger.
-                                 * UI informational. Valid during emc-abort True.
-                                 */
-    // toolchanger -> iocontrolv2
-    gomc_hal_bit_t *toolchanger_fault;        /* input, toolchanger signals fault . Always monitored.
-                                         * A fault is recorded in the toolchange_faulted pin
-                                         */
-    gomc_hal_bit_t *toolchanger_fault_ack;        /* handshake line for above signal. will be set by iocontrol
-                                         * after above fault line is recognized and deasserted when
-                                         * toolchanger-fault drops. Toolchanger is free to interpret
-                                         * the ack; reading the -ack lines assures fault has been
-                                         * received and acted upon.
-                                         */
-    gomc_hal_s32_t *toolchanger_reason;         /* input, convey reason code for toolchanger-originated
-                                            * fault to iocontrol. read during toolchanger-fault True.
-                                            * on a toolchange abort, the reason is passed to EMC in the
-                                            * emcioStat message.
-                                            * a positive value causes an OperatorDisplay text
-                                            * a negative value causes an OperatorError text
-                                            * a zero value does not cause any display
-                                            */
+    gomc_hal_s32_t *emc_reason;             /* output, convey cause for EMC-originated abort to toolchanger. */
 
-    gomc_hal_bit_t *start_change;              /* signal begin of M6 cycle even before move to toolchange
-                                           * position starts
-                                           */
+    // toolchanger -> iocontrolv2
+    gomc_hal_bit_t *toolchanger_fault;        /* input, toolchanger signals fault */
+    gomc_hal_bit_t *toolchanger_fault_ack;        /* handshake line for above signal */
+    gomc_hal_s32_t *toolchanger_reason;         /* input, convey reason code for toolchanger-originated fault */
+
+    gomc_hal_bit_t *start_change;              /* signal begin of M6 cycle */
     gomc_hal_bit_t *start_change_ack;          /* acknowledge line for start_change */
 
     // other:
-    gomc_hal_bit_t *toolchanger_faulted;         /* output. signals toolchanger-fault line has toggled
-                                         * The next M6 will abort if True.
-                                         */
-    gomc_hal_bit_t *toolchanger_clear_fault;        /* input. resets TC fault condition.
-                                         * Deasserts toolchanger-faulted if toolchanger-fault is line False.
-                                         * Usage: UI - e.g. 'clear TC fault' button
-                                         */
+    gomc_hal_bit_t *toolchanger_faulted;         /* output. signals toolchanger-fault line has toggled */
+    gomc_hal_bit_t *toolchanger_clear_fault;        /* input. resets TC fault condition. */
     gomc_hal_s32_t *state;                         /* output. Internal state for debugging */
 };
 
@@ -177,18 +153,17 @@ struct iocontrol_module {
     EMC_IO_STAT emcioStatus;
 
     // Configuration (read from INI via env->get_ini in New)
-    bool io_debug;
     int debug;
     double io_cycle_time;
-    char io_tool_table_file[LINELEN];
     int random_toolchanger;
-    tooldb_t io_db_mode;
-    char db_program[LINELEN];
     int proto;
     int support_start_change;
 
-    // Tool table comments
-    char *ttcomments[CANON_POCKETS_MAX];
+    // tooltable GMI instance name (resolved at New time)
+    char tooltable_instance[64];
+
+    // tooltable API pointer (looked up once in Start)
+    const tooltable_callbacks_t *tt;
 
     // Runtime state
     int toolchanger_reason;  // last fault reason read from toolchanger
@@ -210,13 +185,6 @@ static int iniLoad(iocontrol_module *m)
 {
     const cmod_env_t *env = m->env;
     const char *val;
-    bool tooltable_specified = false;
-
-    val = env->ini->get(env->ini->ctx, "EMCIO", "TOOL_TABLE");
-    if (val) {
-        strncpy(m->io_tool_table_file, val, sizeof(m->io_tool_table_file) - 1);
-        tooltable_specified = true;
-    }
 
     val = env->ini->get(env->ini->ctx, "EMC", "DEBUG");
     if (val) {
@@ -225,10 +193,6 @@ static int iniLoad(iocontrol_module *m)
         }
     } else {
         m->debug = 0;
-    }
-
-    // make it verbose if debugging RCS
-    if (m->debug & EMC_DEBUG_IOCONTROL) {
     }
 
     val = env->ini->get(env->ini->ctx, "EMCIO", "CYCLE_TIME");
@@ -250,17 +214,6 @@ static int iniLoad(iocontrol_module *m)
     val = env->ini->get(env->ini->ctx, "EMCIO", "RANDOM_TOOLCHANGER");
     if (val) {
         m->random_toolchanger = atoi(val);
-    }
-
-    m->io_db_mode = DB_NOTUSED;
-    val = env->ini->get(env->ini->ctx, "EMCIO", "DB_PROGRAM");
-    if (val) {
-        rtapi_strxcpy(m->db_program, val);
-        m->io_db_mode = DB_ACTIVE;
-        if (tooltable_specified) {
-            fprintf(stderr, "DB_PROGRAM active: IGNORING tool table file %s",
-                    m->io_tool_table_file);
-        }
     }
 
     return 0;
@@ -568,72 +521,48 @@ static void hal_init_pins(iocontrol_module *m)
     }
 }
 
-static void load_tool(iocontrol_module *m, int idx) {
-    CANON_TOOL_TABLE tdata;
+static void load_tool(iocontrol_module *m, int toolno) {
+    const tooltable_callbacks_t *tt = m->tt;
+
     if(m->random_toolchanger) {
-        char *comment_temp;
-        // swap the tools between the desired pocket and the spindle pocket
+        // For random toolchanger: swap tool in spindle with requested tool.
+        tooltable_tool_entry_t spindle = tt->get_tool(tt->ctx, 0);
+        tooltable_tool_entry_t target = tt->get_tool(tt->ctx, toolno);
 
-        CANON_TOOL_TABLE tzero,tpocket;
-        if (   tooldata_get(&tzero,0    ) != IDX_OK
-            || tooldata_get(&tpocket,idx) != IDX_OK) {
+        if (target.toolno == 0 && toolno != 0) {
             UNEXPECTED_MSG; return;
         }
-        // spindle-->pocket (specified by idx)
-        tooldata_db_notify(SPINDLE_UNLOAD,tzero.toolno,idx,tzero);
-        tzero.pocketno = tpocket.pocketno;
-        if (tooldata_put(tzero, idx) == IDX_FAIL) {
-            UNEXPECTED_MSG;
-        }
 
-        // pocket-->spindle (idx==0)
-        tooldata_db_notify(SPINDLE_LOAD,tpocket.toolno,0,tpocket);
-        tpocket.pocketno = 0;
-        if (tooldata_put(tpocket,0) == IDX_FAIL) {
-            UNEXPECTED_MSG;
-        }
+        // Move spindle tool to target's pocket
+        int target_pocket = target.pocketno;
+        spindle.pocketno = target_pocket;
+        tt->put_tool(tt->ctx, spindle.toolno, &spindle);
 
-        comment_temp = m->ttcomments[0];
-        m->ttcomments[0] = m->ttcomments[idx];
-        m->ttcomments[idx] = comment_temp;
-
-        if (0 != tooldata_save(m->io_tool_table_file, m->ttcomments)) {
-            m->emcioStatus.status = RCS_ERROR;
-        }
-    } else if(idx == 0) {
-            // magic T0 = pocket 0 = no tool
-        tdata = tooldata_entry_init();
-        tdata.toolno   = 0; // nonrandom unload tool from spindle
-        tdata.pocketno = 0; // nonrandom unload tool from spindle
-        if (tooldata_put(tdata,0) == IDX_FAIL) {
-            UNEXPECTED_MSG; return;
-        }
-        if (tooldata_db_notify(SPINDLE_UNLOAD,0,0,tdata)) { UNEXPECTED_MSG; }
+        // Move target to spindle (pocket 0)
+        target.pocketno = 0;
+        tt->put_tool(tt->ctx, target.toolno, &target);
+    } else if(toolno == 0) {
+        // on non-random tool-changers, asking for tool 0 is the secret
+        // handshake for "unload the tool from the spindle"
+        tooltable_tool_entry_t empty;
+        memset(&empty, 0, sizeof(empty));
+        tt->put_tool(tt->ctx, 0, &empty);
     } else {
-        // just copy the desired tool to the spindle
-        if (tooldata_get(&tdata,idx) != IDX_OK) {
+        // just copy the desired tool's offsets to spindle (pocket 0)
+        tooltable_tool_entry_t tdata = tt->get_tool(tt->ctx, toolno);
+        if (tdata.toolno == 0 && toolno != 0) {
             UNEXPECTED_MSG; return;
         }
-        if (tooldata_put(tdata,0) == IDX_FAIL) {
-            UNEXPECTED_MSG; return;
-        }
-        // notify idx==0 tool in spindle:
-        CANON_TOOL_TABLE temp;
-        if (tooldata_get(&temp,0) != IDX_OK) { UNEXPECTED_MSG; }
-        if (tooldata_db_notify(SPINDLE_LOAD,temp.toolno,0,temp)) { UNEXPECTED_MSG; }
+        tooltable_tool_entry_t spindle = tdata;
+        spindle.pocketno = 0;
+        tt->put_tool(tt->ctx, 0, &spindle);
     }
 } // load_tool()
 
 static void reload_tool_number(iocontrol_module *m, int toolno) {
-    CANON_TOOL_TABLE tdata;
-    if(m->random_toolchanger) return; // doesn't need special handling here
-    for(int idx = 1; idx <= tooldata_last_index_get(); idx++) { //note <=
-        if (tooldata_get(&tdata,idx) != IDX_OK) {
-            UNEXPECTED_MSG; return;
-        }
-        if(tdata.toolno == toolno) {
-            load_tool(m, idx);
-        }
+    if(m->random_toolchanger) return;
+    if(toolno > 0) {
+        load_tool(m, toolno);
     }
 }
 
@@ -760,41 +689,29 @@ static int32_t gmi_tool_prepare(void *ctx, int32_t toolno)
 {
     iocontrol_module *m = (iocontrol_module *)ctx;
     iocontrol_str *d = m->hal_data;
-    CANON_TOOL_TABLE tdata;
+    const tooltable_callbacks_t *tt = m->tt;
 
-    int idx = tooldata_find_index_for_tool(toolno);
-    if (idx == -1) {
+    tooltable_tool_entry_t tdata = tt->get_tool(tt->ctx, toolno);
+
+    // toolno==0 means "unload" — always valid
+    if (toolno != 0 && tdata.toolno == 0) {
         m->emcioStatus.tool.pocketPrepped = -1;
         return -1;
     }
-    if (tooldata_get(&tdata, idx) != IDX_OK) {
-        UNEXPECTED_MSG;
-        return -1;
-    }
 
-    gomc_log_debugf(m->env->log, m->name, "gmi_tool_prepare tool=%d idx=%d", toolno, idx);
+    gomc_log_debugf(m->env->log, m->name, "gmi_tool_prepare tool=%d pocket=%d", toolno, tdata.pocketno);
 
-    if (m->random_toolchanger && idx == 0) {
-        m->emcioStatus.tool.pocketPrepped = 0;
-        return 0;
-    }
-
-    *(d->tool_prep_index) = idx;
-
-    if (idx == 0) {
+    if (toolno == 0) {
         m->emcioStatus.tool.pocketPrepped = 0;
         *(d->tool_prep_number) = 0;
         *(d->tool_prep_pocket) = 0;
+        *(d->tool_prep_index) = 0;
         return 0;
     }
 
+    *(d->tool_prep_index) = tdata.pocketno;
     *(d->tool_prep_number) = tdata.toolno;
-    *(d->tool_prep_pocket) = m->random_toolchanger ? idx : tdata.pocketno;
-
-    if (tdata.toolno != toolno)
-        gomc_log_debugf(m->env->log, m->name,
-            "gmi_tool_prepare: mismatch: tooltable[%d]=%d, got %d",
-            idx, tdata.toolno, toolno);
+    *(d->tool_prep_pocket) = tdata.pocketno;
 
     // v2: warn if toolchanger is faulted — next M6 will abort
     if ((m->proto > V1) && *(d->toolchanger_faulted)) {
@@ -823,7 +740,7 @@ static int32_t gmi_tool_prepare(void *ctx, int32_t toolno)
         }
 
         if (*(d->tool_prepared)) {
-            m->emcioStatus.tool.pocketPrepped = *(d->tool_prep_index);
+            m->emcioStatus.tool.pocketPrepped = toolno;
             *(d->tool_prepare) = 0;
             *(d->state) = ST_IDLE;
             return 0;
@@ -868,16 +785,13 @@ static int32_t gmi_tool_load(void *ctx)
     if (m->random_toolchanger && m->emcioStatus.tool.pocketPrepped == 0)
         return 0;
 
-    CANON_TOOL_TABLE tdata;
-    if (tooldata_get(&tdata, m->emcioStatus.tool.pocketPrepped) != IDX_OK) {
-        UNEXPECTED_MSG;
-        return -1;
-    }
-    if (!m->random_toolchanger && (m->emcioStatus.tool.pocketPrepped > 0) &&
-        (m->emcioStatus.tool.toolInSpindle == tdata.toolno))
+    int prepped_toolno = m->emcioStatus.tool.pocketPrepped;
+
+    if (prepped_toolno == -1)
         return 0;
 
-    if (m->emcioStatus.tool.pocketPrepped == -1)
+    if (!m->random_toolchanger && prepped_toolno > 0 &&
+        m->emcioStatus.tool.toolInSpindle == prepped_toolno)
         return 0;
 
     // v2: check for toolchanger fault before starting change
@@ -915,18 +829,15 @@ static int32_t gmi_tool_load(void *ctx)
         }
 
         if (*(d->tool_changed)) {
-            if (!m->random_toolchanger && m->emcioStatus.tool.pocketPrepped == 0) {
+            if (!m->random_toolchanger && prepped_toolno == 0) {
                 m->emcioStatus.tool.toolInSpindle = 0;
             } else {
-                CANON_TOOL_TABLE td2;
-                if (tooldata_get(&td2, m->emcioStatus.tool.pocketPrepped) != IDX_OK) {
-                    UNEXPECTED_MSG;
-                    return -1;
-                }
+                const tooltable_callbacks_t *tt = m->tt;
+                tooltable_tool_entry_t td2 = tt->get_tool(tt->ctx, prepped_toolno);
                 m->emcioStatus.tool.toolInSpindle = td2.toolno;
             }
             *(d->tool_number) = m->emcioStatus.tool.toolInSpindle;
-            load_tool(m, m->emcioStatus.tool.pocketPrepped);
+            load_tool(m, prepped_toolno);
             m->emcioStatus.tool.pocketPrepped = -1;
             *(d->tool_prep_number) = 0;
             *(d->tool_prep_pocket) = 0;
@@ -952,11 +863,9 @@ static int32_t gmi_tool_unload(void *ctx)
 static int32_t gmi_tool_load_table(void *ctx, const char *file)
 {
     iocontrol_module *m = (iocontrol_module *)ctx;
-    const char *filename = (file && strlen(file)) ? file : m->io_tool_table_file;
-    gomc_log_debugf(m->env->log, m->name, "gmi_tool_load_table file=%s", filename);
-    if (0 != tooldata_load(filename, m->ttcomments)) {
-        return -1;
-    }
+    (void)file;
+    // With tooltable, reloading is a no-op — the SQLite DB is always current.
+    gomc_log_debugf(m->env->log, m->name, "gmi_tool_load_table (no-op with tooltable)");
     reload_tool_number(m, m->emcioStatus.tool.toolInSpindle);
     return 0;
 }
@@ -970,66 +879,48 @@ static int32_t gmi_tool_set_offset(void *ctx,
     int32_t orientation)
 {
     iocontrol_module *m = (iocontrol_module *)ctx;
+    const tooltable_callbacks_t *tt = m->tt;
 
     gomc_log_debugf(m->env->log, m->name,
-        "gmi_tool_set_offset idx=%d toolno=%d z=%lf x=%lf dia=%lf",
+        "gmi_tool_set_offset pocket=%d toolno=%d z=%lf x=%lf dia=%lf",
         pocket, toolno, z, x, diameter);
 
-    CANON_TOOL_TABLE tdata;
-    if (tooldata_get(&tdata, pocket) != IDX_OK) {
+    tooltable_tool_entry_t entry;
+    memset(&entry, 0, sizeof(entry));
+    entry.toolno = toolno;
+    entry.pocketno = pocket;
+    entry.x_offset = x;
+    entry.y_offset = y;
+    entry.z_offset = z;
+    entry.a_offset = a;
+    entry.b_offset = b;
+    entry.c_offset = c;
+    entry.u_offset = u;
+    entry.v_offset = v;
+    entry.w_offset = w;
+    entry.diameter = diameter;
+    entry.frontangle = frontangle;
+    entry.backangle = backangle;
+    entry.orientation = orientation;
+
+    tooltable_put_tool_result_t res = tt->put_tool(tt->ctx, toolno, &entry);
+    if (!res.ok) {
         UNEXPECTED_MSG;
         return -1;
-    }
-    tdata.toolno = toolno;
-    tdata.offset.tran.x = x;
-    tdata.offset.tran.y = y;
-    tdata.offset.tran.z = z;
-    tdata.offset.a = a;
-    tdata.offset.b = b;
-    tdata.offset.c = c;
-    tdata.offset.u = u;
-    tdata.offset.v = v;
-    tdata.offset.w = w;
-    tdata.diameter = diameter;
-    tdata.frontangle = frontangle;
-    tdata.backangle = backangle;
-    tdata.orientation = orientation;
-    if (tooldata_put(tdata, pocket) != IDX_OK) {
-        UNEXPECTED_MSG;
-        return -1;
-    }
-    if (0 != tooldata_save(m->io_tool_table_file, m->ttcomments)) {
-        return -1;
-    }
-    if (m->io_db_mode == DB_ACTIVE) {
-        int pno = pocket;
-        if (!m->random_toolchanger) { pno = tdata.pocketno; }
-        if (tooldata_db_notify(TOOL_OFFSET, toolno, pno, tdata)) {
-            UNEXPECTED_MSG;
-        }
     }
     return 0;
 }
 
-static int32_t gmi_tool_set_number(void *ctx, int32_t tool)
+static int32_t gmi_tool_set_number(void *ctx, int32_t toolno)
 {
     iocontrol_module *m = (iocontrol_module *)ctx;
     iocontrol_str *d = m->hal_data;
 
-    CANON_TOOL_TABLE tdata;
-    if (tooldata_get(&tdata, tool) != IDX_OK) {
-        UNEXPECTED_MSG;
-        return -1;
-    }
-    load_tool(m, tool);
+    load_tool(m, toolno);
 
-    if (tooldata_get(&tdata, 0) != IDX_OK) {
-        UNEXPECTED_MSG;
-        return -1;
-    }
-    m->emcioStatus.tool.toolInSpindle = tdata.toolno;
+    m->emcioStatus.tool.toolInSpindle = toolno;
     gomc_log_debugf(m->env->log, m->name,
-        "gmi_tool_set_number new_tool=%d", tdata.toolno);
+        "gmi_tool_set_number new_tool=%d", toolno);
     *(d->tool_number) = m->emcioStatus.tool.toolInSpindle;
     return 0;
 }
@@ -1049,7 +940,7 @@ static emcio_io_status_t gmi_get_status(void *ctx)
     s.heartbeat = m->emcioStatus.heartbeat++;
     s.status = EMCIO_DONE;
     s.reason = m->toolchanger_reason;
-    s.fault = *(d->toolchanger_faulted) ? 1 : 0;
+    s.fault = (m->proto > V1 && *(d->toolchanger_faulted)) ? 1 : 0;
     s.tool.pocket_prepped = m->emcioStatus.tool.pocketPrepped;
     s.tool.tool_in_spindle = m->emcioStatus.tool.toolInSpindle;
     s.tool.tool_from_pocket = 0;  // v2 doesn't have tool_from_pocket pin
@@ -1091,8 +982,17 @@ static int iocontrol_start(cmod_t *self)
 {
     iocontrol_module *m = (iocontrol_module *)self->priv;
 
-    m->done = 0;
+    // Look up the tooltable API (must have been loaded before us)
+    m->tt = tooltable_api_get(m->env->api, m->tooltable_instance);
+    if (!m->tt) {
+        gomc_log_errorf(m->env->log, m->name,
+            "IOV2: tooltable instance '%s' not found — "
+            "ensure 'load tooltable' appears before 'load iov2' in HAL",
+            m->tooltable_instance);
+        return -1;
+    }
 
+    m->done = 0;
     return 0;
 }
 
@@ -1105,15 +1005,6 @@ static void iocontrol_stop(cmod_t *self)
 static void iocontrol_destroy(cmod_t *self)
 {
     iocontrol_module *m = (iocontrol_module *)self->priv;
-
-    for(int i=0; i<CANON_POCKETS_MAX; i++) {
-        free(m->ttcomments[i]);
-        m->ttcomments[i] = NULL;
-    }
-
-#ifndef TOOL_NML
-    tool_mmap_close();
-#endif
 
     if (m->comp_id > 0) {
         m->env->hal->exit(m->env->hal->ctx, m->comp_id);
@@ -1131,12 +1022,6 @@ static void iocontrol_destroy(cmod_t *self)
 extern "C" int New(const cmod_env_t *env, const char *name,
                    int argc, const char **argv, cmod_t **out)
 {
-#ifdef TOOL_NML //{
-  #define TOOL_DATA "nml"
-#else //}{
-  #define TOOL_DATA "mmap"
-#endif //}
-
     iocontrol_module *m = new iocontrol_module();
 
     m->env = env;
@@ -1144,26 +1029,16 @@ extern "C" int New(const cmod_env_t *env, const char *name,
 
     // Defaults
     m->io_cycle_time = 0.100;
-    strncpy(m->io_tool_table_file, "tool.tbl", sizeof(m->io_tool_table_file) - 1);
-
-    // Default protocol version
     m->proto = V2;
     m->support_start_change = 0;
+    strncpy(m->tooltable_instance, "tooltable", sizeof(m->tooltable_instance) - 1);
 
-    // Debug flag from environment (legacy)
-    if (getenv("IO_DEBUG")) {
-        m->io_debug = true;
-        fprintf(stderr,"%8d IOV2: %s",getpid(),TOOL_DATA);
-        fprintf(stderr,"         EMC_STAT      size=%8ld",sizeof(EMC_STAT));
-        fprintf(stderr,"         EMC_IO_STAT   size=%8ld",sizeof(EMC_IO_STAT));
-        fprintf(stderr,"         EMC_TOOL_STAT size=%8ld",sizeof(EMC_TOOL_STAT));
-        fprintf(stderr,"         CANON_POCKETS_MAX =%8d",CANON_POCKETS_MAX);
-    }
-
-    // Parse arguments (replace old argv parsing from main)
+    // Parse arguments
     for (int t = 0; t < argc; t++) {
         if (!strcmp(argv[t], "-support-start-change") || !strcmp(argv[t], "support-start-change")) {
             m->support_start_change = 1;
+        } else if (strncmp(argv[t], "tooltable_instance=", 19) == 0) {
+            strncpy(m->tooltable_instance, argv[t] + 19, sizeof(m->tooltable_instance) - 1);
         }
     }
 
@@ -1179,70 +1054,15 @@ extern "C" int New(const cmod_env_t *env, const char *name,
         return -1;
     }
 
-    // Initialise tool data and create the mmap file early so that milltask,
-    // halui, and the display (which all start before Start()) can access
-    // the shared tool table.
-    for(int i=0; i<CANON_POCKETS_MAX; i++) {
-        m->ttcomments[i] = (char *)malloc(CANON_TOOL_ENTRY_LEN);
-    }
-
-    tooldata_init(m->random_toolchanger);
-    tooldata_set_db(m->io_db_mode);
-
-#ifdef TOOL_NML //{
-    tool_nml_register( (CANON_TOOL_TABLE*)&(m->emcioStatus.tool.toolTable));
-    if (m->io_debug) {
-        fprintf(stderr,"IOV2: REGISTER %p",
-                (CANON_TOOL_TABLE*)&(m->emcioStatus.tool.toolTable));
-    }
-#else //}{
-    tool_mmap_creator((EMC_TOOL_STAT*)&(m->emcioStatus.tool), m->random_toolchanger);
-    if (m->io_debug) {
-        fprintf(stderr,"IOV2: CREATOR  random_toolchanger=%d", m->random_toolchanger);
-    }
-#endif //}
-
-    if (m->io_db_mode == DB_ACTIVE) {
-        if (tooldata_db_init(m->db_program, m->random_toolchanger)) {
-            fprintf(stderr,"\n%5d IOV2::tooldata_db_init() FAIL\n",getpid());
-            m->io_db_mode = DB_NOTUSED;
-        }
-    }
-
-    if(!m->random_toolchanger) {
-        m->ttcomments[0][0] = '\0';
-        CANON_TOOL_TABLE tdata = tooldata_entry_init();
-        tdata.pocketno =  0;
-        tdata.toolno   = -1;
-        if (tooldata_put(tdata,0) == IDX_FAIL) {
-            UNEXPECTED_MSG;
-        }
-    }
-
-    if (0 != tooldata_load(m->io_tool_table_file, m->ttcomments)) {
-        gomc_log_errorf(m->env->log, m->name, "can't load tool table.");
-    }
+    hal_init_pins(m);
 
     m->emcioStatus.aux.estop = 1;
     m->emcioStatus.tool.pocketPrepped = -1;
-    if (m->random_toolchanger) {
-        CANON_TOOL_TABLE tdata;
-        if (tooldata_get(&tdata,0) != IDX_OK) {
-            UNEXPECTED_MSG;
-            m->env->hal->exit(m->env->hal->ctx, m->comp_id);
-            for(int i=0; i<CANON_POCKETS_MAX; i++) free(m->ttcomments[i]);
-            delete m;
-            return -1;
-        }
-        m->emcioStatus.tool.toolInSpindle = tdata.toolno;
-    } else {
-        m->emcioStatus.tool.toolInSpindle = 0;
-    }
+    m->emcioStatus.tool.toolInSpindle = 0;
     m->emcioStatus.coolant.mist = 0;
     m->emcioStatus.coolant.flood = 0;
     m->emcioStatus.lube.on = 0;
     m->emcioStatus.lube.level = 1;
-    *(m->hal_data->tool_number) = m->emcioStatus.tool.toolInSpindle;
 
     // Register GMI emcio API so milltask can call us via function pointers.
     m->emcio_cb = emcio_table;

@@ -5,6 +5,7 @@
 load tpmod
 load homemod
 load io <iocontrol>
+load tooltable
 load milltask halui=halui
 
 # load UI helper

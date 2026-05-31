@@ -19,7 +19,18 @@ typedef enum {
     IDX_FAIL,
 } toolidx_t;
 
-struct    CANON_TOOL_TABLE tooldata_entry_init(void);
+static inline struct CANON_TOOL_TABLE tooldata_entry_init(void) {
+    struct CANON_TOOL_TABLE t;
+    t.toolno = -1;
+    t.pocketno = -1;
+    t.diameter = 0;
+    t.frontangle = 0;
+    t.backangle = 0;
+    t.orientation = 0;
+    ZERO_EMC_POSE(t.offset);
+    return t;
+}
+
 toolidx_t tooldata_put(struct CANON_TOOL_TABLE tdata,int idx);
 toolidx_t tooldata_get(CANON_TOOL_TABLE* pdata,int idx);
 

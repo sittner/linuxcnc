@@ -38,19 +38,7 @@ void tooldata_init(bool random_toolchanger)
     is_random_toolchanger = random_toolchanger;
 } // tooldata_init
 
-struct CANON_TOOL_TABLE tooldata_entry_init()
-{
-    struct CANON_TOOL_TABLE tdata;
-    tdata.toolno      = -1;
-    tdata.pocketno    = -1;
-    tdata.diameter    =  0;
-    tdata.frontangle  =  0;
-    tdata.backangle   =  0;
-    tdata.orientation =  0;
-    ZERO_EMC_POSE(tdata.offset);
-
-    return tdata;
-} // tooldata_entry_init()
+// tooldata_entry_init() is now defined as static inline in tooldata_fwd.hh.
 
 void tooldata_set_db(tooldb_t mode)
 {

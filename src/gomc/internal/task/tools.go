@@ -1,19 +1,10 @@
 package task
 
-/*
-#cgo CFLAGS: -I${SRCDIR}/../../../emc/nml_intf -I${SRCDIR}/../../../emc/tooldata -I${SRCDIR}/../../.. -I${SRCDIR}/../../../rtapi -I${SRCDIR}/../../../../include
-#cgo LDFLAGS: -L${SRCDIR}/../../../../lib -llinuxcnc -ltooldata -lstdc++
-
-#include "tool_shim.h"
-#include <stdlib.h>
-*/
-import "C"
-
 import (
 	"fmt"
-	"unsafe"
 
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/tools"
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/tooltable"
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
 )
 
@@ -21,147 +12,95 @@ func init() {
 	apiserver.RegisterMeta(tools.ToolsMeta)
 }
 
-// toolsImpl implements tools.ToolsCallbacks via the tool_shim C interface.
-type toolsImpl struct {
-	toolTableFile string
-	module        *milltaskModule
-}
+// Package-level reference to the tooltable client, set during registerTools().
+// Used by getToolByPocket (called from canon getters).
+var pkgTTClient *tooltable.TooltableClient
 
-func shimToToolEntry(s *C.tool_shim_entry_t) tools.ToolEntry {
+func tooltableToToolEntry(t *tooltable.ToolEntry) tools.ToolEntry {
 	return tools.ToolEntry{
-		Toolno:      int32(s.toolno),
-		Pocketno:    int32(s.pocketno),
-		XOffset:     float64(s.x_offset),
-		YOffset:     float64(s.y_offset),
-		ZOffset:     float64(s.z_offset),
-		AOffset:     float64(s.a_offset),
-		BOffset:     float64(s.b_offset),
-		COffset:     float64(s.c_offset),
-		UOffset:     float64(s.u_offset),
-		VOffset:     float64(s.v_offset),
-		WOffset:     float64(s.w_offset),
-		Diameter:    float64(s.diameter),
-		Frontangle:  float64(s.frontangle),
-		Backangle:   float64(s.backangle),
-		Orientation: int32(s.orientation),
-		Comment:     C.GoString(&s.comment[0]),
+		Toolno:      t.Toolno,
+		Pocketno:    t.Pocketno,
+		XOffset:     t.XOffset,
+		YOffset:     t.YOffset,
+		ZOffset:     t.ZOffset,
+		AOffset:     t.AOffset,
+		BOffset:     t.BOffset,
+		COffset:     t.COffset,
+		UOffset:     t.UOffset,
+		VOffset:     t.VOffset,
+		WOffset:     t.WOffset,
+		Diameter:    t.Diameter,
+		Frontangle:  t.Frontangle,
+		Backangle:   t.Backangle,
+		Orientation: t.Orientation,
+		Comment:     t.Comment,
 	}
 }
 
-func toolEntryToShim(e *tools.ToolEntry) C.tool_shim_entry_t {
-	var s C.tool_shim_entry_t
-	s.toolno = C.int(e.Toolno)
-	s.pocketno = C.int(e.Pocketno)
-	s.x_offset = C.double(e.XOffset)
-	s.y_offset = C.double(e.YOffset)
-	s.z_offset = C.double(e.ZOffset)
-	s.a_offset = C.double(e.AOffset)
-	s.b_offset = C.double(e.BOffset)
-	s.c_offset = C.double(e.COffset)
-	s.u_offset = C.double(e.UOffset)
-	s.v_offset = C.double(e.VOffset)
-	s.w_offset = C.double(e.WOffset)
-	s.diameter = C.double(e.Diameter)
-	s.frontangle = C.double(e.Frontangle)
-	s.backangle = C.double(e.Backangle)
-	s.orientation = C.int(e.Orientation)
-	// Copy comment string into fixed-size C array.
-	cComment := e.Comment
-	if len(cComment) >= C.TOOL_SHIM_COMMENT_LEN {
-		cComment = cComment[:C.TOOL_SHIM_COMMENT_LEN-1]
+func toolEntryToTooltable(e *tools.ToolEntry) tooltable.ToolEntry {
+	return tooltable.ToolEntry{
+		Toolno:      e.Toolno,
+		Pocketno:    e.Pocketno,
+		XOffset:     e.XOffset,
+		YOffset:     e.YOffset,
+		ZOffset:     e.ZOffset,
+		AOffset:     e.AOffset,
+		BOffset:     e.BOffset,
+		COffset:     e.COffset,
+		UOffset:     e.UOffset,
+		VOffset:     e.VOffset,
+		WOffset:     e.WOffset,
+		Diameter:    e.Diameter,
+		Frontangle:  e.Frontangle,
+		Backangle:   e.Backangle,
+		Orientation: e.Orientation,
+		Comment:     e.Comment,
 	}
-	for i := 0; i < len(cComment); i++ {
-		s.comment[i] = C.char(cComment[i])
-	}
-	s.comment[len(cComment)] = 0
-	return s
 }
 
-func ensureToolMmap() error {
-	if rc := C.tool_shim_init(); rc != 0 {
-		return fmt.Errorf("tool mmap not available")
-	}
-	return nil
+// toolsImpl implements tools.ToolsCallbacks via the tooltable GMI client.
+type toolsImpl struct {
+	module *milltaskModule
 }
 
 func (t *toolsImpl) ListTools() ([]tools.ToolEntry, error) {
-	if err := ensureToolMmap(); err != nil {
+	entries, err := t.module.ttClient.ListTools()
+	if err != nil {
 		return nil, err
 	}
-	lastIdx := int(C.tool_shim_last_index())
-	tools := make([]tools.ToolEntry, 0, lastIdx)
-	for i := 0; i <= lastIdx; i++ {
-		var s C.tool_shim_entry_t
-		if C.tool_shim_get(C.int(i), &s) == 0 && int(s.toolno) > 0 {
-			tools = append(tools, shimToToolEntry(&s))
-		}
+	result := make([]tools.ToolEntry, len(entries))
+	for i := range entries {
+		result[i] = tooltableToToolEntry(&entries[i])
 	}
-	return tools, nil
+	return result, nil
 }
 
 func (t *toolsImpl) GetTool(toolno int32) (*tools.ToolEntry, error) {
-	if err := ensureToolMmap(); err != nil {
+	entry, err := t.module.ttClient.GetTool(toolno)
+	if err != nil {
 		return nil, err
 	}
-	idx := int(C.tool_shim_find_by_toolno(C.int(toolno)))
-	if idx < 0 {
-		return nil, fmt.Errorf("tool %d not found", toolno)
-	}
-	var s C.tool_shim_entry_t
-	if C.tool_shim_get(C.int(idx), &s) != 0 {
-		return nil, fmt.Errorf("failed to read tool at index %d", idx)
-	}
-	entry := shimToToolEntry(&s)
-	return &entry, nil
+	te := tooltableToToolEntry(&entry)
+	return &te, nil
 }
 
 func (t *toolsImpl) PutTool(toolno int32, entry tools.ToolEntry) (*tools.PutToolResult, error) {
-	if err := ensureToolMmap(); err != nil {
-		return nil, err
-	}
 	if toolno <= 0 {
 		return nil, fmt.Errorf("toolno must be > 0")
 	}
 	entry.Toolno = toolno
-
-	idx := int(C.tool_shim_find_by_toolno(C.int(toolno)))
-	if idx < 0 {
-		idx = int(C.tool_shim_last_index()) + 1
-		if idx >= C.TOOL_SHIM_MAX_POCKETS {
-			return nil, fmt.Errorf("tool table full")
-		}
+	ttEntry := toolEntryToTooltable(&entry)
+	res, err := t.module.ttClient.PutTool(toolno, ttEntry)
+	if err != nil {
+		return nil, err
 	}
-
-	s := toolEntryToShim(&entry)
-	if C.tool_shim_put(C.int(idx), &s) != 0 {
-		return nil, fmt.Errorf("failed to write tool at index %d", idx)
-	}
-	// Persist to file.
-	if t.toolTableFile != "" {
-		cFile := C.CString(t.toolTableFile)
-		C.tool_shim_save(cFile)
-		C.free(unsafe.Pointer(cFile))
-	}
-	return &tools.PutToolResult{Ok: true, Index: int32(idx)}, nil
+	return &tools.PutToolResult{Ok: res.Ok, Index: res.Index}, nil
 }
 
 func (t *toolsImpl) DeleteTool(toolno int32) (*tools.CmdResult, error) {
-	if err := ensureToolMmap(); err != nil {
+	_, err := t.module.ttClient.DeleteTool(toolno)
+	if err != nil {
 		return nil, err
-	}
-	idx := int(C.tool_shim_find_by_toolno(C.int(toolno)))
-	if idx < 0 {
-		return nil, fmt.Errorf("tool %d not found", toolno)
-	}
-	empty := C.tool_shim_entry_t{}
-	if C.tool_shim_put(C.int(idx), &empty) != 0 {
-		return nil, fmt.Errorf("failed to clear tool at index %d", idx)
-	}
-	// Persist to file.
-	if t.toolTableFile != "" {
-		cFile := C.CString(t.toolTableFile)
-		C.tool_shim_save(cFile)
-		C.free(unsafe.Pointer(cFile))
 	}
 	return &tools.CmdResult{Ok: "true"}, nil
 }
@@ -171,38 +110,46 @@ func (t *toolsImpl) ReloadTools() (*tools.CmdResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to reload tool table: %v", err)
 	}
-	// Refresh comments from file.
-	if t.toolTableFile != "" {
-		cFile := C.CString(t.toolTableFile)
-		C.tool_shim_load(cFile)
-		C.free(unsafe.Pointer(cFile))
-	}
 	return &tools.CmdResult{Ok: "true"}, nil
-}
-
-// loadToolShim loads the tool table from file into shared memory.
-func loadToolShim(toolFile string) {
-	if toolFile != "" {
-		cFile := C.CString(toolFile)
-		C.tool_shim_load(cFile)
-		C.free(unsafe.Pointer(cFile))
-	}
 }
 
 // getToolByPocket returns tool data for a given pocket index.
 // Used by the canon getter GetExternalToolTable.
+// pocket=0 returns the spindle tool (stored as toolno=0 in tooltable by iocontrol).
+// pocket>0 scans tool table for matching pocketno.
 func getToolByPocket(pocket int32) (retval int32, toolno int32, offset [9]float64, diameter, frontangle, backangle float64, orientation int32) {
-	if e := ensureToolMmap(); e != nil {
+	if pkgTTClient == nil {
 		return -1, 0, [9]float64{}, 0, 0, 0, 0
 	}
-	var s C.tool_shim_entry_t
-	if C.tool_shim_get(C.int(pocket), &s) != 0 {
+
+	if pocket == 0 {
+		// Spindle tool is stored as toolno=0 by iocontrol's load_tool.
+		entry, err := pkgTTClient.GetTool(0)
+		if err != nil {
+			return -1, 0, [9]float64{}, 0, 0, 0, 0
+		}
+		offset = [9]float64{
+			entry.XOffset, entry.YOffset, entry.ZOffset,
+			entry.AOffset, entry.BOffset, entry.COffset,
+			entry.UOffset, entry.VOffset, entry.WOffset,
+		}
+		return 0, entry.Toolno, offset, entry.Diameter, entry.Frontangle, entry.Backangle, entry.Orientation
+	}
+
+	// For pocket>0: scan all tools for matching pocketno.
+	entries, err := pkgTTClient.ListTools()
+	if err != nil {
 		return -1, 0, [9]float64{}, 0, 0, 0, 0
 	}
-	offset = [9]float64{
-		float64(s.x_offset), float64(s.y_offset), float64(s.z_offset),
-		float64(s.a_offset), float64(s.b_offset), float64(s.c_offset),
-		float64(s.u_offset), float64(s.v_offset), float64(s.w_offset),
+	for i := range entries {
+		if entries[i].Pocketno == pocket {
+			offset = [9]float64{
+				entries[i].XOffset, entries[i].YOffset, entries[i].ZOffset,
+				entries[i].AOffset, entries[i].BOffset, entries[i].COffset,
+				entries[i].UOffset, entries[i].VOffset, entries[i].WOffset,
+			}
+			return 0, entries[i].Toolno, offset, entries[i].Diameter, entries[i].Frontangle, entries[i].Backangle, entries[i].Orientation
+		}
 	}
-	return 0, int32(s.toolno), offset, float64(s.diameter), float64(s.frontangle), float64(s.backangle), int32(s.orientation)
+	return -1, 0, [9]float64{}, 0, 0, 0, 0
 }

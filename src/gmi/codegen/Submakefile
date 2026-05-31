@@ -587,6 +587,33 @@ $(GMI_NGCPREVIEW_PY): $(GMI_NGCPREVIEW_IDL) $(GMICOMPILE_BIN)
 
 TARGETS += $(GMI_NGCPREVIEW_PY)
 
+# --- tooltable API ---
+
+GMI_TOOLTABLE_IDL := gmi/idl/tooltable.gmi
+GMI_TOOLTABLE_GEN := gomc/generated/gmi/tooltable
+
+$(GMI_TOOLTABLE_GEN)/tooltable_api.h: $(GMI_TOOLTABLE_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI tooltable from $(GMI_TOOLTABLE_IDL)"
+	@mkdir -p $(GMI_TOOLTABLE_GEN)
+	$(Q)$(GMICOMPILE) --server-c $(GMI_TOOLTABLE_IDL) -o $(GMI_TOOLTABLE_GEN)/tooltable_api.h
+	$(Q)$(GMICOMPILE) --server-meta $(GMI_TOOLTABLE_IDL) -o $(GMI_TOOLTABLE_GEN)/tooltable_cgo.go
+	$(Q)$(GMICOMPILE) --server-go $(GMI_TOOLTABLE_IDL) -o $(GMI_TOOLTABLE_GEN)/tooltable_bridge.go
+	$(Q)$(GMICOMPILE) --client-cgo $(GMI_TOOLTABLE_IDL) -o $(GMI_TOOLTABLE_GEN)/tooltable_client_cgo.go
+	$(Q)$(GMICOMPILE_BIN) add-gmi generated/gmi/tooltable
+
+TARGETS += $(GMI_TOOLTABLE_GEN)/tooltable_api.h
+
+# --- tooltable TypeScript client ---
+
+GMI_TOOLTABLE_TS := webapp/tooledit/src/generated/tooltable_client.ts
+
+$(GMI_TOOLTABLE_TS): $(GMI_TOOLTABLE_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI tooltable TypeScript client"
+	@mkdir -p $(dir $(GMI_TOOLTABLE_TS))
+	$(Q)$(GMICOMPILE) --client-ts $(GMI_TOOLTABLE_IDL) -o $(GMI_TOOLTABLE_TS)
+
+TARGETS += $(GMI_TOOLTABLE_TS)
+
 # --- halcmd Go REST client (for external halcmd binary) ---
 
 GMI_HALCMD_CLIENT_GO := gomc/generated/gmi/halcmdclient/halcmd_client.go

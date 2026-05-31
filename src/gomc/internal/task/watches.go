@@ -81,14 +81,13 @@ func (m *milltaskModule) registerWatches(name string) {
 
 // registerTools registers the tools API (called from Start when INI is loaded).
 func (m *milltaskModule) registerTools() {
-	toolFile := m.ini.Get("EMCIO", "TOOL_TABLE")
-	loadToolShim(toolFile)
+	// Store client for package-level getToolByPocket.
+	pkgTTClient = m.ttClient
 
 	reg := apiserver.DefaultRegistry()
 	if reg != nil {
 		tools.RegisterToolsAPI(reg, m.name, &toolsImpl{
-			toolTableFile: toolFile,
-			module:        m,
+			module: m,
 		})
 	}
 }

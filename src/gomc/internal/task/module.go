@@ -15,6 +15,7 @@ import (
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/emcstat"
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/motctl"
 	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/motstat"
+	"github.com/sittner/linuxcnc/src/gomc/generated/gmi/tooltable"
 	"github.com/sittner/linuxcnc/src/gomc/internal/apiserver"
 	"github.com/sittner/linuxcnc/src/gomc/pkg/gomc"
 	"github.com/sittner/linuxcnc/src/gomc/pkg/inifile"
@@ -88,8 +89,9 @@ type milltaskModule struct {
 	canonTable        *canonCallbackTable
 	mon               *monitor
 	stopped           bool
-	haluiPrefix       string     // if set, export halui pins with this component name
-	iniAccessorHandle cgo.Handle // CGo handle for the INI accessor (must be freed)
+	haluiPrefix       string                     // if set, export halui pins with this component name
+	iniAccessorHandle cgo.Handle                 // CGo handle for the INI accessor (must be freed)
+	ttClient          *tooltable.TooltableClient // tooltable GMI client
 }
 
 func (m *milltaskModule) Start() error {
@@ -120,6 +122,14 @@ func (m *milltaskModule) Start() error {
 	if err != nil {
 		return fmt.Errorf("milltask: emcio API lookup (%s): %w", ioInstance, err)
 	}
+
+	// Look up tooltable API (default instance "tooltable").
+	ttInstance := "tooltable"
+	ttCbs, err := reg.GetAPI("tooltable", ttInstance, 1)
+	if err != nil {
+		return fmt.Errorf("milltask: tooltable API lookup (%s): %w", ttInstance, err)
+	}
+	m.ttClient = tooltable.NewTooltableClient(unsafe.Pointer(ttCbs))
 
 	// Wrap C callback pointers in typed Go clients.
 	mc := motctl.NewMotctlClient(unsafe.Pointer(motctlCbs))

@@ -23,4 +23,5 @@ gomod internal/haljson @GOMOD:HALJSON@
 gomod internal/ngcpreview @GOMOD:NGCPREVIEW@
 gomod internal/task @GOMOD:MILLTASK_GO@
 gomod internal/tasktest
+gomod internal/tooltable
 
