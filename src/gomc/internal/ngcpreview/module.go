@@ -369,6 +369,24 @@ static int32_t pc_get_tool_table(void *vctx, int32_t pocket,
     return 0;
 }
 
+static int32_t pc_get_tool_by_number(void *vctx, int32_t toolno,
+    int32_t *pocket, double offset[9], double *diameter,
+    double *frontangle, double *backangle, int32_t *orientation) {
+    preview_ctx_t *ctx = (preview_ctx_t*)vctx;
+    for (int i = 1; i < CANON_POCKETS_MAX; i++) {
+        if (ctx->tools[i].toolno == toolno) {
+            *pocket = ctx->tools[i].pocketno;
+            memcpy(offset, ctx->tools[i].offset, 9 * sizeof(double));
+            *diameter = ctx->tools[i].diameter;
+            *frontangle = ctx->tools[i].frontangle;
+            *backangle = ctx->tools[i].backangle;
+            *orientation = ctx->tools[i].orientation;
+            return 0;
+        }
+    }
+    return -1;  // not found
+}
+
 static void ctx_set_tool(preview_ctx_t *ctx, int32_t pocket, int32_t toolno,
     double *offset, double diameter, double frontangle, double backangle,
     int32_t orientation) {
@@ -664,6 +682,7 @@ static canon_callbacks_t make_preview_canon(preview_ctx_t *ctx) {
     cb.get_external_tool_slot = pc_nop_ri;
     cb.get_external_selected_tool_slot = pc_nop_ri;
     cb.get_external_tool_table = pc_get_tool_table;
+    cb.get_tool_by_number = pc_get_tool_by_number;
     cb.get_external_tc_fault = pc_nop_ri;
     cb.get_external_tc_reason = pc_nop_ri;
     cb.get_external_queue_empty = pc_get_queue_empty;

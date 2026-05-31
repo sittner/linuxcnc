@@ -719,12 +719,14 @@ int Interp::find_tool_index(setup_pointer settings, int toolno, int *index)
         return INTERP_OK;
     }
 
-    // Search _setup.tool_table[] (populated via GET_EXTERNAL_TOOL_TABLE callback).
-    for (int i = 1; i < CANON_POCKETS_MAX; i++) {
-        if (settings->tool_table[i].toolno == toolno) {
-            *index = i;
-            return INTERP_OK;
-        }
+    // On-demand lookup via canon callback — cache result in tool_table.
+    CANON_TOOL_TABLE t;
+    if (settings->canon.get_tool_by_number(toolno, &t)) {
+        int pocket = t.pocketno;
+        if (pocket >= 0 && pocket < CANON_POCKETS_MAX)
+            settings->tool_table[pocket] = t;
+        *index = pocket;
+        return INTERP_OK;
     }
 
     *index = -1;
@@ -739,12 +741,14 @@ int Interp::find_tool_pocket(setup_pointer settings, int toolno, int *pocket)
         return INTERP_OK;
     }
 
-    // Search _setup.tool_table[] for matching toolno.
-    for (int i = 1; i < CANON_POCKETS_MAX; i++) {
-        if (settings->tool_table[i].toolno == toolno) {
-            *pocket = settings->tool_table[i].pocketno;
-            return INTERP_OK;
-        }
+    // On-demand lookup via canon callback — cache result in tool_table.
+    CANON_TOOL_TABLE t;
+    if (settings->canon.get_tool_by_number(toolno, &t)) {
+        int p = t.pocketno;
+        if (p >= 0 && p < CANON_POCKETS_MAX)
+            settings->tool_table[p] = t;
+        *pocket = p;
+        return INTERP_OK;
     }
 
     *pocket = 0;

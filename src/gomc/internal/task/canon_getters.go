@@ -252,6 +252,22 @@ func (c *Canon) GetExternalToolTable(pocket int32) (int32, int32, [9]float64, fl
 	return retval, toolno, offset, diameter, frontangle, backangle, orientation, nil
 }
 
+func (c *Canon) GetToolByNumber(toolno int32) (int32, int32, [9]float64, float64, float64, float64, int32, error) {
+	if pkgTTClient == nil {
+		return -1, 0, [9]float64{}, 0, 0, 0, 0, nil
+	}
+	entry, err := pkgTTClient.GetTool(toolno)
+	if err != nil {
+		return -1, 0, [9]float64{}, 0, 0, 0, 0, nil
+	}
+	offset := [9]float64{
+		entry.XOffset, entry.YOffset, entry.ZOffset,
+		entry.AOffset, entry.BOffset, entry.COffset,
+		entry.UOffset, entry.VOffset, entry.WOffset,
+	}
+	return 0, entry.Pocketno, offset, entry.Diameter, entry.Frontangle, entry.Backangle, entry.Orientation, nil
+}
+
 func (c *Canon) GetExternalTcFault() (int32, error)  { return 0, nil }
 func (c *Canon) GetExternalTcReason() (int32, error) { return 0, nil }
 

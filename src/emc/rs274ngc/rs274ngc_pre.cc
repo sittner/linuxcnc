@@ -1322,33 +1322,24 @@ void Interp::set_loop_on_main_m99(bool state) {
 
 /*! Interp::load_tool_table
 
-Returned Value: int
-   If any of the following errors occur, this returns the error code shown.
-   Otherwise, this returns INTERP_OK.
-   1. _setup.tool_max is larger than CANON_TOOL_MAX: NCE_TOOL_MAX_TOO_LARGE
+Returned Value: int (INTERP_OK)
 
 Side Effects:
-   _setup.tool_table[] is modified.
+   _setup.tool_table[0] is loaded (current spindle tool).
+   Tool parameters (#5400-#5413) are updated.
 
 Called By:
    Interp::synch
    external programs
 
-This function calls the canonical interface function GET_EXTERNAL_TOOL_TABLE
-to load the whole tool table into the _setup.
-
-The CANON_TOOL_MAX is an upper limit for this software. The
-_setup.tool_max is intended to be set for a particular machine.
+Loads the current spindle tool (pocket 0) from the canon callback.
+Individual tools are fetched on-demand by find_tool_index/find_tool_pocket.
 
 */
 
 int Interp::load_tool_table()
 {
-  int n;
-
-  for (n = 0; n < CANON_POCKETS_MAX; n++) {
-    _setup.tool_table[n] = _setup.canon.get_external_tool_table(n);
-  }
+  _setup.tool_table[0] = _setup.canon.get_external_tool_table(0);
   set_tool_parameters();
   return INTERP_OK;
 }

@@ -269,6 +269,27 @@ public:
         return t;
     }
 
+    // Looks up a tool by toolno. Returns true if found, false otherwise.
+    bool get_tool_by_number(int32_t toolno, CANON_TOOL_TABLE *t) {
+        double offset[9];
+        int32_t ret = cb->get_tool_by_number(cb->ctx, toolno,
+            &t->pocketno, offset, &t->diameter, &t->frontangle, &t->backangle,
+            &t->orientation);
+        if (ret != 0)
+            return false;
+        t->toolno = toolno;
+        t->offset.tran.x = offset[0];
+        t->offset.tran.y = offset[1];
+        t->offset.tran.z = offset[2];
+        t->offset.a = offset[3];
+        t->offset.b = offset[4];
+        t->offset.c = offset[5];
+        t->offset.u = offset[6];
+        t->offset.v = offset[7];
+        t->offset.w = offset[8];
+        return true;
+    }
+
     // Reconstructs EmcPose from out-parameter array
     EmcPose get_external_offsets() {
         EmcPose p;
