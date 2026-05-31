@@ -38,7 +38,7 @@ $(call TOOBJSDEPS, $(LIBRS274SRCS)): gomc/generated/gmi/interp_ext/interp_ext_ap
 TARGETS += ../lib/librs274.so ../lib/librs274.so.0
 
 ../lib/librs274.so.0: $(patsubst %.cc,objects/%.o,$(LIBRS274SRCS)) \
-	../lib/liblinuxcncini.so ../lib/liblinuxcnchal.so.0
+	../lib/liblinuxcnchal.so.0
 	$(ECHO) Linking $(notdir $@)
 	@mkdir -p ../lib
 	@rm -f $@

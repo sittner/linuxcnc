@@ -1,59 +1,5 @@
 
 
-# milltask.so — cmod plugin variant (uses gomc API, no liblinuxcnchal)
-MILLTASK_GOMC_SRCS := \
-	emc/motion/emcmotglb.c \
-	emc/task/emctask.cc \
-	emc/task/emccanon.cc \
-	emc/task/emctaskmain_gomc.cc \
-	emc/task/taskintf_gomc.cc \
-	emc/task/taskclass_gmi.cc \
-	emc/task/backtrace.cc \
-	emc/task/inihal_gomc.cc \
-	emc/task/initraj_gomc.cc \
-	emc/task/inijoint_gomc.cc \
-	emc/task/iniaxis_gomc.cc \
-	emc/task/inispindle_gomc.cc \
-	emc/task/emccmd_slot.cc \
-	emc/task/emccmd_handlers.cc \
-	emc/task/rcs_shim.cc \
-	libnml/linklist/linklist.cc \
-	emc/task/canon_position.cc \
-	emc/task/interpl.cc \
-	emc/task/emc_symbol_lookup.cc
-
-USERSRCS += $(MILLTASK_GOMC_SRCS)
-
-$(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): EXTRAFLAGS += -fPIC \
-    -Igomc/generated/gmi/mcode_handler -Igomc/generated/gmi/interp_ext -Igomc/generated/gmi/interp_ctx \
-    -Igomc/generated/gmi/emccmd -Igomc/generated/gmi/emcerror -Igomc/generated/gmi/emcstat \
-    -Igomc/generated/gmi/emcio \
-    -Igomc/generated/gmi/motctl -Igomc/generated/gmi/motstat \
-    -Igomc/pkg/cmodule
-
-# Generated GMI headers needed by milltask sources (bootstrap deps)
-$(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/canon/canon_api.h
-$(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/mcode_handler/mcode_handler_api.h
-$(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/interp_ext/interp_ext_api.h
-$(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/interp_ctx/interp_ctx_api.h
-$(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/emccmd/emccmd_api.h
-$(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/emcerror/emcerror_api.h
-$(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/emcstat/emcstat_api.h
-$(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/emcio/emcio_api.h
-$(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/motctl/motctl_api.h
-$(call TOOBJSDEPS, $(MILLTASK_GOMC_SRCS)): gomc/generated/gmi/motstat/motstat_api.h
-
-../cmod/milltask.so: $(call TOOBJS, $(MILLTASK_GOMC_SRCS)) \
-                     ../lib/librs274.so.0 \
-                     ../lib/liblinuxcncini.so.0 \
-                     ../lib/libposemath.so.0 \
-                     ../lib/libtooldata.so.0
-	$(ECHO) Linking $(notdir $@)
-	@mkdir -p ../cmod
-	@$(CXX) -shared -o $@ $^ $(LDFLAGS)
-# DISABLED: milltask is now a Go module (internal/task)
-#TARGETS += ../cmod/milltask.so
-
 # stdglue.so — standard remap prolog/epilog handlers
 STDGLUE_SRCS := emc/task/stdglue.c
 USERSRCS += $(STDGLUE_SRCS)

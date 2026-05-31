@@ -39,7 +39,6 @@
 #include "rs274ngc_return.hh"
 #include "interp_internal.hh"
 #include "rs274ngc_interp.hh"
-#include "inifile.hh"
 
 // for HAL pin variables
 #include "hal.h"
@@ -203,7 +202,7 @@ int Interp::fetch_ini_param( const char *nameBuf, int *status, double *value)
 	const char *section = &capName[5]; // after "_ini["
 	const char *key = &capName[closeBracket+1];
 
-	// Use accessor if available (multi-instance path)
+	// Use accessor for INI lookups
 	if (_setup.ini_accessor.get != NULL) {
 	    const char *val = _setup.ini_accessor.get(
 	        _setup.ini_accessor.ctx, section, key);
@@ -212,35 +211,13 @@ int Interp::fetch_ini_param( const char *nameBuf, int *status, double *value)
 	        *status = 1;
 	    } else {
 	        *status = 0;
-	        ERS(_("Named INI parameter #<%s> not found via accessor"),
+	        ERS(_("Named INI parameter #<%s> not found"),
 	            nameBuf);
 	    }
-	    return INTERP_OK;
-	}
-
-	// Legacy file-based path
-	IniFile inifile;
-	const char *iniFileName;
-	int retval;
-
-	if ((iniFileName = getenv("INI_FILE_NAME")) == NULL) {
-	    logNP("warning: referencing INI parameter '%s': no INI file",nameBuf);
-	    *status = 0;
-	    return INTERP_OK;
-	}
-	if (!inifile.Open(iniFileName)) {
-	    *status = 0;
-	    ERS(_("can\'t open INI file '%s'"), iniFileName);
-	}
-
-	if ((retval = inifile.Find( value, key, section)) == 0) {
-	    *status = 1;
-	    inifile.Close();
 	} else {
-	    inifile.Close();
 	    *status = 0;
-	    ERS(_("Named INI parameter #<%s> not found in INI file '%s': error=0x%x"),
-		nameBuf, iniFileName, retval);
+	    ERS(_("Named INI parameter #<%s>: no INI accessor configured"),
+	        nameBuf);
 	}
     }
     return INTERP_OK;
@@ -938,7 +915,7 @@ int Interp::init_named_parameters()
 
 double Interp::inicheck()
 {
-    // Use accessor if available (multi-instance path)
+    // Use accessor if available
     if (_setup.ini_accessor.get != NULL) {
         const char *val = _setup.ini_accessor.get(
             _setup.ini_accessor.ctx, "TRAJ", "LINEAR_UNITS");
@@ -946,31 +923,5 @@ double Interp::inicheck()
         if (!strcmp(val, "inch")) return 0.0;
         return 1.0;
     }
-
-    // Legacy file-based path
-    IniFile inifile;
-    const char *filename;
-    const char *inistring;
-    double result = -1.0;
-
-	if ((filename = getenv("INI_FILE_NAME")) == NULL) {
-	    return -1.0;
-    }
-
-    // open it
-    if (inifile.Open(filename) == false) {
-	    return -1.0;
-    }
-
-    if (NULL != (inistring = inifile.Find("LINEAR_UNITS", "TRAJ"))) {
-        if (!strcmp(inistring, "inch")) {
-             result = 0.0;
-        } else {
-            result = 1.0;
-        }
-    }
-    // close it
-    inifile.Close();
-
-    return result;
+    return -1.0;
 }

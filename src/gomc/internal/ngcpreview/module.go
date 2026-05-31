@@ -5,7 +5,7 @@ package ngcpreview
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../emc/rs274ngc -I${SRCDIR}/../../../emc/nml_intf -I${SRCDIR}/../../../emc/motion -I${SRCDIR}/../../../emc/task -I${SRCDIR}/../../../rtapi -I${SRCDIR}/../../../../include -I${SRCDIR}/../../generated/gmi/canon -I${SRCDIR}/../../.. -I${SRCDIR}/../../generated/gmi/interp_ext -I${SRCDIR}/../../generated/gmi/interp_ctx -I${SRCDIR}/../../pkg/cmodule
-#cgo LDFLAGS: -L${SRCDIR}/../../../../lib -Wl,--allow-shlib-undefined -lrs274 -lposemath -llinuxcncini -lstdc++ -lm
+#cgo LDFLAGS: -L${SRCDIR}/../../../../lib -Wl,--allow-shlib-undefined -lrs274 -lposemath -lstdc++ -lm
 
 #include <stdlib.h>
 #include <string.h>
