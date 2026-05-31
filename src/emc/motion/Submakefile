@@ -8,9 +8,8 @@ $(patsubst ./emc/motion/%,../include/%,$(wildcard ./emc/motion/*.hh)): ../includ
 # ---------------------------------------------------------------------------
 # cmod build: motmod.so
 # ---------------------------------------------------------------------------
-# Hybrid cmod — uses New/Destroy lifecycle but still links liblinuxcnchal
-# for HAL, RTAPI, and shmem functions. The RTMODULE build in src/Makefile
-# produces the legacy rtlib/motmod.so; this produces cmod/motmod.so.
+# Pure cmod — uses New/Destroy lifecycle with gomc_hal/gomc_log/gomc_rtapi
+# callbacks.  No direct link to liblinuxcnchal.
 # ---------------------------------------------------------------------------
 
 ifeq ($(BUILD_GOLANG),yes)
@@ -42,12 +41,12 @@ MOTMOD_CMOD_CFLAGS := \
                    gomc/generated/gmi/mot/mot_api.h \
                    gomc/generated/gmi/motctl/motctl_api.h \
                    gomc/generated/gmi/motstat/motstat_api.h \
-                   | headers ../lib/liblinuxcnchal.so
+                   | headers
 	$(ECHO) "Compiling cmod motmod.so"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(MOTMOD_CMOD_CFLAGS) \
 	    -o $@ $(MOTMOD_CMOD_SRCS) \
-	    -L../lib -llinuxcnchal -lm
+	    -lm
 
 TARGETS += ../cmod/motmod.so
 modules: ../cmod/motmod.so

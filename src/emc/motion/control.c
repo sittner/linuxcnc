@@ -21,8 +21,6 @@
 #endif
 
 #include "posemath.h"
-#include "rtapi.h"
-#include "hal.h"
 #include "motion.h"
 #include "mot_priv.h"
 #include "rtapi_math.h"
@@ -213,7 +211,7 @@ void emcmotController(void *arg, long period)
         pcmd_p[8] = &(inst->status->carte_pos_cmd.w);
     }
 
-    long long int now = rtapi_get_clocks();
+    long long int now = inst->rtapi->get_time(inst->rtapi->ctx);
     long int this_run = (long int)(now - inst->last_clocks);
     *(inst->hal_data->last_period) = this_run;
 
@@ -303,7 +301,7 @@ static void handle_kinematicsSwitch(motmod_inst_t *inst) {
     }
 
     if (motmod_kinematicsSwitch(inst, ctl_switchkins_type)) {
-        rtapi_print_msg(RTAPI_MSG_ERR,"kinematicsSwitch() FAIL<%f>\n",
+        gomc_log_errorf(inst->log, inst->name, "kinematicsSwitch() FAIL<%f>\n",
                         *inst->hal_data->switchkins_type);
         SET_MOTION_ERROR_FLAG(1);  // abort
         return; // no updates for abort
@@ -511,7 +509,7 @@ static void process_inputs(motmod_inst_t *inst)
 				*(inst->hal_data->spindle[spindle_num].spindle_orient) = 0;
 				inst->status->spindle_status[spindle_num].orient_fault =
 						*(inst->hal_data->spindle[spindle_num].spindle_orient_fault);
-				rtapi_print_msg(RTAPI_MSG_ERR, _("fault %d during orient in progress"),
+				gomc_log_errorf(inst->log, inst->name, _("fault %d during orient in progress"),
 						inst->status->spindle_status[spindle_num].orient_fault);
 				inst->status->commandStatus = EMCMOT_COMMAND_INVALID_COMMAND;
 				inst->tp_api->abort(inst->tp_api->ctx);
@@ -522,7 +520,7 @@ static void process_inputs(motmod_inst_t *inst)
 				inst->status->spindle_status[spindle_num].locked = 1;
 				inst->status->spindle_status[spindle_num].brake = 1;
 				inst->status->spindle_status[spindle_num].orient_state = EMCMOT_ORIENT_COMPLETE;
-				rtapi_print_msg(RTAPI_MSG_DBG, "SPINDLE_ORIENT complete, spindle locked");
+				gomc_log_debugf(inst->log, inst->name, "SPINDLE_ORIENT complete, spindle locked");
 			}
 		}
     }
@@ -531,9 +529,9 @@ static void process_inputs(motmod_inst_t *inst)
         joint_jog_abort_all(inst, *(inst->hal_data->jog_stop_immediate));
         axis_jog_abort_all(ai, *(inst->hal_data->jog_stop_immediate));
         if (*(inst->hal_data->jog_stop_immediate)) {
-          rtapi_print_msg(RTAPI_MSG_ERR, "Jog aborted by jog-stop-immediate");
+          gomc_log_errorf(inst->log, inst->name, "Jog aborted by jog-stop-immediate");
         } else {
-          rtapi_print_msg(RTAPI_MSG_ERR, "Jog aborted by jog-stop");
+          gomc_log_errorf(inst->log, inst->name, "Jog aborted by jog-stop");
         }
     }
 }
@@ -694,10 +692,10 @@ static void process_probe_inputs(motmod_inst_t *inst)
             if (probe_suppress) {
                 inst->status->probeTripped = 0;
             } else if(probe_whenclears) {
-                rtapi_print_msg(RTAPI_MSG_ERR, _("G38.4 move finished without breaking contact."));
+                gomc_log_errorf(inst->log, inst->name, _("G38.4 move finished without breaking contact."));
                 SET_MOTION_ERROR_FLAG(1);
             } else {
-                rtapi_print_msg(RTAPI_MSG_ERR, _("G38.2 move finished without making contact."));
+                gomc_log_errorf(inst->log, inst->name, _("G38.2 move finished without making contact."));
                 SET_MOTION_ERROR_FLAG(1);
             }
         }
@@ -709,7 +707,7 @@ static void process_probe_inputs(motmod_inst_t *inst)
             // running an command
             if (inst->status->motionType != EMC_MOTION_TYPE_PROBING) {
                 inst->tp_api->abort(inst->tp_api->ctx);
-                rtapi_print_msg(RTAPI_MSG_ERR, _("Probe tripped during non-probe move."));
+                gomc_log_errorf(inst->log, inst->name, _("Probe tripped during non-probe move."));
                 SET_MOTION_ERROR_FLAG(1);
             }
         } else {
@@ -752,14 +750,14 @@ static void process_probe_inputs(motmod_inst_t *inst)
             }
 
             if(aborted == 1) {
-                rtapi_print_msg(RTAPI_MSG_ERR, _("Probe tripped during homing motion."));
+                gomc_log_errorf(inst->log, inst->name, _("Probe tripped during homing motion."));
             }
 
             if(aborted == 2) {
-                rtapi_print_msg(RTAPI_MSG_ERR, _("Probe tripped during a joint jog."));
+                gomc_log_errorf(inst->log, inst->name, _("Probe tripped during a joint jog."));
             }
             if(aborted == 3) {
-                rtapi_print_msg(RTAPI_MSG_ERR, _("Probe tripped during a coordinate jog."));
+                gomc_log_errorf(inst->log, inst->name, _("Probe tripped during a coordinate jog."));
             }
         }
     }
@@ -777,14 +775,14 @@ static void check_for_faults(motmod_inst_t *inst)
     /* only check enable input if running */
     if ( GET_MOTION_ENABLE_FLAG() != 0 ) {
 	if ( *(inst->hal_data->enable) == 0 ) {
-	    rtapi_print_msg(RTAPI_MSG_ERR, _("motion stopped by enable input"));
+	    gomc_log_errorf(inst->log, inst->name, _("motion stopped by enable input"));
 	    inst->internal->enabling = 0;
 	}
     }
     /* check for spindle ampfifier errors */
     for (spindle_num = 0; spindle_num < inst->config->numSpindles; spindle_num++){
         if(inst->status->spindle_status[spindle_num].fault && GET_MOTION_ENABLE_FLAG()){
-            rtapi_print_msg(RTAPI_MSG_ERR, _("spindle %d amplifier fault"), spindle_num);
+            gomc_log_errorf(inst->log, inst->name, _("spindle %d amplifier fault"), spindle_num);
             inst->internal->enabling = 0;
         }
     }
@@ -807,7 +805,7 @@ static void check_for_faults(motmod_inst_t *inst)
 		    /* trip on limits */
 		    if (!GET_JOINT_ERROR_FLAG(joint)) {
 			/* report the error just this once */
-			rtapi_print_msg(RTAPI_MSG_ERR, _("joint %d on limit switch error"),
+			gomc_log_errorf(inst->log, inst->name, _("joint %d on limit switch error"),
 			    joint_num);
 		    }
 		    SET_JOINT_ERROR_FLAG(joint, 1);
@@ -819,7 +817,7 @@ static void check_for_faults(motmod_inst_t *inst)
 		/* joint is faulted, trip */
 		if (!GET_JOINT_ERROR_FLAG(joint)) {
 		    /* report the error just this once */
-		    rtapi_print_msg(RTAPI_MSG_ERR, _("joint %d amplifier fault"), joint_num);
+		    gomc_log_errorf(inst->log, inst->name, _("joint %d amplifier fault"), joint_num);
 		}
 		SET_JOINT_ERROR_FLAG(joint, 1);
 		inst->internal->enabling = 0;
@@ -828,7 +826,7 @@ static void check_for_faults(motmod_inst_t *inst)
 	    if (GET_JOINT_FERROR_FLAG(joint)) {
 		if (!GET_JOINT_ERROR_FLAG(joint)) {
 		    /* report the error just this once */
-		    rtapi_print_msg(RTAPI_MSG_ERR, _("joint %d following error"), joint_num);
+		    gomc_log_errorf(inst->log, inst->name, _("joint %d following error"), joint_num);
 		}
 		SET_JOINT_ERROR_FLAG(joint, 1);
 		inst->internal->enabling = 0;
@@ -841,7 +839,7 @@ static void check_for_faults(motmod_inst_t *inst)
     /* Check Miscellaneous faults */
     for (error_num=0; error_num < inst->config->numMiscError; error_num++){
       if(inst->status->misc_error[error_num] && GET_MOTION_ENABLE_FLAG()) {
-        rtapi_print_msg(RTAPI_MSG_ERR, _("Motion Stopped by misc error %d"), error_num);
+        gomc_log_errorf(inst->log, inst->name, _("Motion Stopped by misc error %d"), error_num);
         inst->internal->enabling = 0;
       }
     }
@@ -884,7 +882,7 @@ static void set_operating_mode(motmod_inst_t *inst)
     /* check for inst->internal->enabling */
     if (inst->internal->enabling && !GET_MOTION_ENABLE_FLAG()) {
         if (*(inst->hal_data->eoffset_limited)) {
-            rtapi_print_msg(RTAPI_MSG_ERR, "Note: Motion enabled after reaching a coordinate "
+            gomc_log_errorf(inst->log, inst->name, "Note: Motion enabled after reaching a coordinate "
                         "soft limit with active external offsets");
             *(inst->hal_data->eoffset_limited) = 0;
         }
@@ -1090,17 +1088,17 @@ static void handle_jjogwheels(motmod_inst_t *inst)
 	    break;
 	}
         if (inst->home_api->get_needs_unlock_first(inst->home_api->ctx, joint_num) ) {
-            rtapi_print_msg(RTAPI_MSG_ERR, "Can't wheel jog locking joint_num=%d",joint_num);
+            gomc_log_errorf(inst->log, inst->name, "Can't wheel jog locking joint_num=%d",joint_num);
             continue;
         }
         if (inst->home_api->get_is_synchronized(inst->home_api->ctx, joint_num)) {
             if (inst->config->kinType == KINEMATICS_IDENTITY) {
-                rtapi_print_msg(RTAPI_MSG_ERR,
+                gomc_log_errorf(inst->log, inst->name, 
                 "Homing is REQUIRED to wheel jog requested coordinate\n"
                 "because joint (%d) home_sequence is synchronized (%d)\n"
                 ,joint_num,inst->home_api->get_sequence(inst->home_api->ctx, joint_num) );
             } else {
-                rtapi_print_msg(RTAPI_MSG_ERR,
+                gomc_log_errorf(inst->log, inst->name, 
                 "Cannot wheel jog joint %d because home_sequence synchronized (%d)\n"
                 ,joint_num,inst->home_api->get_sequence(inst->home_api->ctx, joint_num) );
             }
@@ -1211,7 +1209,7 @@ void jerk_filter_recompute_window(motmod_inst_t *inst)
         inst->jerk_filter.buf = rtapi_calloc((size_t)nj * max_window * sizeof(double));
         inst->jerk_filter.sum = rtapi_calloc((size_t)nj * sizeof(double));
         if (!inst->jerk_filter.buf || !inst->jerk_filter.sum) {
-            rtapi_print_msg(RTAPI_MSG_ERR,
+            gomc_log_errorf(inst->log, inst->name, 
                 "MOTION: jerk filter alloc failed (joints=%d window=%d)\n", nj, max_window);
             /* Fall back to disabled */
             if (inst->jerk_filter.buf) { rtapi_free(inst->jerk_filter.buf); inst->jerk_filter.buf = NULL; }
@@ -1447,7 +1445,7 @@ static void get_pos_cmds(motmod_inst_t *inst, long period)
 		for (joint_num = 0; joint_num < NO_OF_KINS_JOINTS; joint_num++) {
 		    if(!isfinite(positions[joint_num]))
 		    {
-                       rtapi_print_msg(RTAPI_MSG_ERR, _("kinematicsInverse gave non-finite joint location on joint %d"),
+                       gomc_log_errorf(inst->log, inst->name, _("kinematicsInverse gave non-finite joint location on joint %d"),
                            joint_num);
                        SET_MOTION_ERROR_FLAG(1);
                        inst->internal->enabling = 0;
@@ -1464,7 +1462,7 @@ static void get_pos_cmds(motmod_inst_t *inst, long period)
 	    }
 	    else
 	    {
-	       rtapi_print_msg(RTAPI_MSG_ERR, _("kinematicsInverse failed"));
+	       gomc_log_errorf(inst->log, inst->name, _("kinematicsInverse failed"));
 	       SET_MOTION_ERROR_FLAG(1);
 	       inst->internal->enabling = 0;
 	       break;
@@ -1517,7 +1515,7 @@ static void get_pos_cmds(motmod_inst_t *inst, long period)
 	    for (joint_num = 0; joint_num < NO_OF_KINS_JOINTS; joint_num++) {
 		if(!isfinite(positions[joint_num]))
 		{
-		   rtapi_print_msg(RTAPI_MSG_ERR, _("kinematicsInverse gave non-finite joint location on joint %d"),
+		   gomc_log_errorf(inst->log, inst->name, _("kinematicsInverse gave non-finite joint location on joint %d"),
 		         joint_num);
 		   SET_MOTION_ERROR_FLAG(1);
 		   inst->internal->enabling = 0;
@@ -1536,7 +1534,7 @@ static void get_pos_cmds(motmod_inst_t *inst, long period)
 	}
 	else
 	{
-	   rtapi_print_msg(RTAPI_MSG_ERR, _("kinematicsInverse failed"));
+	   gomc_log_errorf(inst->log, inst->name, _("kinematicsInverse failed"));
 	   SET_MOTION_ERROR_FLAG(1);
 	   inst->internal->enabling = 0;
 	   break;
@@ -1625,21 +1623,21 @@ static void get_pos_cmds(motmod_inst_t *inst, long period)
 	    for (joint_num = 0; joint_num < inst->config->numJoints; joint_num++) {
 	        if (joint_limit[joint_num][0] == 1) {
                     joint = &inst->joints[joint_num];
-                    rtapi_print_msg(RTAPI_MSG_ERR, _("Exceeded NEGATIVE soft limit (%.5f) on joint %d\n"),
+                    gomc_log_errorf(inst->log, inst->name, _("Exceeded NEGATIVE soft limit (%.5f) on joint %d"),
                                   joint->min_pos_limit, joint_num);
                     if (inst->config->kinType == KINEMATICS_IDENTITY) {
-                        rtapi_print_msg(RTAPI_MSG_ERR, _("Joint must be unhomed, jogged into limits, rehomed"));
+                        gomc_log_errorf(inst->log, inst->name, _("Joint must be unhomed, jogged into limits, rehomed"));
                     } else {
-                        rtapi_print_msg(RTAPI_MSG_ERR, _("Hint: switch to joint mode to jog off soft limit"));
+                        gomc_log_errorf(inst->log, inst->name, _("Hint: switch to joint mode to jog off soft limit"));
                     }
                 } else if (joint_limit[joint_num][1] == 1) {
                     joint = &inst->joints[joint_num];
-                    rtapi_print_msg(RTAPI_MSG_ERR, _("Exceeded POSITIVE soft limit (%.5f) on joint %d\n"),
+                    gomc_log_errorf(inst->log, inst->name, _("Exceeded POSITIVE soft limit (%.5f) on joint %d"),
                                   joint->max_pos_limit,joint_num);
                     if (inst->config->kinType == KINEMATICS_IDENTITY) {
-                        rtapi_print_msg(RTAPI_MSG_ERR, _("Joint must be unhomed, jogged into limits, rehomed"));
+                        gomc_log_errorf(inst->log, inst->name, _("Joint must be unhomed, jogged into limits, rehomed"));
                     } else {
-                        rtapi_print_msg(RTAPI_MSG_ERR, _("Hint: switch to joint mode to jog off soft limit"));
+                        gomc_log_errorf(inst->log, inst->name, _("Hint: switch to joint mode to jog off soft limit"));
                     }
                 }
 	    }
@@ -2076,7 +2074,7 @@ static void output_to_hal(motmod_inst_t *inst)
 		if(inst->status->spindle_status[spindle_num].spindle_index_enable
 				&& !old_motion_index[spindle_num]) {
 			*inst->hal_data->spindle[spindle_num].spindle_index_enable = 1;
-			rtapi_print_msg(RTAPI_MSG_DBG, "setting index-enable on spindle %d\n", spindle_num);
+			gomc_log_debugf(inst->log, inst->name, "setting index-enable on spindle %d\n", spindle_num);
 		}
 
 		if(!*inst->hal_data->spindle[spindle_num].spindle_index_enable
@@ -2185,7 +2183,7 @@ static void update_status(motmod_inst_t *inst)
 #ifdef WATCH_FLAGS
 	/*! \todo FIXME - this is for debugging */
 	if ( old_joint_flags[joint_num] != joint->flag ) {
-	    rtapi_print ( "Joint %d flag %04X -> %04X\n", joint_num, old_joint_flags[joint_num], joint->flag );
+	    gomc_log_debugf(inst->log, inst->name, "Joint %d flag %04X -> %04X", joint_num, old_joint_flags[joint_num], joint->flag);
 	    old_joint_flags[joint_num] = joint->flag;
 	}
 #endif
@@ -2273,7 +2271,7 @@ static void update_status(motmod_inst_t *inst)
 #ifdef WATCH_FLAGS
     /*! \todo FIXME - this is for debugging */
     if ( *old_motion_flag_p != inst->status->motionFlag ) {
-	rtapi_print ( "Motion flag %04X -> %04X\n", *old_motion_flag_p, inst->status->motionFlag );
+	gomc_log_debugf(inst->log, inst->name, "Motion flag %04X -> %04X", *old_motion_flag_p, inst->status->motionFlag);
 	*old_motion_flag_p = inst->status->motionFlag;
     }
 #endif

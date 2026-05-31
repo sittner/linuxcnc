@@ -12,6 +12,7 @@
 #include "mot_hal_types.h"
 #include "gomc_hal.h"
 #include "gomc_log.h"
+#include "gomc_rtapi.h"
 #include "kins_api.h"
 #include "tp_api.h"
 #include "home_api.h"
@@ -30,6 +31,7 @@ typedef struct motmod_inst {
     const char *name;
     const gomc_hal_t *hal;
     const gomc_log_t *log;
+    const gomc_rtapi_t *rtapi;
     char pin_prefix[HAL_NAME_LEN]; /* "name." when aliased, "" when default */
     char kins_inst_name[HAL_NAME_LEN];
     char tp_inst_name[HAL_NAME_LEN];
@@ -165,7 +167,7 @@ int joint_is_lockable(motmod_inst_t *inst, int joint_num);
 #define IS_EXTRA_JOINT(jno) (jno >= NO_OF_KINS_JOINTS)
 
  /* rtapi_get_time() returns a nanosecond value. */
-#define etime() (((double) rtapi_get_time()) / 1.0e9)
+#define etime() (((double) inst->rtapi->get_time(inst->rtapi->ctx)) / 1.0e9)
 
 /* motion flags */
 #define GET_MOTION_ERROR_FLAG() (inst->status->motionFlag & EMCMOT_MOTION_ERROR_BIT ? 1 : 0)

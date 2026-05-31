@@ -15,9 +15,7 @@
 #include "gomc_env.h"
 #include "kins_api.h"
 #include "mot_api.h"
-#include "rtapi.h"		/* RTAPI realtime OS API */
-#include "rtapi_string.h"       /* memset */
-#include "hal.h"		/* decls for HAL implementation */
+#include <string.h>
 #include "motion.h"
 #include "motion_struct.h"
 #include "mot_priv.h"
@@ -691,6 +689,7 @@ int New(const cmod_env_t *env, const char *name,
     inst->name = name;
     inst->hal = env->hal;
     inst->log = env->log;
+    inst->rtapi = env->rtapi;
     inst->ctl_first_pass = 1;
 
     /* Defaults for module parameters (overridden by parse_argv) */
@@ -1269,7 +1268,7 @@ static int init_hal_io(motmod_inst_t *inst)
         }
     }
 
-    CALL_CHECK(axis_init_hal_io((axis_inst_t *)inst->axis_inst, inst->comp_id, inst->pin_prefix));
+    CALL_CHECK(axis_init_hal_io((axis_inst_t *)inst->axis_inst, inst->hal, inst->log, inst->comp_id, inst->pin_prefix));
 
     CALL_CHECK(gomc_hal_pin_bit_newf(hal, GOMC_HAL_OUT, (gomc_hal_bit_t **)&(inst->hal_data->eoffset_limited), inst->comp_id, PFMT("motion.eoffset-limited")));
     CALL_CHECK(gomc_hal_pin_bit_newf(hal, GOMC_HAL_OUT, (gomc_hal_bit_t **)&(inst->hal_data->eoffset_active), inst->comp_id, PFMT("motion.eoffset-active")));

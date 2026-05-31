@@ -3,6 +3,8 @@
 
 #include "rtapi_bool.h"
 #include "hal.h"
+#include "gomc_hal.h"
+#include "gomc_log.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -16,7 +18,8 @@ void axis_inst_free(axis_inst_t *ai);
 
 void axis_init_all(axis_inst_t *ai);
 void axis_initialize_external_offsets(axis_inst_t *ai);
-int axis_init_hal_io(axis_inst_t *ai, int mot_comp_id, const char *pin_prefix);
+int axis_init_hal_io(axis_inst_t *ai, const gomc_hal_t *hal, const gomc_log_t *log,
+                     int comp_id, const char *pin_prefix);
 
 void axis_handle_jogwheels(axis_inst_t *ai, bool motion_teleop_flag, bool motion_enable_flag, bool homing_is_active);
 bool axis_plan_external_offsets(axis_inst_t *ai, double servo_period, bool motion_enable_flag, bool all_homed);
