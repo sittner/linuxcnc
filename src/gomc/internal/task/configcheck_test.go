@@ -1,4 +1,4 @@
-package configcheck
+package task
 
 import (
 	"os"
@@ -9,8 +9,8 @@ import (
 	"github.com/sittner/linuxcnc/src/gomc/pkg/inifile"
 )
 
-// parseINI is a test helper that writes INI content to a temp file and parses it.
-func parseINI(t *testing.T, content string) *inifile.IniFile {
+// parseTestINI is a test helper that writes INI content to a temp file and parses it.
+func parseTestINI(t *testing.T, content string) *inifile.IniFile {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.ini")
@@ -24,8 +24,8 @@ func parseINI(t *testing.T, content string) *inifile.IniFile {
 	return ini
 }
 
-// containsString returns true if any element in ss contains substr.
-func containsString(ss []string, substr string) bool {
+// ccContainsString returns true if any element in ss contains substr.
+func ccContainsString(ss []string, substr string) bool {
 	for _, s := range ss {
 		if strings.Contains(s, substr) {
 			return true
@@ -34,60 +34,54 @@ func containsString(ss []string, substr string) bool {
 	return false
 }
 
-func TestCheck_MissingKinematics(t *testing.T) {
-	ini := parseINI(t, `[EMC]
+func TestConfigCheck_NoKinematics_SkipsValidation(t *testing.T) {
+	ini := parseTestINI(t, `[EMC]
 MACHINE = Test
 `)
-	r, err := Check(ini)
+	r, err := runConfigCheck(ini)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !r.HasErrors() {
-		t.Fatal("expected errors for missing [KINS]KINEMATICS and JOINTS")
-	}
-	if !containsString(r.Errors, "Missing [KINS]KINEMATICS=") {
-		t.Error("expected missing KINEMATICS error")
-	}
-	if !containsString(r.Errors, "Missing [KINS]JOINTS=") {
-		t.Error("expected missing JOINTS error")
+	if r.hasErrors() {
+		t.Errorf("configs without [KINS] should pass cleanly, got errors: %v", r.Errors)
 	}
 }
 
-func TestCheck_MissingJointsOnly(t *testing.T) {
-	ini := parseINI(t, `[KINS]
+func TestConfigCheck_MissingJointsOnly(t *testing.T) {
+	ini := parseTestINI(t, `[KINS]
 KINEMATICS = trivkins
 `)
-	r, err := Check(ini)
+	r, err := runConfigCheck(ini)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !r.HasErrors() {
+	if !r.hasErrors() {
 		t.Fatal("expected error for missing [KINS]JOINTS")
 	}
-	if containsString(r.Errors, "KINEMATICS") {
-		t.Error("should not complain about KINEMATICS when it is present")
+	if !ccContainsString(r.Errors, "JOINTS") {
+		t.Error("expected JOINTS error")
 	}
 }
 
-func TestCheck_NonTrivkins(t *testing.T) {
-	ini := parseINI(t, `[KINS]
+func TestConfigCheck_NonTrivkins(t *testing.T) {
+	ini := parseTestINI(t, `[KINS]
 KINEMATICS = genserkins
 JOINTS = 6
 `)
-	r, err := Check(ini)
+	r, err := runConfigCheck(ini)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if r.HasErrors() {
+	if r.hasErrors() {
 		t.Errorf("non-trivkins should not produce errors, got: %v", r.Errors)
 	}
-	if !containsString(r.Warnings, "Unchecked") {
+	if !ccContainsString(r.Warnings, "Unchecked") {
 		t.Error("expected 'Unchecked' warning for non-trivkins")
 	}
 }
 
-func TestCheck_TrivkinsHappyPath(t *testing.T) {
-	ini := parseINI(t, `[KINS]
+func TestConfigCheck_TrivkinsHappyPath(t *testing.T) {
+	ini := parseTestINI(t, `[KINS]
 KINEMATICS = trivkins coordinates=XZ
 JOINTS = 2
 
@@ -118,11 +112,11 @@ MAX_ACCELERATION = 100
 MIN_LIMIT = -5
 MAX_LIMIT = 5
 `)
-	r, err := Check(ini)
+	r, err := runConfigCheck(ini)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if r.HasErrors() {
+	if r.hasErrors() {
 		t.Errorf("happy path should have no errors, got: %v", r.Errors)
 	}
 	if len(r.Warnings) > 0 {
@@ -130,8 +124,8 @@ MAX_LIMIT = 5
 	}
 }
 
-func TestCheck_JointMinLimitGreaterThanAxis(t *testing.T) {
-	ini := parseINI(t, `[KINS]
+func TestConfigCheck_JointMinLimitGreaterThanAxis(t *testing.T) {
+	ini := parseTestINI(t, `[KINS]
 KINEMATICS = trivkins coordinates=X
 JOINTS = 1
 
@@ -150,20 +144,20 @@ MAX_ACCELERATION = 100
 MIN_LIMIT = -10
 MAX_LIMIT = 10
 `)
-	r, err := Check(ini)
+	r, err := runConfigCheck(ini)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !r.HasErrors() {
+	if !r.hasErrors() {
 		t.Fatal("expected error for JOINT_0 MIN_LIMIT > AXIS_X MIN_LIMIT")
 	}
-	if !containsString(r.Errors, "[JOINT_0]MIN_LIMIT > [AXIS_X]MIN_LIMIT") {
+	if !ccContainsString(r.Errors, "[JOINT_0]MIN_LIMIT > [AXIS_X]MIN_LIMIT") {
 		t.Errorf("expected MIN_LIMIT error, got: %v", r.Errors)
 	}
 }
 
-func TestCheck_JointMaxLimitLessThanAxis(t *testing.T) {
-	ini := parseINI(t, `[KINS]
+func TestConfigCheck_JointMaxLimitLessThanAxis(t *testing.T) {
+	ini := parseTestINI(t, `[KINS]
 KINEMATICS = trivkins coordinates=X
 JOINTS = 1
 
@@ -182,20 +176,20 @@ MAX_ACCELERATION = 100
 MIN_LIMIT = -10
 MAX_LIMIT = 10
 `)
-	r, err := Check(ini)
+	r, err := runConfigCheck(ini)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !r.HasErrors() {
+	if !r.hasErrors() {
 		t.Fatal("expected error for JOINT_0 MAX_LIMIT < AXIS_X MAX_LIMIT")
 	}
-	if !containsString(r.Errors, "[JOINT_0]MAX_LIMIT < [AXIS_X]MAX_LIMIT") {
+	if !ccContainsString(r.Errors, "[JOINT_0]MAX_LIMIT < [AXIS_X]MAX_LIMIT") {
 		t.Errorf("expected MAX_LIMIT error, got: %v", r.Errors)
 	}
 }
 
-func TestCheck_ExtraJointsWarning(t *testing.T) {
-	ini := parseINI(t, `[KINS]
+func TestConfigCheck_ExtraJointsWarning(t *testing.T) {
+	ini := parseTestINI(t, `[KINS]
 KINEMATICS = trivkins coordinates=X
 JOINTS = 3
 
@@ -225,17 +219,17 @@ MAX_ACCELERATION = 100
 MIN_LIMIT = -10
 MAX_LIMIT = 10
 `)
-	r, err := Check(ini)
+	r, err := runConfigCheck(ini)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !containsString(r.Warnings, "Extra joints specified=2") {
+	if !ccContainsString(r.Warnings, "Extra joints specified=2") {
 		t.Errorf("expected extra joints warning, got warnings: %v", r.Warnings)
 	}
 }
 
-func TestCheck_MultipleValuesWarning(t *testing.T) {
-	ini := parseINI(t, `[KINS]
+func TestConfigCheck_MultipleValuesWarning(t *testing.T) {
+	ini := parseTestINI(t, `[KINS]
 KINEMATICS = trivkins coordinates=X
 JOINTS = 1
 
@@ -255,17 +249,17 @@ MAX_ACCELERATION = 100
 MIN_LIMIT = -10
 MAX_LIMIT = 10
 `)
-	r, err := Check(ini)
+	r, err := runConfigCheck(ini)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !containsString(r.Warnings, "Unexpected multiple values [JOINT_0]MAX_VELOCITY") {
+	if !ccContainsString(r.Warnings, "Unexpected multiple values [JOINT_0]MAX_VELOCITY") {
 		t.Errorf("expected multiple values warning, got warnings: %v", r.Warnings)
 	}
 }
 
-func TestCheck_InconsistentCoordinates(t *testing.T) {
-	ini := parseINI(t, `[KINS]
+func TestConfigCheck_InconsistentCoordinates(t *testing.T) {
+	ini := parseTestINI(t, `[KINS]
 KINEMATICS = trivkins coordinates=XZ
 JOINTS = 2
 
@@ -296,17 +290,17 @@ MAX_ACCELERATION = 100
 MIN_LIMIT = -5
 MAX_LIMIT = 5
 `)
-	r, err := Check(ini)
+	r, err := runConfigCheck(ini)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !containsString(r.Warnings, "INCONSISTENT") {
+	if !ccContainsString(r.Warnings, "INCONSISTENT") {
 		t.Errorf("expected inconsistent coordinates warning, got warnings: %v", r.Warnings)
 	}
 }
 
-func TestCheck_MissingVelocityAcceleration(t *testing.T) {
-	ini := parseINI(t, `[KINS]
+func TestConfigCheck_MissingVelocityAcceleration(t *testing.T) {
+	ini := parseTestINI(t, `[KINS]
 KINEMATICS = trivkins coordinates=X
 JOINTS = 1
 
@@ -321,31 +315,29 @@ MAX_LIMIT = 10
 MIN_LIMIT = -10
 MAX_LIMIT = 10
 `)
-	r, err := Check(ini)
+	r, err := runConfigCheck(ini)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if r.HasErrors() {
+	if r.hasErrors() {
 		t.Errorf("missing velocity/accel should not be errors, got: %v", r.Errors)
 	}
-	if !containsString(r.Warnings, "Unspecified [JOINT_0]MAX_VELOCITY") {
+	if !ccContainsString(r.Warnings, "Unspecified [JOINT_0]MAX_VELOCITY") {
 		t.Error("expected warning for missing JOINT_0 MAX_VELOCITY")
 	}
-	if !containsString(r.Warnings, "Unspecified [JOINT_0]MAX_ACCELERATION") {
+	if !ccContainsString(r.Warnings, "Unspecified [JOINT_0]MAX_ACCELERATION") {
 		t.Error("expected warning for missing JOINT_0 MAX_ACCELERATION")
 	}
-	if !containsString(r.Warnings, "Unspecified [AXIS_X]MAX_VELOCITY") {
+	if !ccContainsString(r.Warnings, "Unspecified [AXIS_X]MAX_VELOCITY") {
 		t.Error("expected warning for missing AXIS_X MAX_VELOCITY")
 	}
-	if !containsString(r.Warnings, "Unspecified [AXIS_X]MAX_ACCELERATION") {
+	if !ccContainsString(r.Warnings, "Unspecified [AXIS_X]MAX_ACCELERATION") {
 		t.Error("expected warning for missing AXIS_X MAX_ACCELERATION")
 	}
 }
 
-func TestCheck_DefaultCoordinates(t *testing.T) {
-	// When coordinates= is not specified, all 9 axes are assumed,
-	// and [TRAJ]COORDINATES consistency check is skipped.
-	ini := parseINI(t, `[KINS]
+func TestConfigCheck_DefaultCoordinates(t *testing.T) {
+	ini := parseTestINI(t, `[KINS]
 KINEMATICS = trivkins
 JOINTS = 3
 
@@ -384,23 +376,20 @@ MAX_LIMIT = 10
 [TRAJ]
 COORDINATES = XYZ
 `)
-	r, err := Check(ini)
+	r, err := runConfigCheck(ini)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if r.HasErrors() {
+	if r.hasErrors() {
 		t.Errorf("default coordinates should not produce errors: %v", r.Errors)
 	}
-	// With default coordinates (XYZABCUVW), no inconsistency warning should appear
-	// even though [TRAJ]COORDINATES=XYZ differs.
-	if containsString(r.Warnings, "INCONSISTENT") {
+	if ccContainsString(r.Warnings, "INCONSISTENT") {
 		t.Error("should not warn about inconsistent coordinates when trivkins uses default set")
 	}
 }
 
-func TestCheck_DuplicateCoordinates(t *testing.T) {
-	// e.g. gantry: trivkins coordinates=XYYZ  -> joint 0=X, 1=Y, 2=Y, 3=Z
-	ini := parseINI(t, `[KINS]
+func TestConfigCheck_DuplicateCoordinates(t *testing.T) {
+	ini := parseTestINI(t, `[KINS]
 KINEMATICS = trivkins coordinates=XYYZ
 JOINTS = 4
 
@@ -444,21 +433,21 @@ MAX_ACCELERATION = 100
 MIN_LIMIT = -5
 MAX_LIMIT = 5
 `)
-	r, err := Check(ini)
+	r, err := runConfigCheck(ini)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if r.HasErrors() {
+	if r.hasErrors() {
 		t.Errorf("gantry config with consistent limits should not error: %v", r.Errors)
 	}
 }
 
-func TestFormatWarnings(t *testing.T) {
-	r := &Result{
+func TestConfigCheck_FormatWarnings(t *testing.T) {
+	r := &configCheckResult{
 		KinsModule: "trivkins",
 		Warnings:   []string{"warning one", "warning two"},
 	}
-	out := r.FormatWarnings()
+	out := r.formatWarnings()
 	if !strings.Contains(out, "check_config") {
 		t.Error("output should contain progname")
 	}
@@ -470,12 +459,12 @@ func TestFormatWarnings(t *testing.T) {
 	}
 }
 
-func TestFormatErrors(t *testing.T) {
-	r := &Result{
+func TestConfigCheck_FormatErrors(t *testing.T) {
+	r := &configCheckResult{
 		KinsModule: "trivkins",
 		Errors:     []string{"error one"},
 	}
-	out := r.FormatErrors()
+	out := r.formatErrors()
 	if !strings.Contains(out, "(trivkins kinematics) ERROR:") {
 		t.Error("output should contain kins module error header")
 	}
@@ -484,21 +473,21 @@ func TestFormatErrors(t *testing.T) {
 	}
 }
 
-func TestFormatWarnings_Empty(t *testing.T) {
-	r := &Result{}
-	if r.FormatWarnings() != "" {
+func TestConfigCheck_FormatWarnings_Empty(t *testing.T) {
+	r := &configCheckResult{}
+	if r.formatWarnings() != "" {
 		t.Error("no warnings should produce empty string")
 	}
 }
 
-func TestFormatErrors_Empty(t *testing.T) {
-	r := &Result{}
-	if r.FormatErrors() != "" {
+func TestConfigCheck_FormatErrors_Empty(t *testing.T) {
+	r := &configCheckResult{}
+	if r.formatErrors() != "" {
 		t.Error("no errors should produce empty string")
 	}
 }
 
-func TestParseKinematics(t *testing.T) {
+func TestConfigCheck_ParseKinematics(t *testing.T) {
 	tests := []struct {
 		input      string
 		wantModule string
@@ -523,8 +512,7 @@ func TestParseKinematics(t *testing.T) {
 	}
 }
 
-func TestJointsForTrivkins(t *testing.T) {
-	// XYYZ -> X:[0], Y:[1,2], Z:[3]
+func TestConfigCheck_JointsForTrivkins(t *testing.T) {
 	idx := jointsForTrivkins([]byte("XYYZ"))
 	if got := idx['X']; len(got) != 1 || got[0] != 0 {
 		t.Errorf("X joints = %v, want [0]", got)
@@ -537,10 +525,8 @@ func TestJointsForTrivkins(t *testing.T) {
 	}
 }
 
-func TestCheck_MissingAxisMinLimitWarning(t *testing.T) {
-	// When AXIS_X has no MIN_LIMIT and JOINT_0 MIN_LIMIT > default (-1e99),
-	// both a warning (unspecified) and an error (limit mismatch) should appear.
-	ini := parseINI(t, `[KINS]
+func TestConfigCheck_MissingAxisMinLimitWarning(t *testing.T) {
+	ini := parseTestINI(t, `[KINS]
 KINEMATICS = trivkins coordinates=X
 JOINTS = 1
 
@@ -558,14 +544,14 @@ MAX_VELOCITY = 10
 MAX_ACCELERATION = 100
 MAX_LIMIT = 10
 `)
-	r, err := Check(ini)
+	r, err := runConfigCheck(ini)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !r.HasErrors() {
+	if !r.hasErrors() {
 		t.Fatal("expected error when joint MIN_LIMIT > default axis MIN_LIMIT")
 	}
-	if !containsString(r.Warnings, "Unspecified [AXIS_X]MIN_LIMIT") {
+	if !ccContainsString(r.Warnings, "Unspecified [AXIS_X]MIN_LIMIT") {
 		t.Error("expected warning about unspecified AXIS_X MIN_LIMIT")
 	}
 }

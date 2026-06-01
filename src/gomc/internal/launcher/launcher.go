@@ -224,11 +224,6 @@ func (l *Launcher) Run() (runErr error) {
 		return err
 	}
 
-	// 3. check_config.tcl validation.
-	if err := l.checkConfig(); err != nil {
-		return err
-	}
-
 	// --- M5: Process Manager ---
 
 	// --- M4: Realtime Manager ---

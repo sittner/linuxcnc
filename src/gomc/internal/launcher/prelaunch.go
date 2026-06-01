@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/sittner/linuxcnc/src/gomc/internal/configcheck"
 	"github.com/sittner/linuxcnc/src/gomc/pkg/inifile"
 )
 
@@ -109,34 +108,4 @@ func (l *Launcher) checkPlasmaC() error {
 	// Always exit after detecting PlasmaC — never continue to start LinuxCNC.
 	return ErrPlasmaC
 }
-
-// checkConfig validates the INI configuration for consistency.
-//
-// This is a native Go replacement for lib/hallib/check_config.tcl,
-// eliminating the runtime dependency on tclsh.  It checks mandatory
-// items, kinematics parameters, and joint/axis limit consistency.
-func (l *Launcher) checkConfig() error {
-	l.logger.Debug("running configuration checks")
-
-	result, err := configcheck.Check(l.ini)
-	if err != nil {
-		return fmt.Errorf("check_config: %w", err)
-	}
-
-	// Print warnings to stdout (matching legacy Tcl script output).
-	if w := result.FormatWarnings(); w != "" {
-		fmt.Fprint(os.Stdout, w)
-	}
-
-	// Print errors and fail.
-	if result.HasErrors() {
-		fmt.Fprint(os.Stdout, result.FormatErrors())
-		return fmt.Errorf("check_config validation failed")
-	}
-
-	return nil
-}
-
-
-
 

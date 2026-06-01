@@ -151,6 +151,11 @@ func (m *milltaskModule) Start() error {
 
 	t := NewTask(mc, io, ms, m.logger)
 
+	// Validate kinematics/joint/axis INI consistency before loading config.
+	if err := m.checkConfig(); err != nil {
+		return fmt.Errorf("milltask: %w", err)
+	}
+
 	// Load configuration from INI and send to motion controller.
 	if err := loadConfig(m.ini, t, mc); err != nil {
 		return fmt.Errorf("milltask: %w", err)
@@ -407,4 +412,21 @@ func (m *milltaskModule) loadDefaultProgram() {
 	} else {
 		m.logger.Info("loaded default program", "file", file)
 	}
+}
+
+// checkConfig validates kinematics/joint/axis INI consistency.
+// This is the consumer-side validation for settings that milltask reads
+// from [KINS], [TRAJ], [JOINT_*], and [AXIS_*] sections.
+func (m *milltaskModule) checkConfig() error {
+	result, err := runConfigCheck(m.ini)
+	if err != nil {
+		return fmt.Errorf("config check: %w", err)
+	}
+	if w := result.formatWarnings(); w != "" {
+		m.logger.Warn(w)
+	}
+	if result.hasErrors() {
+		return fmt.Errorf("config check failed:\n%s", result.formatErrors())
+	}
+	return nil
 }

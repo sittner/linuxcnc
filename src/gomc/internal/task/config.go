@@ -81,6 +81,14 @@ func loadConfig(ini *inifile.IniFile, t *Task, mc MotionConfig) error {
 }
 
 func loadTraj(ini *inifile.IniFile, t *Task, mc MotionConfig) error {
+	// Validate required settings.
+	if ini.Get("KINS", "JOINTS") == "" {
+		return fmt.Errorf("[KINS]JOINTS is required")
+	}
+	if ini.Get("TRAJ", "COORDINATES") == "" {
+		return fmt.Errorf("[TRAJ]COORDINATES is required")
+	}
+
 	// Joints
 	t.numJoints = getIntOr(ini, "KINS", "JOINTS", 3)
 

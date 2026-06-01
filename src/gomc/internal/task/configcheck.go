@@ -1,9 +1,10 @@
-// Package configcheck validates INI file configuration for LinuxCNC.
+// configcheck.go validates kinematics/joint/axis INI configuration consistency.
 //
 // This is a native Go replacement for lib/hallib/check_config.tcl.
-// It validates mandatory items, kinematics consistency, and joint/axis
-// limit relationships.
-package configcheck
+// It validates kinematics consistency and joint/axis limit relationships.
+// These checks only apply when a motion controller is configured
+// ([KINS]KINEMATICS is set).
+package task
 
 import (
 	"fmt"
@@ -13,7 +14,7 @@ import (
 	"github.com/sittner/linuxcnc/src/gomc/pkg/inifile"
 )
 
-const progname = "check_config"
+const configCheckProgname = "check_config"
 
 // Default values matching src/emc/nml_intf/emccfg.h, src/emc/ini/inijoint.cc,
 // src/emc/ini/iniaxis.cc.
@@ -30,28 +31,23 @@ const (
 // trivkins coordinates= is not specified.
 var allCoords = []byte{'X', 'Y', 'Z', 'A', 'B', 'C', 'U', 'V', 'W'}
 
-// Result holds the outcome of a configuration check.
-type Result struct {
-	Warnings []string
-	Errors   []string
-	// KinsModule is the kinematics module name (e.g. "trivkins"), set after
-	// parsing [KINS]KINEMATICS.  Used for formatting output.
-	KinsModule string
+// configCheckResult holds the outcome of a configuration check.
+type configCheckResult struct {
+	Warnings   []string
+	Errors     []string
+	KinsModule string // kinematics module name (e.g. "trivkins")
 }
 
-// HasErrors returns true if any fatal errors were recorded.
-func (r *Result) HasErrors() bool {
+func (r *configCheckResult) hasErrors() bool {
 	return len(r.Errors) > 0
 }
 
-// FormatWarnings returns the warning block as a single string matching the
-// Tcl script's output format, or "" if there are no warnings.
-func (r *Result) FormatWarnings() string {
+func (r *configCheckResult) formatWarnings() string {
 	if len(r.Warnings) == 0 {
 		return ""
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "\n%s:\n", progname)
+	fmt.Fprintf(&b, "\n%s:\n", configCheckProgname)
 	if r.KinsModule != "" {
 		fmt.Fprintf(&b, "(%s kinematics) WARNING:\n", r.KinsModule)
 	}
@@ -62,14 +58,12 @@ func (r *Result) FormatWarnings() string {
 	return b.String()
 }
 
-// FormatErrors returns the error block as a single string matching the Tcl
-// script's output format, or "" if there are no errors.
-func (r *Result) FormatErrors() string {
+func (r *configCheckResult) formatErrors() string {
 	if len(r.Errors) == 0 {
 		return ""
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "\n%s:\n", progname)
+	fmt.Fprintf(&b, "\n%s:\n", configCheckProgname)
 	if r.KinsModule != "" {
 		fmt.Fprintf(&b, "(%s kinematics) ERROR:\n", r.KinsModule)
 	}
@@ -80,76 +74,64 @@ func (r *Result) FormatErrors() string {
 	return b.String()
 }
 
-// Check validates the INI configuration.  It returns a Result containing any
-// warnings (non-fatal) and errors (fatal).  A non-nil error is returned only
-// for unexpected failures (not validation errors — those go into Result.Errors).
-func Check(ini *inifile.IniFile) (*Result, error) {
-	r := &Result{}
+// runConfigCheck validates the INI configuration for kinematics/joint/axis
+// consistency.  Returns a result with warnings and errors, or a non-nil error
+// for unexpected failures.
+func runConfigCheck(ini *inifile.IniFile) (*configCheckResult, error) {
+	r := &configCheckResult{}
 
-	// 1. Mandatory items.
-	checkMandatoryItems(ini, r)
-	if r.HasErrors() {
+	// Kinematics checks only apply when [KINS]KINEMATICS is configured.
+	// Configurations without a motion controller (no kinematics) skip these.
+	kinsValue := ini.Get("KINS", "KINEMATICS")
+	if kinsValue == "" {
 		return r, nil
 	}
 
-	// 2. Parse kinematics.
-	kinsValue := ini.Get("KINS", "KINEMATICS")
+	// [KINS]JOINTS is required when [KINS]KINEMATICS is set.
+	jointsStr := ini.Get("KINS", "JOINTS")
+	if jointsStr == "" {
+		r.Errors = append(r.Errors, "Missing [KINS]JOINTS= (required when [KINS]KINEMATICS is set)")
+		return r, nil
+	}
+
+	// Parse kinematics.
 	module, params := parseKinematics(kinsValue)
 	r.KinsModule = module
 
-	// 3. Resolve coordinates.
+	// Resolve coordinates.
 	coords, coordsSpecified := resolveCoordinates(params)
 
-	// 4. Non-trivkins: early return with info message.
+	// Non-trivkins: early return with info message.
 	if module != "trivkins" {
 		r.Warnings = append(r.Warnings,
 			fmt.Sprintf("Unchecked: [KINS]KINEMATICS=%s", kinsValue))
 		return r, nil
 	}
 
-	// 5. Build joint→coordinate mapping for trivkins.
+	// Build joint→coordinate mapping for trivkins.
 	jointIdx := jointsForTrivkins(coords)
 
-	// 6. Extra joints check.
-	checkExtraJoints(ini, r)
+	// Extra joints check.
+	ccCheckExtraJoints(ini, r)
 
-	// 7. Warn on duplicate values in JOINT_*/AXIS_* sections.
-	warnMultipleIniValues(ini, r)
+	// Warn on duplicate values in JOINT_*/AXIS_* sections.
+	ccWarnMultipleIniValues(ini, r)
 
-	// 8. Validate identity kinematics limits.
-	jointsStr := ini.Get("KINS", "JOINTS")
+	// Validate identity kinematics limits.
 	numJoints, err := strconv.Atoi(strings.TrimSpace(jointsStr))
 	if err != nil {
 		return nil, fmt.Errorf("invalid [KINS]JOINTS value %q: %w", jointsStr, err)
 	}
-	validateIdentityKinsLimits(ini, r, numJoints, coords, jointIdx)
+	ccValidateIdentityKinsLimits(ini, r, numJoints, coords, jointIdx)
 
-	// 9. Consistent coordinates check.
-	consistentCoordsForTrivkins(ini, r, coords, coordsSpecified)
+	// Consistent coordinates check.
+	ccConsistentCoordsForTrivkins(ini, r, coords, coordsSpecified)
 
 	return r, nil
 }
 
-// checkMandatoryItems verifies that required INI keys are present.
-func checkMandatoryItems(ini *inifile.IniFile, r *Result) {
-	mandatory := [][2]string{
-		{"KINS", "KINEMATICS"},
-		{"KINS", "JOINTS"},
-	}
-	for _, item := range mandatory {
-		if ini.Get(item[0], item[1]) == "" {
-			r.Errors = append(r.Errors,
-				fmt.Sprintf("Missing [%s]%s=", item[0], item[1]))
-		}
-	}
-}
-
 // parseKinematics splits a [KINS]KINEMATICS value into the module name and
 // a map of parm=value parameters.
-//
-// Example: "trivkins coordinates=XZ kinstype=BOTH"
-//
-//	→ module="trivkins", params={"coordinates":"XZ", "kinstype":"BOTH"}
 func parseKinematics(value string) (module string, params map[string]string) {
 	params = make(map[string]string)
 	fields := strings.Fields(value)
@@ -181,8 +163,6 @@ func resolveCoordinates(params map[string]string) (coords []byte, specified bool
 }
 
 // jointsForTrivkins builds a mapping from coordinate letter to joint indices.
-// Joint numbers are assigned consecutively in the order of the coordinates
-// string (matching trivkins.c behaviour).
 func jointsForTrivkins(coords []byte) map[byte][]int {
 	m := make(map[byte][]int)
 	for i, c := range coords {
@@ -191,8 +171,8 @@ func jointsForTrivkins(coords []byte) map[byte][]int {
 	return m
 }
 
-// checkExtraJoints warns if [EMCMOT]EMCMOT specifies num_extrajoints.
-func checkExtraJoints(ini *inifile.IniFile, r *Result) {
+// ccCheckExtraJoints warns if [EMCMOT]EMCMOT specifies num_extrajoints.
+func ccCheckExtraJoints(ini *inifile.IniFile, r *configCheckResult) {
 	emcmot := ini.Get("EMCMOT", "EMCMOT")
 	if emcmot == "" {
 		return
@@ -217,10 +197,9 @@ func checkExtraJoints(ini *inifile.IniFile, r *Result) {
 	}
 }
 
-// warnMultipleIniValues warns about duplicate keys in JOINT_* and AXIS_*
+// ccWarnMultipleIniValues warns about duplicate keys in JOINT_* and AXIS_*
 // sections.
-func warnMultipleIniValues(ini *inifile.IniFile, r *Result) {
-	// Collect unique section names matching JOINT_ or AXIS_.
+func ccWarnMultipleIniValues(ini *inifile.IniFile, r *configCheckResult) {
 	seen := make(map[string]bool)
 	for _, sec := range ini.Sections {
 		if seen[sec.Name] {
@@ -231,7 +210,6 @@ func warnMultipleIniValues(ini *inifile.IniFile, r *Result) {
 		}
 		seen[sec.Name] = true
 
-		// Count occurrences of each key in this section.
 		keyCounts := make(map[string]int)
 		keyValues := make(map[string][]string)
 		entries := ini.GetSection(sec.Name)
@@ -249,9 +227,9 @@ func warnMultipleIniValues(ini *inifile.IniFile, r *Result) {
 	}
 }
 
-// validateIdentityKinsLimits checks joint and axis velocity, acceleration, and
-// limit consistency for trivkins (identity kinematics).
-func validateIdentityKinsLimits(ini *inifile.IniFile, r *Result, numJoints int, coords []byte, jointIdx map[byte][]int) {
+// ccValidateIdentityKinsLimits checks joint and axis velocity, acceleration,
+// and limit consistency for trivkins (identity kinematics).
+func ccValidateIdentityKinsLimits(ini *inifile.IniFile, r *configCheckResult, numJoints int, coords []byte, jointIdx map[byte][]int) {
 	// Per-joint checks.
 	for j := 0; j < numJoints; j++ {
 		sec := fmt.Sprintf("JOINT_%d", j)
@@ -271,7 +249,6 @@ func validateIdentityKinsLimits(ini *inifile.IniFile, r *Result, numJoints int, 
 		cl := string(c)
 		axisSec := "AXIS_" + cl
 
-		// Only check velocity/acceleration if the axis section exists.
 		if len(ini.GetSection(axisSec)) > 0 {
 			if ini.Get(axisSec, "MAX_VELOCITY") == "" {
 				r.Warnings = append(r.Warnings,
@@ -335,18 +312,16 @@ func validateIdentityKinsLimits(ini *inifile.IniFile, r *Result, numJoints int, 
 	}
 }
 
-// consistentCoordsForTrivkins checks that trivkins coordinates= matches
+// ccConsistentCoordsForTrivkins checks that trivkins coordinates= matches
 // [TRAJ]COORDINATES when coordinates= was explicitly specified.
-func consistentCoordsForTrivkins(ini *inifile.IniFile, r *Result, coords []byte, specified bool) {
-	trivStr := stripWhitespace(string(coords))
+func ccConsistentCoordsForTrivkins(ini *inifile.IniFile, r *configCheckResult, coords []byte, specified bool) {
+	trivStr := ccStripWhitespace(string(coords))
 
-	// If coordinates= was not specified (full default set), any [TRAJ]COORDINATES
-	// is allowed.
 	if !specified || strings.EqualFold(trivStr, "XYZABCUVW") {
 		return
 	}
 
-	trajCoords := stripWhitespace(ini.Get("TRAJ", "COORDINATES"))
+	trajCoords := ccStripWhitespace(ini.Get("TRAJ", "COORDINATES"))
 	if !strings.EqualFold(trivStr, trajCoords) {
 		r.Warnings = append(r.Warnings,
 			fmt.Sprintf("INCONSISTENT coordinates specifications:\n               trivkins coordinates=%s\n               [TRAJ]COORDINATES=%s",
@@ -367,8 +342,8 @@ func uniqueBytes(b []byte) []byte {
 	return result
 }
 
-// stripWhitespace removes all spaces and tabs from s.
-func stripWhitespace(s string) string {
+// ccStripWhitespace removes all spaces and tabs from s.
+func ccStripWhitespace(s string) string {
 	s = strings.ReplaceAll(s, " ", "")
 	s = strings.ReplaceAll(s, "\t", "")
 	return s
