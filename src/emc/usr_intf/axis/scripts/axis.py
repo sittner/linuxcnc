@@ -941,9 +941,13 @@ class LivePlotter:
             # update text editor and loaded_file (without re-sending
             # program_open to avoid infinite seq increment loop).
             remote_file = self.stat.file
-            if remote_file and remote_file != loaded_file:
+            file_changed = remote_file and remote_file != loaded_file
+            if file_changed:
                 load_text_and_set_file(remote_file)
             if loaded_file:
+                if file_changed:
+                    global _pending_autofit
+                    _pending_autofit = True
                 root_window.after_idle(refresh_preview_if_idle)
         if (self.logger.npts != self.lastpts
                 or limits != o.last_limits
@@ -1961,17 +1965,51 @@ def reload_file(refilter=True):
     if line:
         o.set_highlight_line(line)
 
+_pending_autofit = False
+
 def refresh_preview_if_idle():
     """Schedule refresh_preview, skipping synch if running."""
+    global _pending_autofit
     s.poll()
     if not loaded_file:
+        _pending_autofit = False
         return
+    do_autofit = _pending_autofit
+    _pending_autofit = False
     if running(do_poll=False):
         # Preview interpreter is independent — generate preview without
         # synching the execution interpreter (which would block/timeout).
-        _do_refresh_preview(skip_synch=True)
+        _do_refresh_preview(skip_synch=True, autofit=do_autofit)
     else:
-        _do_refresh_preview(skip_synch=False)
+        _do_refresh_preview(skip_synch=False, autofit=do_autofit)
+
+def autofit_view():
+    """Re-fit the current view to the program extents."""
+    vt = vars.view_type.get()
+    if vt == 3:
+        commands.set_view_x()
+    elif vt == 4:
+        commands.set_view_y()
+    elif vt == 1:
+        commands.set_view_z()
+    elif vt == 2:
+        commands.set_view_z2()
+    elif vt == 5:
+        commands.set_view_p()
+    else:
+        # Initial startup (view_type==0): use default for machine type
+        if lathe:
+            if lathe_backtool:
+                commands.set_view_y2()
+            else:
+                commands.set_view_y()
+        else:
+            commands.set_view_z()
+    if o.canon is not None:
+        x = (o.canon.min_extents[0] + o.canon.max_extents[0])/2
+        y = (o.canon.min_extents[1] + o.canon.max_extents[1])/2
+        z = (o.canon.min_extents[2] + o.canon.max_extents[2])/2
+        o.set_centerpoint(x, y, z)
 
 def refresh_preview():
     """Re-generate preview with current offsets without reloading the file."""
@@ -1981,7 +2019,7 @@ def refresh_preview():
         return
     _do_refresh_preview(skip_synch=False)
 
-def _do_refresh_preview(skip_synch=False):
+def _do_refresh_preview(skip_synch=False, autofit=False):
     """Internal: generate preview, optionally skipping interpreter synch."""
     if not skip_synch:
         # Ensure the var file reflects the current interpreter parameters
@@ -2049,6 +2087,8 @@ def _do_refresh_preview(skip_synch=False):
                 "error",0,_("OK"))
     o.lp.set_depth(from_internal_linear_unit(o.get_foam_z()),
                    from_internal_linear_unit(o.get_foam_w()))
+    if autofit:
+        autofit_view()
     o.tkRedraw()
 
 def ja_from_rbutton():
@@ -2400,24 +2440,9 @@ class TclCommands(nf.TclCommands):
         return ""
 
     def open_file_name(f):
+        global _pending_autofit
+        _pending_autofit = True
         open_file_guts(f)
-        if str(widgets.view_x['relief']) == "sunken":
-            commands.set_view_x()
-        elif str(widgets.view_y['relief']) == "sunken":
-            commands.set_view_y()
-        elif str(widgets.view_y2['relief']) == "sunken":
-            commands.set_view_y2()
-        elif str(widgets.view_z['relief']) == "sunken":
-            commands.set_view_z()
-        elif  str(widgets.view_z2['relief']) == "sunken":
-            commands.set_view_z2()
-        else:
-            commands.set_view_p()
-        if o.canon is not None:
-            x = (o.canon.min_extents[0] + o.canon.max_extents[0])/2
-            y = (o.canon.min_extents[1] + o.canon.max_extents[1])/2
-            z = (o.canon.min_extents[2] + o.canon.max_extents[2])/2
-            o.set_centerpoint(x, y, z)
 
     def open_pipe(f, c):
         try:
@@ -4106,6 +4131,7 @@ elif s.file:
     addrecent = False
     if running(do_poll=False):
         load_text_and_set_file(initialfile)
+        _pending_autofit = True
         root_window.after_idle(refresh_preview_if_idle)
         initialfile = None  # skip open_file_guts below
 elif lathe:
@@ -4116,6 +4142,7 @@ else:
     addrecent = False
 
 if initialfile and os.path.exists(initialfile):
+    _pending_autofit = True
     open_file_guts(initialfile, False, addrecent)
 
 if lathe:
