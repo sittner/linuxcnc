@@ -181,10 +181,10 @@ func writeIfChanged(path string, data []byte) error {
 // Auto-discovery: build a Registry from the filesystem without packages.conf
 // ---------------------------------------------------------------------------
 
-// markerRe matches @GOMOD:TAG@ markers in packages.conf.in lines.
+// markerRe matches @GOMOD:TAG@ markers in packages.conf lines.
 var markerRe = regexp.MustCompile(`@GOMOD:([A-Z0-9_]+)@`)
 
-// ReadConfIn reads packages.conf.in and filters entries based on enabled build
+// ReadConfIn reads packages.conf and filters entries based on enabled build
 // flags.  Lines with @GOMOD:TAG@ markers are included only if TAG is in the
 // enabledFlags set; the marker text is stripped.  Lines without markers are
 // always included.

@@ -82,6 +82,6 @@ var (
 
 	// BuildFlags is a comma-separated list of enabled build tags (e.g.
 	// "ADSSERVER,CLASSICLADDER,HALSCOPE").  Used by modcompile to filter
-	// conditional entries in packages.conf.in.
+	// conditional entries in packages.conf.
 	BuildFlags string
 )

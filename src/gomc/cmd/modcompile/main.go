@@ -544,7 +544,7 @@ func buildServer() {
 // cmdList lists all packages that would be compiled into gomc-server.
 func cmdList() {
 	gomcDir := config.EMC2GomcDir
-	confIn := filepath.Join(gomcDir, "packages.conf.in")
+	confIn := filepath.Join(gomcDir, "packages.conf")
 	enabledFlags := pkgreg.ParseBuildFlags(config.BuildFlags)
 
 	reg, err := pkgreg.ReadConfIn(confIn, enabledFlags)
@@ -572,22 +572,22 @@ func cmdRebuild() {
 }
 
 // cmdRegenerateImports builds a complete Registry by:
-//  1. Reading packages.conf.in and filtering by compiled-in BuildFlags
+//  1. Reading packages.conf and filtering by compiled-in BuildFlags
 //  2. Auto-discovering GMI packages in generated/gmi/ and external/*/gmi/
 //  3. Auto-discovering external Go modules in external/
 //
 // Then generates imports_generated.go.  No intermediate packages.conf needed.
 func cmdRegenerateImports() {
 	gomcDir := config.EMC2GomcDir
-	confIn := filepath.Join(gomcDir, "packages.conf.in")
+	confIn := filepath.Join(gomcDir, "packages.conf")
 
 	// Parse build flags from compiled-in config.
 	enabledFlags := pkgreg.ParseBuildFlags(config.BuildFlags)
 
-	// 1. Internal gomods from packages.conf.in (filtered).
+	// 1. Internal gomods from packages.conf (filtered).
 	reg, err := pkgreg.ReadConfIn(confIn, enabledFlags)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "modcompile: reading packages.conf.in: %v\n", err)
+		fmt.Fprintf(os.Stderr, "modcompile: reading packages.conf: %v\n", err)
 		os.Exit(1)
 	}
 

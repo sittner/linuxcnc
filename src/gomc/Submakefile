@@ -25,7 +25,7 @@ EMC2_WEBAPP_DIR := $(datadir)/gomc/webapp
 endif
 
 # Comma-separated list of enabled optional Go module tags.
-# modcompile uses this to filter conditional entries in packages.conf.in.
+# modcompile uses this to filter conditional entries in packages.conf.
 GOMC_BUILD_FLAGS := $(subst $(space),$(comma),$(strip \
     $(if $(filter yes,$(BUILD_ADSSERVER)),ADSSERVER) \
     $(if $(filter yes,$(BUILD_CLASSICLADDER)),CLASSICLADDER) \
@@ -124,7 +124,7 @@ GMI_ALL_GEN_GO := \
     gomc/generated/gmi/tp/tp_cgo.go
 
 # Runtime files generated from .in bases on fresh checkouts.
-# imports_generated.go is produced by modcompile directly from packages.conf.in
+# imports_generated.go is produced by modcompile directly from packages.conf
 # plus auto-discovery of GMI and external packages.  No intermediate
 # packages.conf file is needed — modcompile handles filtering internally
 # using build flags baked in at compile time.
@@ -136,7 +136,7 @@ gomc/go.mod: gomc/go.mod.in $(wildcard gomc/external/*/go.deps)
 		cp $< $@; \
 	fi
 
-$(IMPORTS_GENERATED): gomc/packages.conf.in ../bin/modcompile $(GMI_ALL_GEN_GO)
+$(IMPORTS_GENERATED): gomc/packages.conf ../bin/modcompile $(GMI_ALL_GEN_GO)
 	$(Q)cd gomc && $(TOP)/bin/modcompile regenerate-imports
 
 # Build the gomc-server binary.
@@ -248,7 +248,7 @@ gomc-clean:
 	rm -f ../bin/modcompile ../bin/halcmd
 	rm -f $(HAL_GO_EXAMPLES)
 	rm -f $(GOMC_PKG_FILES)
-	rm -f gomc/packages.conf gomc/go.mod gomc/go.sum
+	rm -f gomc/go.mod gomc/go.sum
 	rm -f $(IMPORTS_GENERATED)
 
 # Install
@@ -268,7 +268,7 @@ gomc-install: ../bin/gomc-server ../bin/ads-xml-gen ../bin/modcompile ../bin/hal
 	$(Q)cd gomc && find . \
 		-name '*_test.go' -prune -o \
 		-path './internal/gmi/kinstest' -prune -o \
-		-type f \( -name '*.go' -o -name 'go.mod' -o -name 'go.mod.in' -o -name 'go.sum' -o -name 'packages.conf' -o -name 'packages.conf.in' \) \
+		-type f \( -name '*.go' -o -name 'go.mod' -o -name 'go.mod.in' -o -name 'go.sum' -o -name 'packages.conf' \) \
 		-print | while read f; do \
 			dest=$(DESTDIR)$(datadir)/linuxcnc/gomc/$$f; \
 			mkdir -p $$(dirname $$dest); \

@@ -11,8 +11,7 @@
 
 # Runtime state files (generated from .in base files)
 # These are modified by modcompile add-gomod/rm-gomod at runtime.
-# Base versions are tracked as packages.conf.in and go.mod.in.
-/packages.conf
+# Base version of go.mod is tracked as go.mod.in.
 /go.mod
 /go.sum
 /cmd/gomc-server/imports_generated.go
