@@ -588,6 +588,11 @@ static int32_t gmi_tool_load(void *ctx)
     *(d->tool_change) = 1;
     while (!m->done) {
         if (*(d->tool_change) && *(d->tool_changed)) {
+            // Update the tool table DB BEFORE publishing toolInSpindle.
+            // The stat watch goroutine uses toolInSpindle as a cache key;
+            // if it observes the new value before the DB is updated, the
+            // UI fetches stale data and caches it permanently (race).
+            load_tool(m, prepped_toolno);
             if (!m->random_toolchanger && prepped_toolno == 0) {
                 m->emcioStatus.tool.toolInSpindle = 0;
                 m->emcioStatus.tool.toolFromPocket = *(d->tool_from_pocket) = 0;
@@ -601,7 +606,6 @@ static int32_t gmi_tool_load(void *ctx)
                 m->emcioStatus.tool.toolFromPocket = *(d->tool_from_pocket) = 0;
             }
             *(d->tool_number) = m->emcioStatus.tool.toolInSpindle;
-            load_tool(m, prepped_toolno);
             m->emcioStatus.tool.pocketPrepped = -1;
             *(d->tool_prep_number) = 0;
             *(d->tool_prep_pocket) = 0;
