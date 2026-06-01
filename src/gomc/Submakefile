@@ -3,6 +3,10 @@
 
 ifeq ($(BUILD_GOLANG),yes)
 
+# Helper variables for string manipulation
+comma := ,
+space := $(subst ,, )
+
 # Build directory for absolute paths
 TOP := $(shell cd ..; pwd)
 
@@ -19,6 +23,17 @@ EMC2_CMOD_INCLUDE_DIR := $(includedir)/linuxcnc/cmod
 EMC2_GOMC_DIR := $(datadir)/linuxcnc/gomc
 EMC2_WEBAPP_DIR := $(datadir)/gomc/webapp
 endif
+
+# Comma-separated list of enabled optional Go module tags.
+# modcompile uses this to filter conditional entries in packages.conf.in.
+GOMC_BUILD_FLAGS := $(subst $(space),$(comma),$(strip \
+    $(if $(filter yes,$(BUILD_ADSSERVER)),ADSSERVER) \
+    $(if $(filter yes,$(BUILD_CLASSICLADDER)),CLASSICLADDER) \
+    $(if $(filter yes,$(BUILD_HALSCOPE)),HALSCOPE) \
+    $(if $(filter yes,$(BUILD_EMCCALIB)),EMCCALIB) \
+    $(if $(filter yes,$(BUILD_HALJSON)),HALJSON) \
+    $(if $(filter yes,$(BUILD_NGCPREVIEW)),NGCPREVIEW) \
+    $(if $(filter yes,$(BUILD_MILLTASK_GO)),MILLTASK_GO)))
 
 # Compile-time variables injected via -ldflags
 GOMC_LDFLAGS := \
@@ -42,7 +57,8 @@ GOMC_LDFLAGS := \
     -X '$(GOMC_LDFLAGS_PKG).RunInPlace=$(RUN_IN_PLACE)' \
     -X '$(GOMC_LDFLAGS_PKG).DefaultNmlFile=$(DEFAULT_NMLFILE)' \
     -X '$(GOMC_LDFLAGS_PKG).ModExt=$(MODULE_EXT)' \
-    -X '$(GOMC_LDFLAGS_PKG).KernelVers=$(kernelvers)'
+    -X '$(GOMC_LDFLAGS_PKG).KernelVers=$(kernelvers)' \
+    -X '$(GOMC_LDFLAGS_PKG).BuildFlags=$(GOMC_BUILD_FLAGS)'
 
 # All Go source files in the gomc module (recursive wildcard for
 # sub-packages).  Make will rebuild when any .go file or go.mod changes.
@@ -77,41 +93,50 @@ GMI_MOTSTAT_CLIENT_GO := gomc/generated/gmi/motstat/motstat_client_cgo.go
 GMI_EMCIO_CLIENT_GO := gomc/generated/gmi/emcio/emcio_client_cgo.go
 GMI_CLASSICLADDER_SERVER_GO := gomc/generated/gmi/classicladder/classicladder_cgo.go
 
-# All generated GMI Go files — used as prerequisite for go.sum so that
-# `go mod tidy` can resolve all local imports.  Collect one representative
-# .go file per generated package directory.
-GMI_ALL_GEN_GO := $(foreach d,$(wildcard gomc/generated/gmi/*/),$(firstword $(wildcard $(d)*.go)))
+# Explicit list of ALL generated GMI Go files (one per package with init()).
+# This must be kept in sync with gmi/codegen/Submakefile.
+# Used as prerequisite for imports_generated.go and gomc-server so that
+# codegen completes before the Go build starts.
+GMI_ALL_GEN_GO := \
+    gomc/generated/gmi/canon/canon_cgo.go \
+    gomc/generated/gmi/classicladder/classicladder_cgo.go \
+    gomc/generated/gmi/emccalib/emccalib_cgo.go \
+    gomc/generated/gmi/emccmd/emccmd_cgo.go \
+    gomc/generated/gmi/emcerror/emcerror_cgo.go \
+    gomc/generated/gmi/emcio/emcio_cgo.go \
+    gomc/generated/gmi/emcstat/emcstat_cgo.go \
+    gomc/generated/gmi/halcmd/halcmd_cgo.go \
+    gomc/generated/gmi/halscope/halscope_cgo.go \
+    gomc/generated/gmi/home/home_cgo.go \
+    gomc/generated/gmi/ini/ini_cgo.go \
+    gomc/generated/gmi/interp_ctx/interp_ctx_cgo.go \
+    gomc/generated/gmi/interp_ext/interp_ext_cgo.go \
+    gomc/generated/gmi/kins/kins_cgo.go \
+    gomc/generated/gmi/manualtoolchange/manualtoolchange_cgo.go \
+    gomc/generated/gmi/mcode_handler/mcode_handler_cgo.go \
+    gomc/generated/gmi/mot/mot_cgo.go \
+    gomc/generated/gmi/motctl/motctl_cgo.go \
+    gomc/generated/gmi/motstat/motstat_cgo.go \
+    gomc/generated/gmi/ngcpreview/ngcpreview_cgo.go \
+    gomc/generated/gmi/pyvcp/pyvcp_cgo.go \
+    gomc/generated/gmi/tools/tools_cgo.go \
+    gomc/generated/gmi/tooltable/tooltable_cgo.go \
+    gomc/generated/gmi/tp/tp_cgo.go
 
 # Runtime files generated from .in bases on fresh checkouts.
-# packages.conf is generated from .in by filtering out disabled modules;
-# imports_generated.go is produced by modcompile from packages.conf.
-#
-# Filtering: lines with @GOMOD:<TAG>@ markers are removed when the
-# corresponding BUILD_<TAG> != yes.  The marker itself is stripped from
-# kept lines.
+# imports_generated.go is produced by modcompile directly from packages.conf.in
+# plus auto-discovery of GMI and external packages.  No intermediate
+# packages.conf file is needed — modcompile handles filtering internally
+# using build flags baked in at compile time.
 
-define filter_packages_conf
-	sed \
-	$(if $(filter yes,$(BUILD_ADSSERVER)),-e 's/ @GOMOD:ADSSERVER@//',-e '/@GOMOD:ADSSERVER@/d') \
-	$(if $(filter yes,$(BUILD_CLASSICLADDER)),-e 's/ @GOMOD:CLASSICLADDER@//',-e '/@GOMOD:CLASSICLADDER@/d') \
-	$(if $(filter yes,$(BUILD_HALSCOPE)),-e 's/ @GOMOD:HALSCOPE@//',-e '/@GOMOD:HALSCOPE@/d') \
-	$(if $(filter yes,$(BUILD_EMCCALIB)),-e 's/ @GOMOD:EMCCALIB@//',-e '/@GOMOD:EMCCALIB@/d') \
-	$(if $(filter yes,$(BUILD_HALJSON)),-e 's/ @GOMOD:HALJSON@//',-e '/@GOMOD:HALJSON@/d') \
-	$(if $(filter yes,$(BUILD_NGCPREVIEW)),-e 's/ @GOMOD:NGCPREVIEW@//',-e '/@GOMOD:NGCPREVIEW@/d') \
-	$(if $(filter yes,$(BUILD_MILLTASK_GO)),-e 's/ @GOMOD:MILLTASK_GO@//',-e '/@GOMOD:MILLTASK_GO@/d') \
-	$< > $@.tmp && mv $@.tmp $@
-endef
+gomc/go.mod: gomc/go.mod.in $(wildcard gomc/external/*/go.deps)
+	$(Q)if [ -n "$$(find gomc/external -name go.deps 2>/dev/null)" ] && [ -x $(TOP)/bin/modcompile ]; then \
+		cd gomc && $(TOP)/bin/modcompile regenerate-gomod; \
+	else \
+		cp $< $@; \
+	fi
 
-gomc/packages.conf: gomc/packages.conf.in Makefile.inc
-	$(call filter_packages_conf)
-
-gomc/go.mod: gomc/go.mod.in
-	$(Q)cp $< $@
-
-gomc/go.sum: gomc/go.mod $(IMPORTS_GENERATED) $(GMI_ALL_GEN_GO)
-	$(Q)cd gomc && $(GO) mod tidy
-
-$(IMPORTS_GENERATED): gomc/packages.conf ../bin/modcompile
+$(IMPORTS_GENERATED): gomc/packages.conf.in ../bin/modcompile $(GMI_ALL_GEN_GO)
 	$(Q)cd gomc && $(TOP)/bin/modcompile regenerate-imports
 
 # Build the gomc-server binary.
@@ -121,9 +146,12 @@ $(IMPORTS_GENERATED): gomc/packages.conf ../bin/modcompile
 # --disable-new-dtags forces DT_RPATH instead of DT_RUNPATH; RUNPATH is
 # ignored by the dynamic linker when the binary has file capabilities (setcap).
 # LIB_DIR is $(EMC2_HOME)/lib, defined in Makefile.inc.
-../bin/gomc-server: $(GOMC_SRC) $(GMI_KINS_GEN_GO) $(GMI_TOOLS_GEN_GO) $(GMI_EMCSTAT_PUSH_GO) $(GMI_MOTCTL_CLIENT_GO) $(GMI_MOTSTAT_CLIENT_GO) $(GMI_EMCIO_CLIENT_GO) $(GMI_CLASSICLADDER_SERVER_GO) $(IMPORTS_GENERATED) gomc/packages.conf gomc/go.sum ../lib/liblinuxcnchal.so ../lib/libposemath.so ../lib/librs274.so Makefile.inc
+#
+# GOFLAGS=-mod=mod allows Go to update go.sum automatically when new local
+# packages appear (e.g. generated GMI code).
+../bin/gomc-server: $(GOMC_SRC) $(GMI_KINS_GEN_GO) $(GMI_TOOLS_GEN_GO) $(GMI_EMCSTAT_PUSH_GO) $(GMI_MOTCTL_CLIENT_GO) $(GMI_MOTSTAT_CLIENT_GO) $(GMI_EMCIO_CLIENT_GO) $(GMI_CLASSICLADDER_SERVER_GO) $(IMPORTS_GENERATED) gomc/go.mod ../lib/liblinuxcnchal.so ../lib/libposemath.so ../lib/librs274.so Makefile.inc
 	$(ECHO) Building gomc-server
-	$(Q)cd gomc && CGO_LDFLAGS="-Wl,-rpath,$(LIB_DIR) -Wl,--disable-new-dtags" $(GO) build -ldflags "$(GOMC_LDFLAGS)" -o $(TOP)/bin/gomc-server ./cmd/gomc-server
+	$(Q)cd gomc && CGO_LDFLAGS="-Wl,-rpath,$(LIB_DIR) -Wl,--disable-new-dtags" GOFLAGS=-mod=mod $(GO) build -ldflags "$(GOMC_LDFLAGS)" -o $(TOP)/bin/gomc-server ./cmd/gomc-server
 
 # ---------------------------------------------------------------------------
 # ADS XML generator tool — built from cmd/ads-xml-gen within the gomc module

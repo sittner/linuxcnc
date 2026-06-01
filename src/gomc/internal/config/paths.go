@@ -79,4 +79,9 @@ var (
 
 	// KernelVers is the required kernel version string (@KERNEL_VERS@).
 	KernelVers string
+
+	// BuildFlags is a comma-separated list of enabled build tags (e.g.
+	// "ADSSERVER,CLASSICLADDER,HALSCOPE").  Used by modcompile to filter
+	// conditional entries in packages.conf.in.
+	BuildFlags string
 )

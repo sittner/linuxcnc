@@ -168,6 +168,9 @@ func main() {
 	case "regenerate-imports":
 		cmdRegenerateImports()
 		return
+	case "regenerate-gomod":
+		cmdRegenerateGomod()
+		return
 	case "add-gomod":
 		force := false
 		var dir string
@@ -434,48 +437,6 @@ func printMakeInc() {
 	)
 }
 
-// ensureRuntimeFiles copies .in base files to their working copies if they
-// don't exist yet. This happens on fresh checkouts or after "git clean".
-func ensureRuntimeFiles() {
-	gomcDir := config.EMC2GomcDir
-	if gomcDir == "" {
-		return
-	}
-	for _, name := range []string{"packages.conf", "go.mod"} {
-		dst := filepath.Join(gomcDir, name)
-		if _, err := os.Stat(dst); err == nil {
-			continue // already exists
-		}
-		src := filepath.Join(gomcDir, name+".in")
-		data, err := os.ReadFile(src)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "modcompile: %s.in not found: %v\n", name, err)
-			os.Exit(1)
-		}
-		if err := os.WriteFile(dst, data, 0644); err != nil {
-			fmt.Fprintf(os.Stderr, "modcompile: creating %s: %v\n", name, err)
-			os.Exit(1)
-		}
-		fmt.Fprintf(os.Stderr, "Initialized %s from %s.in\n", name, name)
-	}
-}
-
-// packagesConfPath returns the path to packages.conf in the gomc dir.
-func packagesConfPath() string {
-	return filepath.Join(config.EMC2GomcDir, "packages.conf")
-}
-
-// loadRegistry reads packages.conf from the gomc directory.
-func loadRegistry() *pkgreg.Registry {
-	ensureRuntimeFiles()
-	reg, err := pkgreg.ReadFile(packagesConfPath())
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "modcompile: reading packages.conf: %v\n", err)
-		os.Exit(1)
-	}
-	return reg
-}
-
 // regenerate writes imports_generated.go from the registry.
 func regenerate(reg *pkgreg.Registry) {
 	serverDir := config.EMC2GomcDir
@@ -580,27 +541,136 @@ func buildServer() {
 	fmt.Fprintf(os.Stderr, "gomc-server built successfully: %s\n", outPath)
 }
 
-// cmdList lists all packages in the registry.
+// cmdList lists all packages that would be compiled into gomc-server.
 func cmdList() {
-	reg := loadRegistry()
+	gomcDir := config.EMC2GomcDir
+	confIn := filepath.Join(gomcDir, "packages.conf.in")
+	enabledFlags := pkgreg.ParseBuildFlags(config.BuildFlags)
+
+	reg, err := pkgreg.ReadConfIn(confIn, enabledFlags)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "modcompile list: %v\n", err)
+		os.Exit(1)
+	}
+	for _, e := range pkgreg.DiscoverGMI(gomcDir) {
+		reg.Add(e)
+	}
+	for _, e := range pkgreg.DiscoverExternal(gomcDir) {
+		reg.Add(e)
+	}
 	for _, e := range reg.Entries {
 		fmt.Printf("%-8s %s\n", e.Type, e.ImportPath)
 	}
 }
 
-// cmdRebuild regenerates derived files and rebuilds the server.
+// cmdRebuild regenerates all derived files and rebuilds the server.
 func cmdRebuild() {
-	reg := loadRegistry()
-	regenerate(reg)
+	cmdRegenerateGomod()
+	cmdRegenerateImports()
+	goModTidy()
 	buildServer()
 }
 
-// cmdRegenerateImports only regenerates imports_generated.go from packages.conf,
-// without building gomc-server.  Used by Makefile to avoid race conditions with
-// parallel builds (-j).
+// cmdRegenerateImports builds a complete Registry by:
+//  1. Reading packages.conf.in and filtering by compiled-in BuildFlags
+//  2. Auto-discovering GMI packages in generated/gmi/ and external/*/gmi/
+//  3. Auto-discovering external Go modules in external/
+//
+// Then generates imports_generated.go.  No intermediate packages.conf needed.
 func cmdRegenerateImports() {
-	reg := loadRegistry()
+	gomcDir := config.EMC2GomcDir
+	confIn := filepath.Join(gomcDir, "packages.conf.in")
+
+	// Parse build flags from compiled-in config.
+	enabledFlags := pkgreg.ParseBuildFlags(config.BuildFlags)
+
+	// 1. Internal gomods from packages.conf.in (filtered).
+	reg, err := pkgreg.ReadConfIn(confIn, enabledFlags)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "modcompile: reading packages.conf.in: %v\n", err)
+		os.Exit(1)
+	}
+
+	// 2. Auto-discover GMI packages.
+	for _, e := range pkgreg.DiscoverGMI(gomcDir) {
+		reg.Add(e)
+	}
+
+	// 3. Auto-discover external Go modules.
+	for _, e := range pkgreg.DiscoverExternal(gomcDir) {
+		reg.Add(e)
+	}
+
 	regenerate(reg)
+}
+
+// cmdRegenerateGomod merges go.mod.in with go.deps files from external modules
+// to produce go.mod.  Only writes if content changed.
+func cmdRegenerateGomod() {
+	gomcDir := config.EMC2GomcDir
+	goModIn := filepath.Join(gomcDir, "go.mod.in")
+
+	base, err := os.ReadFile(goModIn)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "modcompile regenerate-gomod: reading go.mod.in: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Collect extra require lines from external/*/go.deps files.
+	var extraRequires []string
+	extDir := filepath.Join(gomcDir, "external")
+	subs, _ := os.ReadDir(extDir)
+	for _, sub := range subs {
+		if !sub.IsDir() {
+			continue
+		}
+		depsFile := filepath.Join(extDir, sub.Name(), "go.deps")
+		data, err := os.ReadFile(depsFile)
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(data), "\n") {
+			line = strings.TrimSpace(line)
+			if line != "" && !strings.HasPrefix(line, "#") && !strings.HasPrefix(line, "//") {
+				extraRequires = append(extraRequires, "\t"+line)
+			}
+		}
+	}
+
+	var result []byte
+	if len(extraRequires) == 0 {
+		result = base
+	} else {
+		// Insert extra requires into the first require block.
+		lines := strings.Split(string(base), "\n")
+		var out []string
+		inserted := false
+		for _, line := range lines {
+			out = append(out, line)
+			// Insert after the opening "require (" line.
+			if !inserted && strings.TrimSpace(line) == "require (" {
+				out = append(out, extraRequires...)
+				inserted = true
+			}
+		}
+		if !inserted {
+			// No require block found — append one.
+			out = append(out, "", "require (")
+			out = append(out, extraRequires...)
+			out = append(out, ")")
+		}
+		result = []byte(strings.Join(out, "\n"))
+	}
+
+	goModPath := filepath.Join(gomcDir, "go.mod")
+	existing, err := os.ReadFile(goModPath)
+	if err == nil && string(existing) == string(result) {
+		return // no change
+	}
+	if err := os.WriteFile(goModPath, result, 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "modcompile regenerate-gomod: writing go.mod: %v\n", err)
+		os.Exit(1)
+	}
 }
 
 // cmdAddGomod copies an external Go package into external/<name>/ and rebuilds.
@@ -620,7 +690,6 @@ func cmdAddGomod(dir string, force bool) {
 
 	// Package name = directory basename.
 	name := filepath.Base(absDir)
-	importPath := "external/" + name
 	extDir := filepath.Join(config.EMC2GomcDir, "external", name)
 	originFile := filepath.Join(extDir, ".origin")
 
@@ -660,9 +729,9 @@ func cmdAddGomod(dir string, force bool) {
 		os.Exit(1)
 	}
 
-	// Merge third-party dependencies from the external module's go.mod
-	// into the gomc go.mod (the copy has no go.mod).
-	mergeGoDeps(goModPath)
+	// Extract third-party dependencies from the external module's go.mod
+	// and write them to go.deps for the regenerate-gomod step.
+	writeGoDeps(goModPath, extDir)
 
 	// Write .origin to track where the source came from.
 	if err := os.WriteFile(originFile, []byte(absDir+"\n"), 0644); err != nil {
@@ -670,29 +739,22 @@ func cmdAddGomod(dir string, force bool) {
 		os.Exit(1)
 	}
 
-	// Update package registry.
-	reg := loadRegistry()
-	reg.Remove(importPath) // remove old entry if reinstalling
-	reg.Add(pkgreg.Entry{Type: pkgreg.TypeGomod, ImportPath: importPath})
-
-	if err := reg.WriteFile(packagesConfPath()); err != nil {
-		fmt.Fprintf(os.Stderr, "modcompile add-gomod: writing packages.conf: %v\n", err)
-		os.Exit(1)
-	}
-
 	fmt.Fprintf(os.Stderr, "Installed %s → external/%s\n", absDir, name)
-	regenerate(reg)
+
+	// Regenerate everything and rebuild.
+	cmdRegenerateGomod()
+	cmdRegenerateImports()
+	goModTidy()
 	buildServer()
 }
 
-// mergeGoDeps reads require directives from an external module's go.mod and
-// runs "go get" in the gomc module directory for each third-party dependency.
-func mergeGoDeps(extGoModPath string) {
+// writeGoDeps extracts require directives from an external module's go.mod
+// and writes them to <extDir>/go.deps for use by regenerate-gomod.
+func writeGoDeps(extGoModPath, extDir string) {
 	gobin := config.GoBinary
 	if gobin == "" {
 		gobin = "go"
 	}
-	gomcDir := config.EMC2GomcDir
 
 	// Parse external go.mod.
 	editCmd := exec.Command(gobin, "mod", "edit", "-json", extGoModPath)
@@ -726,8 +788,8 @@ func mergeGoDeps(extGoModPath string) {
 		}
 	}
 
-	// Build list of deps to add.
-	var getArgs []string
+	// Build go.deps file content.
+	var deps []string
 	for _, req := range modInfo.Require {
 		if localReplaces[req.Path] {
 			continue
@@ -735,107 +797,68 @@ func mergeGoDeps(extGoModPath string) {
 		if strings.HasPrefix(req.Path, "github.com/sittner/linuxcnc/") {
 			continue
 		}
-		getArgs = append(getArgs, req.Path+"@"+req.Version)
+		deps = append(deps, req.Path+" "+req.Version)
 	}
 
-	if len(getArgs) == 0 {
+	depsPath := filepath.Join(extDir, "go.deps")
+	if len(deps) == 0 {
+		// Remove stale go.deps if no deps needed.
+		os.Remove(depsPath)
 		return
 	}
 
-	fmt.Fprintf(os.Stderr, "Adding %d dependencies to gomc go.mod...\n", len(getArgs))
-
-	args := append([]string{"get"}, getArgs...)
-	getCmd := exec.Command(gobin, args...)
-	getCmd.Dir = gomcDir
-	getCmd.Env = append(os.Environ(), "GOTOOLCHAIN=local")
-	getCmd.Stdout = os.Stdout
-	getCmd.Stderr = os.Stderr
-	if err := getCmd.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "modcompile add-gomod: go get failed: %v\n", err)
+	content := "# Third-party dependencies for this external module.\n" +
+		"# Generated by modcompile add-gomod. Do not edit.\n" +
+		strings.Join(deps, "\n") + "\n"
+	if err := os.WriteFile(depsPath, []byte(content), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "modcompile add-gomod: writing go.deps: %v\n", err)
 		os.Exit(1)
-	}
-
-	// Tidy to clean up unused deps from previous installs.
-	tidyCmd := exec.Command(gobin, "mod", "tidy")
-	tidyCmd.Dir = gomcDir
-	tidyCmd.Env = append(os.Environ(), "GOTOOLCHAIN=local")
-	tidyCmd.Stdout = os.Stdout
-	tidyCmd.Stderr = os.Stderr
-	if err := tidyCmd.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "modcompile add-gomod: go mod tidy warning: %v\n", err)
 	}
 }
 
-// cmdRmGomod removes a Go package from the registry, deletes its source, and rebuilds.
+// cmdRmGomod removes an external Go package and rebuilds.
 func cmdRmGomod(name string) {
-	reg := loadRegistry()
+	gomcDir := config.EMC2GomcDir
+	extDir := filepath.Join(gomcDir, "external")
 
-	// Try exact match first, then basename match.
-	var found *pkgreg.Entry
-	for i := range reg.Entries {
-		e := &reg.Entries[i]
-		if e.ImportPath == name || filepath.Base(e.ImportPath) == name {
-			found = e
-			break
-		}
+	// Find by exact directory name or path.
+	var targetDir string
+	if strings.HasPrefix(name, "external/") {
+		targetDir = filepath.Join(gomcDir, name)
+	} else {
+		targetDir = filepath.Join(extDir, name)
 	}
 
-	if found == nil {
-		fmt.Fprintf(os.Stderr, "modcompile rm-gomod: %s not found in registry\n", name)
+	if _, err := os.Stat(targetDir); err != nil {
+		fmt.Fprintf(os.Stderr, "modcompile rm-gomod: external/%s not found\n", name)
 		os.Exit(1)
 	}
 
-	importPath := found.ImportPath
-	reg.Remove(importPath)
-	fmt.Fprintf(os.Stderr, "Removed %s from registry\n", importPath)
-
-	// If the package lives under external/, delete its directory.
-	if strings.HasPrefix(importPath, "external/") {
-		extDir := filepath.Join(config.EMC2GomcDir, importPath)
-		if err := os.RemoveAll(extDir); err != nil {
-			fmt.Fprintf(os.Stderr, "modcompile rm-gomod: removing %s: %v\n", extDir, err)
-			os.Exit(1)
-		}
-		fmt.Fprintf(os.Stderr, "Deleted %s\n", extDir)
-	}
-
-	if err := reg.WriteFile(packagesConfPath()); err != nil {
-		fmt.Fprintf(os.Stderr, "modcompile rm-gomod: writing packages.conf: %v\n", err)
+	if err := os.RemoveAll(targetDir); err != nil {
+		fmt.Fprintf(os.Stderr, "modcompile rm-gomod: removing %s: %v\n", targetDir, err)
 		os.Exit(1)
 	}
+	fmt.Fprintf(os.Stderr, "Deleted %s\n", targetDir)
 
-	regenerate(reg)
+	// Regenerate everything and rebuild.
+	cmdRegenerateGomod()
+	cmdRegenerateImports()
 	goModTidy()
 	buildServer()
 }
 
 // cmdAddGmi adds a GMI package to the registry idempotently.
 // importPath is relative to the gomc module, e.g. "generated/gmi/axisui".
+// cmdAddGmi is a no-op retained for backward compatibility.
+// GMI packages are now auto-discovered from generated/gmi/ and external/*/gmi/
+// during regenerate-imports.  The codegen Submakefile still calls this, but it
+// does nothing.
 func cmdAddGmi(importPath string) {
-	reg := loadRegistry()
-	if reg.Add(pkgreg.Entry{Type: pkgreg.TypeGMI, ImportPath: importPath}) {
-		if err := reg.WriteFile(packagesConfPath()); err != nil {
-			fmt.Fprintf(os.Stderr, "modcompile add-gmi: writing packages.conf: %v\n", err)
-			os.Exit(1)
-		}
-		regenerate(reg)
-	}
 }
 
-// cmdRmGmi removes a GMI package from the registry.
+// cmdRmGmi is a no-op retained for backward compatibility.
+// GMI packages are auto-discovered; removing the generated directory is sufficient.
 func cmdRmGmi(importPath string) {
-	reg := loadRegistry()
-	if !reg.Remove(importPath) {
-		fmt.Fprintf(os.Stderr, "modcompile rm-gmi: %s not found in registry\n", importPath)
-		os.Exit(1)
-	}
-
-	if err := reg.WriteFile(packagesConfPath()); err != nil {
-		fmt.Fprintf(os.Stderr, "modcompile rm-gmi: writing packages.conf: %v\n", err)
-		os.Exit(1)
-	}
-
-	regenerate(reg)
 }
 
 // goModTidy runs "go mod tidy" in the gomc module directory to clean up
