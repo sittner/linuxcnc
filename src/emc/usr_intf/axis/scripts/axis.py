@@ -4128,6 +4128,7 @@ elif s.file:
     # If the system is currently running (auto mode), avoid open_file_guts which
     # calls task_plan_synch/wait_complete/program_open that block or timeout.
     initialfile = s.file
+    vars.taskfile.set(s.file)
     addrecent = False
     if running(do_poll=False):
         load_text_and_set_file(initialfile)
