@@ -213,6 +213,12 @@ CMOD_MTC_CFLAGS := -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I $(CMOD_GMI_MTC_
 
 # Step 2e: hm2_serial consumers need the GMI hm2_serial API header path.
 CMOD_GMI_HM2_SERIAL_API := gomc/generated/gmi/hm2_serial
+
+# Step 2f: lcd — hand-written cmod (not from .comp)
+../cmod/lcd.so: hal/components/lcd_cmod.c
+	$(ECHO) "Compiling cmod $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -o $@ $< -lm
 CMOD_HM2_SERIAL_CFLAGS := -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I $(CMOD_GMI_HM2_SERIAL_API) -lm
 
 # mesa_pktgyro_test (hal/components/)
@@ -333,6 +339,9 @@ modules: $(CMOD_USER_TARGETS)
 
 TARGETS += ../cmod/matrix_kb.so
 modules: ../cmod/matrix_kb.so
+
+TARGETS += ../cmod/lcd.so
+modules: ../cmod/lcd.so
 
 clean: cmod-comp-clean
 .PHONY: cmod-comp-clean

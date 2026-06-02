@@ -848,8 +848,7 @@ RTCFLAGS += -fno-builtin-sin -fno-builtin-cos -fno-builtin-sincos
 # NOTE: boss_plc, debounce, encoder, counter, encoder_ratio, stepgen,
 # pwmgen, siggen, pid, supply, sim_encoder, weighted_sum, watchdog, modmath
 # are now cmod-only (built from _cmod.c via hal/components/Submakefile)
-RTMODULES += lcd.o
-lcd-objs := hal/components/lcd.o $(MATHSTUB)
+# lcd moved to cmod build (see hal/components/Submakefile)
 # matrix_kb moved to cmod build (see hal/components/Submakefile)
 RTMODULES += streamer.o
 streamer-objs := hal/components/streamer.o $(MATHSTUB)
