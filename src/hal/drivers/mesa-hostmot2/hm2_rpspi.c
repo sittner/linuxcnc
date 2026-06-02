@@ -886,7 +886,7 @@ static uint32_t read_spiclkbase(hm2_rpspi_inst_t *inst)
 
 	close(fd);
 
-	if(err >= sizeof(buf)-1) {
+	if((size_t)err >= sizeof(buf)-1) {
 		// There are probably too many digits in the number
 		// 250000000 (250 MHz) has 9 digits and there is a newline
 		// following the number
@@ -957,7 +957,7 @@ static int probe_board(hm2_rpspi_t *board) {
 		board->llio.fpga_part_number = "xc6slx9tq144";
 	} else {
 		int i;
-		for(i = 0; i < sizeof(ident) - 1; i++) {
+		for(i = 0; (size_t)i < sizeof(ident) - 1; i++) {
 			if(!isprint(ident[i]))
 				ident[i] = '?';
 		}
@@ -1028,7 +1028,7 @@ static inline void gpio_fsel(hm2_rpspi_inst_t *inst, uint32_t pin, uint32_t func
 }
 
 /*************************************************/
-static void inline gpio_pull(hm2_rpspi_inst_t *inst, unsigned pin, uint32_t pud)
+static inline void gpio_pull(hm2_rpspi_inst_t *inst, unsigned pin, uint32_t pud)
 {
 	// Enable/disable pullups on the pins on request
 	reg_wr(&inst->gpio->gppudclk0, 0);	// We are not sure about the previous state, make sure
@@ -1174,7 +1174,7 @@ static uint8_t *read_file(const char *fname, size_t maxsize, size_t minsize)
 		return NULL;
 	}
 
-	nn = sb.st_size > maxsize ? maxsize : sb.st_size;
+	nn = (size_t)sb.st_size > maxsize ? maxsize : (size_t)sb.st_size;
 	if(!(buf = rtapi_malloc(nn+1))) {
 		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: No dynamic memory\n");
 		return NULL;

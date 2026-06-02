@@ -217,7 +217,7 @@ int hm2_inm_parse_md(hostmot2_t *hm2, int md_index) {
 
             {
                 int j = 0;
-                for (j = 0; j < hm2->inm.instance[i].scanwidth; j++){
+                for (j = 0; j < (int)hm2->inm.instance[i].scanwidth; j++){
   
 
                         rtapi_snprintf(name, sizeof(name), "%s.inm.%02d.input-%02d", hm2->llio->name, i, j);
@@ -461,7 +461,7 @@ void hm2_inm_write(hostmot2_t *hm2) {
 //            HM2_PRINT(" Debug: updating inm control reg to = 0x%08X\n", hm2->inm.control_reg[i]);
         }
         hm2->inm.filter_reg[i] = 0;
-	for (j = 0; j < hm2->inm.instance[i].scanwidth; j ++) {
+	for (j = 0; j < (int)hm2->inm.instance[i].scanwidth; j ++) {
             hm2->inm.filter_reg[i] |= (*hm2->inm.instance[i].hal.pin.slow[j] << j);
         }
         if (hm2->inm.filter_reg[i] != hm2->inm.instance[i].written_filter_reg) {
@@ -491,7 +491,7 @@ void hm2_inm_prepare_tram_write(hostmot2_t *hm2) {
     // Set register values from HAL pin values.
     for (i = 0; i < hm2->inm.num_instances; i ++) {
         hm2->inm.filter_reg[i] = 0;
-        for (j = 0; j < hm2->inm.instance[i].scanwidth; j ++) {
+        for (j = 0; j < (int)hm2->inm.instance[i].scanwidth; j ++) {
             hm2->inm.filter_reg[i] |= (*hm2->inm.instance[i].hal.pin.slow[j] << j);
         }
     }
@@ -507,7 +507,7 @@ void hm2_inm_process_tram_read(hostmot2_t *hm2) {
         return;
     }
     for (i = 0; i < hm2->inm.num_instances; i ++) {
-        for (j = 0; j < hm2->inm.instance[i].scanwidth; j ++) {
+        for (j = 0; j < (int)hm2->inm.instance[i].scanwidth; j ++) {
            *hm2->inm.instance[i].hal.pin.filt_data[j] = (hm2->inm.filt_data_reg[i] >> j) &1;
            *hm2->inm.instance[i].hal.pin.raw_data[j] = (hm2->inm.raw_data_reg[i] >> j) &1;
            *hm2->inm.instance[i].hal.pin.filt_data_not[j] = !((hm2->inm.filt_data_reg[i] >> j) &1);

@@ -38,7 +38,7 @@
 
 
 static int bitfile_do_small_chunk(const struct rtapi_firmware *fw, bitfile_chunk_t *chunk, int *i) {
-    if (*i + 2 > fw->size) {
+    if ((size_t)(*i + 2) > fw->size) {
         HM2_PRINT_NO_LL("bitfile chunk extends past end of firmware\n");
         return -EFAULT;
     }
@@ -46,7 +46,7 @@ static int bitfile_do_small_chunk(const struct rtapi_firmware *fw, bitfile_chunk
     chunk->size = (fw->data[*i] * 256) + fw->data[*i + 1];
     (*i) += 2;
 
-    if (*i + chunk->size > fw->size) {
+    if ((size_t)(*i + chunk->size) > fw->size) {
         HM2_PRINT_NO_LL("bitfile chunk extends past end of firmware\n");
         return -EFAULT;
     }
@@ -67,7 +67,7 @@ static int bitfile_do_small_chunk(const struct rtapi_firmware *fw, bitfile_chunk
 
 
 static int bitfile_do_big_chunk(const struct rtapi_firmware *fw, bitfile_chunk_t *chunk, int *i) {
-    if (*i + 4 > fw->size) {
+    if ((size_t)(*i + 4) > fw->size) {
         HM2_PRINT_NO_LL("bitfile chunk extends past end of firmware\n");
         return -EFAULT;
     }
@@ -75,7 +75,7 @@ static int bitfile_do_big_chunk(const struct rtapi_firmware *fw, bitfile_chunk_t
     chunk->size = ((uint32_t)fw->data[*i] << 24) + ((uint32_t)fw->data[*i + 1] << 16) + ((uint32_t)fw->data[*i + 2] << 8) + fw->data[*i + 3];
     (*i) += 4;
 
-    if (*i + chunk->size > fw->size) {
+    if ((size_t)(*i + chunk->size) > fw->size) {
         HM2_PRINT_NO_LL("bitfile chunk extends past end of firmware\n");
         return -EFAULT;
     }
@@ -95,7 +95,7 @@ static int bitfile_parse_and_verify_chunk(const struct rtapi_firmware *fw, bitfi
     tag = fw->data[*i];
     (*i) ++;
 
-    if ((*i) > fw->size) {
+    if ((size_t)(*i) > fw->size) {
         HM2_PRINT_NO_LL("bitfile chunk '%c' size fell off the end!\n", tag);
         return -EFAULT;
     }
@@ -188,7 +188,7 @@ int bitfile_parse_and_verify(const struct rtapi_firmware *fw, bitfile_t *bitfile
     // parse and verify all the chunks
     //
 
-    while (i < fw->size) {
+    while ((size_t)i < fw->size) {
         r = bitfile_parse_and_verify_chunk(fw, bitfile, &i);
         if (r != 0) return r;
     }

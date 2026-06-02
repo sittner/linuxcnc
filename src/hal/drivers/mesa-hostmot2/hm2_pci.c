@@ -429,6 +429,7 @@ static int hm2_plx9054_reset(hm2_lowlevel_io_t *this) {
 
 
 static int hm2_pci_probe(struct rtapi_pci_dev *dev, const struct rtapi_pci_device_id *id) {
+    (void)id;
     int r;
     hm2_pci_t *board;
     hm2_lowlevel_io_t *this;

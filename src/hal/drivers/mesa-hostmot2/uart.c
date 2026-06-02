@@ -358,9 +358,11 @@ void hm2_uart_print_module(hostmot2_t *hm2){
 
 void hm2_uart_cleanup(hostmot2_t *hm2)
 {
+    (void)hm2;
 }
 
 void hm2_uart_write(hostmot2_t *hm2)
 {
+    (void)hm2;
 }
 

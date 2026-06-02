@@ -91,7 +91,7 @@ int hm2_outm_parse_md(hostmot2_t *hm2, int md_index) {
             int out;
             for (
                 out = 0;
-                out < sizeof(hm2->outm.instance[0].hal.pin.out)/sizeof(hm2->outm.instance[0].hal.pin.out[0]);
+                (size_t)out < sizeof(hm2->outm.instance[0].hal.pin.out)/sizeof(hm2->outm.instance[0].hal.pin.out[0]);
                 out ++
             ) {
                 hm2->outm.instance[inst].hal.pin.out[out] = NULL;

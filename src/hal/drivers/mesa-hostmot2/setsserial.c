@@ -132,10 +132,11 @@ fail0: // It's all gone wrong
 }
 
 static void setsserial_release(struct rtapi_device *dev) {
+    (void)dev;
     // nothing to do here
 }
 
-static int getlocal(setsserial_inst_t *inst, int addr, int bytes){
+static int __attribute__((unused)) getlocal(setsserial_inst_t *inst, int addr, int bytes){
     hostmot2_t *hm2 = inst->hm2;
     hm2_sserial_remote_t *remote = inst->remote;
     rtapi_u32 val = 0;
@@ -149,7 +150,7 @@ static int getlocal(setsserial_inst_t *inst, int addr, int bytes){
     }    return val;
 }
 
-static int setlocal(setsserial_inst_t *inst, int addr, int val, int bytes){
+static int __attribute__((unused)) setlocal(setsserial_inst_t *inst, int addr, int val, int bytes){
     hostmot2_t *hm2 = inst->hm2;
     hm2_sserial_remote_t *remote = inst->remote;
     rtapi_u32 b = 0;
@@ -209,7 +210,7 @@ static rtapi_u8 sslbp_read_byte(setsserial_inst_t *inst, rtapi_u32 addr){
     return (rtapi_u8)res;
 }
 
-static rtapi_u16 sslbp_read_word(setsserial_inst_t *inst, rtapi_u32 addr){
+static rtapi_u16 __attribute__((unused)) sslbp_read_word(setsserial_inst_t *inst, rtapi_u32 addr){
     hostmot2_t *hm2 = inst->hm2;
     hm2_sserial_remote_t *remote = inst->remote;
     rtapi_u32 buff = READ_REM_WORD_CMD + addr;
@@ -225,7 +226,7 @@ static rtapi_u16 sslbp_read_word(setsserial_inst_t *inst, rtapi_u32 addr){
     return (rtapi_u16)res;
 }
 
-static rtapi_u32 sslbp_read_long(setsserial_inst_t *inst, rtapi_u32 addr){
+static rtapi_u32 __attribute__((unused)) sslbp_read_long(setsserial_inst_t *inst, rtapi_u32 addr){
     hostmot2_t *hm2 = inst->hm2;
     hm2_sserial_remote_t *remote = inst->remote;
     rtapi_u32 buff = READ_REM_LONG_CMD + addr;
@@ -241,7 +242,7 @@ static rtapi_u32 sslbp_read_long(setsserial_inst_t *inst, rtapi_u32 addr){
     return res;
 }
 
-static rtapi_u64 sslbp_read_double(setsserial_inst_t *inst, rtapi_u32 addr){
+static rtapi_u64 __attribute__((unused)) sslbp_read_double(setsserial_inst_t *inst, rtapi_u32 addr){
     hostmot2_t *hm2 = inst->hm2;
     hm2_sserial_remote_t *remote = inst->remote;
     rtapi_u64 res;
@@ -276,7 +277,7 @@ static int sslbp_write_byte(setsserial_inst_t *inst, rtapi_u32 addr, rtapi_u32 d
     return 0;
 }
 
-static int sslbp_write_word(setsserial_inst_t *inst, rtapi_u32 addr, rtapi_u32 data){
+static int __attribute__((unused)) sslbp_write_word(setsserial_inst_t *inst, rtapi_u32 addr, rtapi_u32 data){
     hostmot2_t *hm2 = inst->hm2;
     hm2_sserial_remote_t *remote = inst->remote;
     rtapi_u32 buff = WRITE_REM_WORD_CMD + addr;
@@ -395,7 +396,7 @@ static int sslbp_flash(setsserial_inst_t *inst, char *fname){
         int blocknum = StartBlock;
         int block_start;
         int i, j, t;
-        while (blocknum * erase_sz < fw->size){
+        while ((size_t)(blocknum * erase_sz) < fw->size){
             block_start = blocknum * erase_sz;
             for (t = 0; t < erase_sz && fw->data[block_start + t] == 0 ; t++){ }
             if (t <  erase_sz){ // found a non-zero byte
@@ -531,6 +532,7 @@ static int setsserial_run(setsserial_inst_t *inst, const char *cmd_str)
 int New(const cmod_env_t *env, const char *name,
         int argc, const char **argv, cmod_t **out)
 {
+    (void)name;
     setsserial_inst_t *inst;
     const char *cmd_str = NULL;
     int ret;

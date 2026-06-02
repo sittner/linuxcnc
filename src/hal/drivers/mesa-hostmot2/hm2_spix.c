@@ -549,18 +549,18 @@ static int spix_setup(hm2_spix_inst_t *inst)
 
 	// If the driver is forced, check if it actually exists
 	if(inst->force_driver) {
-		for(i = 0; i < NELEM(drivers); i++) {
+		for(i = 0; (size_t)i < NELEM(drivers); i++) {
 			if(!strcmp(inst->force_driver, drivers[i]->name))
 				break;
 		}
-		if(i >= NELEM(drivers)) {
+		if((size_t)i >= NELEM(drivers)) {
 			LL_ERR("Unsupported hardware driver '%s' passed to force_driver option\n", inst->force_driver);
 			return -ENODEV;
 		}
 	}
 
 	// Let each driver do a detect and stop when a match is found.
-	for(i = 0; i < NELEM(drivers); i++) {
+	for(i = 0; (size_t)i < NELEM(drivers); i++) {
 		if(inst->force_driver && strcmp(inst->force_driver, drivers[i]->name))
 			continue;
 		if(!drivers[i]->detect(dtcs)) {

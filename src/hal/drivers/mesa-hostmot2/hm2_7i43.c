@@ -165,7 +165,7 @@ static void hm2_7i43_nanosleep(unsigned long int nanoseconds) {
 
     max_ns_delay = rtapi_delay_max();
 
-    while (nanoseconds > max_ns_delay) {
+    while (nanoseconds > (unsigned long int)max_ns_delay) {
         rtapi_delay(max_ns_delay);
         nanoseconds -= max_ns_delay;
     }

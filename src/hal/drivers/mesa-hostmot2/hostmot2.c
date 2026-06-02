@@ -155,6 +155,7 @@ static void hm2_write(void *void_hm2, long period) {
 
 
 static void hm2_read_gpio(void *void_hm2, long period) {
+    (void)period;
     hostmot2_t *hm2 = void_hm2;
 
     // if there are comm problems, wait for the user to fix it
@@ -191,7 +192,7 @@ const char *hm2_hz_to_mhz(rtapi_u32 freq_hz) {
     freq_mhz = freq_hz / (1000*1000);
     freq_mhz_fractional = (freq_hz / 1000) % 1000;
     r = snprintf(mhz_str, sizeof(mhz_str), "%d.%03d", freq_mhz, freq_mhz_fractional);
-    if (r >= sizeof(mhz_str)) {
+    if ((size_t)r >= sizeof(mhz_str)) {
         HM2_ERR_NO_LL("too many MHz!\n");
         return "(unpresentable)";
     }
@@ -669,7 +670,7 @@ static int hm2_read_idrom(hostmot2_t *hm2) {
     // verify the idrom we read
     //
 
-    if (hm2->idrom.port_width != hm2->llio->pins_per_connector) {
+    if (hm2->idrom.port_width != (rtapi_u32)hm2->llio->pins_per_connector) {
         HM2_ERR("invalid IDROM PortWidth %d, this board has %d pins per connector, aborting load\n", hm2->idrom.port_width, hm2->llio->pins_per_connector);
         hm2_print_idrom(hm2);
         return -EINVAL;
@@ -685,7 +686,7 @@ static int hm2_read_idrom(hostmot2_t *hm2) {
         return -EINVAL;
     }
 
-    if (hm2->idrom.io_ports != hm2->llio->num_ioport_connectors) {
+    if (hm2->idrom.io_ports != (rtapi_u32)hm2->llio->num_ioport_connectors) {
         HM2_ERR(
             "IDROM IOPorts is %d but llio num_ioport_connectors is %d, driver and firmware are inconsistent, aborting driver load\n",
             hm2->idrom.io_ports,
@@ -1161,6 +1162,7 @@ void hm2_print_modules(hostmot2_t *hm2) {
 
 
 static void hm2_release_device(struct rtapi_device *dev) {
+    (void)dev;
     // nothing to do here
 }
 

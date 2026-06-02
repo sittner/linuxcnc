@@ -915,7 +915,7 @@ static int hm2_eth_receive_queued_reads(hm2_lowlevel_io_t *this) {
         read_timeout = 100000;
  
     if(!board->hal) this->read_time = t1;
-    unsigned long long read_deadline = this->read_time + read_timeout;
+    long long read_deadline = this->read_time + read_timeout;
     do {
 do_recv_packet:
         errno = 0;

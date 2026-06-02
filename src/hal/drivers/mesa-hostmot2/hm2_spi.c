@@ -460,7 +460,7 @@ static int probe(hm2_spi_inst_t *inst, char *dev, int rate) {
     } else {
         // peter's been busy
         int i=0;
-        for(i=0; i<sizeof(ident); i++)
+        for(i=0; (size_t)i<sizeof(ident); i++)
             if(!isprint(ident[i])) ident[i] = '?';
         rtapi_print_msg(RTAPI_MSG_ERR, "Unknown board: %.8s\n", ident);
         goto fail;

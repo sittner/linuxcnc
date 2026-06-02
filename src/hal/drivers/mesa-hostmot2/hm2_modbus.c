@@ -2953,6 +2953,7 @@ errout:
 int New(const cmod_env_t *env, const char *name,
         int argc, const char **argv, cmod_t **out)
 {
+    (void)name;
     hm2_modbus_mod_t *mod = rtapi_calloc(sizeof(*mod));
     if (!mod) return -ENOMEM;
     mod->env = env;
