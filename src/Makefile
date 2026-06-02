@@ -886,77 +886,7 @@ hal_gpio-objs  :=			\
     $(MATHSTUB)
 endif
 
-RTMODULES += hostmot2.o hm2_test.o hm2_pci.o hm2_7i43.o hm2_7i90.o setsserial.o
-RTMODULES += hm2_modbus.o
-RTMODULES += hm2_eth.o
-RTMODULES += hm2_spi.o hm2_rpspi.o hm2_spix.o
-hostmot2-objs :=			  \
-    hal/drivers/mesa-hostmot2/hostmot2.o  \
-    hal/drivers/mesa-hostmot2/abs_encoder.o\
-    hal/drivers/mesa-hostmot2/bitfile.o   \
-    hal/drivers/mesa-hostmot2/bspi.o	  \
-    hal/drivers/mesa-hostmot2/dpll.o	  \
-    hal/drivers/mesa-hostmot2/encoder.o   \
-    hal/drivers/mesa-hostmot2/inm.o	  \
-    hal/drivers/mesa-hostmot2/inmux.o	  \
-    hal/drivers/mesa-hostmot2/ioport.o	  \
-    hal/drivers/mesa-hostmot2/led.o	  \
-    hal/drivers/mesa-hostmot2/pins.o	  \
-    hal/drivers/mesa-hostmot2/pktuart.o   \
-    hal/drivers/mesa-hostmot2/pwmgen.o	  \
-    hal/drivers/mesa-hostmot2/oneshot.o	  \
-    hal/drivers/mesa-hostmot2/raw.o	  \
-    hal/drivers/mesa-hostmot2/rcpwmgen.o  \
-    hal/drivers/mesa-hostmot2/resolver.o  \
-    hal/drivers/mesa-hostmot2/sserial.o   \
-    hal/drivers/mesa-hostmot2/ssr.o       \
-    hal/drivers/mesa-hostmot2/outm.o      \
-    hal/drivers/mesa-hostmot2/stepgen.o   \
-    hal/drivers/mesa-hostmot2/tp_pwmgen.o \
-    hal/drivers/mesa-hostmot2/tram.o	  \
-    hal/drivers/mesa-hostmot2/uart.o	  \
-    hal/drivers/mesa-hostmot2/watchdog.o  \
-    hal/drivers/mesa-hostmot2/xy2mod.o    \
-    $(MATHSTUB)
-hm2_7i90-objs :=			  \
-    hal/drivers/mesa-hostmot2/hm2_7i90.o  \
-    hal/drivers/mesa-hostmot2/bitfile.o   \
-    $(MATHSTUB)
-hm2_7i43-objs :=			  \
-    hal/drivers/mesa-hostmot2/hm2_7i43.o  \
-    hal/drivers/mesa-hostmot2/bitfile.o   \
-    $(MATHSTUB)
-hm2_pci-objs  :=			  \
-    hal/drivers/mesa-hostmot2/hm2_pci.o   \
-    hal/drivers/mesa-hostmot2/bitfile.o   \
-    $(MATHSTUB)
-hm2_eth-objs  :=			  \
-    hal/drivers/mesa-hostmot2/hm2_eth.o   \
-    $(MATHSTUB)
-hm2_spi-objs  :=			  \
-    hal/drivers/mesa-hostmot2/hm2_spi.o   \
-    $(MATHSTUB)
-hm2_rpspi-objs  :=			  \
-    hal/drivers/mesa-hostmot2/hm2_rpspi.o   \
-    $(MATHSTUB)
-hm2_spix-objs  :=			  \
-    hal/drivers/mesa-hostmot2/hm2_spix.o  \
-    hal/drivers/mesa-hostmot2/spix_rpi5.o \
-    hal/drivers/mesa-hostmot2/spix_rpi3.o \
-    hal/drivers/mesa-hostmot2/spix_spidev.o \
-    hal/drivers/mesa-hostmot2/llio_info.o \
-    hal/drivers/mesa-hostmot2/eshellf.o   \
-    $(MATHSTUB)
-hm2_modbus-objs  :=			  \
-    hal/drivers/mesa-hostmot2/hm2_modbus.o \
-    $(MATHSTUB)
-hm2_test-objs :=			  \
-    hal/drivers/mesa-hostmot2/hm2_test.o  \
-    hal/drivers/mesa-hostmot2/bitfile.o   \
-    $(MATHSTUB)
-setsserial-objs :=			  \
-    hal/drivers/mesa-hostmot2/setsserial.o  \
-    $(MATHSTUB)
+# hostmot2 family moved to cmod build (see hal/drivers/mesa-hostmot2/Submakefile)
 
 # classicladder_rt removed — now built as a cmod (see cmod/classicladder/)
 
