@@ -29,6 +29,7 @@
 #include "gomc_env.h"
 #include "hostmot2.h"
 #include "hm2_core_api.h"
+#include "hm2_serial_api.h"
 #include "bitfile.h"
 
 
@@ -201,7 +202,6 @@ const char *hm2_hz_to_mhz(rtapi_u32 freq_hz) {
 }
 
 // FIXME: It would be nice if this was more generic
-EXPORT_SYMBOL_GPL(hm2_get_bspi);
 int hm2_get_bspi(hostmot2_t** hm2, const char *name){
     struct rtapi_list_head *ptr;
     int i;
@@ -216,7 +216,6 @@ int hm2_get_bspi(hostmot2_t** hm2, const char *name){
     return -1;
 }
 
-EXPORT_SYMBOL_GPL(hm2_get_uart);
 int hm2_get_uart(hostmot2_t** hm2, const char *name){
     struct rtapi_list_head *ptr;
     int i;
@@ -230,7 +229,6 @@ int hm2_get_uart(hostmot2_t** hm2, const char *name){
     }
     return -1;
 }
-EXPORT_SYMBOL_GPL(hm2_get_pktuart);
 int hm2_get_pktuart(hostmot2_t** hm2, const char *name){
     struct rtapi_list_head *ptr;
     int i;
@@ -244,7 +242,6 @@ int hm2_get_pktuart(hostmot2_t** hm2, const char *name){
     }
     return -1;
 }
-EXPORT_SYMBOL_GPL(hm2_get_sserial);
 // returns a pointer to a remote struct
 hm2_sserial_remote_t *hm2_get_sserial(hostmot2_t** hm2, const char *name){
    // returns inst * 64 + remote index
@@ -1178,7 +1175,6 @@ static int dummy_queue_read(hm2_lowlevel_io_t *this, rtapi_u32 addr,
     return 1; // success
 }
 
-EXPORT_SYMBOL_GPL(hm2_register);
 
 int hm2_register(hm2_lowlevel_io_t *llio, char *config_string) {
     int r;
@@ -1737,7 +1733,6 @@ fail0:
 
 
 
-EXPORT_SYMBOL_GPL(hm2_unregister);
 void hm2_unregister(hm2_lowlevel_io_t *llio) {
     struct rtapi_list_head *ptr;
 
@@ -1778,6 +1773,7 @@ typedef struct {
     const cmod_env_t *env;
     const char *name;
     hm2_core_callbacks_t core_api;
+    hm2_serial_callbacks_t serial_api;
 } hm2_inst_t;
 
 static hm2_inst_t *hm2_inst;  // singleton instance
@@ -1850,10 +1846,21 @@ int New(const cmod_env_t *env, const char *name,
     inst->core_api.register_board = hm2_core_register_board;
     inst->core_api.unregister_board = hm2_core_unregister_board;
 
+    // Register the hm2_serial API so mesa_uart/mesa_7i65/pktgyro can use serial interfaces.
+    extern void hm2_serial_provider_init(hm2_serial_callbacks_t *cb);
+    hm2_serial_provider_init(&inst->serial_api);
+
     if (env->api) {
         int r = hm2_core_api_register(env->api, name, &inst->core_api);
         if (r != 0) {
             gomc_log_errorf(log, name, "hostmot2: failed to register hm2_core API: %d\n", r);
+            hal->exit(hal->ctx, comp_id);
+            free(inst);
+            return -1;
+        }
+        r = hm2_serial_api_register(env->api, name, &inst->serial_api);
+        if (r != 0) {
+            gomc_log_errorf(log, name, "hostmot2: failed to register hm2_serial API: %d\n", r);
             hal->exit(hal->ctx, comp_id);
             free(inst);
             return -1;

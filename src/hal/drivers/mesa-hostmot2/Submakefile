@@ -27,6 +27,7 @@ HM2_CORE_SRCS := \
     $(HM2_DIR)/bspi.c \
     $(HM2_DIR)/dpll.c \
     $(HM2_DIR)/encoder.c \
+    $(HM2_DIR)/hm2_serial_provider.c \
     $(HM2_DIR)/inm.c \
     $(HM2_DIR)/inmux.c \
     $(HM2_DIR)/ioport.c \

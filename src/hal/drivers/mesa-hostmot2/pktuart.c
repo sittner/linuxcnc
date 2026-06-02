@@ -228,7 +228,6 @@ int hm2_pktuart_setup_tx(const char *name, unsigned int bitrate, unsigned int pa
 	if(drive_auto)   cfg.flags |= HM2_PKTUART_CONFIG_DRIVEAUTO;
 	return hm2_pktuart_config(name, NULL, &cfg, 0);	// Send immediately
 }
-EXPORT_SYMBOL_GPL(hm2_pktuart_setup_tx);
 
 //
 // The hm2_pktuart_setup_rx() function is DEPRECATED
@@ -249,7 +248,6 @@ int hm2_pktuart_setup_rx(const char *name, unsigned int bitrate, unsigned int fi
 	if(rx_mask)   cfg.flags |= HM2_PKTUART_CONFIG_RXMASKEN;
 	return hm2_pktuart_config(name, &cfg, NULL, 0);	// Send immediately
 }
-EXPORT_SYMBOL_GPL(hm2_pktuart_setup_rx);
 
 //
 // PktUART configuration implementation for TX
@@ -434,7 +432,6 @@ int hm2_pktuart_config(const char *name, const hm2_pktuart_config_t *rxcfg, cons
 	}
 	return 0;
 }
-EXPORT_SYMBOL_GPL(hm2_pktuart_config);
 
 static void perform_reset(const char *name, int queue)
 {
@@ -473,7 +470,6 @@ void hm2_pktuart_reset(const char *name)
 {
 	perform_reset(name, 0);
 }
-EXPORT_SYMBOL_GPL(hm2_pktuart_reset);
 
 //
 // Perform a TX and RX interface reset clearing the FIFOs next time the write
@@ -483,7 +479,6 @@ void hm2_pktuart_queue_reset(const char *name)
 {
 	perform_reset(name, 1);
 }
-EXPORT_SYMBOL_GPL(hm2_pktuart_queue_reset);
 
 //
 // The hm2_pktuart_setup() function is DEPRECATED
@@ -571,7 +566,6 @@ int hm2_pktuart_setup(const char *name, unsigned bitrate, rtapi_s32 tx_mode, rta
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(hm2_pktuart_setup);
 
 //
 // Queue *num_framed of data with each frame's size as an entry in the
@@ -661,7 +655,6 @@ int hm2_pktuart_send(const char *name, const unsigned char data[], rtapi_u8 *num
 	}
 	return count;
 }
-EXPORT_SYMBOL_GPL(hm2_pktuart_send);
 
 //
 // The function hm2_pktuart_read() performs reads/writes outside of the normal
@@ -837,7 +830,6 @@ int hm2_pktuart_read(const char *name, unsigned char data[], rtapi_u8 *num_frame
 
 	return bytes_total;
 }
-EXPORT_SYMBOL_GPL(hm2_pktuart_read);
 
 //
 // The hm2_pktuart_queue_get_frame_sizes() function queues sufficient reads to
@@ -875,7 +867,6 @@ int hm2_pktuart_queue_get_frame_sizes(const char *name, rtapi_u32 fsizes[])
 	}
 	return j - 1;
 }
-EXPORT_SYMBOL_GPL(hm2_pktuart_queue_get_frame_sizes);
 
 
 //
@@ -919,7 +910,6 @@ int hm2_pktuart_queue_read_data(const char *name, rtapi_u32 data[], int bytes)
 	}
 	return i - 1;
 }
-EXPORT_SYMBOL_GPL(hm2_pktuart_queue_read_data);
 
 //
 // Return the current RX status from last tram read
@@ -934,7 +924,6 @@ rtapi_u32 hm2_pktuart_get_rx_status(const char *name)
 	}
 	return hm2->pktuart.rx_status_reg[i];
 }
-EXPORT_SYMBOL_GPL(hm2_pktuart_get_rx_status);
 
 //
 // Return the current TX status from last tram read
@@ -949,7 +938,6 @@ rtapi_u32 hm2_pktuart_get_tx_status(const char *name)
 	}
 	return hm2->pktuart.tx_status_reg[i];
 }
-EXPORT_SYMBOL_GPL(hm2_pktuart_get_tx_status);
 
 //
 // Return the lower clock used by the PktUART
@@ -965,7 +953,6 @@ int hm2_pktuart_get_clock(const char* name)
 	hm2_pktuart_instance_t inst = hm2->pktuart.instance[i];
 	return inst.clock_freq;
 }
-EXPORT_SYMBOL_GPL(hm2_pktuart_get_clock);
 
 //
 // Return the RX/TX PktUART version as implemented by the fpga.
@@ -980,6 +967,5 @@ int hm2_pktuart_get_version(const char* name)
 	}
 	return hm2->pktuart.tx_version + 16 * hm2->pktuart.rx_version;
 }
-EXPORT_SYMBOL_GPL(hm2_pktuart_get_version);
 
 // vim: ts=4

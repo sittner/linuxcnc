@@ -498,7 +498,7 @@ func (g *generator) emitConvenienceDefines() {
 		if v.Array > 0 {
 			g.printf("#define %s (__comp_inst->%s)\n", defName, defName)
 		} else {
-			g.printf("#define %s (__comp_inst->%s)\n", defName, name)
+			g.printf("#define %s (__comp_inst->%s)\n", defName, defName)
 		}
 	}
 

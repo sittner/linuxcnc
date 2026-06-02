@@ -9,11 +9,9 @@ CONVERTERS :=  \
 # These use features not supported by cmod or have special requirements
 # ---------------------------------------------------------------------------
 HALCOMPILE_COMP_NAMES := \
-    mesa_pktgyro_test    \
     tpcomp
 # Reasons:
 #   tpcomp                - uses EXTRA_SETUP with HOMING_BASE include (motion controller integration)
-#   mesa_pktgyro_test     - hostmot2 driver test (depends on internal headers)
 
 # Kinematics .comp modules: built via modcompile with gmi_provide kins.
 # Need the GMI kins API header path at compile time.
@@ -37,8 +35,6 @@ CMOD_MANPAGES := $(patsubst hal/components/%.comp, ../docs/man/man9/%.9, $(CMOD_
 HALCOMPILE_MANPAGES := $(patsubst hal/components/%.comp, ../docs/man/man9/%.9, $(COMPS)) ../docs/man/man9/tpcomp.9
 COMP_MANPAGES := $(CMOD_MANPAGES) $(HALCOMPILE_MANPAGES)
 COMP_DRIVERS += hal/drivers/serport.comp
-COMP_DRIVERS += hal/drivers/mesa_7i65.comp
-COMP_DRIVERS += hal/drivers/mesa_uart.comp
 COMP_DRIVER_MANPAGES := $(patsubst hal/drivers/%.comp, ../docs/man/man9/%.9, $(COMP_DRIVERS))
 TARGETS += manpages
 GENERATED_MANPAGES += $(COMP_MANPAGES)
@@ -215,6 +211,44 @@ CMOD_MTC_CFLAGS := -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I $(CMOD_GMI_MTC_
 	$(ECHO) "Compiling cmod (manualtoolchange) $(notdir $@)"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) $(CMOD_MTC_CFLAGS) -o $@ $<
+
+# Step 2e: hm2_serial consumers need the GMI hm2_serial API header path.
+CMOD_GMI_HM2_SERIAL_API := gomc/generated/gmi/hm2_serial
+CMOD_HM2_SERIAL_CFLAGS := -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I $(CMOD_GMI_HM2_SERIAL_API) -lm
+
+# mesa_pktgyro_test (hal/components/)
+../cmod/mesa_pktgyro_test.so: objects/cmod/mesa_pktgyro_test.c $(CMOD_GMI_HM2_SERIAL_API)/hm2_serial_api.h
+	$(ECHO) "Compiling cmod (hm2_serial consumer) $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) $(CMOD_HM2_SERIAL_CFLAGS) -o $@ $<
+
+# mesa_7i65 (hal/drivers/) — needs preprocessing step
+objects/cmod/mesa_7i65.c: hal/drivers/mesa_7i65.comp ../bin/modcompile
+	$(ECHO) "Preprocessing cmod $(notdir $<)"
+	@mkdir -p $(dir $@)
+	$(Q)../bin/modcompile --preprocess $< > $@
+
+../cmod/mesa_7i65.so: objects/cmod/mesa_7i65.c $(CMOD_GMI_HM2_SERIAL_API)/hm2_serial_api.h
+	$(ECHO) "Compiling cmod (hm2_serial consumer) $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) $(CMOD_HM2_SERIAL_CFLAGS) -o $@ $<
+
+TARGETS += ../cmod/mesa_7i65.so
+modules: ../cmod/mesa_7i65.so
+
+# mesa_uart (hal/drivers/) — needs preprocessing step
+objects/cmod/mesa_uart.c: hal/drivers/mesa_uart.comp ../bin/modcompile
+	$(ECHO) "Preprocessing cmod $(notdir $<)"
+	@mkdir -p $(dir $@)
+	$(Q)../bin/modcompile --preprocess $< > $@
+
+../cmod/mesa_uart.so: objects/cmod/mesa_uart.c $(CMOD_GMI_HM2_SERIAL_API)/hm2_serial_api.h
+	$(ECHO) "Compiling cmod (hm2_serial consumer) $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) $(CMOD_HM2_SERIAL_CFLAGS) -o $@ $<
+
+TARGETS += ../cmod/mesa_uart.so
+modules: ../cmod/mesa_uart.so
 
 TARGETS += $(CMOD_TARGETS)
 modules: $(CMOD_TARGETS)

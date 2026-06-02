@@ -115,7 +115,6 @@ void hm2_bspi_force_write(hostmot2_t *hm2)
     }
 }
 
-EXPORT_SYMBOL_GPL(hm2_tram_add_bspi_frame);
 int hm2_tram_add_bspi_frame(char *name, int chan, rtapi_u32 **wbuff, rtapi_u32 **rbuff)
 {
     hostmot2_t *hm2;
@@ -159,7 +158,6 @@ int hm2_tram_add_bspi_frame(char *name, int chan, rtapi_u32 **wbuff, rtapi_u32 *
     return 0;
 }
 
-EXPORT_SYMBOL_GPL(hm2_allocate_bspi_tram);
 int hm2_allocate_bspi_tram(char* name)
 {
     hostmot2_t *hm2;
@@ -178,7 +176,6 @@ int hm2_allocate_bspi_tram(char* name)
     return 0;
 }
 
-EXPORT_SYMBOL_GPL(hm2_bspi_clear_fifo);
 int hm2_bspi_clear_fifo(char * name)
 {
     hostmot2_t * hm2;
@@ -198,7 +195,6 @@ int hm2_bspi_clear_fifo(char * name)
     return r;
 }
 
-EXPORT_SYMBOL_GPL(hm2_bspi_write_chan);
 int hm2_bspi_write_chan(char* name, int chan, rtapi_u32 val)
 {
     hostmot2_t *hm2;
@@ -222,7 +218,6 @@ int hm2_bspi_write_chan(char* name, int chan, rtapi_u32 val)
     return r;
 }
 
-EXPORT_SYMBOL_GPL(hm2_bspi_setup_chan);
 int hm2_bspi_setup_chan(char *name, int chan, int cs, int bits, double mhz,
                         int delay, int cpol, int cpha, int noclear, int noecho,
                         int samplelate)
@@ -300,7 +295,6 @@ void hm2_bspi_print_module(hostmot2_t *hm2){
     }
 }
 
-EXPORT_SYMBOL_GPL(hm2_bspi_set_read_function);
 int hm2_bspi_set_read_function(char *name, int (*func)(void *subdata), void *subdata){
     hostmot2_t *hm2;
     int i;
@@ -324,7 +318,6 @@ int hm2_bspi_set_read_function(char *name, int (*func)(void *subdata), void *sub
     return 0;
 }
 
-EXPORT_SYMBOL_GPL(hm2_bspi_set_write_function);
 int hm2_bspi_set_write_function(char *name, int (*func)(void *subdata), void *subdata){
     hostmot2_t *hm2;
     int i;

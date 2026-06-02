@@ -136,7 +136,6 @@ fail0:
     return r;
 }
 
-EXPORT_SYMBOL_GPL(hm2_uart_setup);
 // use -1 for tx_mode and rx_mode to leave the mode unchanged
 int hm2_uart_setup(char *name, int bitrate, rtapi_s32 tx_mode, rtapi_s32 rx_mode){
     hostmot2_t *hm2;
@@ -182,7 +181,6 @@ int hm2_uart_setup(char *name, int bitrate, rtapi_s32 tx_mode, rtapi_s32 rx_mode
 }
 
 
-EXPORT_SYMBOL_GPL(hm2_uart_send);
 int hm2_uart_send(char *name,  unsigned char data[], int count)
 {
     hostmot2_t *hm2;
@@ -262,7 +260,6 @@ int hm2_uart_send(char *name,  unsigned char data[], int count)
 }
 
 // This function needs to be modified so that it does not call llio->read, which hurts performance on hm2-eth
-EXPORT_SYMBOL_GPL(hm2_uart_read);
 int hm2_uart_read(char *name, unsigned char data[])
 {
     hostmot2_t *hm2;
