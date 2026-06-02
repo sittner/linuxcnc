@@ -850,8 +850,7 @@ RTCFLAGS += -fno-builtin-sin -fno-builtin-cos -fno-builtin-sincos
 # are now cmod-only (built from _cmod.c via hal/components/Submakefile)
 RTMODULES += lcd.o
 lcd-objs := hal/components/lcd.o $(MATHSTUB)
-RTMODULES += matrix_kb.o
-matrix_kb-objs := hal/components/matrix_kb.o $(MATHSTUB)
+# matrix_kb moved to cmod build (see hal/components/Submakefile)
 RTMODULES += streamer.o
 streamer-objs := hal/components/streamer.o $(MATHSTUB)
 RTMODULES += sampler.o
@@ -861,10 +860,7 @@ sampler-objs := hal/components/sampler.o $(MATHSTUB)
 # hal_parport, hal_bb_gpio, hal_pi_gpio, hal_gpio moved to cmod build
 # (see hal/drivers/Submakefile)
 
-RTMODULES += hal_gm.o
-hal_gm-objs := hal/drivers/hal_gm.o $(MATHSTUB)
-RTMODULES += hal_ppmc.o
-hal_ppmc-objs := hal/drivers/hal_ppmc.o $(MATHSTUB)
+# hal_gm, hal_ppmc moved to cmod build (see hal/drivers/Submakefile)
 
 
 # hostmot2 family moved to cmod build (see hal/drivers/mesa-hostmot2/Submakefile)
