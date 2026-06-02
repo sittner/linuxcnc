@@ -860,10 +860,6 @@ sampler-objs := hal/components/sampler.o $(MATHSTUB)
 # Subdirectory: hal/drivers
 RTMODULES += hal_parport.o
 hal_parport-objs := hal/drivers/hal_parport.o $(MATHSTUB)
-ifeq ($(X86ARCH),true)
-RTMODULES += hal_speaker.o
-hal_speaker-objs := hal/drivers/hal_speaker.o $(MATHSTUB)
-endif
 
 RTMODULES += hal_gm.o
 hal_gm-objs := hal/drivers/hal_gm.o $(MATHSTUB)
