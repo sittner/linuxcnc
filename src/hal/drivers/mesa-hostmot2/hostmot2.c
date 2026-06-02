@@ -21,42 +21,23 @@
 #include <rtapi_list.h>
 
 #include "rtapi.h"
-#include "rtapi_app.h"
 #include "rtapi_string.h"
 #include "rtapi_math.h"
 
 #include "hal.h"
 
+#include "gomc_env.h"
 #include "hostmot2.h"
+#include "hm2_core_api.h"
 #include "bitfile.h"
 
 
-
-
-MODULE_INFO(linuxcnc, "component:hostmot2:RTAI driver for the HostMot2 firmware from Mesa Electronics.");
-MODULE_INFO(linuxcnc, "funct:read:1:Read all registers.");
-MODULE_INFO(linuxcnc, "funct:write:1:Write all registers, and pet the watchdog to keep it from biting.");
-MODULE_INFO(linuxcnc, "license:GPL");
-
-MODULE_LICENSE("GPL");
-
-
-
-
+// Module parameters — globals, set from argv in New().
 int debug_idrom = 0;
-RTAPI_MP_INT(debug_idrom, "Developer/debug use only!  Enable debug logging of the HostMot2\nIDROM header.");
-
 int debug_module_descriptors = 0;
-RTAPI_MP_INT(debug_module_descriptors, "Developer/debug use only!  Enable debug logging of the HostMot2\nModule Descriptors.");
-
 int debug_modules = 0;
-RTAPI_MP_INT(debug_modules, "Developer/debug use only!  Enable debug logging of the HostMot2\nModules used.");
-
 int use_serial_numbers = 0;
-RTAPI_MP_INT(use_serial_numbers, "Name cards by serial number, not enumeration order (smart-serial only)");
-
 int sserial_baudrate = -1;
-RTAPI_MP_INT(sserial_baudrate, "Over-ride the standard smart-serial baud rate. For flashing remote firmware only.");
 
 
 // this keeps track of all the hm2 instances that have been registered by
@@ -1787,25 +1768,127 @@ void hm2_unregister(hm2_lowlevel_io_t *llio) {
 
 
 //
-// setup and cleanup code
+// cmod lifecycle
 //
 
-int rtapi_app_main(void) {
-    HM2_PRINT_NO_LL("loading Mesa HostMot2 driver version %s\n", HM2_VERSION);
+// Per-instance state for the hostmot2 cmod.
+typedef struct {
+    const cmod_env_t *env;
+    const char *name;
+    hm2_core_callbacks_t core_api;
+} hm2_inst_t;
 
-    comp_id = hal_init("hostmot2");
-    if(comp_id < 0) return comp_id;
+static hm2_inst_t *hm2_inst;  // singleton instance
+
+
+// Parse module parameters from argv (replaces RTAPI_MP_INT).
+static void hm2_parse_argv(int argc, const char **argv) {
+    for (int i = 0; i < argc; i++) {
+        if (strncmp(argv[i], "debug_idrom=", 12) == 0)
+            debug_idrom = simple_strtol(argv[i] + 12, NULL, 0);
+        else if (strncmp(argv[i], "debug_module_descriptors=", 25) == 0)
+            debug_module_descriptors = simple_strtol(argv[i] + 25, NULL, 0);
+        else if (strncmp(argv[i], "debug_modules=", 14) == 0)
+            debug_modules = simple_strtol(argv[i] + 14, NULL, 0);
+        else if (strncmp(argv[i], "use_serial_numbers=", 19) == 0)
+            use_serial_numbers = simple_strtol(argv[i] + 19, NULL, 0);
+        else if (strncmp(argv[i], "sserial_baudrate=", 17) == 0)
+            sserial_baudrate = simple_strtol(argv[i] + 17, NULL, 0);
+    }
+}
+
+
+// hm2_core API callbacks — called by transport drivers in their Init().
+static int hm2_core_register_board(void *ctx, hm2_lowlevel_io_t *llio, char *config) {
+    (void)ctx;
+    return hm2_register(llio, config);
+}
+
+static void hm2_core_unregister_board(void *ctx, hm2_lowlevel_io_t *llio) {
+    (void)ctx;
+    hm2_unregister(llio);
+}
+
+
+static void hm2_destroy(cmod_t *self);
+
+int New(const cmod_env_t *env, const char *name,
+        int argc, const char **argv, cmod_t **out)
+{
+    const gomc_hal_t *hal = env->hal;
+    const gomc_log_t *log = env->log;
+    cmod_t *cmod;
+
+    gomc_log_infof(log, name, "loading Mesa HostMot2 driver version %s\n", HM2_VERSION);
+
+    // Parse module parameters from argv.
+    hm2_parse_argv(argc, argv);
+
+    // Allocate instance state.
+    hm2_inst_t *inst = calloc(1, sizeof(*inst));
+    if (!inst) {
+        gomc_log_errorf(log, name, "hostmot2: out of memory\n");
+        return -1;
+    }
+    inst->env = env;
+    inst->name = name;
+
+    // Initialize HAL component.
+    comp_id = hal->init(hal->ctx, name, env->dl_handle, GOMC_HAL_COMP_REALTIME);
+    if (comp_id < 0) {
+        gomc_log_errorf(log, name, "hostmot2: hal_init failed\n");
+        free(inst);
+        return -1;
+    }
+
     RTAPI_INIT_LIST_HEAD(&hm2_list);
 
-    hal_ready(comp_id);
+    // Register the hm2_core API so transport drivers can call register_board.
+    inst->core_api.ctx = inst;
+    inst->core_api.register_board = hm2_core_register_board;
+    inst->core_api.unregister_board = hm2_core_unregister_board;
 
+    if (env->api) {
+        int r = hm2_core_api_register(env->api, name, &inst->core_api);
+        if (r != 0) {
+            gomc_log_errorf(log, name, "hostmot2: failed to register hm2_core API: %d\n", r);
+            hal->exit(hal->ctx, comp_id);
+            free(inst);
+            return -1;
+        }
+    }
+
+    hal->ready(hal->ctx, comp_id);
+
+    // Set up cmod handle.
+    cmod = calloc(1, sizeof(*cmod));
+    if (!cmod) {
+        hal->exit(hal->ctx, comp_id);
+        free(inst);
+        return -1;
+    }
+    cmod->Init    = NULL;
+    cmod->Start   = NULL;
+    cmod->Stop    = NULL;
+    cmod->Destroy = hm2_destroy;
+    cmod->priv    = inst;
+
+    hm2_inst = inst;
+    *out = cmod;
     return 0;
 }
 
 
-void rtapi_app_exit(void) {
-    HM2_PRINT_NO_LL("unloading\n");
-    hal_exit(comp_id);
+static void hm2_destroy(cmod_t *self) {
+    hm2_inst_t *inst = (hm2_inst_t *)self->priv;
+    const gomc_log_t *log = inst->env->log;
+
+    gomc_log_infof(log, inst->name, "hostmot2: unloading\n");
+    inst->env->hal->exit(inst->env->hal->ctx, comp_id);
+
+    free(inst);
+    free(self);
+    hm2_inst = NULL;
 }
 
 

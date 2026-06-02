@@ -58,6 +58,8 @@ HM2_CMOD_CFLAGS := \
     -Igomc/generated/gmi/hm2_llio \
     -Igomc/generated/gmi/hm2_serial
 
+HM2_CMOD_LDFLAGS = $(LDFLAGS) -llinuxcnchal -lm
+
 ../cmod/hostmot2.so: $(HM2_CORE_SRCS) \
                      $(wildcard $(HM2_DIR)/*.h) \
                      $(wildcard gomc/pkg/cmodule/gomc_*.h) \
@@ -68,7 +70,7 @@ HM2_CMOD_CFLAGS := \
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HM2_CMOD_CFLAGS) \
 	    -o $@ $(HM2_CORE_SRCS) \
-	    -lm
+	    $(HM2_CMOD_LDFLAGS)
 
 TARGETS += ../cmod/hostmot2.so
 modules: ../cmod/hostmot2.so
@@ -86,7 +88,7 @@ modules: ../cmod/hostmot2.so
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HM2_CMOD_CFLAGS) \
 	    -o $@ $(HM2_DIR)/hm2_eth.c \
-	    -lm
+	    $(HM2_CMOD_LDFLAGS)
 
 TARGETS += ../cmod/hm2_eth.so
 modules: ../cmod/hm2_eth.so
@@ -104,7 +106,7 @@ modules: ../cmod/hm2_eth.so
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HM2_CMOD_CFLAGS) \
 	    -o $@ $(HM2_DIR)/hm2_pci.c $(HM2_DIR)/bitfile.c \
-	    -lm
+	    $(HM2_CMOD_LDFLAGS)
 
 TARGETS += ../cmod/hm2_pci.so
 modules: ../cmod/hm2_pci.so
@@ -122,7 +124,7 @@ modules: ../cmod/hm2_pci.so
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HM2_CMOD_CFLAGS) \
 	    -o $@ $(HM2_DIR)/hm2_7i43.c $(HM2_DIR)/bitfile.c \
-	    -lm
+	    $(HM2_CMOD_LDFLAGS)
 
 TARGETS += ../cmod/hm2_7i43.so
 modules: ../cmod/hm2_7i43.so
@@ -140,7 +142,7 @@ modules: ../cmod/hm2_7i43.so
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HM2_CMOD_CFLAGS) \
 	    -o $@ $(HM2_DIR)/hm2_7i90.c $(HM2_DIR)/bitfile.c \
-	    -lm
+	    $(HM2_CMOD_LDFLAGS)
 
 TARGETS += ../cmod/hm2_7i90.so
 modules: ../cmod/hm2_7i90.so
@@ -158,7 +160,7 @@ modules: ../cmod/hm2_7i90.so
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HM2_CMOD_CFLAGS) \
 	    -o $@ $(HM2_DIR)/hm2_spi.c \
-	    -lm
+	    $(HM2_CMOD_LDFLAGS)
 
 TARGETS += ../cmod/hm2_spi.so
 modules: ../cmod/hm2_spi.so
@@ -176,7 +178,7 @@ modules: ../cmod/hm2_spi.so
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HM2_CMOD_CFLAGS) \
 	    -o $@ $(HM2_DIR)/hm2_rpspi.c \
-	    -lm
+	    $(HM2_CMOD_LDFLAGS)
 
 TARGETS += ../cmod/hm2_rpspi.so
 modules: ../cmod/hm2_rpspi.so
@@ -202,7 +204,7 @@ HM2_SPIX_SRCS := \
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HM2_CMOD_CFLAGS) \
 	    -o $@ $(HM2_SPIX_SRCS) \
-	    -lm
+	    $(HM2_CMOD_LDFLAGS)
 
 TARGETS += ../cmod/hm2_spix.so
 modules: ../cmod/hm2_spix.so
@@ -221,7 +223,7 @@ modules: ../cmod/hm2_spix.so
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HM2_CMOD_CFLAGS) \
 	    -o $@ $(HM2_DIR)/hm2_modbus.c \
-	    -lm
+	    $(HM2_CMOD_LDFLAGS)
 
 TARGETS += ../cmod/hm2_modbus.so
 modules: ../cmod/hm2_modbus.so
@@ -239,7 +241,7 @@ modules: ../cmod/hm2_modbus.so
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HM2_CMOD_CFLAGS) \
 	    -o $@ $(HM2_DIR)/setsserial.c \
-	    -lm
+	    $(HM2_CMOD_LDFLAGS)
 
 TARGETS += ../cmod/setsserial.so
 modules: ../cmod/setsserial.so
@@ -257,7 +259,7 @@ modules: ../cmod/setsserial.so
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HM2_CMOD_CFLAGS) \
 	    -o $@ $(HM2_DIR)/hm2_test.c $(HM2_DIR)/bitfile.c \
-	    -lm
+	    $(HM2_CMOD_LDFLAGS)
 
 TARGETS += ../cmod/hm2_test.so
 modules: ../cmod/hm2_test.so
