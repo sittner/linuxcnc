@@ -34,7 +34,6 @@ COMPS := $(filter-out hal/components/tpcomp.comp, $(HALCOMPILE_COMPS))
 CMOD_MANPAGES := $(patsubst hal/components/%.comp, ../docs/man/man9/%.9, $(CMOD_COMPS))
 HALCOMPILE_MANPAGES := $(patsubst hal/components/%.comp, ../docs/man/man9/%.9, $(COMPS)) ../docs/man/man9/tpcomp.9
 COMP_MANPAGES := $(CMOD_MANPAGES) $(HALCOMPILE_MANPAGES)
-COMP_DRIVERS += hal/drivers/serport.comp
 COMP_DRIVER_MANPAGES := $(patsubst hal/drivers/%.comp, ../docs/man/man9/%.9, $(COMP_DRIVERS))
 TARGETS += manpages
 GENERATED_MANPAGES += $(COMP_MANPAGES)
