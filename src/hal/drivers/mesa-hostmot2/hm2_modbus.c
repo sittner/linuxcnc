@@ -20,13 +20,14 @@
 
 
 #include "rtapi.h"
-#include "rtapi_app.h"
 #include "rtapi_string.h"
 #include "rtapi_byteorder.h"
 #include "rtapi_ctype.h"
 #include "rtapi_math.h"
 #include "hal.h"
 #include "hostmot2-serial.h"
+
+#include "gomc_env.h"
 
 #include "hm2_modbus.h"
 
@@ -45,9 +46,6 @@ static inline rtapi_u16 be16_to_cpu(rtapi_u16 v) { return be16toh(v); }
 #endif
 
 /* module information */
-MODULE_AUTHOR("B.Stultiens");
-MODULE_DESCRIPTION("Modbus interface and control using Mesa PktUART");
-MODULE_LICENSE("GPL");
 
 // The number of instances we support
 #define MAX_PORTS 8
@@ -288,6 +286,9 @@ typedef struct {
 static int comp_id = -1;	// HAL component ID
 static hm2_modbus_t mb;		// Our instances
 
+// cmod instance state
+static const cmod_env_t *mod_env;
+
 // Forward declarations
 static int parse_data_frame(hm2_modbus_inst_t *inst);
 static int build_data_frame(hm2_modbus_inst_t *inst);
@@ -300,7 +301,6 @@ static rtapi_u16 crc_modbus(const rtapi_u8 *buffer, size_t len);
  *   ports="hm2_7i95.0.pktuart.0","hm2_5i25.0.pktuart.7"
  */
 static char *ports[MAX_PORTS];
-RTAPI_MP_ARRAY_STRING(ports, MAX_PORTS, "PktUART HAL names");
 
 /*
  * The Modbus configuration and command structure files for each PktUART
@@ -309,7 +309,6 @@ RTAPI_MP_ARRAY_STRING(ports, MAX_PORTS, "PktUART HAL names");
  *   files="/usr/share/linuxcnc/modbus/spindle.mbccb","/home/test/xyz.mbccb"
  */
 static char *mbccbs[MAX_PORTS];
-RTAPI_MP_ARRAY_STRING(mbccbs, MAX_PORTS, "Binary Modbus configuration and command sequence absolute path file names");
 
 /*
  * Set the message level for debugging purpose. This has the (side-)effect that
@@ -318,7 +317,6 @@ RTAPI_MP_ARRAY_STRING(mbccbs, MAX_PORTS, "Binary Modbus configuration and comman
  * The upstream message level is not touched if debug == -1.
  */
 static int debug = -1;
-RTAPI_MP_INT(debug, "Set message level for debugging purpose [0...5] where 0=none and 5=all (default: -1; upstream defined)");
 
 
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
@@ -2546,7 +2544,7 @@ errout:
 static void docleanup(void)
 {
 	if(comp_id >= 0)
-		hal_exit(comp_id);
+		mod_env->hal->exit(mod_env->hal->ctx, comp_id);
 
 	if(mb.insts) {
 		for(int i = 0; i < mb.ninsts; i++) {
@@ -2559,7 +2557,29 @@ static void docleanup(void)
 	}
 }
 
-int rtapi_app_main(void)
+static void hm2_modbus_destroy(cmod_t *self);
+
+static void hm2_modbus_parse_argv(int argc, const char **argv) {
+    static char port_bufs[MAX_PORTS][256];
+    static char mbccb_bufs[MAX_PORTS][256];
+    int port_idx = 0, mbccb_idx = 0;
+
+    for (int i = 0; i < argc; i++) {
+        if (strncmp(argv[i], "ports=", 6) == 0 && port_idx < MAX_PORTS) {
+            strncpy(port_bufs[port_idx], argv[i] + 6, sizeof(port_bufs[0]) - 1);
+            ports[port_idx] = port_bufs[port_idx];
+            port_idx++;
+        } else if (strncmp(argv[i], "mbccbs=", 7) == 0 && mbccb_idx < MAX_PORTS) {
+            strncpy(mbccb_bufs[mbccb_idx], argv[i] + 7, sizeof(mbccb_bufs[0]) - 1);
+            mbccbs[mbccb_idx] = mbccb_bufs[mbccb_idx];
+            mbccb_idx++;
+        } else if (strncmp(argv[i], "debug=", 6) == 0) {
+            debug = simple_strtol(argv[i] + 6, NULL, 0);
+        }
+    }
+}
+
+static int hm2_modbus_init(void)
 {
 	int retval;
 
@@ -2572,7 +2592,7 @@ int rtapi_app_main(void)
 		return -EINVAL;
 	}
 
-	comp_id = hal_init(COMP_NAME);
+	comp_id = mod_env->hal->init(mod_env->hal->ctx, COMP_NAME, mod_env->dl_handle, GOMC_HAL_COMP_REALTIME);
 	if(comp_id < 0) {
 		MSG_ERR(COMP_NAME": hal_init() failed\n");
 		return comp_id;
@@ -2583,7 +2603,7 @@ int rtapi_app_main(void)
 	// Allocate memory for the instances
 	if(!(mb.insts = (hm2_modbus_inst_t *)rtapi_calloc(mb.ninsts * sizeof(*mb.insts)))) {
 		MSG_ERR(COMP_NAME": Allocate instance memory failed\n");
-		hal_exit(comp_id);
+		mod_env->hal->exit(mod_env->hal->ctx, comp_id);
 		return -ENOMEM;
 	}
 
@@ -2942,7 +2962,7 @@ int rtapi_app_main(void)
 		inst->cfg_rx.flags &= ~HM2_PKTUART_CONFIG_FLUSH;
 		inst->cfg_tx.flags &= ~HM2_PKTUART_CONFIG_FLUSH;
 	}
-	hal_ready(comp_id);
+	mod_env->hal->ready(mod_env->hal->ctx, comp_id);
 	return 0;
 
 errout:
@@ -2950,8 +2970,24 @@ errout:
 	return retval;
 }
 
-void rtapi_app_exit(void)
+int New(const cmod_env_t *env, const char *name,
+        int argc, const char **argv, cmod_t **out)
 {
+    hm2_modbus_parse_argv(argc, argv);
+    mod_env = env;
+
+    int ret = hm2_modbus_init();
+    if (ret != 0) return ret;
+
+    static cmod_t cmod;
+    cmod.Destroy = hm2_modbus_destroy;
+    *out = &cmod;
+    return 0;
+}
+
+static void hm2_modbus_destroy(cmod_t *self)
+{
+	(void)self;
 	docleanup();
 }
 // vim: syn=c ts=4

@@ -22,26 +22,22 @@
 #include <rtapi_io.h>
 
 #include "rtapi.h"
-#include "rtapi_app.h"
 #include "rtapi_string.h"
 
 #include "hal.h"
 
+#include "gomc_env.h"
+#include "hm2_core_api.h"
 #include "bitfile.h"
 #include "hostmot2-lowlevel.h"
 #include "hm2_pci.h"
 
 
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Sebastian Kuzminsky");
-MODULE_DESCRIPTION("Driver for HostMot2 on the 5i2[012345], 6i25, 4i6[589], and 3x20 Anything I/O boards from Mesa Electronics");
-MODULE_SUPPORTED_DEVICE("Mesa-AnythingIO-5i20");  // FIXME
-
-
 static char *config[HM2_PCI_MAX_BOARDS];
-RTAPI_MP_ARRAY_STRING(config, HM2_PCI_MAX_BOARDS, "config string for the AnyIO boards (see hostmot2(9) manpage)");
 
 static int comp_id;
+static const cmod_env_t *mod_env;
+static const hm2_core_callbacks_t *hm2_core;
 
 
 // FIXME: should probably have a linked list of boards instead of an array
@@ -202,7 +198,7 @@ static struct rtapi_pci_device_id hm2_pci_tbl[] = {
     {0,},
 };
 
-MODULE_DEVICE_TABLE(pci, hm2_pci_tbl);
+
 
 
 
@@ -734,7 +730,7 @@ static int hm2_pci_probe(struct rtapi_pci_dev *dev, const struct rtapi_pci_devic
     board->llio.read = hm2_pci_read;
     board->llio.write = hm2_pci_write;
 
-    r = hm2_register(&board->llio, config[num_boards]);
+    r = hm2_core->register_board(hm2_core->ctx, &board->llio, config[num_boards]);
     if (r != 0) {
         THIS_ERR("board fails HM2 registration\n");
         goto fail1;
@@ -767,7 +763,7 @@ static void hm2_pci_remove(struct rtapi_pci_dev *dev) {
         if (board->dev == dev) {
             THIS_PRINT("dropping AnyIO board at %s\n", rtapi_pci_name(dev));
 
-            hm2_unregister(&board->llio);
+            hm2_core->unregister_board(hm2_core->ctx, &board->llio);
 
             // Unmap board memory
             if (board->base != NULL) {
@@ -791,43 +787,78 @@ static struct rtapi_pci_driver hm2_pci_driver = {
 };
 
 
-int rtapi_app_main(void) {
+static void hm2_pci_destroy(cmod_t *self);
+
+static void hm2_pci_parse_argv(int argc, const char **argv) {
+    static char cfg_bufs[HM2_PCI_MAX_BOARDS][256];
+    int cfg_idx = 0;
+
+    for (int i = 0; i < argc; i++) {
+        if (strncmp(argv[i], "config=", 7) == 0 && cfg_idx < HM2_PCI_MAX_BOARDS) {
+            strncpy(cfg_bufs[cfg_idx], argv[i] + 7, sizeof(cfg_bufs[0]) - 1);
+            config[cfg_idx] = cfg_bufs[cfg_idx];
+            cfg_idx++;
+        }
+    }
+}
+
+int New(const cmod_env_t *env, const char *name,
+        int argc, const char **argv, cmod_t **out)
+{
+    const gomc_hal_t *hal = env->hal;
     int r = 0;
+
+    hm2_pci_parse_argv(argc, argv);
+
+    mod_env = env;
+
+    hm2_core = hm2_core_api_get(env->api, "hostmot2");
+    if (!hm2_core) {
+        gomc_log_errorf(env->log, name, "hm2_pci: hostmot2 core API not found (is hostmot2 loaded?)\n");
+        return -1;
+    }
 
     LL_PRINT("loading Mesa AnyIO HostMot2 driver version " HM2_PCI_VERSION "\n");
 
-    comp_id = hal_init(HM2_LLIO_NAME);
-    if (comp_id < 0) return comp_id;
+    r = hal->init(hal->ctx, HM2_LLIO_NAME, env->dl_handle, GOMC_HAL_COMP_REALTIME);
+    if (r < 0) return r;
+    comp_id = r;
 
     r = rtapi_pci_register_driver(&hm2_pci_driver);
     if (r != 0) {
         LL_ERR("error registering PCI driver\n");
-        hal_exit(comp_id);
+        hal->exit(hal->ctx, comp_id);
         return r;
     }
 
     if(failed_errno) {
 	// at least one card registration failed
-	hal_exit(comp_id);
+	hal->exit(hal->ctx, comp_id);
 	rtapi_pci_unregister_driver(&hm2_pci_driver);
 	return failed_errno;
     }
 
     if(num_boards == 0) {
 	// no cards were detected
-	hal_exit(comp_id);
+	hal->exit(hal->ctx, comp_id);
 	rtapi_pci_unregister_driver(&hm2_pci_driver);
 	return -ENODEV;
     }
 
-    hal_ready(comp_id);
+    hal->ready(hal->ctx, comp_id);
+
+    static cmod_t cmod;
+    cmod.Destroy = hm2_pci_destroy;
+    *out = &cmod;
     return 0;
 }
 
 
-void rtapi_app_exit(void) {
+static void hm2_pci_destroy(cmod_t *self) {
+    (void)self;
+    const gomc_hal_t *hal = mod_env->hal;
     rtapi_pci_unregister_driver(&hm2_pci_driver);
-    LL_PRINT("driver unloaded\n");
-    hal_exit(comp_id);
+    LL_PRINT("driver unloaded");
+    hal->exit(hal->ctx, comp_id);
 }
 

@@ -37,13 +37,14 @@
 #include <rtapi_math64.h>
 
 #include "rtapi.h"
-#include "rtapi_app.h"
 #include "rtapi_string.h"
 
 #include "hal.h"
 
+#include "gomc_env.h"
 #include "hostmot2-lowlevel.h"
 #include "hostmot2.h"
+#include "hm2_core_api.h"
 #include "hm2_eth.h"
 
 struct kvlist {
@@ -78,25 +79,18 @@ static void kvlist_free(struct rtapi_list_head *head) {
     }
 }
 
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Michael Geszkiewicz");
-MODULE_DESCRIPTION("Driver for HostMot2 on the 7i80 Anything I/O board from Mesa Electronics");
-MODULE_SUPPORTED_DEVICE("Mesa-AnythingIO-7i80");
-
+// Module parameters — set from argv in New().
 static char *board_ip[MAX_ETH_BOARDS];
-RTAPI_MP_ARRAY_STRING(board_ip, MAX_ETH_BOARDS, "ip address of ethernet board(s)");
-
 static char *config[MAX_ETH_BOARDS];
-RTAPI_MP_ARRAY_STRING(config, MAX_ETH_BOARDS, "config string for the AnyIO boards (see hostmot2(9) manpage)")
-
 int debug = 0;
-RTAPI_MP_INT(debug, "Developer/debug use only!  Enable debug logging.");
 
 static int boards_count = 0;
-
 int comm_active = 0;
-
 static int comp_id;
+
+// cmod instance state
+static const cmod_env_t *eth_env;
+static const hm2_core_callbacks_t *hm2_core;
 
 static char *hm2_7i96_pin_names[] = {
     "TB3-01",
@@ -1497,7 +1491,7 @@ static int hm2_eth_probe(hm2_eth_t *board) {
 	    board->llio.set_force_enqueue = hm2_eth_set_force_enqueue;
     board->llio.reset = hm2_eth_reset;
 
-    ret = hm2_register(&board->llio, config[boards_count]);
+    ret = hm2_core->register_board(hm2_core->ctx, &board->llio, config[boards_count]);
     if (ret != 0) {
         rtapi_print("board fails HM2 registration\n");
         return ret;
@@ -1580,7 +1574,46 @@ static int hm2_eth_items(hm2_eth_t *board) {
     return 0;
 }
 
-int rtapi_app_main(void) {
+// Parse module parameters from argv.
+static void hm2_eth_parse_argv(int argc, const char **argv) {
+    static char ip_bufs[MAX_ETH_BOARDS][64];
+    static char cfg_bufs[MAX_ETH_BOARDS][256];
+    int ip_idx = 0, cfg_idx = 0;
+
+    for (int i = 0; i < argc; i++) {
+        if (strncmp(argv[i], "board_ip=", 9) == 0 && ip_idx < MAX_ETH_BOARDS) {
+            strncpy(ip_bufs[ip_idx], argv[i] + 9, sizeof(ip_bufs[0]) - 1);
+            board_ip[ip_idx] = ip_bufs[ip_idx];
+            ip_idx++;
+        } else if (strncmp(argv[i], "config=", 7) == 0 && cfg_idx < MAX_ETH_BOARDS) {
+            strncpy(cfg_bufs[cfg_idx], argv[i] + 7, sizeof(cfg_bufs[0]) - 1);
+            config[cfg_idx] = cfg_bufs[cfg_idx];
+            cfg_idx++;
+        } else if (strncmp(argv[i], "debug=", 6) == 0) {
+            debug = simple_strtol(argv[i] + 6, NULL, 0);
+        }
+    }
+}
+
+static void hm2_eth_destroy(cmod_t *self);
+
+int New(const cmod_env_t *env, const char *name,
+        int argc, const char **argv, cmod_t **out)
+{
+    const gomc_hal_t *hal = env->hal;
+    const gomc_log_t *log = env->log;
+
+    hm2_eth_parse_argv(argc, argv);
+
+    eth_env = env;
+
+    // Look up hm2_core API from hostmot2 module.
+    hm2_core = hm2_core_api_get(env->api, "hostmot2");
+    if (!hm2_core) {
+        gomc_log_errorf(log, name, "hm2_eth: hostmot2 core API not found (is hostmot2 loaded?)\n");
+        return -1;
+    }
+
     RTAPI_INIT_LIST_HEAD(&ifnames);
     RTAPI_INIT_LIST_HEAD(&board_num);
 
@@ -1588,7 +1621,7 @@ int rtapi_app_main(void) {
 
     LL_PRINT("loading Mesa AnyIO HostMot2 ethernet driver version " HM2_ETH_VERSION "\n");
 
-    ret = hal_init(HM2_LLIO_NAME);
+    ret = hal->init(hal->ctx, HM2_LLIO_NAME, env->dl_handle, GOMC_HAL_COMP_REALTIME);
     if (ret < 0)
         return ret;
     comp_id = ret;
@@ -1633,8 +1666,12 @@ int rtapi_app_main(void) {
         *added = 1;
     }
 
-    hal_ready(comp_id);
+    hal->ready(hal->ctx, comp_id);
 
+    // Build cmod handle.
+    static cmod_t cmod;
+    cmod.Destroy = hm2_eth_destroy;
+    *out = &cmod;
     return 0;
 
 error:
@@ -1643,21 +1680,26 @@ error:
     if(use_iptables()) clear_iptables();
     kvlist_free(&board_num);
     kvlist_free(&ifnames);
-    hal_exit(comp_id);
+    hal->exit(hal->ctx, comp_id);
     return ret;
 }
 
-void rtapi_app_exit(void) {
+static void hm2_eth_destroy(cmod_t *self) {
+    (void)self;
+    const gomc_hal_t *hal = eth_env->hal;
     int i;
     comm_active = 0;
-    for(i = 0; i<MAX_ETH_BOARDS && board_ip[i] && board_ip[i][0]; i++)
+
+    for(i = 0; i<MAX_ETH_BOARDS && board_ip[i] && board_ip[i][0]; i++) {
+        hm2_core->unregister_board(hm2_core->ctx, &boards[i].llio);
         close_board(&boards[i]);
+    }
 
     if(use_iptables()) clear_iptables();
 
     kvlist_free(&board_num);
     kvlist_free(&ifnames);
 
-    hal_exit(comp_id);
+    hal->exit(hal->ctx, comp_id);
     LL_PRINT("HostMot2 ethernet driver unloaded\n");
 }

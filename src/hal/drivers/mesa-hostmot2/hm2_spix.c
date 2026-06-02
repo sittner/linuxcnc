@@ -22,7 +22,9 @@
 #include <errno.h>
 
 #include <rtapi.h>
-#include <rtapi_app.h>
+
+#include "gomc_env.h"
+#include "hm2_core_api.h"
 
 #define HM2_LLIO_NAME "hm2_spix"
 
@@ -31,11 +33,6 @@
 
 #include "llio_info.h"
 #include "spix.h"
-
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("B.Stultiens");
-MODULE_DESCRIPTION("Driver for HostMot2 devices connected via SPI");
-MODULE_SUPPORTED_DEVICE("Mesa-AnythingIO-7i90,7c80,7c81,7i43");
 
 #define NELEM(x)	(sizeof(x) / sizeof(*(x)))
 
@@ -72,6 +69,10 @@ typedef struct __spix_board_t {
 static spix_board_t boards[SPIX_MAX_BOARDS];	// Connected boards
 static int comp_id;				// Upstream assigned component ID
 
+// cmod instance state
+static const cmod_env_t *mod_env;
+static const hm2_core_callbacks_t *hm2_core;
+
 /*
  * Supported hardware drivers
  * These are defined in spix_XXX source files.
@@ -104,27 +105,22 @@ static const uint32_t iocookie[3] = {
  * Configuration parameters forwarded to hostmot2 hm2_register() call
  */
 static char *config[SPIX_MAX_BOARDS];
-RTAPI_MP_ARRAY_STRING(config, SPIX_MAX_BOARDS, "config string for the AnyIO boards (see hostmot2(9) manpage)")
 
 /*
  * SPI clock rates for read and write.
  */
 static int spiclk_rate[SPIX_MAX_BOARDS] = { 25000 };
 static int spiclk_rate_rd[SPIX_MAX_BOARDS];
-RTAPI_MP_ARRAY_INT(spiclk_rate, SPIX_MAX_BOARDS, "SPI clock rates in kHz (default 25000 kHz)")
-RTAPI_MP_ARRAY_INT(spiclk_rate_rd, SPIX_MAX_BOARDS, "SPI clock rates for reading in kHz (default same as spiclk_rate)")
 
 /*
  * Forcefully specify the hardware driver
  */
 static const char *force_driver = NULL;
-RTAPI_MP_STRING(force_driver, "Force one specific hardware driver (default empty, auto detecting hardware))")
 
 /*
  * Which SPI port(s) to probe
  */
 static int spi_probe = SPIX_PROBE_SPI0_CE0;
-RTAPI_MP_INT(spi_probe, "Bit-field to select which SPI/CE combinations to probe (default 1 (SPI0/CE0))")
 
 /*
  * Normally, all requests are queued if requested by upstream and sent in one
@@ -132,7 +128,6 @@ RTAPI_MP_INT(spi_probe, "Bit-field to select which SPI/CE combinations to probe 
  * each transfer visible and more easily debugable.
  */
 static int spi_noqueue = 0;
-RTAPI_MP_INT(spi_noqueue, "Disable queued SPI requests, use for debugging only (default 0 (off))")
 
 /*
  * Set the message level for debugging purpose. This has the (side-)effect that
@@ -141,13 +136,11 @@ RTAPI_MP_INT(spi_noqueue, "Disable queued SPI requests, use for debugging only (
  * The upstream message level is not touched if spi_debug == -1.
  */
 static int spi_debug = -1;
-RTAPI_MP_INT(spi_debug, "Set message level for debugging purpose [0...5] where 0=none and 5=all (default: -1; upstream defined)")
 
 /*
  * Spidev driver device node path overrides
  */
 static char *spidev_path[SPIX_MAX_BOARDS];
-RTAPI_MP_ARRAY_STRING(spidev_path, SPIX_MAX_BOARDS, "The device node path override(s) for the spidev driver (default /dev/spidev{0.[01],1.[012]})")
 
 /*
  * We have these for compatibility with the hm2_rpspi driver. You can simply
@@ -157,9 +150,6 @@ RTAPI_MP_ARRAY_STRING(spidev_path, SPIX_MAX_BOARDS, "The device node path overri
 static int spi_pull_miso = -1;
 static int spi_pull_mosi = -1;
 static int spi_pull_sclk = -1;
-RTAPI_MP_INT(spi_pull_miso, "Obsolete parameter")
-RTAPI_MP_INT(spi_pull_mosi, "Obsolete parameter")
-RTAPI_MP_INT(spi_pull_sclk, "Obsolete parameter")
 
 /*********************************************************************/
 /*
@@ -666,7 +656,7 @@ static int spix_setup(void)
 			return err;
 		}
 
-		if((err = hm2_register(&boards[j].llio, config[j])) < 0) {
+		if((err = hm2_core->register_board(hm2_core->ctx, &boards[j].llio, config[j])) < 0) {
 			LL_ERR("%s: hm2_register() failed.\n", port->name);
 			return err;
 		}
@@ -695,17 +685,76 @@ static void spix_cleanup(void)
 }
 
 /*************************************************/
-int rtapi_app_main()
+static void hm2_spix_destroy(cmod_t *self);
+
+static void hm2_spix_parse_argv(int argc, const char **argv) {
+    static char cfg_bufs[SPIX_MAX_BOARDS][256];
+    static char path_bufs[SPIX_MAX_BOARDS][256];
+    static char force_buf[256];
+    int cfg_idx = 0, rate_idx = 0, raterd_idx = 0, path_idx = 0;
+
+    for (int i = 0; i < argc; i++) {
+        if (strncmp(argv[i], "config=", 7) == 0 && cfg_idx < SPIX_MAX_BOARDS) {
+            strncpy(cfg_bufs[cfg_idx], argv[i] + 7, sizeof(cfg_bufs[0]) - 1);
+            config[cfg_idx] = cfg_bufs[cfg_idx];
+            cfg_idx++;
+        } else if (strncmp(argv[i], "spiclk_rate=", 12) == 0 && rate_idx < SPIX_MAX_BOARDS) {
+            spiclk_rate[rate_idx] = simple_strtol(argv[i] + 12, NULL, 0);
+            rate_idx++;
+        } else if (strncmp(argv[i], "spiclk_rate_rd=", 15) == 0 && raterd_idx < SPIX_MAX_BOARDS) {
+            spiclk_rate_rd[raterd_idx] = simple_strtol(argv[i] + 15, NULL, 0);
+            raterd_idx++;
+        } else if (strncmp(argv[i], "force_driver=", 13) == 0) {
+            strncpy(force_buf, argv[i] + 13, sizeof(force_buf) - 1);
+            force_driver = force_buf;
+        } else if (strncmp(argv[i], "spi_probe=", 10) == 0) {
+            spi_probe = simple_strtol(argv[i] + 10, NULL, 0);
+        } else if (strncmp(argv[i], "spi_noqueue=", 12) == 0) {
+            spi_noqueue = simple_strtol(argv[i] + 12, NULL, 0);
+        } else if (strncmp(argv[i], "spi_debug=", 10) == 0) {
+            spi_debug = simple_strtol(argv[i] + 10, NULL, 0);
+        } else if (strncmp(argv[i], "spidev_path=", 12) == 0 && path_idx < SPIX_MAX_BOARDS) {
+            strncpy(path_bufs[path_idx], argv[i] + 12, sizeof(path_bufs[0]) - 1);
+            spidev_path[path_idx] = path_bufs[path_idx];
+            path_idx++;
+        } else if (strncmp(argv[i], "spi_pull_miso=", 14) == 0) {
+            spi_pull_miso = simple_strtol(argv[i] + 14, NULL, 0);
+        } else if (strncmp(argv[i], "spi_pull_mosi=", 14) == 0) {
+            spi_pull_mosi = simple_strtol(argv[i] + 14, NULL, 0);
+        } else if (strncmp(argv[i], "spi_pull_sclk=", 14) == 0) {
+            spi_pull_sclk = simple_strtol(argv[i] + 14, NULL, 0);
+        }
+    }
+}
+
+int New(const cmod_env_t *env, const char *name,
+        int argc, const char **argv, cmod_t **out)
 {
+	const gomc_hal_t *hal = env->hal;
 	int ret;
 
-	if((comp_id = ret = hal_init(HM2_LLIO_NAME)) < 0)
-		goto fail;
+	hm2_spix_parse_argv(argc, argv);
+
+	mod_env = env;
+
+	hm2_core = hm2_core_api_get(env->api, "hostmot2");
+	if (!hm2_core) {
+		gomc_log_errorf(env->log, name, "hm2_spix: hostmot2 core API not found (is hostmot2 loaded?)\n");
+		return -1;
+	}
+
+	ret = hal->init(hal->ctx, HM2_LLIO_NAME, env->dl_handle, GOMC_HAL_COMP_REALTIME);
+	if (ret < 0) goto fail;
+	comp_id = ret;
 
 	if((ret = spix_setup()) < 0)
 		goto fail;
 
-	hal_ready(comp_id);
+	hal->ready(hal->ctx, comp_id);
+
+	static cmod_t cmod;
+	cmod.Destroy = hm2_spix_destroy;
+	*out = &cmod;
 	return 0;
 
 fail:
@@ -714,10 +763,12 @@ fail:
 }
 
 /*************************************************/
-void rtapi_app_exit(void)
+static void hm2_spix_destroy(cmod_t *self)
 {
+	(void)self;
+	const gomc_hal_t *hal = mod_env->hal;
 	spix_cleanup();
-	hal_exit(comp_id);
+	hal->exit(hal->ctx, comp_id);
 }
 
 // vim: ts=4

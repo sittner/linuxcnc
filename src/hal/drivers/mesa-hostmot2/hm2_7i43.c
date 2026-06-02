@@ -21,12 +21,13 @@
 #include <rtapi_io.h>
 
 #include "rtapi.h"
-#include "rtapi_app.h"
 #include "rtapi_math.h"
 #include "rtapi_string.h"
 
 #include "hal.h"
 
+#include "gomc_env.h"
+#include "hm2_core_api.h"
 #include "hal/drivers/mesa-hostmot2/bitfile.h"
 #include "hal/drivers/mesa-hostmot2/hostmot2-lowlevel.h"
 #include "hal/drivers/mesa-hostmot2/hm2_7i43.h"
@@ -35,26 +36,15 @@
 
 static int comp_id;
 
-MODULE_INFO(linuxcnc, "component:hm2_7i43:LinuxCNC HAL driver for the Mesa Electronics 7i43 EPP Anything IO board with HostMot2 firmware.");
-MODULE_INFO(linuxcnc, "license:GPL");
-
-MODULE_LICENSE("GPL");
-
 static int ioaddr[HM2_7I43_MAX_BOARDS] = { 0, [1 ... (HM2_7I43_MAX_BOARDS-1)] = -1 };
-RTAPI_MP_ARRAY_INT(ioaddr, HM2_7I43_MAX_BOARDS, "base address of the parallel port(s) (see hm2_7i43(9) manpage)");
-
 static int ioaddr_hi[HM2_7I43_MAX_BOARDS] = { [0 ... (HM2_7I43_MAX_BOARDS-1)] = 0 };
-RTAPI_MP_ARRAY_INT(ioaddr_hi, HM2_7I43_MAX_BOARDS, "secondary address of the parallel port(s) (see hm2_7i43(9) manpage)");
-
 static int epp_wide[HM2_7I43_MAX_BOARDS] = { [0 ... (HM2_7I43_MAX_BOARDS-1)] = 1 };
-RTAPI_MP_ARRAY_INT(epp_wide, HM2_7I43_MAX_BOARDS, "set to 0 to disable wide EPP mode (see (hm2_7i43(9) manpage)");
-
 int debug_epp = 0;
-RTAPI_MP_INT(debug_epp, "Developer/debug use only!  Enable debug logging of most EPP\ntransfers.");
-
 static char *config[HM2_7I43_MAX_BOARDS];
-RTAPI_MP_ARRAY_STRING(config, HM2_7I43_MAX_BOARDS, "config string(s) for the 7i43 board(s) (see hostmot2(9) manpage)");
 
+// cmod instance state
+static const cmod_env_t *mod_env;
+static const hm2_core_callbacks_t *hm2_core;
 
 
 
@@ -390,7 +380,7 @@ static void hm2_7i43_cleanup(void) {
     for (i = 0; i < num_boards; i ++) {
         hm2_lowlevel_io_t *this = &board[i].llio;
         THIS_PRINT("releasing board\n");
-        hm2_unregister(this);
+        hm2_core->unregister_board(hm2_core->ctx, this);
         hal_parport_release(&board[i].port);
     }
 }
@@ -473,7 +463,7 @@ static int hm2_7i43_setup(void) {
         THIS_DBG("detected FPGA '%s'\n", board[i].llio.fpga_part_number);
 
 
-        r = hm2_register(&board[i].llio, config[i]);
+        r = hm2_core->register_board(hm2_core->ctx, &board[i].llio, config[i]);
         if (r != 0) {
             hal_parport_release(&board[i].port);
             THIS_ERR(
@@ -498,27 +488,74 @@ static int hm2_7i43_setup(void) {
 }
 
 
-int rtapi_app_main(void) {
+static void hm2_7i43_destroy(cmod_t *self);
+
+static void hm2_7i43_parse_argv(int argc, const char **argv) {
+    static char cfg_bufs[HM2_7I43_MAX_BOARDS][256];
+    int cfg_idx = 0, io_idx = 0, iohi_idx = 0, ew_idx = 0;
+
+    for (int i = 0; i < argc; i++) {
+        if (strncmp(argv[i], "config=", 7) == 0 && cfg_idx < HM2_7I43_MAX_BOARDS) {
+            strncpy(cfg_bufs[cfg_idx], argv[i] + 7, sizeof(cfg_bufs[0]) - 1);
+            config[cfg_idx] = cfg_bufs[cfg_idx];
+            cfg_idx++;
+        } else if (strncmp(argv[i], "ioaddr=", 7) == 0 && io_idx < HM2_7I43_MAX_BOARDS) {
+            ioaddr[io_idx] = simple_strtol(argv[i] + 7, NULL, 0);
+            io_idx++;
+        } else if (strncmp(argv[i], "ioaddr_hi=", 10) == 0 && iohi_idx < HM2_7I43_MAX_BOARDS) {
+            ioaddr_hi[iohi_idx] = simple_strtol(argv[i] + 10, NULL, 0);
+            iohi_idx++;
+        } else if (strncmp(argv[i], "epp_wide=", 9) == 0 && ew_idx < HM2_7I43_MAX_BOARDS) {
+            epp_wide[ew_idx] = simple_strtol(argv[i] + 9, NULL, 0);
+            ew_idx++;
+        } else if (strncmp(argv[i], "debug_epp=", 10) == 0) {
+            debug_epp = simple_strtol(argv[i] + 10, NULL, 0);
+        }
+    }
+}
+
+int New(const cmod_env_t *env, const char *name,
+        int argc, const char **argv, cmod_t **out)
+{
+    const gomc_hal_t *hal = env->hal;
     int r = 0;
 
-    comp_id = hal_init(HM2_LLIO_NAME);
-    if (comp_id < 0) return comp_id;
+    hm2_7i43_parse_argv(argc, argv);
+
+    mod_env = env;
+
+    hm2_core = hm2_core_api_get(env->api, "hostmot2");
+    if (!hm2_core) {
+        gomc_log_errorf(env->log, name, "hm2_7i43: hostmot2 core API not found (is hostmot2 loaded?)\n");
+        return -1;
+    }
+
+    r = hal->init(hal->ctx, HM2_LLIO_NAME, env->dl_handle, GOMC_HAL_COMP_REALTIME);
+    if (r < 0) return r;
+    comp_id = r;
 
     r = hm2_7i43_setup();
     if (r) {
         hm2_7i43_cleanup();
-        hal_exit(comp_id);
+        hal->exit(hal->ctx, comp_id);
     } else {
-        hal_ready(comp_id);
+        hal->ready(hal->ctx, comp_id);
     }
 
-    return r;
+    if (r) return r;
+
+    static cmod_t cmod;
+    cmod.Destroy = hm2_7i43_destroy;
+    *out = &cmod;
+    return 0;
 }
 
 
-void rtapi_app_exit(void) {
+static void hm2_7i43_destroy(cmod_t *self) {
+    (void)self;
+    const gomc_hal_t *hal = mod_env->hal;
     hm2_7i43_cleanup();
-    hal_exit(comp_id);
+    hal->exit(hal->ctx, comp_id);
     LL_PRINT("driver unloaded\n");
 }
 

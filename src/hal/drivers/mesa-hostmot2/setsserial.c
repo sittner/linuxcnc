@@ -21,20 +21,17 @@
 #include <rtapi_firmware.h>
 #include <rtapi_string.h>
 #include "rtapi.h"
-#include "rtapi_app.h"
 #include "hal.h"
+#include "gomc_env.h"
 #include "hostmot2.h"
 #include "sserial.h"
 
 static int comp_id;
 
-/* module information */
-MODULE_AUTHOR("Andy Pugh");
-MODULE_DESCRIPTION("A simple util for nvram setting on smart-serial cards");
-MODULE_LICENSE("GPL");
-
 static char *cmd;
-RTAPI_MP_STRING(cmd, "smart-serial setting commands");
+
+// cmod instance state
+static const cmod_env_t *mod_env;
 
 char **cmd_list;
 
@@ -414,12 +411,26 @@ fail0:
     return -1;
 }
 
-int rtapi_app_main(void)
+static void setsserial_destroy(cmod_t *self);
+
+static void setsserial_parse_argv(int argc, const char **argv) {
+    static char cmd_buf[256];
+
+    for (int i = 0; i < argc; i++) {
+        if (strncmp(argv[i], "cmd=", 4) == 0) {
+            strncpy(cmd_buf, argv[i] + 4, sizeof(cmd_buf) - 1);
+            cmd = cmd_buf;
+        }
+    }
+}
+
+static int setsserial_init(void)
 {
     int cnt;
     
-    comp_id = hal_init("setsserial");
-    hal_ready(comp_id);
+    comp_id = mod_env->hal->init(mod_env->hal->ctx, "setsserial", mod_env->dl_handle, GOMC_HAL_COMP_REALTIME);
+    if (comp_id < 0) return comp_id;
+    mod_env->hal->ready(mod_env->hal->ctx, comp_id);
     
     cmd_list = rtapi_argv_split(cmd, &cnt);
     
@@ -489,9 +500,25 @@ int rtapi_app_main(void)
     return 0;
 }
 
-void rtapi_app_exit(void)
+int New(const cmod_env_t *env, const char *name,
+        int argc, const char **argv, cmod_t **out)
 {
-    hal_exit(comp_id);
+    setsserial_parse_argv(argc, argv);
+    mod_env = env;
+
+    int ret = setsserial_init();
+    if (ret != 0) return ret;
+
+    static cmod_t cmod;
+    cmod.Destroy = setsserial_destroy;
+    *out = &cmod;
+    return 0;
+}
+
+static void setsserial_destroy(cmod_t *self)
+{
+    (void)self;
+    mod_env->hal->exit(mod_env->hal->ctx, comp_id);
 }
 
 
