@@ -380,6 +380,38 @@ $(GMI_CLASSICLADDER_GEN)/classicladder_bridge.go: $(GMI_CLASSICLADDER_GEN)/class
 
 TARGETS += $(GMI_CLASSICLADDER_GEN)/classicladder_api.h
 
+# --- hm2_llio API (transport → hostmot2 core) ---
+
+GMI_HM2_LLIO_IDL := gmi/idl/hm2_llio.gmi
+GMI_HM2_LLIO_GEN := gomc/generated/gmi/hm2_llio
+
+$(GMI_HM2_LLIO_GEN)/hm2_llio_api.h: $(GMI_HM2_LLIO_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI hm2_llio from $(GMI_HM2_LLIO_IDL)"
+	@mkdir -p $(GMI_HM2_LLIO_GEN)
+	$(Q)$(GMICOMPILE) --server-c $(GMI_HM2_LLIO_IDL) -o $(GMI_HM2_LLIO_GEN)/hm2_llio_api.h
+	$(Q)$(GMICOMPILE) --server-meta $(GMI_HM2_LLIO_IDL) -o $(GMI_HM2_LLIO_GEN)/hm2_llio_cgo.go
+	$(Q)$(GMICOMPILE_BIN) add-gmi generated/gmi/hm2_llio
+
+$(GMI_HM2_LLIO_GEN)/hm2_llio_cgo.go: $(GMI_HM2_LLIO_GEN)/hm2_llio_api.h ;
+
+TARGETS += $(GMI_HM2_LLIO_GEN)/hm2_llio_api.h
+
+# --- hm2_serial API (hostmot2 core → mesa_uart/mesa_7i65/hm2_modbus) ---
+
+GMI_HM2_SERIAL_IDL := gmi/idl/hm2_serial.gmi
+GMI_HM2_SERIAL_GEN := gomc/generated/gmi/hm2_serial
+
+$(GMI_HM2_SERIAL_GEN)/hm2_serial_api.h: $(GMI_HM2_SERIAL_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI hm2_serial from $(GMI_HM2_SERIAL_IDL)"
+	@mkdir -p $(GMI_HM2_SERIAL_GEN)
+	$(Q)$(GMICOMPILE) --server-c $(GMI_HM2_SERIAL_IDL) -o $(GMI_HM2_SERIAL_GEN)/hm2_serial_api.h
+	$(Q)$(GMICOMPILE) --server-meta $(GMI_HM2_SERIAL_IDL) -o $(GMI_HM2_SERIAL_GEN)/hm2_serial_cgo.go
+	$(Q)$(GMICOMPILE_BIN) add-gmi generated/gmi/hm2_serial
+
+$(GMI_HM2_SERIAL_GEN)/hm2_serial_cgo.go: $(GMI_HM2_SERIAL_GEN)/hm2_serial_api.h ;
+
+TARGETS += $(GMI_HM2_SERIAL_GEN)/hm2_serial_api.h
+
 # --- ini API ---
 
 GMI_INI_IDL := gmi/idl/ini.gmi
