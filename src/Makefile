@@ -169,7 +169,7 @@ SUBDIRS := \
     \
     hal/components hal/drivers hal/drivers/mesa-hostmot2 \
     hal/user_comps/devices hal/user_comps/mb2hal \
-    hal/user_comps hal/user_comps/vismach hal/user_comps/vfs11_vfd hal/classicladder hal/utils hal \
+    hal/user_comps hal/user_comps/vismach hal/user_comps/vfs11_vfd hal/utils hal \
     hal/user_comps/vfdb_vfd hal/user_comps/wj200_vfd \
     hal/user_comps/pi500_vfd \
     hal/user_comps/huanyang-vfd \
@@ -832,15 +832,10 @@ RTCFLAGS := $(filter-out -ffast-math,$(RTFLAGS)) -I$(BASEPWD)/../include -I$(BAS
 	-I$(BASEPWD)/libnml/posemath -I$(BASEPWD)/rtapi -I$(BASEPWD)/hal \
 	-I$(BASEPWD)/emc/nml_intf -I$(BASEPWD)/emc/kinematics -I$(BASEPWD)/emc/tp -I$(BASEPWD)/emc/motion \
 	-I$(BASEPWD)/gomc/generated/gmi/mot \
-	-DSEQUENTIAL_SUPPORT -DHAL_SUPPORT -DDYNAMIC_PLCSIZE -DRT_SUPPORT -DOLD_TIMERS_MONOS_SUPPORT -DMODBUS_IO_MASTER \
 	-fno-fast-math $(call cc-option,-mieee-fp) -fno-unsafe-math-optimizations \
 	-Wno-declaration-after-statement \
 	$(INTEGER_OVERFLOW_FLAGS)
 RTCFLAGS += -fno-builtin-sin -fno-builtin-cos -fno-builtin-sincos
-
-ifdef SEQUENTIAL_SUPPORT
-RTCFLAGS += -DSEQUENTIAL_SUPPORT
-endif
 
 # Realtime module declarations
 # For each module, there's an addition to RTMODULES
@@ -963,19 +958,7 @@ setsserial-objs :=			  \
     hal/drivers/mesa-hostmot2/setsserial.o  \
     $(MATHSTUB)
 
-RTMODULES += classicladder_rt.o
-classicladder_rt-objs := hal/classicladder/module_hal.o $(MATHSTUB)
-classicladder_rt-objs += hal/classicladder/arithm_eval.o
-classicladder_rt-objs += hal/classicladder/arrays.o
-classicladder_rt-objs += hal/classicladder/calc.o
-classicladder_rt-objs += hal/classicladder/calc_sequential.o
-classicladder_rt-objs += hal/classicladder/manager.o
-classicladder_rt-objs += hal/classicladder/symbols.o
-classicladder_rt-objs += hal/classicladder/vars_access.o
-
-ifdef SEQUENTIAL_SUPPORT
-classicladder_rt-objs += hal/classicladder/calc_sequential_rt.o
-endif
+# classicladder_rt removed — now built as a cmod (see cmod/classicladder/)
 
 # Old scope_rt removed — new halscope has its own RT built via cgo.
 
