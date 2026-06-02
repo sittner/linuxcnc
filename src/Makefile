@@ -858,29 +858,14 @@ RTMODULES += sampler.o
 sampler-objs := hal/components/sampler.o $(MATHSTUB)
 
 # Subdirectory: hal/drivers
-RTMODULES += hal_parport.o
-hal_parport-objs := hal/drivers/hal_parport.o $(MATHSTUB)
+# hal_parport, hal_bb_gpio, hal_pi_gpio, hal_gpio moved to cmod build
+# (see hal/drivers/Submakefile)
 
 RTMODULES += hal_gm.o
 hal_gm-objs := hal/drivers/hal_gm.o $(MATHSTUB)
 RTMODULES += hal_ppmc.o
 hal_ppmc-objs := hal/drivers/hal_ppmc.o $(MATHSTUB)
 
-RTMODULES += hal_bb_gpio.o
-hal_bb_gpio-objs  :=			\
-    hal/drivers/hal_bb_gpio.o	\
-    $(MATHSTUB)
-RTMODULES += hal_pi_gpio.o
-hal_pi_gpio-objs := 				\
-    hal/drivers/hal_pi_gpio.o 		\
-    hal/drivers/cpuinfo.o 		\
-    $(MATHSTUB)
-ifdef LIBGPIOD_VER
-RTMODULES += hal_gpio.o
-hal_gpio-objs  :=			\
-    hal/drivers/hal_gpio.o	        \
-    $(MATHSTUB)
-endif
 
 # hostmot2 family moved to cmod build (see hal/drivers/mesa-hostmot2/Submakefile)
 

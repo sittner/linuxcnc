@@ -97,20 +97,13 @@
 
 #include "rtapi.h"		/* RTAPI realtime OS API */
 #include "rtapi_ctype.h"	/* isspace() */
-#include "rtapi_app.h"		/* RTAPI realtime module decls */
+#include "gomc_env.h"		/* cmod API */
 
 #include "hal.h"		/* HAL public API decls */
 
 #include <rtapi_io.h>
 
 #include "hal_parport.h"
-
-/* module information */
-MODULE_AUTHOR("John Kasunich");
-MODULE_DESCRIPTION("Parallel Port Driver for EMC HAL");
-MODULE_LICENSE("GPL");
-static char *cfg = "0x0278";	/* config string, default 1 output port at 278 */
-RTAPI_MP_STRING(cfg, "config string");
 
 /***********************************************************************
 *                STRUCTURES AND GLOBAL VARIABLES                       *
@@ -146,15 +139,20 @@ typedef struct {
     struct hal_parport_t portdata;
 } parport_t;
 
-/* pointer to array of parport_t structs in shared memory, 1 per port */
-static parport_t *port_data_array;
+typedef struct {
+    cmod_t cmod;
+    const cmod_env_t *env;
+    int comp_id;
 
-/* other globals */
-static int comp_id;		/* component ID */
-static int num_ports;		/* number of ports configured */
+    parport_t *port_data_array;
+    int num_ports;
 
-static unsigned long ns2tsc_factor;
-#define ns2tsc(x) (((x) * (unsigned long long)ns2tsc_factor) >> 12)
+    unsigned long ns2tsc_factor;
+
+    char *cfg;
+} inst_t;
+
+#define ns2tsc(inst, x) (((x) * (unsigned long long)(inst)->ns2tsc_factor) >> 12)
 
 /***********************************************************************
 *                  LOCAL FUNCTION DECLARATIONS                         *
@@ -177,13 +175,15 @@ static void write_all(void *arg, long period);
    It does not set up functions, since that is handled differently in
    realtime and user space.
 */
-static int pins_and_params(char *argv[]);
+static int pins_and_params(inst_t *inst, char *argv[]);
 
 static unsigned short parse_port_addr(char *cp);
-static int export_port(int portnum, parport_t * addr);
-static int export_input_pin(int portnum, int pin, hal_bit_t ** base, int n);
+static int export_port(int portnum, parport_t * addr, int comp_id);
+static int export_input_pin(int portnum, int pin, hal_bit_t ** base, int n, int comp_id);
 static int export_output_pin(int portnum, int pin, hal_bit_t ** dbase,
-    hal_bit_t * pbase, hal_bit_t * rbase, int n);
+    hal_bit_t * pbase, hal_bit_t * rbase, int n, int comp_id);
+
+static void hal_parport_destroy(cmod_t *self);
 
 /***********************************************************************
 *                       INIT AND EXIT CODE                             *
@@ -193,34 +193,56 @@ static int export_output_pin(int portnum, int pin, hal_bit_t ** dbase,
 
 #define MAX_TOK ((MAX_PORTS*2)+3)
 
-int rtapi_app_main(void)
+static void parse_argv(inst_t *inst, int argc, const char **argv) {
+    for (int i = 0; i < argc; i++) {
+	if (strncmp(argv[i], "cfg=", 4) == 0) {
+	    inst->cfg = (char *)argv[i] + 4;
+	}
+    }
+}
+
+int New(const cmod_env_t *env, const char *name,
+        int argc, const char **argv, cmod_t **out)
 {
+    (void)name;
+    const gomc_hal_t *hal = env->hal;
     char *cp;
-    char *argv[MAX_TOK];
-    char name[HAL_NAME_LEN + 1];
+    char *tok_argv[MAX_TOK];
+    char cfg_buf[256];
+    char fname[HAL_NAME_LEN + 1];
     int n, retval;
 
+    inst_t *inst = rtapi_calloc(sizeof(*inst));
+    if (!inst) return -ENOMEM;
+    inst->env = env;
 
-    ns2tsc_factor = 1ll<<12;
+    // default
+    inst->cfg = "0x0278";
+
+    parse_argv(inst, argc, argv);
+
+    inst->ns2tsc_factor = 1ll<<12;
 
     /* test for config string */
-    if (cfg == 0) {
+    if (inst->cfg == 0) {
 	rtapi_print_msg(RTAPI_MSG_ERR, "PARPORT: ERROR: no config string\n");
+	rtapi_free(inst);
 	return -1;
     }
-rtapi_print ( "config string '%s'\n", cfg );
+rtapi_print ( "config string '%s'\n", inst->cfg );
     /* as a RT module, we don't get a nice argc/argv command line, we only
        get a single string... so we need to tokenize it ourselves */
     /* in addition, it seems that insmod under kernel 2.6 will truncate 
        a string parameter at the first whitespace.  So we allow '_' as
        an alternate token separator. */
-    cp = cfg;
+    rtapi_snprintf(cfg_buf, sizeof(cfg_buf), "%s", inst->cfg);
+    cp = cfg_buf;
     for (n = 0; n < MAX_TOK; n++) {
 	/* strip leading whitespace */
 	while ((*cp != '\0') && ( isspace(*cp) || ( *cp == '_') ))
 	    cp++;
 	/* mark beginning of token */
-	argv[n] = cp;
+	tok_argv[n] = cp;
 	/* find end of token */
 	while ((*cp != '\0') && !( isspace(*cp) || ( *cp == '_') ))
 	    cp++;
@@ -232,82 +254,96 @@ rtapi_print ( "config string '%s'\n", cfg );
     }
     for (n = 0; n < MAX_TOK; n++) {
 	/* is token empty? */
-	if (argv[n][0] == '\0') {
+	if (tok_argv[n][0] == '\0') {
 	    /* yes - make pointer NULL */
-	    argv[n] = NULL;
+	    tok_argv[n] = NULL;
 	}
     }
     /* parse "command line", set up pins and parameters */
-    retval = pins_and_params(argv);
+    retval = pins_and_params(inst, tok_argv);
     if (retval != 0) {
+	rtapi_free(inst);
 	return retval;
     }
     /* export functions for each port */
-    for (n = 0; n < num_ports; n++) {
+    for (n = 0; n < inst->num_ports; n++) {
 	/* make read function name */
-	rtapi_snprintf(name, sizeof(name), "parport.%d.read", n);
+	rtapi_snprintf(fname, sizeof(fname), "parport.%d.read", n);
 	/* export read function */
-	retval = hal_export_funct(name, read_port, &(port_data_array[n]),
-	    0, 0, comp_id);
+	retval = hal_export_funct(fname, read_port, &(inst->port_data_array[n]),
+	    0, 0, inst->comp_id);
 	if (retval != 0) {
 	    rtapi_print_msg(RTAPI_MSG_ERR,
 		"PARPORT: ERROR: port %d read funct export failed\n", n);
-	    hal_exit(comp_id);
+	    hal->exit(hal->ctx, inst->comp_id);
+	    rtapi_free(inst);
 	    return -1;
 	}
 	/* make write function name */
-	rtapi_snprintf(name, sizeof(name), "parport.%d.write", n);
+	rtapi_snprintf(fname, sizeof(fname), "parport.%d.write", n);
 	/* export write function */
-	retval = hal_export_funct(name, write_port, &(port_data_array[n]),
-	    0, 0, comp_id);
+	retval = hal_export_funct(fname, write_port, &(inst->port_data_array[n]),
+	    0, 0, inst->comp_id);
 	if (retval != 0) {
 	    rtapi_print_msg(RTAPI_MSG_ERR,
 		"PARPORT: ERROR: port %d write funct export failed\n", n);
-	    hal_exit(comp_id);
+	    hal->exit(hal->ctx, inst->comp_id);
+	    rtapi_free(inst);
 	    return -1;
 	}
 	/* make reset function name */
-	rtapi_snprintf(name, sizeof(name), "parport.%d.reset", n);
+	rtapi_snprintf(fname, sizeof(fname), "parport.%d.reset", n);
 	/* export write function */
-	retval = hal_export_funct(name, reset_port, &(port_data_array[n]),
-	    0, 0, comp_id);
+	retval = hal_export_funct(fname, reset_port, &(inst->port_data_array[n]),
+	    0, 0, inst->comp_id);
 	if (retval != 0) {
 	    rtapi_print_msg(RTAPI_MSG_ERR,
 		"PARPORT: ERROR: port %d reset funct export failed\n", n);
-	    hal_exit(comp_id);
+	    hal->exit(hal->ctx, inst->comp_id);
+	    rtapi_free(inst);
 	    return -1;
 	}
     }
     /* export functions that read and write all ports */
     retval = hal_export_funct("parport.read-all", read_all,
-	port_data_array, 0, 0, comp_id);
+	inst, 0, 0, inst->comp_id);
     if (retval != 0) {
 	rtapi_print_msg(RTAPI_MSG_ERR,
 	    "PARPORT: ERROR: read all funct export failed\n");
-	hal_exit(comp_id);
+	hal->exit(hal->ctx, inst->comp_id);
+	rtapi_free(inst);
 	return -1;
     }
     retval = hal_export_funct("parport.write-all", write_all,
-	port_data_array, 0, 0, comp_id);
+	inst, 0, 0, inst->comp_id);
     if (retval != 0) {
 	rtapi_print_msg(RTAPI_MSG_ERR,
 	    "PARPORT: ERROR: write all funct export failed\n");
-	hal_exit(comp_id);
+	hal->exit(hal->ctx, inst->comp_id);
+	rtapi_free(inst);
 	return -1;
     }
     rtapi_print_msg(RTAPI_MSG_INFO,
-	"PARPORT: installed driver for %d ports\n", num_ports);
-    hal_ready(comp_id);
+	"PARPORT: installed driver for %d ports\n", inst->num_ports);
+    hal->ready(hal->ctx, inst->comp_id);
+
+    inst->cmod.Destroy = hal_parport_destroy;
+    inst->cmod.priv = inst;
+    *out = &inst->cmod;
     return 0;
 }
 
-void rtapi_app_exit(void)
+static void hal_parport_destroy(cmod_t *self)
 {
+    inst_t *inst = self->priv;
+    const gomc_hal_t *hal = inst->env->hal;
     int n;
-    for (n = 0; n < num_ports; n++) {
-        hal_parport_release(&port_data_array[n].portdata);
+
+    for (n = 0; n < inst->num_ports; n++) {
+        hal_parport_release(&inst->port_data_array[n].portdata);
     }
-    hal_exit(comp_id);
+    hal->exit(hal->ctx, inst->comp_id);
+    rtapi_free(inst);
 }
 
 /***********************************************************************
@@ -316,6 +352,7 @@ void rtapi_app_exit(void)
 
 static void read_port(void *arg, long period)
 {
+    (void)period;
     parport_t *port;
     int b;
     unsigned char indata, mask;
@@ -360,10 +397,11 @@ static void read_port(void *arg, long period)
 static void reset_port(void *arg, long period) {
     parport_t *port = arg;
     long long deadline, reset_time_tsc;
+    unsigned long ns2tsc_factor = 1ll<<12;
     unsigned char outdata = (port->outdata&~port->reset_mask) ^ port->reset_val;
    
     if(port->reset_time > period/4) port->reset_time = period/4;
-    reset_time_tsc = ns2tsc(port->reset_time);
+    reset_time_tsc = ((port->reset_time) * (unsigned long long)ns2tsc_factor) >> 12;
 
     if(outdata != port->outdata) {
         deadline = port->write_time + reset_time_tsc;
@@ -384,6 +422,7 @@ static void reset_port(void *arg, long period) {
 
 static void write_port(void *arg, long period)
 {
+    (void)period;
     parport_t *port;
     int b;
     unsigned char outdata, mask;
@@ -457,21 +496,19 @@ static void write_port(void *arg, long period)
 
 void read_all(void *arg, long period)
 {
-    parport_t *port;
+    inst_t *inst = arg;
     int n;
-    port = arg;
-    for (n = 0; n < num_ports; n++) {
-	read_port(&(port[n]), period);
+    for (n = 0; n < inst->num_ports; n++) {
+	read_port(&(inst->port_data_array[n]), period);
     }
 }
 
 void write_all(void *arg, long period)
 {
-    parport_t *port;
+    inst_t *inst = arg;
     int n;
-    port = arg;
-    for (n = 0; n < num_ports; n++) {
-	write_port(&(port[n]), period);
+    for (n = 0; n < inst->num_ports; n++) {
+	write_port(&(inst->port_data_array[n]), period);
     }
 }
 
@@ -479,7 +516,7 @@ void write_all(void *arg, long period)
 *                   LOCAL FUNCTION DEFINITIONS                         *
 ************************************************************************/
 
-static int pins_and_params(char *argv[])
+static int pins_and_params(inst_t *inst, char *argv[])
 {
     long port_addr[MAX_PORTS];
     int data_dir[MAX_PORTS];
@@ -495,11 +532,11 @@ static int pins_and_params(char *argv[])
 	force_epp[n] = 0;
     }
     /* parse config string, results in port_addr[] and data_dir[] arrays */
-    num_ports = 0;
+    inst->num_ports = 0;
     n = 0;
-    while ((num_ports < MAX_PORTS) && (argv[n] != 0)) {
-	port_addr[num_ports] = parse_port_addr(argv[n]);
-	if (port_addr[num_ports] < 0) {
+    while ((inst->num_ports < MAX_PORTS) && (argv[n] != 0)) {
+	port_addr[inst->num_ports] = parse_port_addr(argv[n]);
+	if (port_addr[inst->num_ports] < 0) {
 	    rtapi_print_msg(RTAPI_MSG_ERR,
 		"PARPORT: ERROR: bad port address '%s'\n", argv[n]);
 	    return -1;
@@ -510,56 +547,58 @@ static int pins_and_params(char *argv[])
 	    if ((argv[n][0] == 'i') || (argv[n][0] == 'I')) {
 		/* we aren't picky, anything starting with 'i' means 'in' ;-) 
 		 */
-		data_dir[num_ports] = 1;
-                use_control_in[num_ports] = 0;
+		data_dir[inst->num_ports] = 1;
+                use_control_in[inst->num_ports] = 0;
 		n++;
 	    } else if ((argv[n][0] == 'o') || (argv[n][0] == 'O')) {
 		/* anything starting with 'o' means 'out' */
-		data_dir[num_ports] = 0;
-                use_control_in[num_ports] = 0;
+		data_dir[inst->num_ports] = 0;
+                use_control_in[inst->num_ports] = 0;
 		n++;
 	    } else if ((argv[n][0] == 'e') || (argv[n][0] == 'E')) {
 		/* anything starting with 'e' means 'epp', which is just
                    like 'out' but with EPP mode requested, primarily for
                    the G540 with its charge pump missing-pullup drive
                    issue */
-                data_dir[num_ports] = 0;
-                use_control_in[num_ports] = 0;
-                force_epp[num_ports] = 1;
+                data_dir[inst->num_ports] = 0;
+                use_control_in[inst->num_ports] = 0;
+                force_epp[inst->num_ports] = 1;
 		n++;
 	    } else if ((argv[n][0] == 'x') || (argv[n][0] == 'X')) {
                 /* experimental: some parports support a bidirectional
                  * control port.  Enable this with pins 2-9 in output mode, 
                  * which gives a very nice 8 outs and 9 ins. */
-                data_dir[num_ports] = 0;
-                use_control_in[num_ports] = 1;
+                data_dir[inst->num_ports] = 0;
+                use_control_in[inst->num_ports] = 1;
 		n++;
             }
 	}
-	num_ports++;
+	inst->num_ports++;
     }
     /* OK, now we've parsed everything */
-    if (num_ports == 0) {
+    if (inst->num_ports == 0) {
 	rtapi_print_msg(RTAPI_MSG_ERR,
 	    "PARPORT: ERROR: no ports configured\n");
 	return -1;
     }
     /* have good config info, connect to the HAL */
-    comp_id = hal_init("hal_parport");
-    if (comp_id < 0) {
+    const gomc_hal_t *hal = inst->env->hal;
+    int r = hal->init(hal->ctx, "hal_parport", inst->env->dl_handle, GOMC_HAL_COMP_REALTIME);
+    if (r < 0) {
 	rtapi_print_msg(RTAPI_MSG_ERR, "PARPORT: ERROR: hal_init() failed\n");
 	return -1;
     }
+    inst->comp_id = r;
     /* allocate shared memory for parport data */
-    port_data_array = hal_malloc(num_ports * sizeof(parport_t));
-    if (port_data_array == 0) {
+    inst->port_data_array = hal_malloc(inst->num_ports * sizeof(parport_t));
+    if (inst->port_data_array == 0) {
 	rtapi_print_msg(RTAPI_MSG_ERR,
 	    "PARPORT: ERROR: hal_malloc() failed\n");
-	hal_exit(comp_id);
+	hal->exit(hal->ctx, inst->comp_id);
 	return -1;
     }
     /* export all the pins and params for each port */
-    for (n = 0; n < num_ports; n++) {
+    for (n = 0; n < inst->num_ports; n++) {
         int modes = 0;
 
         if(use_control_in[n]) {
@@ -568,36 +607,36 @@ static int pins_and_params(char *argv[])
             modes = PARPORT_MODE_EPP;
         }
 
-        retval = hal_parport_get(comp_id, &port_data_array[n].portdata,
+        retval = hal_parport_get(inst->comp_id, &inst->port_data_array[n].portdata,
                 port_addr[n], -1, modes);
 
         if(retval < 0) {
             // failure message already printed by hal_parport_get
-	    hal_exit(comp_id);
+	    hal->exit(hal->ctx, inst->comp_id);
             return retval;
         }
 
 	/* config addr and direction */
-	port_data_array[n].base_addr = port_data_array[n].portdata.base;
-	port_data_array[n].data_dir = data_dir[n];
-	port_data_array[n].use_control_in = use_control_in[n];
+	inst->port_data_array[n].base_addr = inst->port_data_array[n].portdata.base;
+	inst->port_data_array[n].data_dir = data_dir[n];
+	inst->port_data_array[n].use_control_in = use_control_in[n];
 
-        if(force_epp[n] && port_data_array[n].portdata.base_hi) {
+        if(force_epp[n] && inst->port_data_array[n].portdata.base_hi) {
             /* select EPP mode in ECR */
-            rtapi_outb(0x94, port_data_array[n].portdata.base_hi + 2);
+            rtapi_outb(0x94, inst->port_data_array[n].portdata.base_hi + 2);
         }
 
 	/* set data port (pins 2-9) direction to "in" if needed */
 	if (data_dir[n]) {
-	    rtapi_outb(rtapi_inb(port_data_array[n].base_addr+2) | 0x20, port_data_array[n].base_addr+2);
+	    rtapi_outb(rtapi_inb(inst->port_data_array[n].base_addr+2) | 0x20, inst->port_data_array[n].base_addr+2);
 	}
 
 	/* export all vars */
-	retval = export_port(n, &(port_data_array[n]));
+	retval = export_port(n, &(inst->port_data_array[n]), inst->comp_id);
 	if (retval != 0) {
 	    rtapi_print_msg(RTAPI_MSG_ERR,
 		"PARPORT: ERROR: port %d var export failed\n", n);
-	    hal_exit(comp_id);
+	    hal->exit(hal->ctx, inst->comp_id);
 	    return retval;
 	}
     }
@@ -640,7 +679,7 @@ static unsigned short parse_port_addr(char *cp)
     return result;
 }
 
-static int export_port(int portnum, parport_t * port)
+static int export_port(int portnum, parport_t * port, int comp_id)
 {
     int retval, msg;
 
@@ -653,39 +692,39 @@ static int export_port(int portnum, parport_t * port)
 
     retval = 0;
     /* declare input pins (status port) */
-    retval += export_input_pin(portnum, 15, port->status_in, 0);
-    retval += export_input_pin(portnum, 13, port->status_in, 1);
-    retval += export_input_pin(portnum, 12, port->status_in, 2);
-    retval += export_input_pin(portnum, 10, port->status_in, 3);
-    retval += export_input_pin(portnum, 11, port->status_in, 4);
+    retval += export_input_pin(portnum, 15, port->status_in, 0, comp_id);
+    retval += export_input_pin(portnum, 13, port->status_in, 1, comp_id);
+    retval += export_input_pin(portnum, 12, port->status_in, 2, comp_id);
+    retval += export_input_pin(portnum, 10, port->status_in, 3, comp_id);
+    retval += export_input_pin(portnum, 11, port->status_in, 4, comp_id);
     if (port->data_dir != 0) {
 	/* declare input pins (data port) */
-	retval += export_input_pin(portnum, 2, port->data_in, 0);
-	retval += export_input_pin(portnum, 3, port->data_in, 1);
-	retval += export_input_pin(portnum, 4, port->data_in, 2);
-	retval += export_input_pin(portnum, 5, port->data_in, 3);
-	retval += export_input_pin(portnum, 6, port->data_in, 4);
-	retval += export_input_pin(portnum, 7, port->data_in, 5);
-	retval += export_input_pin(portnum, 8, port->data_in, 6);
-	retval += export_input_pin(portnum, 9, port->data_in, 7);
+	retval += export_input_pin(portnum, 2, port->data_in, 0, comp_id);
+	retval += export_input_pin(portnum, 3, port->data_in, 1, comp_id);
+	retval += export_input_pin(portnum, 4, port->data_in, 2, comp_id);
+	retval += export_input_pin(portnum, 5, port->data_in, 3, comp_id);
+	retval += export_input_pin(portnum, 6, port->data_in, 4, comp_id);
+	retval += export_input_pin(portnum, 7, port->data_in, 5, comp_id);
+	retval += export_input_pin(portnum, 8, port->data_in, 6, comp_id);
+	retval += export_input_pin(portnum, 9, port->data_in, 7, comp_id);
     } else {
 	/* declare output pins (data port) */
 	retval += export_output_pin(portnum, 2,
-	    port->data_out, port->data_inv, port->data_reset, 0);
+	    port->data_out, port->data_inv, port->data_reset, 0, comp_id);
 	retval += export_output_pin(portnum, 3,
-	    port->data_out, port->data_inv, port->data_reset, 1);
+	    port->data_out, port->data_inv, port->data_reset, 1, comp_id);
 	retval += export_output_pin(portnum, 4,
-	    port->data_out, port->data_inv, port->data_reset, 2);
+	    port->data_out, port->data_inv, port->data_reset, 2, comp_id);
 	retval += export_output_pin(portnum, 5,
-	    port->data_out, port->data_inv, port->data_reset, 3);
+	    port->data_out, port->data_inv, port->data_reset, 3, comp_id);
 	retval += export_output_pin(portnum, 6,
-	    port->data_out, port->data_inv, port->data_reset, 4);
+	    port->data_out, port->data_inv, port->data_reset, 4, comp_id);
 	retval += export_output_pin(portnum, 7,
-	    port->data_out, port->data_inv, port->data_reset, 5);
+	    port->data_out, port->data_inv, port->data_reset, 5, comp_id);
 	retval += export_output_pin(portnum, 8,
-	    port->data_out, port->data_inv, port->data_reset, 6);
+	    port->data_out, port->data_inv, port->data_reset, 6, comp_id);
 	retval += export_output_pin(portnum, 9,
-	    port->data_out, port->data_inv, port->data_reset, 7);
+	    port->data_out, port->data_inv, port->data_reset, 7, comp_id);
 	retval += hal_param_u32_newf(HAL_RW, &port->reset_time, comp_id, 
 			"parport.%d.reset-time", portnum);
 	retval += hal_param_u32_newf(HAL_RW, &port->debug1, comp_id, 
@@ -697,19 +736,19 @@ static int export_port(int portnum, parport_t * port)
     if(port->use_control_in == 0) {
 	/* declare output variables (control port) */
 	retval += export_output_pin(portnum, 1,
-	    port->control_out, port->control_inv, port->control_reset, 0);
+	    port->control_out, port->control_inv, port->control_reset, 0, comp_id);
 	retval += export_output_pin(portnum, 14,
-	    port->control_out, port->control_inv, port->control_reset, 1);
+	    port->control_out, port->control_inv, port->control_reset, 1, comp_id);
 	retval += export_output_pin(portnum, 16,
-	    port->control_out, port->control_inv, port->control_reset, 2);
+	    port->control_out, port->control_inv, port->control_reset, 2, comp_id);
 	retval += export_output_pin(portnum, 17,
-	    port->control_out, port->control_inv, port->control_reset, 3);
+	    port->control_out, port->control_inv, port->control_reset, 3, comp_id);
     } else {
 	/* declare input variables (control port) */
-        retval += export_input_pin(portnum, 1, port->control_in, 0);
-        retval += export_input_pin(portnum, 14, port->control_in, 1);
-        retval += export_input_pin(portnum, 16, port->control_in, 2);
-        retval += export_input_pin(portnum, 17, port->control_in, 3);
+        retval += export_input_pin(portnum, 1, port->control_in, 0, comp_id);
+        retval += export_input_pin(portnum, 14, port->control_in, 1, comp_id);
+        retval += export_input_pin(portnum, 16, port->control_in, 2, comp_id);
+        retval += export_input_pin(portnum, 17, port->control_in, 3, comp_id);
     }
 
     /* restore saved message level */
@@ -717,7 +756,7 @@ static int export_port(int portnum, parport_t * port)
     return retval;
 }
 
-static int export_input_pin(int portnum, int pin, hal_bit_t ** base, int n)
+static int export_input_pin(int portnum, int pin, hal_bit_t ** base, int n, int comp_id)
 {
     int retval;
 
@@ -734,7 +773,7 @@ static int export_input_pin(int portnum, int pin, hal_bit_t ** base, int n)
 }
 
 static int export_output_pin(int portnum, int pin, hal_bit_t ** dbase,
-    hal_bit_t * pbase, hal_bit_t * rbase, int n)
+    hal_bit_t * pbase, hal_bit_t * rbase, int n, int comp_id)
 {
     int retval;
 

@@ -1,3 +1,87 @@
+# ---------------------------------------------------------------------------
+# cmod builds: GPIO drivers
+# ---------------------------------------------------------------------------
+
+ifeq ($(BUILD_GOLANG),yes)
+
+GPIO_DIR := hal/drivers
+
+GPIO_CMOD_CFLAGS := \
+    -fPIC -Os -Wall -Wextra \
+    -DUSPACE -D_GNU_SOURCE -Drealtime \
+    -fno-strict-aliasing -fwrapv \
+    -I. -I../include \
+    -I$(GPIO_DIR) \
+    -Igomc/pkg/cmodule
+
+GPIO_CMOD_LDFLAGS = $(LDFLAGS) -llinuxcnchal -lm
+
+# hal_parport.so
+../cmod/hal_parport.so: $(GPIO_DIR)/hal_parport.c \
+                        hal/hal_parport.h \
+                        $(wildcard gomc/pkg/cmodule/gomc_*.h) \
+                        | headers
+	$(ECHO) "Compiling cmod hal_parport.so"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -shared $(GPIO_CMOD_CFLAGS) \
+	    -o $@ $(GPIO_DIR)/hal_parport.c \
+	    $(GPIO_CMOD_LDFLAGS)
+
+TARGETS += ../cmod/hal_parport.so
+modules: ../cmod/hal_parport.so
+
+# hal_bb_gpio.so
+../cmod/hal_bb_gpio.so: $(GPIO_DIR)/hal_bb_gpio.c \
+                        $(GPIO_DIR)/beaglebone_gpio.h \
+                        $(wildcard gomc/pkg/cmodule/gomc_*.h) \
+                        | headers
+	$(ECHO) "Compiling cmod hal_bb_gpio.so"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -shared $(GPIO_CMOD_CFLAGS) \
+	    -o $@ $(GPIO_DIR)/hal_bb_gpio.c \
+	    $(GPIO_CMOD_LDFLAGS)
+
+TARGETS += ../cmod/hal_bb_gpio.so
+modules: ../cmod/hal_bb_gpio.so
+
+# hal_pi_gpio.so
+../cmod/hal_pi_gpio.so: $(GPIO_DIR)/hal_pi_gpio.c \
+                        $(GPIO_DIR)/cpuinfo.c \
+                        $(GPIO_DIR)/bcm2835.h \
+                        $(GPIO_DIR)/cpuinfo.h \
+                        $(wildcard gomc/pkg/cmodule/gomc_*.h) \
+                        | headers
+	$(ECHO) "Compiling cmod hal_pi_gpio.so"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -shared $(GPIO_CMOD_CFLAGS) \
+	    -o $@ $(GPIO_DIR)/hal_pi_gpio.c $(GPIO_DIR)/cpuinfo.c \
+	    $(GPIO_CMOD_LDFLAGS)
+
+TARGETS += ../cmod/hal_pi_gpio.so
+modules: ../cmod/hal_pi_gpio.so
+
+# hal_gpio.so (requires libgpiod)
+ifdef LIBGPIOD_VER
+../cmod/hal_gpio.so: $(GPIO_DIR)/hal_gpio.c \
+                     $(wildcard gomc/pkg/cmodule/gomc_*.h) \
+                     | headers
+	$(ECHO) "Compiling cmod hal_gpio.so"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -shared $(GPIO_CMOD_CFLAGS) \
+	    -DLIBGPIOD_VER=$(LIBGPIOD_VER) \
+	    -o $@ $(GPIO_DIR)/hal_gpio.c \
+	    $(GPIO_CMOD_LDFLAGS) -lgpiod
+
+TARGETS += ../cmod/hal_gpio.so
+modules: ../cmod/hal_gpio.so
+endif
+
+endif # BUILD_GOLANG
+
+# ---------------------------------------------------------------------------
+# Legacy pluto firmware rules
+# ---------------------------------------------------------------------------
+
 hal/drivers/pluto_servo_rbf.h: hal/drivers/pluto_servo_firmware/pluto_servo.rbf hal/drivers/rbf2h.py
 	$(PYTHON) hal/drivers/rbf2h.py -g \
     -c "This is a component of pluto_servo, a PWM servo driver and" \
