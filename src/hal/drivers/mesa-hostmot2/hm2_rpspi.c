@@ -86,8 +86,11 @@
 #define SPI1_PIN_MOSI		20
 #define SPI1_PIN_SCLK		21
 
+struct hm2_rpspi_inst;  // forward declaration
+
 typedef struct hm2_rpspi_struct {
 	hm2_lowlevel_io_t llio;		// Upstream container
+	struct hm2_rpspi_inst *inst;	// Back-pointer to instance
 	int		nr;		// Board number
 	uint32_t	spiclkratew;	// SPI write clock for divider calculation
 	uint32_t	spiclkrater;	// SPI read clock for divider calculation
@@ -97,19 +100,37 @@ typedef struct hm2_rpspi_struct {
 	int		spiceid;	// The SPI CE id [012]
 } hm2_rpspi_t;
 
-static uint32_t *peripheralmem = (uint32_t *)MAP_FAILED;	// mmap'ed peripheral memory
-static size_t peripheralsize;					// Size of the mmap'ed block
-static bcm2835_gpio_t *gpio;					// GPIO peripheral structure in mmap'ed address space
-static bcm2835_spi_t *spi;					// SPI peripheral structure in mmap'ed address space
-static bcm2835_aux_t *aux;					// AUX peripheral structure in mmap'ed address space
-static uint32_t aux_enables;					// Previous state of SPI1 enable
+typedef struct hm2_rpspi_inst {
+	cmod_t cmod;
+	const cmod_env_t *env;
+	const hm2_core_callbacks_t *core;
+	int comp_id;
 
-static hm2_rpspi_t boards[RPSPI_MAX_BOARDS];	// Connected boards
-static int comp_id;				// Upstream assigned component ID
+	// Hardware mapped state
+	uint32_t *peripheralmem;
+	size_t peripheralsize;
+	bcm2835_gpio_t *gpio;
+	bcm2835_spi_t *spi;
+	bcm2835_aux_t *aux;
+	uint32_t aux_enables;
 
-// cmod instance state
-static const cmod_env_t *mod_env;
-static const hm2_core_callbacks_t *hm2_core;
+	// Parameters (parsed from argv)
+	int spiclk_rate;
+	int spiclk_rate_rd;
+	int spiclk_base;
+	int spi_pull_miso;
+	int spi_pull_mosi;
+	int spi_pull_sclk;
+	int spi_probe;
+	int spi_debug;
+	char *config[RPSPI_MAX_BOARDS];
+	char cfg_bufs[RPSPI_MAX_BOARDS][256];
+
+	// Boards
+	hm2_rpspi_t boards[RPSPI_MAX_BOARDS];
+} hm2_rpspi_inst_t;
+
+
 
 static char *hm2_7c80_pin_names[] = {
 	"TB07-02/TB07-03",	/* Step/Dir/Misc 5V out */
@@ -233,11 +254,6 @@ static char *hm2_7c81_pin_names[] = {
 
 
 /*
- * Configuration parameters
- */
-static char *config[RPSPI_MAX_BOARDS];
-
-/*
  * RPI3 NOTE:
  * The core frequency is wildly variable when the ondemand cpufreq governor is
  * active. This may result in changing SPI frequencies depending on the system
@@ -275,46 +291,17 @@ static char *config[RPSPI_MAX_BOARDS];
  *
  * See also read_spiclkbase() below.
  */
-static int spiclk_rate = 31250;
-static int spiclk_rate_rd = -1;
-
-/*
- * Override the "safe" base frequency of the SPI peripheral. The clock speed
- * is normally read from /sys/kernel/debug/clk/vpu/clk_rate or, for older
- * kernels, /sys/kernel/debug/clk/core/clk_rate and should give the correct
- * current base clock speed.
- */
-#define F_PERI	400000000UL
-static int spiclk_base = F_PERI;
-
 /*
  * Enable/disable pullup/pulldown on the SPI pins
  */
 #define SPI_PULL_OFF	0	// == GPIO_GPPUD_OFF
 #define SPI_PULL_DOWN	1	// == GPIO_GPPUD_PULLDOWN
 #define SPI_PULL_UP	2	// == GPIO_GPPUD_PULLUP
-static int spi_pull_miso = SPI_PULL_DOWN;
-static int spi_pull_mosi = SPI_PULL_DOWN;
-static int spi_pull_sclk = SPI_PULL_DOWN;
+
+#define F_PERI	400000000UL
 
 /*
- * Select which SPI channel(s) to probe. There are two SPI interfaces exposed
- * on the 40-pin I/O header, SPI0 and SPI1. SPI0 has two chip selects and SPI1
- * has three chip selects.
- *
- * GPIO pin setup:
- *      | MOSI | MISO | SCLK | CE0 | CE1 | CE2
- * -----+------+------+------+-----+-----+-----
- * SPI0 |  10  |   9  |  11  |   8 |   7 |
- * SPI1 |  20  |  19  |  21  |  18 |  17 |  16
- *
- * Boards will be numbered in the order found. The probe scan is ordered in the
- * following way:
- * - SPI0 - CE0
- * - SPI0 - CE1
- * - SPI1 - CE0
- * - SPI1 - CE1
- * - SPI1 - CE2
+ * Select which SPI channel(s) to probe.
  */
 #define SPI0_PROBE_CE0	(1 << 0)
 #define SPI0_PROBE_CE1	(1 << 1)
@@ -323,47 +310,39 @@ static int spi_pull_sclk = SPI_PULL_DOWN;
 #define SPI1_PROBE_CE1	(1 << 3)
 #define SPI1_PROBE_CE2	(1 << 4)
 #define SPI1_PROBE_MASK	(SPI1_PROBE_CE0 | SPI1_PROBE_CE1 | SPI1_PROBE_CE2)
-static int spi_probe = SPI0_PROBE_CE0;
-
-/*
- * Set the message level for debugging purpose. This has the (side-)effect that
- * all modules within this process will start spitting out messages at the
- * requested level.
- * The upstream message level is not touched if spi_debug == -1.
- */
-static int spi_debug = -1;
 
 /*********************************************************************/
 #if defined(RPSPI_DEBUG_PIN)
 /*
  * Set/Clear a GPIO pin
  */
-RPSPI_ALWAYS_INLINE static inline void gpio_set(uint32_t pin)
+RPSPI_ALWAYS_INLINE static inline void gpio_set(bcm2835_gpio_t *gpio, uint32_t pin)
 {
 	if(pin <= 53) {	/* There are 54 GPIOs */
 		reg_wr(&gpio->gpset[pin / 32], 1 << (pin % 32));
 	}
 }
 
-RPSPI_ALWAYS_INLINE static inline void gpio_clr(uint32_t pin)
+RPSPI_ALWAYS_INLINE static inline void gpio_clr(bcm2835_gpio_t *gpio, uint32_t pin)
 {
 	if(pin <= 53) {	/* There are 54 GPIOs */
 		reg_wr(&gpio->gpclr[pin / 32], 1 << (pin % 32));
 	}
 }
 
-RPSPI_ALWAYS_INLINE static inline void gpio_debug_pin(bool set_reset)
+RPSPI_ALWAYS_INLINE static inline void gpio_debug_pin(hm2_rpspi_inst_t *inst, bool set_reset)
 {
 	if(set_reset)
-		gpio_set(RPSPI_DEBUG_PIN);
+		gpio_set(inst->gpio, RPSPI_DEBUG_PIN);
 	else
-		gpio_clr(RPSPI_DEBUG_PIN);
+		gpio_clr(inst->gpio, RPSPI_DEBUG_PIN);
 }
 
 #else
 
-RPSPI_ALWAYS_INLINE static inline void gpio_debug_pin(bool set_reset)
+RPSPI_ALWAYS_INLINE static inline void gpio_debug_pin(hm2_rpspi_inst_t *inst, bool set_reset)
 {
+	(void)inst;
 	(void)set_reset;
 }
 
@@ -399,11 +378,11 @@ static inline int32_t spi1_clkdiv_calc(uint32_t base, uint32_t rate)
 /*
  * Initialize/reset the SPI peripheral to inactive state and flushed
  */
-static inline void spi1_reset(void)
+static inline void spi1_reset(hm2_rpspi_inst_t *inst)
 {
 	// Disable and clear fifos
-	reg_wr(&aux->spi0_cntl0, 0);
-	reg_wr(&aux->spi0_cntl1, AUX_SPI_CNTL0_CLEARFIFO);
+	reg_wr(&inst->aux->spi0_cntl0, 0);
+	reg_wr(&inst->aux->spi0_cntl1, AUX_SPI_CNTL0_CLEARFIFO);
 }
 
 /*
@@ -411,6 +390,7 @@ static inline void spi1_reset(void)
  */
 static inline void spi1_xfer_setup(hm2_rpspi_t *hm2, bool rd)
 {
+	hm2_rpspi_inst_t *inst = hm2->inst;
 	// Set clock speed and format
 	// Note: It seems that we cannot send 32 bits. Shift length 0 sends
 	// zero bits and there are only 6 bits available to set the length,
@@ -418,13 +398,13 @@ static inline void spi1_xfer_setup(hm2_rpspi_t *hm2, bool rd)
 	// delayed one clock. Therefore we need to shift 15 places (below) and
 	// not 16 as expected. The one-clock delay may be related to the
 	// OUT_RISING flag, but that is speculation.
-	reg_wr(&aux->spi0_cntl0,  AUX_SPI_CNTL0_SPEED(spi1_clkdiv_calc(hm2->spiclkbase, rd ? hm2->spiclkrater : hm2->spiclkratew))
+	reg_wr(&inst->aux->spi0_cntl0,  AUX_SPI_CNTL0_SPEED(spi1_clkdiv_calc(hm2->spiclkbase, rd ? hm2->spiclkrater : hm2->spiclkratew))
 				| AUX_SPI_CNTL0_ENABLE
 				| AUX_SPI_CNTL0_MSB_OUT
 				| AUX_SPI_CNTL0_OUT_RISING
 				| AUX_SPI_CNTL0_SHIFT_LENGTH(16)
 				| hm2->spice);
-	reg_wr(&aux->spi0_cntl1, AUX_SPI_CNTL1_MSB_IN);
+	reg_wr(&inst->aux->spi0_cntl1, AUX_SPI_CNTL1_MSB_IN);
 }
 
 /*
@@ -433,6 +413,7 @@ static inline void spi1_xfer_setup(hm2_rpspi_t *hm2, bool rd)
 static int hm2_rpspi_write_spi1(hm2_lowlevel_io_t *llio, uint32_t addr, const void *buffer, int size)
 {
 	hm2_rpspi_t *hm2 = (hm2_rpspi_t *)llio;
+	hm2_rpspi_inst_t *inst = hm2->inst;
 	uint32_t cmd;
 	int txlen;
 	int rxlen;
@@ -444,7 +425,7 @@ static int hm2_rpspi_write_spi1(hm2_lowlevel_io_t *llio, uint32_t addr, const vo
 	if((size % 4) || size / 4 >= RPSPI_MAX_MSG)
 		return -EINVAL;
 
-	gpio_debug_pin(false);
+	gpio_debug_pin(inst, false);
 
 	cmd = htobe32(mk_write_cmd(addr, size / 4, true));	// Setup write command
 	spi1_xfer_setup(hm2, false);				// Setup transfer
@@ -453,9 +434,9 @@ static int hm2_rpspi_write_spi1(hm2_lowlevel_io_t *llio, uint32_t addr, const vo
 	txlen = 2;			// Command is two 16bit words
 	bptr = (uint16_t *)&cmd;	// The command
 	while(txlen) {
-		uint32_t stat = reg_rd(&aux->spi0_stat);
+		uint32_t stat = reg_rd(&inst->aux->spi0_stat);
 		if(txlen && !(stat & AUX_SPI_STAT_TX_FULL)) {
-			reg_wr(&aux->spi0_hold, (uint32_t)htobe16(*bptr++) << 15);	// More data to follow
+			reg_wr(&inst->aux->spi0_hold, (uint32_t)htobe16(*bptr++) << 15);	// More data to follow
 			--txlen;
 		}
 	}
@@ -464,7 +445,7 @@ static int hm2_rpspi_write_spi1(hm2_lowlevel_io_t *llio, uint32_t addr, const vo
 	txlen = size / 2;		// Number of data words to write
 	wptr = (uint32_t *)buffer;	// And get it from here
 	while(rxlen) {
-		uint32_t stat = reg_rd(&aux->spi0_stat);
+		uint32_t stat = reg_rd(&inst->aux->spi0_stat);
 		if(txlen && !(stat & AUX_SPI_STAT_TX_FULL)) {
 			// For each 32 bit read the buffer and convert
 			if(!(txlen & 1)) {
@@ -472,23 +453,23 @@ static int hm2_rpspi_write_spi1(hm2_lowlevel_io_t *llio, uint32_t addr, const vo
 				bptr = (uint16_t *)&cmd;
 			}
 			if(--txlen)
-				reg_wr(&aux->spi0_hold, (uint32_t)htobe16(*bptr++) << 15);	// Write while still more data to follow
+				reg_wr(&inst->aux->spi0_hold, (uint32_t)htobe16(*bptr++) << 15);	// Write while still more data to follow
 			else
-				reg_wr(&aux->spi0_io, (uint32_t)htobe16(*bptr++) << 15);	// Final write
+				reg_wr(&inst->aux->spi0_io, (uint32_t)htobe16(*bptr++) << 15);	// Final write
 		}
 
 		if(!(stat & AUX_SPI_STAT_RX_EMPTY)) {
 			// Discard the read data
 			uint32_t dummy __attribute__((unused));
-			dummy = reg_rd(&aux->spi0_io);
+			dummy = reg_rd(&inst->aux->spi0_io);
 			rxlen--;
 		}
 	}
 
 	// Stop transfer
-	spi1_reset();
+	spi1_reset(inst);
 
-	gpio_debug_pin(true);
+	gpio_debug_pin(inst, true);
 	return 1;
 }
 
@@ -498,6 +479,7 @@ static int hm2_rpspi_write_spi1(hm2_lowlevel_io_t *llio, uint32_t addr, const vo
 static int hm2_rpspi_read_spi1(hm2_lowlevel_io_t *llio, uint32_t addr, void *buffer, int size)
 {
 	hm2_rpspi_t *hm2 = (hm2_rpspi_t *)llio;
+	hm2_rpspi_inst_t *inst = hm2->inst;
 	uint32_t cmd;
 	int txlen;
 	int rxlen;
@@ -509,7 +491,7 @@ static int hm2_rpspi_read_spi1(hm2_lowlevel_io_t *llio, uint32_t addr, void *buf
 	if((size % 4) || size / 4 >= RPSPI_MAX_MSG)
 		return -EINVAL;
 
-	gpio_debug_pin(false);
+	gpio_debug_pin(inst, false);
 
 	cmd = htobe32(mk_read_cmd(addr, size / 4, true));	// Setup read command
 	spi1_xfer_setup(hm2, true);				// Setup transfer
@@ -518,9 +500,9 @@ static int hm2_rpspi_read_spi1(hm2_lowlevel_io_t *llio, uint32_t addr, void *buf
 	txlen = 2;			// Command is two 16bit words
 	bptr = (uint16_t *)&cmd;	// The command
 	while(txlen) {
-		uint32_t stat = reg_rd(&aux->spi0_stat);
+		uint32_t stat = reg_rd(&inst->aux->spi0_stat);
 		if(txlen && !(stat & AUX_SPI_STAT_TX_FULL)) {
-			reg_wr(&aux->spi0_hold, (uint32_t)be16toh(*bptr++) << 15);	// More data to follow
+			reg_wr(&inst->aux->spi0_hold, (uint32_t)be16toh(*bptr++) << 15);	// More data to follow
 			--txlen;
 		}
 	}
@@ -528,17 +510,17 @@ static int hm2_rpspi_read_spi1(hm2_lowlevel_io_t *llio, uint32_t addr, void *buf
 	rxlen = 2;		// We read back the command to be discarded
 	txlen = size / 2;	// Number of zeroes to write for the read command
 	while(rxlen) {
-		uint32_t stat = reg_rd(&aux->spi0_stat);
+		uint32_t stat = reg_rd(&inst->aux->spi0_stat);
 		if(txlen && !(stat & AUX_SPI_STAT_TX_FULL)) {
 			if(--txlen)
-				reg_wr(&aux->spi0_hold, 0);	// Write while still more data to follow
+				reg_wr(&inst->aux->spi0_hold, 0);	// Write while still more data to follow
 			else
-				reg_wr(&aux->spi0_io, 0);	// Final write (maybe reached on very short reads)
+				reg_wr(&inst->aux->spi0_io, 0);	// Final write (maybe reached on very short reads)
 		}
 
 		if(!(stat & AUX_SPI_STAT_RX_EMPTY)) {
 			uint32_t dummy __attribute__((unused));
-			dummy = reg_rd(&aux->spi0_io);
+			dummy = reg_rd(&inst->aux->spi0_io);
 			rxlen--;
 		}
 	}
@@ -547,16 +529,16 @@ static int hm2_rpspi_read_spi1(hm2_lowlevel_io_t *llio, uint32_t addr, void *buf
 	wptr = (uint32_t *)buffer;	// And save it here
 	bptr = (uint16_t *)&cmd;	// Temporary store for byteswap
 	while(rxlen) {
-		uint32_t stat = reg_rd(&aux->spi0_stat);
+		uint32_t stat = reg_rd(&inst->aux->spi0_stat);
 		if(txlen && !(stat & AUX_SPI_STAT_TX_FULL)) {
 			if(--txlen)
-				reg_wr(&aux->spi0_hold, 0);	// Write while still more data to follow
+				reg_wr(&inst->aux->spi0_hold, 0);	// Write while still more data to follow
 			else
-				reg_wr(&aux->spi0_io, 0);	// Final write
+				reg_wr(&inst->aux->spi0_io, 0);	// Final write
 		}
 
 		if(!(stat & AUX_SPI_STAT_RX_EMPTY)) {
-			*bptr++ = be16toh(reg_rd(&aux->spi0_io));
+			*bptr++ = be16toh(reg_rd(&inst->aux->spi0_io));
 			rxlen--;
 			// Read 32 bits, convert and store
 			if(!(rxlen & 1)) {
@@ -567,9 +549,9 @@ static int hm2_rpspi_read_spi1(hm2_lowlevel_io_t *llio, uint32_t addr, void *buf
 	}
 
 	// Stop transfer
-	spi1_reset();
+	spi1_reset(inst);
 
-	gpio_debug_pin(true);
+	gpio_debug_pin(inst, true);
 	return 1;
 }
 
@@ -589,14 +571,14 @@ static inline int32_t spi0_clkdiv_calc(uint32_t base, uint32_t rate)
 /*
  * Initialize/reset the SPI peripheral to inactive state and flushed
  */
-static inline void spi0_reset(void)
+static inline void spi0_reset(hm2_rpspi_inst_t *inst)
 {
-	uint32_t x = reg_rd(&spi->cs);
+	uint32_t x = reg_rd(&inst->spi->cs);
 	// Disable all activity
 	x &= ~(SPI_CS_INTR | SPI_CS_INTD | SPI_CS_DMAEN | SPI_CS_TA);
 	// and reset RX/TX fifos
 	x |= SPI_CS_CLEAR_RX | SPI_CS_CLEAR_TX;
-	reg_wr(&spi->cs, x);
+	reg_wr(&inst->spi->cs, x);
 	// Other registers are don't care for us, not using DMA
 }
 
@@ -605,11 +587,12 @@ static inline void spi0_reset(void)
  */
 static inline void spi0_xfer_setup(hm2_rpspi_t *hm2, bool rd)
 {
-	uint32_t cs = reg_rd(&spi->cs);
+	hm2_rpspi_inst_t *inst = hm2->inst;
+	uint32_t cs = reg_rd(&inst->spi->cs);
 	cs &= ~(SPI_CS_CS_10 | SPI_CS_CS_01 | SPI_CS_REN);	// Reset CE and disable 3-wire mode
 	cs |= hm2->spice | SPI_CS_TA;				// Set proper CE_x and activate transfer
-	reg_wr(&spi->clk, spi0_clkdiv_calc(hm2->spiclkbase, rd ? hm2->spiclkrater : hm2->spiclkratew));	// Set clock divider
-	reg_wr(&spi->cs, cs);					// Go!
+	reg_wr(&inst->spi->clk, spi0_clkdiv_calc(hm2->spiclkbase, rd ? hm2->spiclkrater : hm2->spiclkratew));	// Set clock divider
+	reg_wr(&inst->spi->cs, cs);					// Go!
 }
 
 /*
@@ -618,6 +601,7 @@ static inline void spi0_xfer_setup(hm2_rpspi_t *hm2, bool rd)
 static int hm2_rpspi_write_spi0(hm2_lowlevel_io_t *llio, uint32_t addr, const void *buffer, int size)
 {
 	hm2_rpspi_t *hm2 = (hm2_rpspi_t *)llio;
+	hm2_rpspi_inst_t *inst = hm2->inst;
 	uint32_t cs;
 	uint32_t cmd;
 	int txlen;
@@ -630,7 +614,7 @@ static int hm2_rpspi_write_spi0(hm2_lowlevel_io_t *llio, uint32_t addr, const vo
 	if((size % 4) || size / 4 >= RPSPI_MAX_MSG)
 		return -EINVAL;
 
-	gpio_debug_pin(false);
+	gpio_debug_pin(inst, false);
 
 	cmd = htobe32(mk_write_cmd(addr, size / 4, true));	// Setup write command
 	spi0_xfer_setup(hm2, false);
@@ -640,8 +624,8 @@ static int hm2_rpspi_write_spi0(hm2_lowlevel_io_t *llio, uint32_t addr, const vo
 	// data while we write the command.
 	bptr = (uint8_t *)&cmd;	// Command data
 	txlen = 4;		// Command length
-	while(txlen && (reg_rd(&spi->cs) & SPI_CS_TXD)) {
-		reg_wr(&spi->fifo, *bptr++);
+	while(txlen && (reg_rd(&inst->spi->cs) & SPI_CS_TXD)) {
+		reg_wr(&inst->spi->fifo, *bptr++);
 		--txlen;
 	}
 
@@ -653,10 +637,10 @@ static int hm2_rpspi_write_spi0(hm2_lowlevel_io_t *llio, uint32_t addr, const vo
 	rxlen = size + 4;		// Buffer size plus command length
 	wptr = (uint32_t *)buffer;	// Actual write data
 	while(rxlen) {
-		cs = reg_rd(&spi->cs);
+		cs = reg_rd(&inst->spi->cs);
 		if(cs & SPI_CS_RXD) {
 			uint32_t dummy __attribute__((unused));
-			dummy = reg_rd(&spi->fifo);
+			dummy = reg_rd(&inst->spi->fifo);
 			--rxlen;
 		}
 		if(txlen && (cs & SPI_CS_TXD)) {
@@ -665,7 +649,7 @@ static int hm2_rpspi_write_spi0(hm2_lowlevel_io_t *llio, uint32_t addr, const vo
 				cmd = htobe32(*wptr++);
 				bptr = (uint8_t *)&cmd;
 			}
-			reg_wr(&spi->fifo, *bptr++);
+			reg_wr(&inst->spi->fifo, *bptr++);
 			--txlen;
 		}
 	}
@@ -673,9 +657,9 @@ static int hm2_rpspi_write_spi0(hm2_lowlevel_io_t *llio, uint32_t addr, const vo
 	// We're done, there is no return data
 
 	// Stop transfer
-	spi0_reset();
+	spi0_reset(inst);
 
-	gpio_debug_pin(true);
+	gpio_debug_pin(inst, true);
 	return 1;
 }
 
@@ -685,6 +669,7 @@ static int hm2_rpspi_write_spi0(hm2_lowlevel_io_t *llio, uint32_t addr, const vo
 static int hm2_rpspi_read_spi0(hm2_lowlevel_io_t *llio, uint32_t addr, void *buffer, int size)
 {
 	hm2_rpspi_t *hm2 = (hm2_rpspi_t *)llio;
+	hm2_rpspi_inst_t *inst = hm2->inst;
 	uint32_t cs;
 	uint32_t cmd;
 	int txlen;
@@ -697,7 +682,7 @@ static int hm2_rpspi_read_spi0(hm2_lowlevel_io_t *llio, uint32_t addr, void *buf
 	if((size % 4) || size / 4 >= RPSPI_MAX_MSG)
 		return -EINVAL;
 
-	gpio_debug_pin(false);
+	gpio_debug_pin(inst, false);
 
 	cmd = htobe32(mk_read_cmd(addr, size / 4, true));	// Setup read command
 	spi0_xfer_setup(hm2, true);
@@ -707,8 +692,8 @@ static int hm2_rpspi_read_spi0(hm2_lowlevel_io_t *llio, uint32_t addr, void *buf
 	// data while we write the command.
 	bptr = (uint8_t *)&cmd;	// Command data
 	txlen = 4;		// Command length
-	while(txlen && (reg_rd(&spi->cs) & SPI_CS_TXD)) {
-		reg_wr(&spi->fifo, *bptr++);
+	while(txlen && (reg_rd(&inst->spi->cs) & SPI_CS_TXD)) {
+		reg_wr(&inst->spi->fifo, *bptr++);
 		--txlen;
 	}
 
@@ -717,14 +702,14 @@ static int hm2_rpspi_read_spi0(hm2_lowlevel_io_t *llio, uint32_t addr, void *buf
 	txlen = size;	// Now we write zeros for the read length
 	rxlen = 4;	// The command read back needs to be discarded
 	while(rxlen) {
-		cs = reg_rd(&spi->cs);
+		cs = reg_rd(&inst->spi->cs);
 		if(cs & SPI_CS_RXD) {
 			uint32_t dummy __attribute__((unused));
-			dummy = reg_rd(&spi->fifo);
+			dummy = reg_rd(&inst->spi->fifo);
 			--rxlen;
 		}
 		if(txlen && (cs & SPI_CS_TXD)) {
-			reg_wr(&spi->fifo, 0);	// Write zeroes
+			reg_wr(&inst->spi->fifo, 0);	// Write zeroes
 			--txlen;
 		}
 	}
@@ -736,9 +721,9 @@ static int hm2_rpspi_read_spi0(hm2_lowlevel_io_t *llio, uint32_t addr, void *buf
 	wptr = (uint32_t *)buffer;
 	bptr = (uint8_t *)&cmd;
 	while(rxlen) {
-		cs = reg_rd(&spi->cs);
+		cs = reg_rd(&inst->spi->cs);
 		if(cs & SPI_CS_RXD) {
-			*bptr++ = reg_rd(&spi->fifo);
+			*bptr++ = reg_rd(&inst->spi->fifo);
 			--rxlen;
 			// Once we have 4 bytes, convert to little endian and save
 			if(!(rxlen & 3)) {
@@ -747,7 +732,7 @@ static int hm2_rpspi_read_spi0(hm2_lowlevel_io_t *llio, uint32_t addr, void *buf
 			}
 		}
 		if(txlen && (cs & SPI_CS_TXD)) {
-			reg_wr(&spi->fifo, 0);	// Keep writing zeros
+			reg_wr(&inst->spi->fifo, 0);	// Keep writing zeros
 			--txlen;
 		}
 	}
@@ -755,9 +740,9 @@ static int hm2_rpspi_read_spi0(hm2_lowlevel_io_t *llio, uint32_t addr, void *buf
 	// The return data is now in the buffer
 
 	// Stop transfer
-	spi0_reset();
+	spi0_reset(inst);
 
-	gpio_debug_pin(true);
+	gpio_debug_pin(inst, true);
 	return 1;
 }
 
@@ -810,10 +795,10 @@ static int32_t check_cookie(hm2_rpspi_t *board)
 	ca = cookie[0] & cookie[1] & cookie[2];	// All ones -> ca == ones
 	co = cookie[0] | cookie[1] | cookie[2];	// All zero -> co == zero
 
-	if((!co && spi_pull_miso == SPI_PULL_DOWN) || (ca == 0xffffffff && spi_pull_miso == SPI_PULL_UP)) {
+	if((!co && board->inst->spi_pull_miso == SPI_PULL_DOWN) || (ca == 0xffffffff && board->inst->spi_pull_miso == SPI_PULL_UP)) {
 		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: SPI%d/CE%d No drive seen on MISO line (kept at pull-%s level)."
 			" No board connected or bad connection?\n",
-			board->spidevid, board->spiceid, spi_pull_miso == SPI_PULL_DOWN ? "down" : "up");
+			board->spidevid, board->spiceid, board->inst->spi_pull_miso == SPI_PULL_DOWN ? "down" : "up");
 	} else if(!co || ca == 0xffffffff) {
 		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: SPI%d/CE%d MISO line stuck at %s level."
 			" Maybe bad connection, a short-circuit or no board attached?\n",
@@ -873,7 +858,7 @@ static int32_t check_cookie(hm2_rpspi_t *board)
 #define RPSPI_SYS_CLKVPU	"/sys/kernel/debug/clk/vpu/clk_rate"	// Newer kernels (4.8+, I think) have detailed info
 #define RPSPI_SYS_CLKCORE	"/sys/kernel/debug/clk/core/clk_rate"	// Older kernels only have core-clock info
 
-static uint32_t read_spiclkbase(void)
+static uint32_t read_spiclkbase(hm2_rpspi_inst_t *inst)
 {
 	const char *sysclkref = RPSPI_SYS_CLKVPU;
 	uint32_t rate;
@@ -887,16 +872,16 @@ static uint32_t read_spiclkbase(void)
 		sysclkref = RPSPI_SYS_CLKCORE;
 		if((fd = rtapi_open_as_root(sysclkref, O_RDONLY)) < 0) {
 			// Neither clock available, complain and use default setting
-			rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: Cannot open clock setting '%s' (errno=%d), using %d Hz\n", sysclkref, errno, spiclk_base);
-			return spiclk_base;
+			rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: Cannot open clock setting '%s' (errno=%d), using %d Hz\n", sysclkref, errno, inst->spiclk_base);
+			return inst->spiclk_base;
 		}
 	}
 
 	memset(buf, 0, sizeof(buf));
 	if((err = read(fd, buf, sizeof(buf)-1)) < 0) {
-		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: Cannot read clock setting '%s' (errno=%d), using %d Hz\n", sysclkref, errno, spiclk_base);
+		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: Cannot read clock setting '%s' (errno=%d), using %d Hz\n", sysclkref, errno, inst->spiclk_base);
 		close(fd);
-		return spiclk_base;
+		return inst->spiclk_base;
 	}
 
 	close(fd);
@@ -905,13 +890,13 @@ static uint32_t read_spiclkbase(void)
 		// There are probably too many digits in the number
 		// 250000000 (250 MHz) has 9 digits and there is a newline
 		// following the number
-		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: Read full buffer '%s' from '%s', number probably wrong or too large, using %d Hz\n", buf, sysclkref, spiclk_base);
-		return spiclk_base;
+		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: Read full buffer '%s' from '%s', number probably wrong or too large, using %d Hz\n", buf, sysclkref, inst->spiclk_base);
+		return inst->spiclk_base;
 	}
 
 	if(1 != sscanf(buf, "%u", &rate)) {
-		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: Cannot interpret clock setting '%s' from '%s', using %d Hz\n", buf, sysclkref, spiclk_base);
-		return spiclk_base;
+		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: Cannot interpret clock setting '%s' from '%s', using %d Hz\n", buf, sysclkref, inst->spiclk_base);
+		return inst->spiclk_base;
 	}
 	return rate;
 }
@@ -982,19 +967,19 @@ static int probe_board(hm2_rpspi_t *board) {
 
 	rtapi_print_msg(RPSPI_INFO, "hm2_rpspi: SPI%d/CE%d Base: %s.%d\n", board->spidevid, board->spiceid, base, board->nr);
 	rtapi_snprintf(board->llio.name, sizeof(board->llio.name), "%s.%d", base, board->nr);
-	board->llio.comp_id = comp_id;
+	board->llio.comp_id = board->inst->comp_id;
 	board->llio.private = board;	// Self reference
 
 	return 0;
 }
 
 /*************************************************/
-static int peripheral_map(uint32_t membase, uint32_t memsize)
+static int peripheral_map(hm2_rpspi_inst_t *inst, uint32_t membase, uint32_t memsize)
 {
 	int fd;
 	int err;
 
-	peripheralsize = memsize;
+	inst->peripheralsize = memsize;
 
 	if((fd = rtapi_open_as_root("/dev/mem", O_RDWR | O_SYNC)) < 0) {
 		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: can't open /dev/mem\n");
@@ -1002,10 +987,10 @@ static int peripheral_map(uint32_t membase, uint32_t memsize)
 	}
 
 	/* mmap BCM2835 GPIO and SPI peripherals */
-	peripheralmem = mmap(NULL, peripheralsize, PROT_READ|PROT_WRITE, MAP_SHARED, fd, (off_t)membase);
+	inst->peripheralmem = mmap(NULL, inst->peripheralsize, PROT_READ|PROT_WRITE, MAP_SHARED, fd, (off_t)membase);
 	err = errno;
 	close(fd);
-	if(peripheralmem == MAP_FAILED) {
+	if(inst->peripheralmem == MAP_FAILED) {
 		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: Can't map peripherals: %s\n", strerror(err));
 		if (err == EPERM) {
 			rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: Try adding 'iomem=relaxed' to your kernel command-line.\n");
@@ -1013,171 +998,161 @@ static int peripheral_map(uint32_t membase, uint32_t memsize)
 		return -err;
 	}
 
-	// The Right Way(TM) may be to extract the reg mappings for the
-	// specific devices at /dev/device-tree/soc/*. Then we'd need to
-	// inspect the gpio@... and spi@... device nodes, read the
-	// corresponding reg file and correct the address with respect to the
-	// virtual vs. physical mappings. Too much work... These are all
-	// compatible devices and nobody in their right mind (famous last
-	// words) will change that after the large quantity of devices out in
-	// the wild.
-	// Lets just say, when somebody decides to change the world, then we'll
-	// fix all this code too.
-	gpio = (bcm2835_gpio_t *)(peripheralmem + (BCM2835_GPIO_OFFSET / sizeof(*peripheralmem)));
-	spi  = (bcm2835_spi_t *)(peripheralmem + (BCM2835_SPI_OFFSET  / sizeof(*peripheralmem)));
-	aux  = (bcm2835_aux_t *)(peripheralmem + (BCM2835_AUX_OFFSET  / sizeof(*peripheralmem)));
+	inst->gpio = (bcm2835_gpio_t *)(inst->peripheralmem + (BCM2835_GPIO_OFFSET / sizeof(*inst->peripheralmem)));
+	inst->spi  = (bcm2835_spi_t *)(inst->peripheralmem + (BCM2835_SPI_OFFSET  / sizeof(*inst->peripheralmem)));
+	inst->aux  = (bcm2835_aux_t *)(inst->peripheralmem + (BCM2835_AUX_OFFSET  / sizeof(*inst->peripheralmem)));
 
 	rtapi_print_msg(RPSPI_INFO, "hm2_rpspi: Mapped peripherals from 0x%08x (size 0x%08x) to gpio:0x%p, spi:0x%p, aux:0x%p\n",
-			membase, (uint32_t)peripheralsize, gpio, spi, aux);
+			membase, (uint32_t)inst->peripheralsize, inst->gpio, inst->spi, inst->aux);
 
 	return 0;
 }
 
 /*************************************************/
-static void waste_150_cycles(void)
+static void waste_150_cycles(hm2_rpspi_inst_t *inst)
 {
 	uint32_t x __attribute__((unused));
 	unsigned i;
 	// A read, memory barrier, an increment, a test and a jump. Should be at least 150 cycles
 	for(i = 0; i < 40; i++)
-		x = reg_rd(&gpio->gplev0);	// Just read the pin register, nothing interesting to do here
+		x = reg_rd(&inst->gpio->gplev0);	// Just read the pin register, nothing interesting to do here
 }
 
 /*************************************************/
-static inline void gpio_fsel(uint32_t pin, uint32_t func)
+static inline void gpio_fsel(hm2_rpspi_inst_t *inst, uint32_t pin, uint32_t func)
 {
 	if(pin <= 53) {	/* There are 54 GPIOs */
 		uint32_t bits = pin * 3;	/* Three bits per fsel field and 10 gpio per uint32_t */
-		reg_wr(&gpio->gpfsel[bits / 30], (reg_rd(&gpio->gpfsel[bits / 30]) & ~(7 << (bits % 30))) | ((func & 7) << (bits % 30)));
+		reg_wr(&inst->gpio->gpfsel[bits / 30], (reg_rd(&inst->gpio->gpfsel[bits / 30]) & ~(7 << (bits % 30))) | ((func & 7) << (bits % 30)));
 	}
 }
 
 /*************************************************/
-static void inline gpio_pull(unsigned pin, uint32_t pud)
+static void inline gpio_pull(hm2_rpspi_inst_t *inst, unsigned pin, uint32_t pud)
 {
 	// Enable/disable pullups on the pins on request
-	reg_wr(&gpio->gppudclk0, 0);	// We are not sure about the previous state, make sure
-	reg_wr(&gpio->gppudclk1, 0);
-	waste_150_cycles();		// See GPPUDCLKn description
-	reg_wr(&gpio->gppud, pud);
-	waste_150_cycles();
+	reg_wr(&inst->gpio->gppudclk0, 0);	// We are not sure about the previous state, make sure
+	reg_wr(&inst->gpio->gppudclk1, 0);
+	waste_150_cycles(inst);		// See GPPUDCLKn description
+	reg_wr(&inst->gpio->gppud, pud);
+	waste_150_cycles(inst);
 	if(pin <= 31) {
-		reg_wr(&gpio->gppudclk0, 1 << pin);
-		waste_150_cycles();
-		reg_wr(&gpio->gppudclk0, 0);
+		reg_wr(&inst->gpio->gppudclk0, 1 << pin);
+		waste_150_cycles(inst);
+		reg_wr(&inst->gpio->gppudclk0, 0);
 	} else if(pin <= 53) {
-		reg_wr(&gpio->gppudclk1, 1 << (pin - 32));
-		waste_150_cycles();
-		reg_wr(&gpio->gppudclk1, 0);
+		reg_wr(&inst->gpio->gppudclk1, 1 << (pin - 32));
+		waste_150_cycles(inst);
+		reg_wr(&inst->gpio->gppudclk1, 0);
 	}
 }
 
-static void peripheral_setup(void)
+static void peripheral_setup(hm2_rpspi_inst_t *inst)
 {
 	// Do bounds check on the parameters
 	// The value follows GPIO_GPPUD_xxx definitions
-	if(spi_pull_miso < 0 || spi_pull_miso > 2)	spi_pull_miso = 0;
-	if(spi_pull_mosi < 0 || spi_pull_mosi > 2)	spi_pull_mosi = 0;
-	if(spi_pull_sclk < 0 || spi_pull_sclk > 2)	spi_pull_sclk = 0;
+	if(inst->spi_pull_miso < 0 || inst->spi_pull_miso > 2)	inst->spi_pull_miso = 0;
+	if(inst->spi_pull_mosi < 0 || inst->spi_pull_mosi > 2)	inst->spi_pull_mosi = 0;
+	if(inst->spi_pull_sclk < 0 || inst->spi_pull_sclk > 2)	inst->spi_pull_sclk = 0;
 
 	// Setup SPI pins to SPI0
-	if(spi_probe & SPI0_PROBE_MASK) {
-		if(spi_probe & SPI0_PROBE_CE0) {
-			gpio_fsel(SPI0_PIN_CE_0, GPIO_FSEL_8_SPI0_CE0_N);
-			gpio_pull(SPI0_PIN_CE_0, GPIO_GPPUD_PULLUP);
+	if(inst->spi_probe & SPI0_PROBE_MASK) {
+		if(inst->spi_probe & SPI0_PROBE_CE0) {
+			gpio_fsel(inst, SPI0_PIN_CE_0, GPIO_FSEL_8_SPI0_CE0_N);
+			gpio_pull(inst, SPI0_PIN_CE_0, GPIO_GPPUD_PULLUP);
 		}
-		if(spi_probe & SPI0_PROBE_CE1) {
-			gpio_fsel(SPI0_PIN_CE_1, GPIO_FSEL_7_SPI0_CE1_N);
-			gpio_pull(SPI0_PIN_CE_1, GPIO_GPPUD_PULLUP);
+		if(inst->spi_probe & SPI0_PROBE_CE1) {
+			gpio_fsel(inst, SPI0_PIN_CE_1, GPIO_FSEL_7_SPI0_CE1_N);
+			gpio_pull(inst, SPI0_PIN_CE_1, GPIO_GPPUD_PULLUP);
 		}
-		gpio_fsel(SPI0_PIN_MISO, GPIO_FSEL_9_SPI0_MISO);
-		gpio_fsel(SPI0_PIN_MOSI, GPIO_FSEL_10_SPI0_MOSI);
-		gpio_fsel(SPI0_PIN_SCLK, GPIO_FSEL_11_SPI0_SCLK);
+		gpio_fsel(inst, SPI0_PIN_MISO, GPIO_FSEL_9_SPI0_MISO);
+		gpio_fsel(inst, SPI0_PIN_MOSI, GPIO_FSEL_10_SPI0_MOSI);
+		gpio_fsel(inst, SPI0_PIN_SCLK, GPIO_FSEL_11_SPI0_SCLK);
 		// Enable/disable pullups on the pins on request
-		gpio_pull(SPI0_PIN_MISO, spi_pull_miso);
-		gpio_pull(SPI0_PIN_MOSI, spi_pull_mosi);
-		gpio_pull(SPI0_PIN_SCLK, spi_pull_sclk);
-		spi0_reset();
+		gpio_pull(inst, SPI0_PIN_MISO, inst->spi_pull_miso);
+		gpio_pull(inst, SPI0_PIN_MOSI, inst->spi_pull_mosi);
+		gpio_pull(inst, SPI0_PIN_SCLK, inst->spi_pull_sclk);
+		spi0_reset(inst);
 	}
 
 	// Setup SPI pins to SPI1
-	if(spi_probe & SPI1_PROBE_MASK) {
-		if(spi_probe & SPI1_PROBE_CE0) {
-			gpio_fsel(SPI1_PIN_CE_0, GPIO_FSEL_18_SPI1_CE0_N);
-			gpio_pull(SPI1_PIN_CE_0, GPIO_GPPUD_PULLUP);
+	if(inst->spi_probe & SPI1_PROBE_MASK) {
+		if(inst->spi_probe & SPI1_PROBE_CE0) {
+			gpio_fsel(inst, SPI1_PIN_CE_0, GPIO_FSEL_18_SPI1_CE0_N);
+			gpio_pull(inst, SPI1_PIN_CE_0, GPIO_GPPUD_PULLUP);
 		}
-		if(spi_probe & SPI1_PROBE_CE1) {
-			gpio_fsel(SPI1_PIN_CE_1, GPIO_FSEL_17_SPI1_CE1_N);
-			gpio_pull(SPI1_PIN_CE_1, GPIO_GPPUD_PULLUP);
+		if(inst->spi_probe & SPI1_PROBE_CE1) {
+			gpio_fsel(inst, SPI1_PIN_CE_1, GPIO_FSEL_17_SPI1_CE1_N);
+			gpio_pull(inst, SPI1_PIN_CE_1, GPIO_GPPUD_PULLUP);
 		}
-		if(spi_probe & SPI1_PROBE_CE2) {
-			gpio_fsel(SPI1_PIN_CE_1, GPIO_FSEL_16_SPI1_CE2_N);
-			gpio_pull(SPI1_PIN_CE_2, GPIO_GPPUD_PULLUP);
+		if(inst->spi_probe & SPI1_PROBE_CE2) {
+			gpio_fsel(inst, SPI1_PIN_CE_1, GPIO_FSEL_16_SPI1_CE2_N);
+			gpio_pull(inst, SPI1_PIN_CE_2, GPIO_GPPUD_PULLUP);
 		}
-		gpio_fsel(SPI1_PIN_MISO, GPIO_FSEL_19_SPI1_MISO);
-		gpio_fsel(SPI1_PIN_MOSI, GPIO_FSEL_20_SPI1_MOSI);
-		gpio_fsel(SPI1_PIN_SCLK, GPIO_FSEL_21_SPI1_SCLK);
+		gpio_fsel(inst, SPI1_PIN_MISO, GPIO_FSEL_19_SPI1_MISO);
+		gpio_fsel(inst, SPI1_PIN_MOSI, GPIO_FSEL_20_SPI1_MOSI);
+		gpio_fsel(inst, SPI1_PIN_SCLK, GPIO_FSEL_21_SPI1_SCLK);
 		// Enable/disable pullups on the pins on request
-		gpio_pull(SPI1_PIN_MISO, spi_pull_miso);
-		gpio_pull(SPI1_PIN_MOSI, spi_pull_mosi);
-		gpio_pull(SPI1_PIN_SCLK, spi_pull_sclk);
+		gpio_pull(inst, SPI1_PIN_MISO, inst->spi_pull_miso);
+		gpio_pull(inst, SPI1_PIN_MOSI, inst->spi_pull_mosi);
+		gpio_pull(inst, SPI1_PIN_SCLK, inst->spi_pull_sclk);
 
 		// Check if SPI1 needs to be enabled
-		aux_enables = reg_rd(&aux->enables);
-		if(!(aux_enables & AUX_ENABLES_SPI1))
-			reg_wr(&aux->enables, aux_enables | AUX_ENABLES_SPI1);	// Enable SPI1
+		inst->aux_enables = reg_rd(&inst->aux->enables);
+		if(!(inst->aux_enables & AUX_ENABLES_SPI1))
+			reg_wr(&inst->aux->enables, inst->aux_enables | AUX_ENABLES_SPI1);	// Enable SPI1
 
-		spi1_reset();
+		spi1_reset(inst);
 	}
 
 #if defined(RPSPI_DEBUG_PIN)
-	gpio_fsel(RPSPI_DEBUG_PIN, GPIO_FSEL_X_GPIO_OUTPUT);
-	gpio_debug_pin(true);
+	gpio_fsel(inst, RPSPI_DEBUG_PIN, GPIO_FSEL_X_GPIO_OUTPUT);
+	gpio_debug_pin(inst, true);
 #endif
 }
 
 /*************************************************/
-static void peripheral_restore(void)
+static void peripheral_restore(hm2_rpspi_inst_t *inst)
 {
 #if defined(RPSPI_DEBUG_PIN)
-	gpio_debug_pin(true);
-	gpio_fsel(RPSPI_DEBUG_PIN, GPIO_FSEL_X_GPIO_INPUT);
+	gpio_debug_pin(inst, true);
+	gpio_fsel(inst, RPSPI_DEBUG_PIN, GPIO_FSEL_X_GPIO_INPUT);
 #endif
 	// Restore all SPI pins to inputs and enable pull-up (no dangling inputs)
-	if(spi_probe & SPI0_PROBE_MASK) {
-		gpio_pull(SPI0_PIN_MISO, GPIO_GPPUD_PULLUP);	// MISO
-		gpio_pull(SPI0_PIN_MOSI, GPIO_GPPUD_PULLUP);	// MOSI
-		gpio_pull(SPI0_PIN_SCLK, GPIO_GPPUD_PULLUP);	// SCLK
+	if(inst->spi_probe & SPI0_PROBE_MASK) {
+		gpio_pull(inst, SPI0_PIN_MISO, GPIO_GPPUD_PULLUP);	// MISO
+		gpio_pull(inst, SPI0_PIN_MOSI, GPIO_GPPUD_PULLUP);	// MOSI
+		gpio_pull(inst, SPI0_PIN_SCLK, GPIO_GPPUD_PULLUP);	// SCLK
 
 		// Set SPI0 pins to GPIO input
-		gpio_fsel(SPI0_PIN_MISO, GPIO_FSEL_X_GPIO_INPUT);
-		gpio_fsel(SPI0_PIN_MOSI, GPIO_FSEL_X_GPIO_INPUT);
-		gpio_fsel(SPI0_PIN_SCLK, GPIO_FSEL_X_GPIO_INPUT);
-		if(spi_probe & SPI0_PROBE_CE0)
-			gpio_fsel(SPI0_PIN_CE_0, GPIO_FSEL_X_GPIO_INPUT);
-		if(spi_probe & SPI0_PROBE_CE1)
-			gpio_fsel(SPI0_PIN_CE_1, GPIO_FSEL_X_GPIO_INPUT);
+		gpio_fsel(inst, SPI0_PIN_MISO, GPIO_FSEL_X_GPIO_INPUT);
+		gpio_fsel(inst, SPI0_PIN_MOSI, GPIO_FSEL_X_GPIO_INPUT);
+		gpio_fsel(inst, SPI0_PIN_SCLK, GPIO_FSEL_X_GPIO_INPUT);
+		if(inst->spi_probe & SPI0_PROBE_CE0)
+			gpio_fsel(inst, SPI0_PIN_CE_0, GPIO_FSEL_X_GPIO_INPUT);
+		if(inst->spi_probe & SPI0_PROBE_CE1)
+			gpio_fsel(inst, SPI0_PIN_CE_1, GPIO_FSEL_X_GPIO_INPUT);
 	}
 
-	if(spi_probe & SPI1_PROBE_MASK) {
+	if(inst->spi_probe & SPI1_PROBE_MASK) {
 		// Only disable SPI1 if it was disabled before
-		if(!(aux_enables & AUX_ENABLES_SPI1))
-			reg_wr(&aux->enables, reg_rd(&aux->enables) & ~AUX_ENABLES_SPI1);
+		if(!(inst->aux_enables & AUX_ENABLES_SPI1))
+			reg_wr(&inst->aux->enables, reg_rd(&inst->aux->enables) & ~AUX_ENABLES_SPI1);
 
-		gpio_pull(SPI1_PIN_MISO, GPIO_GPPUD_PULLUP);	// MISO
-		gpio_pull(SPI1_PIN_MOSI, GPIO_GPPUD_PULLUP);	// MOSI
-		gpio_pull(SPI1_PIN_SCLK, GPIO_GPPUD_PULLUP);	// SCLK
+		gpio_pull(inst, SPI1_PIN_MISO, GPIO_GPPUD_PULLUP);	// MISO
+		gpio_pull(inst, SPI1_PIN_MOSI, GPIO_GPPUD_PULLUP);	// MOSI
+		gpio_pull(inst, SPI1_PIN_SCLK, GPIO_GPPUD_PULLUP);	// SCLK
 
 		// Set SPI1 pins to GPIO input
-		gpio_fsel(SPI1_PIN_MISO, GPIO_FSEL_X_GPIO_INPUT);
-		gpio_fsel(SPI1_PIN_MOSI, GPIO_FSEL_X_GPIO_INPUT);
-		gpio_fsel(SPI1_PIN_SCLK, GPIO_FSEL_X_GPIO_INPUT);
-		if(spi_probe & SPI1_PROBE_CE0)
-			gpio_fsel(SPI1_PIN_CE_0, GPIO_FSEL_X_GPIO_INPUT);
-		if(spi_probe & SPI1_PROBE_CE1)
-			gpio_fsel(SPI1_PIN_CE_1, GPIO_FSEL_X_GPIO_INPUT);
-		if(spi_probe & SPI1_PROBE_CE2)
-			gpio_fsel(SPI1_PIN_CE_2, GPIO_FSEL_X_GPIO_INPUT);
+		gpio_fsel(inst, SPI1_PIN_MISO, GPIO_FSEL_X_GPIO_INPUT);
+		gpio_fsel(inst, SPI1_PIN_MOSI, GPIO_FSEL_X_GPIO_INPUT);
+		gpio_fsel(inst, SPI1_PIN_SCLK, GPIO_FSEL_X_GPIO_INPUT);
+		if(inst->spi_probe & SPI1_PROBE_CE0)
+			gpio_fsel(inst, SPI1_PIN_CE_0, GPIO_FSEL_X_GPIO_INPUT);
+		if(inst->spi_probe & SPI1_PROBE_CE1)
+			gpio_fsel(inst, SPI1_PIN_CE_1, GPIO_FSEL_X_GPIO_INPUT);
+		if(inst->spi_probe & SPI1_PROBE_CE2)
+			gpio_fsel(inst, SPI1_PIN_CE_2, GPIO_FSEL_X_GPIO_INPUT);
 	}
 }
 
@@ -1238,7 +1213,7 @@ static inline int spi_ceid(int index)
 	return index < 2 ? index : index - 2;
 }
 
-static int hm2_rpspi_setup(void)
+static int hm2_rpspi_setup(hm2_rpspi_inst_t *inst)
 {
 	int i, j;
 	int retval = -1;
@@ -1247,15 +1222,10 @@ static int hm2_rpspi_setup(void)
 	uint32_t pmemsize;
 
 	// Set process-level message level if requested
-	if(spi_debug >= RTAPI_MSG_NONE && spi_debug <= RTAPI_MSG_ALL)
-		rtapi_set_msg_level(spi_debug);
+	if(inst->spi_debug >= RTAPI_MSG_NONE && inst->spi_debug <= RTAPI_MSG_ALL)
+		rtapi_set_msg_level(inst->spi_debug);
 
 	// Info about the hardware platform
-	// This should read something like: "Raspberry Pi X Model Y Rev A.B"
-	//
-	// A 4095(+1) byte maximum buffer size should be somewhat future proof
-	// for now, I guess. anyway, it is freed very fast again. Setting a
-	// maximum prevents run-away allocations.
 	if(!(buf = read_file("/proc/device-tree/model", 4095, 0))) {
 		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: Unsupported Platform.\n");
 		return -1;
@@ -1263,44 +1233,15 @@ static int hm2_rpspi_setup(void)
 	rtapi_print_msg(RPSPI_INFO, "hm2_rpspi: Platform: %s\n", *buf ? (const char *)buf : "<no data from /proc/device-tree/model>");
 	rtapi_free(buf);
 
-	// Extract the IO base and size
-	// The ranges file in the device-tree has the physical mappings of the
-	// IO space we need to map. There are several interesting values in big
-	// endian:
-	// RPi3 (BCM2836)
-	//	[0]: Real register file address
-	//	[1]: IO register file base address
-	//	[2]: IO register file size
-	//	...
-	// RPi4 (BCM2838)
-	//	[0]: Real register file address
-	//	[1]: 0x00000000
-	//	[2]: IO register file base address
-	//	[3]: IO register file size
-	//	...
-	//
-	// The definitions for the device-tree are in the (rpi) linux source
-	// tree to be found at arch/arm/boot/dts/bcm283[568]*.
-	//
-	// A 4095(+1) byte maximum buffer size should be somewhat future proof
-	// for now, I guess. anyway, it is freed very fast again. Setting a
-	// maximum prevents run-away allocations.
-	//
-	// We require the ranges file to contain at least three 32-bit words.
-	// These are required to be present for the RPi3 and RPi4 (and older
-	// versions).
 	if(!(buf = read_file("/proc/device-tree/soc/ranges", 4095, 12))) {
 		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: Cannot determine IO base address and size.\n");
 		return -1;
 	}
 
-	pmembase = be32toh(((uint32_t *)buf)[1]);	// This should do the trick for RPi3
+	pmembase = be32toh(((uint32_t *)buf)[1]);
 	pmemsize = be32toh(((uint32_t *)buf)[2]);
 
 	if(!pmembase) {
-		// This is (probably) a RPi4 and the ranges file has a zero at
-		// the base address. Here we need to read four 32-bit words to
-		// get to the right values.
 		rtapi_free(buf);
 		if(!(buf = read_file("/proc/device-tree/soc/ranges", 4095, 16))) {
 			rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: Cannot determine IO base address and size.\n");
@@ -1318,32 +1259,27 @@ static int hm2_rpspi_setup(void)
 	rtapi_print_msg(RPSPI_INFO, "hm2_rpspi: Base address 0x%08x size 0x%08x\n", pmembase, pmemsize);
 
 
-	if(-1 == spiclk_rate_rd)
-		spiclk_rate_rd = spiclk_rate;
+	if(-1 == inst->spiclk_rate_rd)
+		inst->spiclk_rate_rd = inst->spiclk_rate;
 
-	// Lowest frequencies:
-	// - SPI0  3814 Hz
-	// - SPI1 30516 Hz
-	// Therefore, we limit the frequency to 30 kHz. This is already too low
-	// for any realtime stuff, but nice for debugging the interface.
-	if(spiclk_rate < 30 || spiclk_rate > 63000) {
-		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: SPI clock rate '%d' too slow/fast. Must be >= 30 kHz and <= 63000 kHz\n", spiclk_rate);
+	if(inst->spiclk_rate < 30 || inst->spiclk_rate > 63000) {
+		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: SPI clock rate '%d' too slow/fast. Must be >= 30 kHz and <= 63000 kHz\n", inst->spiclk_rate);
 		return -EINVAL;
 	}
 
-	if(spiclk_rate_rd < 30 || spiclk_rate_rd > 63000) {
-		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: SPI clock rate for reading '%d' too slow/fast. Must be >= 30 kHz and <= 63000 kHz\n", spiclk_rate_rd);
+	if(inst->spiclk_rate_rd < 30 || inst->spiclk_rate_rd > 63000) {
+		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: SPI clock rate for reading '%d' too slow/fast. Must be >= 30 kHz and <= 63000 kHz\n", inst->spiclk_rate_rd);
 		return -EINVAL;
 	}
 
-	if((retval = peripheral_map(pmembase, pmemsize)) < 0) {
+	if((retval = peripheral_map(inst, pmembase, pmemsize)) < 0) {
 		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: cannot map peripheral memory.\n");
 		return retval;
 	}
 
-	peripheral_setup();
+	peripheral_setup(inst);
 
-	memset(boards, 0, sizeof(boards));
+	memset(inst->boards, 0, sizeof(inst->boards));
 
 	for(j = i = 0; i < RPSPI_MAX_BOARDS; i++) {
 		int iddev = spi_devid(i);
@@ -1353,29 +1289,30 @@ static int hm2_rpspi_setup(void)
 		uint32_t clkrater;
 		uint32_t clkbase;
 
-		if(!(spi_probe & (1 << i)))		// Only probe if enabled
+		if(!(inst->spi_probe & (1 << i)))		// Only probe if enabled
 			continue;
 
-		clkratew = spiclk_rate * 1000;		// Command-line specifies in kHz
-		clkrater = spiclk_rate_rd * 1000;	// Command-line specifies in kHz
-		clkbase  = read_spiclkbase();
+		clkratew = inst->spiclk_rate * 1000;		// Command-line specifies in kHz
+		clkrater = inst->spiclk_rate_rd * 1000;	// Command-line specifies in kHz
+		clkbase  = read_spiclkbase(inst);
 
-		boards[j].nr = j;
-		boards[j].spiclkratew = clkratew;
-		boards[j].spiclkrater = clkrater;
-		boards[j].spiclkbase  = clkbase;
-		boards[j].spidevid    = iddev;
-		boards[j].spiceid     = idce;
+		inst->boards[j].inst       = inst;
+		inst->boards[j].nr         = j;
+		inst->boards[j].spiclkratew = clkratew;
+		inst->boards[j].spiclkrater = clkrater;
+		inst->boards[j].spiclkbase  = clkbase;
+		inst->boards[j].spidevid    = iddev;
+		inst->boards[j].spiceid     = idce;
 
 		rtapi_print_msg(RPSPI_INFO, "hm2_rpspi: SPI%d/CE%d clock rate: %d/%d Hz, VPU clock rate: %u Hz\n",
 				iddev, idce, clkratew, clkrater, clkbase);
 		if(!iddev) {
 			switch(idce) {
-			case 0: boards[j].spice = 0; break;			// Set SPI0 CE_0
-			case 1: boards[j].spice = SPI_CS_CS_01; break;		// Set SPI0 CE_1
+			case 0: inst->boards[j].spice = 0; break;			// Set SPI0 CE_0
+			case 1: inst->boards[j].spice = SPI_CS_CS_01; break;		// Set SPI0 CE_1
 			}
-			boards[j].llio.read  = hm2_rpspi_read_spi0;
-			boards[j].llio.write = hm2_rpspi_write_spi0;
+			inst->boards[j].llio.read  = hm2_rpspi_read_spi0;
+			inst->boards[j].llio.write = hm2_rpspi_write_spi0;
 			if(!(clkdiv = spi0_clkdiv_calc(clkbase, clkratew)))
 				clkdiv = 65536;
 			rtapi_print_msg(RPSPI_INFO, "hm2_rpspi: SPI%d/CE%d write clock rate calculated: %d Hz (clkdiv=%u)\n", iddev, idce, clkbase / clkdiv, clkdiv);
@@ -1384,23 +1321,23 @@ static int hm2_rpspi_setup(void)
 			rtapi_print_msg(RPSPI_INFO, "hm2_rpspi: SPI%d/CE%d read clock rate calculated: %d Hz (clkdiv=%u)\n", iddev, idce, clkbase / clkdiv, clkdiv);
 		} else {
 			switch(idce) {
-			case 0: boards[j].spice = AUX_SPI_CNTL0_CS_1 | AUX_SPI_CNTL0_CS_2; break;	// Set SPI1 CE_0
-			case 1: boards[j].spice = AUX_SPI_CNTL0_CS_0 | AUX_SPI_CNTL0_CS_2; break;	// Set SPI1 CE_1
-			case 2: boards[j].spice = AUX_SPI_CNTL0_CS_0 | AUX_SPI_CNTL0_CS_1; break;	// Set SPI1 CE_2
+			case 0: inst->boards[j].spice = AUX_SPI_CNTL0_CS_1 | AUX_SPI_CNTL0_CS_2; break;	// Set SPI1 CE_0
+			case 1: inst->boards[j].spice = AUX_SPI_CNTL0_CS_0 | AUX_SPI_CNTL0_CS_2; break;	// Set SPI1 CE_1
+			case 2: inst->boards[j].spice = AUX_SPI_CNTL0_CS_0 | AUX_SPI_CNTL0_CS_1; break;	// Set SPI1 CE_2
 			}
-			boards[j].llio.read  = hm2_rpspi_read_spi1;
-			boards[j].llio.write = hm2_rpspi_write_spi1;
+			inst->boards[j].llio.read  = hm2_rpspi_read_spi1;
+			inst->boards[j].llio.write = hm2_rpspi_write_spi1;
 			clkdiv = 2 * (spi1_clkdiv_calc(clkbase, clkratew) + 1);
 			rtapi_print_msg(RPSPI_INFO, "hm2_rpspi: SPI%d/CE%d write clock rate calculated: %d Hz (clkdiv=%u)\n", iddev, idce, clkbase / clkdiv, clkdiv);
 			clkdiv = 2 * (spi1_clkdiv_calc(clkbase, clkrater) + 1);
 			rtapi_print_msg(RPSPI_INFO, "hm2_rpspi: SPI%d/CE%d read clock rate calculated: %d Hz (clkdiv=%u)\n", iddev, idce, clkbase / clkdiv, clkdiv);
 		}
 
-		if((retval = probe_board(&boards[j])) < 0) {
+		if((retval = probe_board(&inst->boards[j])) < 0) {
 			return retval;
 		}
 
-		if((retval = hm2_core->register_board(hm2_core->ctx, &boards[j].llio, config[j])) < 0) {
+		if((retval = inst->core->register_board(inst->core->ctx, &inst->boards[j].llio, inst->config[j])) < 0) {
 			rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: hm2_register() failed for SPI%d/CE%d.\n", iddev, idce);
 			return retval;
 		}
@@ -1439,11 +1376,11 @@ static int eshellf(char *fmt, ...) {
 
 
 /*************************************************/
-static void hm2_rpspi_cleanup(void)
+static void hm2_rpspi_cleanup(hm2_rpspi_inst_t *inst)
 {
-	if((void *)peripheralmem != MAP_FAILED) {
-		peripheral_restore();
-		munmap(peripheralmem, peripheralsize);
+	if((void *)inst->peripheralmem != MAP_FAILED) {
+		peripheral_restore(inst);
+		munmap(inst->peripheralmem, inst->peripheralsize);
 	}
 	eshellf("/sbin/modprobe spi-bcm2835");
 }
@@ -1451,31 +1388,30 @@ static void hm2_rpspi_cleanup(void)
 /*************************************************/
 static void hm2_rpspi_destroy(cmod_t *self);
 
-static void hm2_rpspi_parse_argv(int argc, const char **argv) {
-    static char cfg_bufs[RPSPI_MAX_BOARDS][256];
+static void hm2_rpspi_parse_argv(hm2_rpspi_inst_t *inst, int argc, const char **argv) {
     int cfg_idx = 0;
 
     for (int i = 0; i < argc; i++) {
         if (strncmp(argv[i], "config=", 7) == 0 && cfg_idx < RPSPI_MAX_BOARDS) {
-            strncpy(cfg_bufs[cfg_idx], argv[i] + 7, sizeof(cfg_bufs[0]) - 1);
-            config[cfg_idx] = cfg_bufs[cfg_idx];
+            strncpy(inst->cfg_bufs[cfg_idx], argv[i] + 7, sizeof(inst->cfg_bufs[0]) - 1);
+            inst->config[cfg_idx] = inst->cfg_bufs[cfg_idx];
             cfg_idx++;
         } else if (strncmp(argv[i], "spiclk_rate=", 12) == 0) {
-            spiclk_rate = simple_strtol(argv[i] + 12, NULL, 0);
+            inst->spiclk_rate = simple_strtol(argv[i] + 12, NULL, 0);
         } else if (strncmp(argv[i], "spiclk_rate_rd=", 15) == 0) {
-            spiclk_rate_rd = simple_strtol(argv[i] + 15, NULL, 0);
+            inst->spiclk_rate_rd = simple_strtol(argv[i] + 15, NULL, 0);
         } else if (strncmp(argv[i], "spiclk_base=", 12) == 0) {
-            spiclk_base = simple_strtol(argv[i] + 12, NULL, 0);
+            inst->spiclk_base = simple_strtol(argv[i] + 12, NULL, 0);
         } else if (strncmp(argv[i], "spi_pull_miso=", 14) == 0) {
-            spi_pull_miso = simple_strtol(argv[i] + 14, NULL, 0);
+            inst->spi_pull_miso = simple_strtol(argv[i] + 14, NULL, 0);
         } else if (strncmp(argv[i], "spi_pull_mosi=", 14) == 0) {
-            spi_pull_mosi = simple_strtol(argv[i] + 14, NULL, 0);
+            inst->spi_pull_mosi = simple_strtol(argv[i] + 14, NULL, 0);
         } else if (strncmp(argv[i], "spi_pull_sclk=", 14) == 0) {
-            spi_pull_sclk = simple_strtol(argv[i] + 14, NULL, 0);
+            inst->spi_pull_sclk = simple_strtol(argv[i] + 14, NULL, 0);
         } else if (strncmp(argv[i], "spi_probe=", 10) == 0) {
-            spi_probe = simple_strtol(argv[i] + 10, NULL, 0);
+            inst->spi_probe = simple_strtol(argv[i] + 10, NULL, 0);
         } else if (strncmp(argv[i], "spi_debug=", 10) == 0) {
-            spi_debug = simple_strtol(argv[i] + 10, NULL, 0);
+            inst->spi_debug = simple_strtol(argv[i] + 10, NULL, 0);
         }
     }
 }
@@ -1486,13 +1422,29 @@ int New(const cmod_env_t *env, const char *name,
 	const gomc_hal_t *hal = env->hal;
 	int ret;
 
-	hm2_rpspi_parse_argv(argc, argv);
+	hm2_rpspi_inst_t *inst = rtapi_calloc(sizeof(*inst));
+	if (!inst)
+		return -ENOMEM;
 
-	mod_env = env;
+	// Set defaults
+	inst->peripheralmem = (uint32_t *)MAP_FAILED;
+	inst->spiclk_rate = 31250;
+	inst->spiclk_rate_rd = -1;
+	inst->spiclk_base = F_PERI;
+	inst->spi_pull_miso = SPI_PULL_DOWN;
+	inst->spi_pull_mosi = SPI_PULL_DOWN;
+	inst->spi_pull_sclk = SPI_PULL_DOWN;
+	inst->spi_probe = SPI0_PROBE_CE0;
+	inst->spi_debug = -1;
 
-	hm2_core = hm2_core_api_get(env->api, "hostmot2");
-	if (!hm2_core) {
+	hm2_rpspi_parse_argv(inst, argc, argv);
+
+	inst->env = env;
+
+	inst->core = hm2_core_api_get(env->api, "hostmot2");
+	if (!inst->core) {
 		gomc_log_errorf(env->log, name, "hm2_rpspi: hostmot2 core API not found (is hostmot2 loaded?)\n");
+		rtapi_free(inst);
 		return -1;
 	}
 
@@ -1500,28 +1452,30 @@ int New(const cmod_env_t *env, const char *name,
 
 	ret = hal->init(hal->ctx, "hm2_rpspi", env->dl_handle, GOMC_HAL_COMP_REALTIME);
 	if (ret < 0) goto fail;
-	comp_id = ret;
+	inst->comp_id = ret;
 
-	if((ret = hm2_rpspi_setup()) < 0)
+	if((ret = hm2_rpspi_setup(inst)) < 0)
 		goto fail;
 
-	hal->ready(hal->ctx, comp_id);
+	hal->ready(hal->ctx, inst->comp_id);
 
-	static cmod_t cmod;
-	cmod.Destroy = hm2_rpspi_destroy;
-	*out = &cmod;
+	inst->cmod.Destroy = hm2_rpspi_destroy;
+	inst->cmod.priv = inst;
+	*out = &inst->cmod;
 	return 0;
 
 fail:
-	hm2_rpspi_cleanup();
+	hm2_rpspi_cleanup(inst);
+	rtapi_free(inst);
 	return ret;
 }
 
 /*************************************************/
 static void hm2_rpspi_destroy(cmod_t *self)
 {
-	(void)self;
-	const gomc_hal_t *hal = mod_env->hal;
-	hm2_rpspi_cleanup();
-	hal->exit(hal->ctx, comp_id);
+	hm2_rpspi_inst_t *inst = self->priv;
+	const gomc_hal_t *hal = inst->env->hal;
+	hm2_rpspi_cleanup(inst);
+	hal->exit(hal->ctx, inst->comp_id);
+	rtapi_free(inst);
 }

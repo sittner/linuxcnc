@@ -34,26 +34,20 @@
 #include "hal/drivers/mesa-hostmot2/hostmot2.h"
 
 
-static int comp_id;
-
-static int ioaddr[HM2_7I43_MAX_BOARDS] = { 0, [1 ... (HM2_7I43_MAX_BOARDS-1)] = -1 };
-static int ioaddr_hi[HM2_7I43_MAX_BOARDS] = { [0 ... (HM2_7I43_MAX_BOARDS-1)] = 0 };
-static int epp_wide[HM2_7I43_MAX_BOARDS] = { [0 ... (HM2_7I43_MAX_BOARDS-1)] = 1 };
-int debug_epp = 0;
-static char *config[HM2_7I43_MAX_BOARDS];
-
-// cmod instance state
-static const cmod_env_t *mod_env;
-static const hm2_core_callbacks_t *hm2_core;
-
-
-
-//
-// this data structure keeps track of all the 7i43 boards found
-//
-
-static hm2_7i43_t board[HM2_7I43_MAX_BOARDS];
-static int num_boards;
+typedef struct hm2_7i43_inst {
+    cmod_t cmod;
+    const cmod_env_t *env;
+    const hm2_core_callbacks_t *core;
+    int comp_id;
+    int ioaddr[HM2_7I43_MAX_BOARDS];
+    int ioaddr_hi[HM2_7I43_MAX_BOARDS];
+    int epp_wide[HM2_7I43_MAX_BOARDS];
+    int debug_epp;
+    char *config[HM2_7I43_MAX_BOARDS];
+    char cfg_bufs[HM2_7I43_MAX_BOARDS][256];
+    hm2_7i43_t board[HM2_7I43_MAX_BOARDS];
+    int num_boards;
+} hm2_7i43_inst_t;
 
 
 
@@ -64,24 +58,24 @@ static int num_boards;
 
 static inline void hm2_7i43_epp_addr8(rtapi_u8 addr, hm2_7i43_t *board) {
     rtapi_outb(addr, board->port.base + HM2_7I43_EPP_ADDRESS_OFFSET);
-    LL_PRINT_IF(debug_epp, "selected address 0x%02X\n", addr);
+    LL_PRINT_IF(board->inst->debug_epp, "selected address 0x%02X\n", addr);
 }
 
 static inline void hm2_7i43_epp_addr16(rtapi_u16 addr, hm2_7i43_t *board) {
     rtapi_outb((addr & 0x00FF), board->port.base + HM2_7I43_EPP_ADDRESS_OFFSET);
     rtapi_outb((addr >> 8),     board->port.base + HM2_7I43_EPP_ADDRESS_OFFSET);
-    LL_PRINT_IF(debug_epp, "selected address 0x%04X\n", addr);
+    LL_PRINT_IF(board->inst->debug_epp, "selected address 0x%04X\n", addr);
 }
 
 static inline void hm2_7i43_epp_write(int w, hm2_7i43_t *board) {
     rtapi_outb(w, board->port.base + HM2_7I43_EPP_DATA_OFFSET);
-    LL_PRINT_IF(debug_epp, "wrote data 0x%02X\n", w);
+    LL_PRINT_IF(board->inst->debug_epp, "wrote data 0x%02X\n", w);
 }
 
 static inline int hm2_7i43_epp_read(hm2_7i43_t *board) {
     int val;
     val = rtapi_inb(board->port.base + HM2_7I43_EPP_DATA_OFFSET);
-    LL_PRINT_IF(debug_epp, "read data 0x%02X\n", val);
+    LL_PRINT_IF(board->inst->debug_epp, "read data 0x%02X\n", val);
     return val;
 }
 
@@ -90,7 +84,7 @@ static inline rtapi_u32 hm2_7i43_epp_read32(hm2_7i43_t *board) {
 
     if (board->epp_wide) {
 	data = rtapi_inl(board->port.base + HM2_7I43_EPP_DATA_OFFSET);
-        LL_PRINT_IF(debug_epp, "read data 0x%08X\n", data);
+        LL_PRINT_IF(board->inst->debug_epp, "read data 0x%08X\n", data);
     } else {
         uint8_t a, b, c, d;
         a = hm2_7i43_epp_read(board);
@@ -106,7 +100,7 @@ static inline rtapi_u32 hm2_7i43_epp_read32(hm2_7i43_t *board) {
 static inline void hm2_7i43_epp_write32(uint32_t w, hm2_7i43_t *board) {
     if (board->epp_wide) {
 	rtapi_outl(w, board->port.base + HM2_7I43_EPP_DATA_OFFSET);
-        LL_PRINT_IF(debug_epp, "wrote data 0x%08X\n", w);
+        LL_PRINT_IF(board->inst->debug_epp, "wrote data 0x%08X\n", w);
     } else {
         hm2_7i43_epp_write((w) & 0xFF, board);
         hm2_7i43_epp_write((w >>  8) & 0xFF, board);
@@ -118,18 +112,18 @@ static inline void hm2_7i43_epp_write32(uint32_t w, hm2_7i43_t *board) {
 static inline uint8_t hm2_7i43_epp_read_status(hm2_7i43_t *board) {
     uint8_t val;
     val = rtapi_inb(board->port.base + HM2_7I43_EPP_STATUS_OFFSET);
-    LL_PRINT_IF(debug_epp, "read status 0x%02X\n", val);
+    LL_PRINT_IF(board->inst->debug_epp, "read status 0x%02X\n", val);
     return val;
 }
 
 static inline void hm2_7i43_epp_write_status(uint8_t status_byte, hm2_7i43_t *board) {
     rtapi_outb(status_byte, board->port.base + HM2_7I43_EPP_STATUS_OFFSET);
-    LL_PRINT_IF(debug_epp, "wrote status 0x%02X\n", status_byte);
+    LL_PRINT_IF(board->inst->debug_epp, "wrote status 0x%02X\n", status_byte);
 }
 
 static inline void hm2_7i43_epp_write_control(uint8_t control_byte, hm2_7i43_t *board) {
     rtapi_outb(control_byte, board->port.base + HM2_7I43_EPP_CONTROL_OFFSET);
-    LL_PRINT_IF(debug_epp, "wrote control 0x%02X\n", control_byte);
+    LL_PRINT_IF(board->inst->debug_epp, "wrote control 0x%02X\n", control_byte);
 }
 
 // returns TRUE if there's a timeout
@@ -247,8 +241,9 @@ int hm2_7i43_write(hm2_lowlevel_io_t *this, rtapi_u32 addr, const void *buffer, 
 
 
 int hm2_7i43_program_fpga(hm2_lowlevel_io_t *this, const bitfile_t *bitfile) {
-    int orig_debug_epp = debug_epp;  // we turn off EPP debugging for this part...
     hm2_7i43_t *board = this->private;
+    hm2_7i43_inst_t *inst = board->inst;
+    int orig_debug_epp = inst->debug_epp;  // we turn off EPP debugging for this part...
     int64_t start_time, end_time;
     int i;
     const rtapi_u8 *firmware = bitfile->e.data;
@@ -258,7 +253,7 @@ int hm2_7i43_program_fpga(hm2_lowlevel_io_t *this, const bitfile_t *bitfile) {
     // send the firmware
     //
 
-    debug_epp = 0;
+    inst->debug_epp = 0;
     start_time = rtapi_get_time();
 
     // select the CPLD's data address
@@ -269,7 +264,7 @@ int hm2_7i43_program_fpga(hm2_lowlevel_io_t *this, const bitfile_t *bitfile) {
     }
 
     end_time = rtapi_get_time();
-    debug_epp = orig_debug_epp;
+    inst->debug_epp = orig_debug_epp;
 
 
     // see if it worked
@@ -372,49 +367,50 @@ int hm2_7i43_reset(hm2_lowlevel_io_t *this) {
 //
 
 
-static void hm2_7i43_cleanup(void) {
+static void hm2_7i43_cleanup(hm2_7i43_inst_t *inst) {
     int i;
 
     // NOTE: hal_malloc() doesn't have a matching free
 
-    for (i = 0; i < num_boards; i ++) {
-        hm2_lowlevel_io_t *this = &board[i].llio;
+    for (i = 0; i < inst->num_boards; i ++) {
+        hm2_lowlevel_io_t *this = &inst->board[i].llio;
         THIS_PRINT("releasing board\n");
-        hm2_core->unregister_board(hm2_core->ctx, this);
-        hal_parport_release(&board[i].port);
+        inst->core->unregister_board(inst->core->ctx, this);
+        hal_parport_release(&inst->board[i].port);
     }
 }
 
 
-static int hm2_7i43_setup(void) {
+static int hm2_7i43_setup(hm2_7i43_inst_t *inst) {
     int i;
 
     LL_PRINT("loading HostMot2 Mesa 7i43 driver version %s\n", HM2_7I43_VERSION);
 
     // zero the board structs
-    memset(board, 0, HM2_7I43_MAX_BOARDS * sizeof(hm2_7i43_t));
-    num_boards = 0;
+    memset(inst->board, 0, HM2_7I43_MAX_BOARDS * sizeof(hm2_7i43_t));
+    inst->num_boards = 0;
 
     for (i = 0; i < HM2_7I43_MAX_BOARDS; i ++) {
-        if (ioaddr[i] < 0) break;
+        if (inst->ioaddr[i] < 0) break;
 
         hm2_lowlevel_io_t *this;
         int r;
 
-        board[i].epp_wide = epp_wide[i];
+        inst->board[i].epp_wide = inst->epp_wide[i];
+        inst->board[i].inst = inst;
 
         //
         // claim the I/O regions for the parport
         // 
 
-        r = hal_parport_get(comp_id, &board[i].port,
-                ioaddr[i], ioaddr_hi[i], PARPORT_MODE_EPP);
+        r = hal_parport_get(inst->comp_id, &inst->board[i].port,
+                inst->ioaddr[i], inst->ioaddr_hi[i], PARPORT_MODE_EPP);
         if(r < 0)
             return r;
 
         // set up the parport for EPP
-	if(board[i].port.base_hi) {
-	    rtapi_outb(0x94, board[i].port.base_hi + HM2_7I43_ECP_CONTROL_HIGH_OFFSET); // select EPP mode in ECR
+	if(inst->board[i].port.base_hi) {
+	    rtapi_outb(0x94, inst->board[i].port.base_hi + HM2_7I43_ECP_CONTROL_HIGH_OFFSET); // select EPP mode in ECR
         }
 
         //
@@ -422,25 +418,25 @@ static int hm2_7i43_setup(void) {
         //
 
         // select the device and tell it to make itself ready for io
-        hm2_7i43_epp_write_control(0x04, &board[i]);  // set control lines and input mode
-        hm2_7i43_epp_clear_timeout(&board[i]);
+        hm2_7i43_epp_write_control(0x04, &inst->board[i]);  // set control lines and input mode
+        hm2_7i43_epp_clear_timeout(&inst->board[i]);
 
-        rtapi_snprintf(board[i].llio.name, sizeof(board[i].llio.name), "%s.%d", HM2_LLIO_NAME, i);
-        board[i].llio.comp_id = comp_id;
+        rtapi_snprintf(inst->board[i].llio.name, sizeof(inst->board[i].llio.name), "%s.%d", HM2_LLIO_NAME, i);
+        inst->board[i].llio.comp_id = inst->comp_id;
 
-        board[i].llio.read = hm2_7i43_read;
-        board[i].llio.write = hm2_7i43_write;
-        board[i].llio.program_fpga = hm2_7i43_program_fpga;
-        board[i].llio.reset = hm2_7i43_reset;
+        inst->board[i].llio.read = hm2_7i43_read;
+        inst->board[i].llio.write = hm2_7i43_write;
+        inst->board[i].llio.program_fpga = hm2_7i43_program_fpga;
+        inst->board[i].llio.reset = hm2_7i43_reset;
 
-        board[i].llio.num_ioport_connectors = 2;
-        board[i].llio.pins_per_connector = 24;
-        board[i].llio.ioport_connector_name[0] = "P4";
-        board[i].llio.ioport_connector_name[1] = "P3";
-        board[i].llio.num_leds = 8;
-        board[i].llio.private = &board[i];
+        inst->board[i].llio.num_ioport_connectors = 2;
+        inst->board[i].llio.pins_per_connector = 24;
+        inst->board[i].llio.ioport_connector_name[0] = "P4";
+        inst->board[i].llio.ioport_connector_name[1] = "P3";
+        inst->board[i].llio.num_leds = 8;
+        inst->board[i].llio.private = &inst->board[i];
 
-        this = &board[i].llio;
+        this = &inst->board[i].llio;
 
 
         //
@@ -450,38 +446,38 @@ static int hm2_7i43_setup(void) {
         //
 
         // make sure the CPLD is in charge of the parallel port
-        hm2_7i43_reset(&board[i].llio);
+        hm2_7i43_reset(&inst->board[i].llio);
 
         //  select CPLD data register
-        hm2_7i43_epp_addr8(0, &board[i]);
+        hm2_7i43_epp_addr8(0, &inst->board[i]);
 
-        if (hm2_7i43_epp_read(&board[i]) & 0x01) {
-            board[i].llio.fpga_part_number = "3s400tq144";
+        if (hm2_7i43_epp_read(&inst->board[i]) & 0x01) {
+            inst->board[i].llio.fpga_part_number = "3s400tq144";
         } else {
-            board[i].llio.fpga_part_number = "3s200tq144";
+            inst->board[i].llio.fpga_part_number = "3s200tq144";
         }
-        THIS_DBG("detected FPGA '%s'\n", board[i].llio.fpga_part_number);
+        THIS_DBG("detected FPGA '%s'\n", inst->board[i].llio.fpga_part_number);
 
 
-        r = hm2_core->register_board(hm2_core->ctx, &board[i].llio, config[i]);
+        r = inst->core->register_board(inst->core->ctx, &inst->board[i].llio, inst->config[i]);
         if (r != 0) {
-            hal_parport_release(&board[i].port);
+            hal_parport_release(&inst->board[i].port);
             THIS_ERR(
                 "board at (ioaddr=0x%04X, ioaddr_hi=0x%04X, epp_wide %s) not found!\n",
-                board[i].port.base,
-                board[i].port.base_hi,
-                (board[i].epp_wide ? "ON" : "OFF"));
+                inst->board[i].port.base,
+                inst->board[i].port.base_hi,
+                (inst->board[i].epp_wide ? "ON" : "OFF"));
             return r;
         }
 
         THIS_PRINT(
             "board at (ioaddr=0x%04X, ioaddr_hi=0x%04X, epp_wide %s) found\n",
-            board[i].port.base,
-            board[i].port.base_hi,
-            (board[i].epp_wide ? "ON" : "OFF")
+            inst->board[i].port.base,
+            inst->board[i].port.base_hi,
+            (inst->board[i].epp_wide ? "ON" : "OFF")
         );
 
-        num_boards ++;
+        inst->num_boards ++;
     }
 
     return 0;
@@ -490,26 +486,25 @@ static int hm2_7i43_setup(void) {
 
 static void hm2_7i43_destroy(cmod_t *self);
 
-static void hm2_7i43_parse_argv(int argc, const char **argv) {
-    static char cfg_bufs[HM2_7I43_MAX_BOARDS][256];
+static void hm2_7i43_parse_argv(hm2_7i43_inst_t *inst, int argc, const char **argv) {
     int cfg_idx = 0, io_idx = 0, iohi_idx = 0, ew_idx = 0;
 
     for (int i = 0; i < argc; i++) {
         if (strncmp(argv[i], "config=", 7) == 0 && cfg_idx < HM2_7I43_MAX_BOARDS) {
-            strncpy(cfg_bufs[cfg_idx], argv[i] + 7, sizeof(cfg_bufs[0]) - 1);
-            config[cfg_idx] = cfg_bufs[cfg_idx];
+            strncpy(inst->cfg_bufs[cfg_idx], argv[i] + 7, sizeof(inst->cfg_bufs[0]) - 1);
+            inst->config[cfg_idx] = inst->cfg_bufs[cfg_idx];
             cfg_idx++;
         } else if (strncmp(argv[i], "ioaddr=", 7) == 0 && io_idx < HM2_7I43_MAX_BOARDS) {
-            ioaddr[io_idx] = simple_strtol(argv[i] + 7, NULL, 0);
+            inst->ioaddr[io_idx] = simple_strtol(argv[i] + 7, NULL, 0);
             io_idx++;
         } else if (strncmp(argv[i], "ioaddr_hi=", 10) == 0 && iohi_idx < HM2_7I43_MAX_BOARDS) {
-            ioaddr_hi[iohi_idx] = simple_strtol(argv[i] + 10, NULL, 0);
+            inst->ioaddr_hi[iohi_idx] = simple_strtol(argv[i] + 10, NULL, 0);
             iohi_idx++;
         } else if (strncmp(argv[i], "epp_wide=", 9) == 0 && ew_idx < HM2_7I43_MAX_BOARDS) {
-            epp_wide[ew_idx] = simple_strtol(argv[i] + 9, NULL, 0);
+            inst->epp_wide[ew_idx] = simple_strtol(argv[i] + 9, NULL, 0);
             ew_idx++;
         } else if (strncmp(argv[i], "debug_epp=", 10) == 0) {
-            debug_epp = simple_strtol(argv[i] + 10, NULL, 0);
+            inst->debug_epp = simple_strtol(argv[i] + 10, NULL, 0);
         }
     }
 }
@@ -520,42 +515,57 @@ int New(const cmod_env_t *env, const char *name,
     const gomc_hal_t *hal = env->hal;
     int r = 0;
 
-    hm2_7i43_parse_argv(argc, argv);
+    hm2_7i43_inst_t *inst = rtapi_calloc(sizeof(*inst));
+    if (!inst) return -ENOMEM;
+    inst->env = env;
 
-    mod_env = env;
+    // Set non-zero defaults (calloc zeroed everything)
+    inst->ioaddr[0] = 0;
+    for (int i = 1; i < HM2_7I43_MAX_BOARDS; i++)
+        inst->ioaddr[i] = -1;
+    for (int i = 0; i < HM2_7I43_MAX_BOARDS; i++)
+        inst->epp_wide[i] = 1;
 
-    hm2_core = hm2_core_api_get(env->api, "hostmot2");
-    if (!hm2_core) {
+    hm2_7i43_parse_argv(inst, argc, argv);
+
+    inst->core = hm2_core_api_get(env->api, "hostmot2");
+    if (!inst->core) {
         gomc_log_errorf(env->log, name, "hm2_7i43: hostmot2 core API not found (is hostmot2 loaded?)\n");
+        rtapi_free(inst);
         return -1;
     }
 
     r = hal->init(hal->ctx, HM2_LLIO_NAME, env->dl_handle, GOMC_HAL_COMP_REALTIME);
-    if (r < 0) return r;
-    comp_id = r;
+    if (r < 0) {
+        rtapi_free(inst);
+        return r;
+    }
+    inst->comp_id = r;
 
-    r = hm2_7i43_setup();
+    r = hm2_7i43_setup(inst);
     if (r) {
-        hm2_7i43_cleanup();
-        hal->exit(hal->ctx, comp_id);
+        hm2_7i43_cleanup(inst);
+        hal->exit(hal->ctx, inst->comp_id);
+        rtapi_free(inst);
     } else {
-        hal->ready(hal->ctx, comp_id);
+        hal->ready(hal->ctx, inst->comp_id);
     }
 
     if (r) return r;
 
-    static cmod_t cmod;
-    cmod.Destroy = hm2_7i43_destroy;
-    *out = &cmod;
+    inst->cmod.Destroy = hm2_7i43_destroy;
+    inst->cmod.priv = inst;
+    *out = &inst->cmod;
     return 0;
 }
 
 
 static void hm2_7i43_destroy(cmod_t *self) {
-    (void)self;
-    const gomc_hal_t *hal = mod_env->hal;
-    hm2_7i43_cleanup();
-    hal->exit(hal->ctx, comp_id);
+    hm2_7i43_inst_t *inst = self->priv;
+    const gomc_hal_t *hal = inst->env->hal;
+    hm2_7i43_cleanup(inst);
+    hal->exit(hal->ctx, inst->comp_id);
     LL_PRINT("driver unloaded\n");
+    rtapi_free(inst);
 }
 

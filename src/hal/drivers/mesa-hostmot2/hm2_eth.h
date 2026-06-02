@@ -35,8 +35,11 @@ typedef struct {
     int from;
 } hm2_read_queue_entry_t;
 
+struct hm2_eth_inst;  // forward declaration
+
 typedef struct {
     hm2_lowlevel_io_t llio;
+    struct hm2_eth_inst *inst;  // back-pointer to instance
 
     int sockfd;
     struct sockaddr_in local_addr;

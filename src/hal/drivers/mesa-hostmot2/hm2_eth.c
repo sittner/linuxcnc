@@ -53,9 +53,6 @@ struct kvlist {
     int value;
 };
 
-static struct rtapi_list_head board_num;
-static struct rtapi_list_head ifnames;
-
 static int *kvlist_lookup(struct rtapi_list_head *head, const char *name) {
     struct rtapi_list_head *ptr;
     rtapi_list_for_each(ptr, head) {
@@ -80,17 +77,23 @@ static void kvlist_free(struct rtapi_list_head *head) {
 }
 
 // Module parameters — set from argv in New().
-static char *board_ip[MAX_ETH_BOARDS];
-static char *config[MAX_ETH_BOARDS];
-int debug = 0;
 
-static int boards_count = 0;
-int comm_active = 0;
-static int comp_id;
-
-// cmod instance state
-static const cmod_env_t *eth_env;
-static const hm2_core_callbacks_t *hm2_core;
+typedef struct hm2_eth_inst {
+    cmod_t cmod;
+    const cmod_env_t *env;
+    const hm2_core_callbacks_t *core;
+    int comp_id;
+    int boards_count;
+    int comm_active;
+    int debug;
+    char *board_ip[MAX_ETH_BOARDS];
+    char ip_bufs[MAX_ETH_BOARDS][64];
+    char *config[MAX_ETH_BOARDS];
+    char cfg_bufs[MAX_ETH_BOARDS][256];
+    struct rtapi_list_head board_num;
+    struct rtapi_list_head ifnames;
+    hm2_eth_t boards[MAX_ETH_BOARDS];
+} hm2_eth_inst_t;
 
 static char *hm2_7i96_pin_names[] = {
     "TB3-01",
@@ -445,8 +448,6 @@ static char *hm2_8cSS_pin_names[] = {
 #define RECV_TIMEOUT_US 10
 #define READ_PCK_DELAY_NS 10000
 
-static hm2_eth_t boards[MAX_ETH_BOARDS];
-
 /// ethernet io functions
 
 static int eth_socket_send(int sockfd, const void *buffer, int len, int flags);
@@ -778,11 +779,12 @@ static int eth_socket_recv_loop(int sockfd, void *buffer, int len, int flags, lo
 
 static int hm2_eth_read(hm2_lowlevel_io_t *this, rtapi_u32 addr, void *buffer, int size) {
     hm2_eth_t *board = this->private;
+    hm2_eth_inst_t *inst = board->inst;
     int send, recv, i = 0;
     rtapi_u8 tmp_buffer[size + 4];
     long long t1, t2;
 
-    if (comm_active == 0) return 1;
+    if (inst->comm_active == 0) return 1;
     if (size == 0) return 1;
     board->read_cnt++;
 
@@ -802,7 +804,7 @@ static int hm2_eth_read(hm2_lowlevel_io_t *this, rtapi_u32 addr, void *buffer, i
     send = eth_socket_send(board->sockfd, (void*) &read_packet, sizeof(read_packet), 0);
     if(send < 0)
         LL_PRINT("ERROR: sending packet: %s\n", strerror(errno));
-    LL_PRINT_IF(debug, "read(%d) : PACKET SENT [CMD:%02X%02X | ADDR: %02X%02X | SIZE: %d]\n", board->read_cnt, read_packet.cmd_hi, read_packet.cmd_lo,
+    LL_PRINT_IF(inst->debug, "read(%d) : PACKET SENT [CMD:%02X%02X | ADDR: %02X%02X | SIZE: %d]\n", board->read_cnt, read_packet.cmd_hi, read_packet.cmd_lo,
       read_packet.addr_lo, read_packet.addr_hi, size);
     t1 = rtapi_get_time();
     do {
@@ -814,9 +816,9 @@ static int hm2_eth_read(hm2_lowlevel_io_t *this, rtapi_u32 addr, void *buffer, i
     } while ((recv < 0) && ((t2 - t1) < 200*1000*1000));
 
     if (recv == 4) {
-        LL_PRINT_IF(debug, "read(%d) : PACKET RECV [DATA: %08X | SIZE: %d | TRIES: %d | TIME: %llu]\n", board->read_cnt, *tmp_buffer, recv, i, t2 - t1);
+        LL_PRINT_IF(inst->debug, "read(%d) : PACKET RECV [DATA: %08X | SIZE: %d | TRIES: %d | TIME: %llu]\n", board->read_cnt, *tmp_buffer, recv, i, t2 - t1);
     } else {
-        LL_PRINT_IF(debug, "read(%d) : PACKET RECV [SIZE: %d | TRIES: %d | TIME: %llu]\n", board->read_cnt, recv, i, t2 - t1);
+        LL_PRINT_IF(inst->debug, "read(%d) : PACKET RECV [SIZE: %d | TRIES: %d | TIME: %llu]\n", board->read_cnt, recv, i, t2 - t1);
     }
     if (recv < 0)
         return 0;
@@ -890,6 +892,7 @@ static void decrement_soft_error(hm2_eth_t *board) {
 
 static int hm2_eth_receive_queued_reads(hm2_lowlevel_io_t *this) {
     hm2_eth_t *board = this->private;
+    hm2_eth_inst_t *inst = board->inst;
     int recv, i = 0;
     rtapi_u8 tmp_buffer[board->queue_buff_size];
     long long t1, t2;
@@ -929,7 +932,7 @@ do_recv_packet:
         return -EAGAIN;
     }
 
-    LL_PRINT_IF(debug, "enqueue_read(%d) : PACKET RECV [SIZE: %d | TRIES: %d | TIME: %llu]\n", board->read_cnt, recv, i, t2 - t1);
+    LL_PRINT_IF(inst->debug, "enqueue_read(%d) : PACKET RECV [SIZE: %d | TRIES: %d | TIME: %llu]\n", board->read_cnt, recv, i, t2 - t1);
 
     for (i = 0; i < board->queue_reads_count; i++) {
         memcpy(board->queue_reads[i].buffer, &tmp_buffer[board->queue_reads[i].from], board->queue_reads[i].size);
@@ -968,7 +971,8 @@ static int hm2_eth_reset(hm2_lowlevel_io_t *this) {
 
 static int hm2_eth_enqueue_read(hm2_lowlevel_io_t *this, rtapi_u32 addr, void *buffer, int size) {
     hm2_eth_t *board = this->private;
-    if (comm_active == 0) return 1;
+    hm2_eth_inst_t *inst = board->inst;
+    if (inst->comm_active == 0) return 1;
     if (size == 0) return 1;
     // XXX this is missing a check for exceeding the maximum packet size!
     LBP16_INIT_PACKET4(*(lbp16_cmd_addr*)board->read_packet_ptr, CMD_READ_HOSTMOT2_ADDR32_INCR(size/4), addr);
@@ -993,9 +997,10 @@ static int hm2_eth_write(hm2_lowlevel_io_t *this, rtapi_u32 addr, const void *bu
         rtapi_u8 tmp_buffer[127*8];
     } packet;
 
-    if (comm_active == 0) return 1;
-    if (size == 0) return 1;
     hm2_eth_t *board = this->private;
+    hm2_eth_inst_t *inst = board->inst;
+    if (inst->comm_active == 0) return 1;
+    if (size == 0) return 1;
     board->write_cnt++;
 
     memcpy(packet.tmp_buffer, buffer, size);
@@ -1004,7 +1009,7 @@ static int hm2_eth_write(hm2_lowlevel_io_t *this, rtapi_u32 addr, const void *bu
     send = eth_socket_send(board->sockfd, (void*) &packet, sizeof(lbp16_cmd_addr) + size, 0);
     if(send < 0)
         LL_PRINT("ERROR: sending packet: %s\n", strerror(errno));
-    LL_PRINT_IF(debug, "write(%d): PACKET SENT [CMD:%02X%02X | ADDR: %02X%02X | SIZE: %d]\n", board->write_cnt, packet.wr_packet.cmd_hi, packet.wr_packet.cmd_lo,
+    LL_PRINT_IF(inst->debug, "write(%d): PACKET SENT [CMD:%02X%02X | ADDR: %02X%02X | SIZE: %d]\n", board->write_cnt, packet.wr_packet.cmd_hi, packet.wr_packet.cmd_lo,
       packet.wr_packet.addr_lo, packet.wr_packet.addr_hi, size);
 
     return 1;  // success
@@ -1014,6 +1019,7 @@ static int hm2_eth_send_queued_writes(hm2_lowlevel_io_t *this) {
     int send;
     long long t0, t1;
     hm2_eth_t *board = this->private;
+    hm2_eth_inst_t *inst = board->inst;
 
     board->write_cnt++;
     // XXX this is missing a check for exceeding the maximum packet size!
@@ -1031,7 +1037,7 @@ static int hm2_eth_send_queued_writes(hm2_lowlevel_io_t *this) {
         return 0;
     }
     t1 = rtapi_get_time();
-    LL_PRINT_IF(debug, "enqueue_write(%d) : PACKET SEND [SIZE: %d | TIME: %llu]\n", board->write_cnt, send, t1 - t0);
+    LL_PRINT_IF(inst->debug, "enqueue_write(%d) : PACKET SEND [SIZE: %d | TIME: %llu]\n", board->write_cnt, send, t1 - t0);
     board->write_packet_ptr = board->write_packet;
     board->write_packet_size = 0;
     return 1;
@@ -1039,7 +1045,8 @@ static int hm2_eth_send_queued_writes(hm2_lowlevel_io_t *this) {
 
 static int hm2_eth_enqueue_write(hm2_lowlevel_io_t *this, rtapi_u32 addr, const void *buffer, int size) {
     hm2_eth_t *board = this->private;
-    if (comm_active == 0) return 1;
+    hm2_eth_inst_t *inst = board->inst;
+    if (inst->comm_active == 0) return 1;
     if (size == 0) return 1;
     lbp16_cmd_addr *packet = (lbp16_cmd_addr *) board->write_packet_ptr;
 
@@ -1062,12 +1069,13 @@ static int hm2_eth_set_force_enqueue(hm2_lowlevel_io_t *this, int do_enqueue) {
     }
 }
 
-static int llio_idx(const char *llio_name) {
-    int *idx = kvlist_lookup(&board_num, llio_name);
+static int llio_idx(struct rtapi_list_head *board_num, const char *llio_name) {
+    int *idx = kvlist_lookup(board_num, llio_name);
     return (*idx)++;
 }
 
 static int hm2_eth_probe(hm2_eth_t *board) {
+    hm2_eth_inst_t *inst = board->inst;
     lbp16_cmd_addr read_packet;
 
     int ret, send, recv;
@@ -1087,7 +1095,8 @@ static int hm2_eth_probe(hm2_eth_t *board) {
         return -errno;
     }
 
-    board = &boards[boards_count];
+    board = &inst->boards[inst->boards_count];
+    board->inst = inst;
     board->llio.private = board;
     board->llio.split_read = true;
 
@@ -1476,9 +1485,9 @@ static int hm2_eth_probe(hm2_eth_t *board) {
 
     LL_PRINT("discovered %.*s\n", 16, board_name);
 
-    rtapi_snprintf(board->llio.name, sizeof(board->llio.name), "hm2_%.*s.%d", (int)strlen(llio_name), llio_name, llio_idx(llio_name));
+    rtapi_snprintf(board->llio.name, sizeof(board->llio.name), "hm2_%.*s.%d", (int)strlen(llio_name), llio_name, llio_idx(&inst->board_num, llio_name));
 
-    board->llio.comp_id = comp_id;
+    board->llio.comp_id = inst->comp_id;
 
     board->llio.read = hm2_eth_read;
     board->llio.write = hm2_eth_write;
@@ -1491,12 +1500,12 @@ static int hm2_eth_probe(hm2_eth_t *board) {
 	    board->llio.set_force_enqueue = hm2_eth_set_force_enqueue;
     board->llio.reset = hm2_eth_reset;
 
-    ret = hm2_core->register_board(hm2_core->ctx, &board->llio, config[boards_count]);
+    ret = inst->core->register_board(inst->core->ctx, &board->llio, inst->config[inst->boards_count]);
     if (ret != 0) {
         rtapi_print("board fails HM2 registration\n");
         return ret;
     }
-    boards_count++;
+    inst->boards_count++;
 
     return 0;
 }
@@ -1575,22 +1584,20 @@ static int hm2_eth_items(hm2_eth_t *board) {
 }
 
 // Parse module parameters from argv.
-static void hm2_eth_parse_argv(int argc, const char **argv) {
-    static char ip_bufs[MAX_ETH_BOARDS][64];
-    static char cfg_bufs[MAX_ETH_BOARDS][256];
+static void hm2_eth_parse_argv(hm2_eth_inst_t *inst, int argc, const char **argv) {
     int ip_idx = 0, cfg_idx = 0;
 
     for (int i = 0; i < argc; i++) {
         if (strncmp(argv[i], "board_ip=", 9) == 0 && ip_idx < MAX_ETH_BOARDS) {
-            strncpy(ip_bufs[ip_idx], argv[i] + 9, sizeof(ip_bufs[0]) - 1);
-            board_ip[ip_idx] = ip_bufs[ip_idx];
+            strncpy(inst->ip_bufs[ip_idx], argv[i] + 9, sizeof(inst->ip_bufs[0]) - 1);
+            inst->board_ip[ip_idx] = inst->ip_bufs[ip_idx];
             ip_idx++;
         } else if (strncmp(argv[i], "config=", 7) == 0 && cfg_idx < MAX_ETH_BOARDS) {
-            strncpy(cfg_bufs[cfg_idx], argv[i] + 7, sizeof(cfg_bufs[0]) - 1);
-            config[cfg_idx] = cfg_bufs[cfg_idx];
+            strncpy(inst->cfg_bufs[cfg_idx], argv[i] + 7, sizeof(inst->cfg_bufs[0]) - 1);
+            inst->config[cfg_idx] = inst->cfg_bufs[cfg_idx];
             cfg_idx++;
         } else if (strncmp(argv[i], "debug=", 6) == 0) {
-            debug = simple_strtol(argv[i] + 6, NULL, 0);
+            inst->debug = simple_strtol(argv[i] + 6, NULL, 0);
         }
     }
 }
@@ -1603,50 +1610,56 @@ int New(const cmod_env_t *env, const char *name,
     const gomc_hal_t *hal = env->hal;
     const gomc_log_t *log = env->log;
 
-    hm2_eth_parse_argv(argc, argv);
+    hm2_eth_inst_t *inst = rtapi_calloc(sizeof(*inst));
+    if (!inst) return -ENOMEM;
+    inst->env = env;
 
-    eth_env = env;
+    hm2_eth_parse_argv(inst, argc, argv);
 
     // Look up hm2_core API from hostmot2 module.
-    hm2_core = hm2_core_api_get(env->api, "hostmot2");
-    if (!hm2_core) {
+    inst->core = hm2_core_api_get(env->api, "hostmot2");
+    if (!inst->core) {
         gomc_log_errorf(log, name, "hm2_eth: hostmot2 core API not found (is hostmot2 loaded?)\n");
+        rtapi_free(inst);
         return -1;
     }
 
-    RTAPI_INIT_LIST_HEAD(&ifnames);
-    RTAPI_INIT_LIST_HEAD(&board_num);
+    RTAPI_INIT_LIST_HEAD(&inst->ifnames);
+    RTAPI_INIT_LIST_HEAD(&inst->board_num);
 
     int ret, i;
 
     LL_PRINT("loading Mesa AnyIO HostMot2 ethernet driver version " HM2_ETH_VERSION "\n");
 
     ret = hal->init(hal->ctx, HM2_LLIO_NAME, env->dl_handle, GOMC_HAL_COMP_REALTIME);
-    if (ret < 0)
+    if (ret < 0) {
+        rtapi_free(inst);
         return ret;
-    comp_id = ret;
+    }
+    inst->comp_id = ret;
 
     if(use_iptables()) clear_iptables();
 
-    for(i = 0, ret = 0; ret == 0 && i<MAX_ETH_BOARDS && board_ip[i] && *board_ip[i]; i++) {
-        ret = init_board(&boards[i], board_ip[i]);
-        if(ret < 0) board_ip[i] = 0;
+    for(i = 0, ret = 0; ret == 0 && i<MAX_ETH_BOARDS && inst->board_ip[i] && *inst->board_ip[i]; i++) {
+        inst->boards[i].inst = inst;
+        ret = init_board(&inst->boards[i], inst->board_ip[i]);
+        if(ret < 0) inst->board_ip[i] = 0;
     }
 
     if (ret < 0)
         goto error;
 
     int num_boards = i;
-    comm_active = 1;
+    inst->comm_active = 1;
 
     for(i = 0; i<num_boards; i++)
     {
-        ret = hm2_eth_probe(&boards[i]);
+        ret = hm2_eth_probe(&inst->boards[i]);
 
         if (ret < 0)
             goto error;
 
-        ret = hm2_eth_items(&boards[i]);
+        ret = hm2_eth_items(&inst->boards[i]);
 
         if (ret < 0)
             goto error;
@@ -1654,52 +1667,54 @@ int New(const cmod_env_t *env, const char *name,
 
     for(i = 0; i<num_boards; i++) {
         char ifbuf[64]; // more than enough for eth0
-        char *ifptr = fetch_ifname(boards[i].sockfd, ifbuf, sizeof(ifbuf));
+        char *ifptr = fetch_ifname(inst->boards[i].sockfd, ifbuf, sizeof(ifbuf));
         if(!ifptr) {
             LL_PRINT("failed to retrieve interface name for board");
             continue;
         } 
-        boards[i].read_cnt = boards[i].write_cnt = 0;
-        int *added = kvlist_lookup(&ifnames, ifptr);
+        inst->boards[i].read_cnt = inst->boards[i].write_cnt = 0;
+        int *added = kvlist_lookup(&inst->ifnames, ifptr);
         if(*added) continue;
         install_iptables_perinterface(ifptr);
         *added = 1;
     }
 
-    hal->ready(hal->ctx, comp_id);
+    hal->ready(hal->ctx, inst->comp_id);
 
-    // Build cmod handle.
-    static cmod_t cmod;
-    cmod.Destroy = hm2_eth_destroy;
-    *out = &cmod;
+    // Build cmod handle (embedded in inst).
+    inst->cmod.Destroy = hm2_eth_destroy;
+    inst->cmod.priv = inst;
+    *out = &inst->cmod;
     return 0;
 
 error:
-    for(i = 0; i<MAX_ETH_BOARDS && board_ip[i] && board_ip[i][0]; i++)
-        close_board(&boards[i]);
+    for(i = 0; i<MAX_ETH_BOARDS && inst->board_ip[i] && inst->board_ip[i][0]; i++)
+        close_board(&inst->boards[i]);
     if(use_iptables()) clear_iptables();
-    kvlist_free(&board_num);
-    kvlist_free(&ifnames);
-    hal->exit(hal->ctx, comp_id);
+    kvlist_free(&inst->board_num);
+    kvlist_free(&inst->ifnames);
+    hal->exit(hal->ctx, inst->comp_id);
+    rtapi_free(inst);
     return ret;
 }
 
 static void hm2_eth_destroy(cmod_t *self) {
-    (void)self;
-    const gomc_hal_t *hal = eth_env->hal;
+    hm2_eth_inst_t *inst = self->priv;
+    const gomc_hal_t *hal = inst->env->hal;
     int i;
-    comm_active = 0;
+    inst->comm_active = 0;
 
-    for(i = 0; i<MAX_ETH_BOARDS && board_ip[i] && board_ip[i][0]; i++) {
-        hm2_core->unregister_board(hm2_core->ctx, &boards[i].llio);
-        close_board(&boards[i]);
+    for(i = 0; i<MAX_ETH_BOARDS && inst->board_ip[i] && inst->board_ip[i][0]; i++) {
+        inst->core->unregister_board(inst->core->ctx, &inst->boards[i].llio);
+        close_board(&inst->boards[i]);
     }
 
     if(use_iptables()) clear_iptables();
 
-    kvlist_free(&board_num);
-    kvlist_free(&ifnames);
+    kvlist_free(&inst->board_num);
+    kvlist_free(&inst->ifnames);
 
-    hal->exit(hal->ctx, comp_id);
+    hal->exit(hal->ctx, inst->comp_id);
     LL_PRINT("HostMot2 ethernet driver unloaded\n");
+    rtapi_free(inst);
 }

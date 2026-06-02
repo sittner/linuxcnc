@@ -275,6 +275,11 @@ typedef struct {
 	rtapi_u32	rxdata[256];	// 0x400 bytes, 0x100 32-bit words
 
 	rtapi_s64	timeout;	// Timeout timer for commands
+#ifdef DEBUG_STATE
+	rtapi_u32	dbg_oldtx;
+	rtapi_u32	dbg_oldrx;
+	int			dbg_oldst;
+#endif
 } hm2_modbus_inst_t;
 
 typedef struct {
@@ -282,41 +287,23 @@ typedef struct {
 	hm2_modbus_inst_t *insts;
 } hm2_modbus_t;
 
-
-static int comp_id = -1;	// HAL component ID
-static hm2_modbus_t mb;		// Our instances
-
-// cmod instance state
-static const cmod_env_t *mod_env;
+// Module instance struct - all mutable state lives here
+typedef struct hm2_modbus_mod {
+	cmod_t cmod;              // Embedded cmod (must be first for container_of)
+	const cmod_env_t *env;
+	int comp_id;
+	hm2_modbus_t mb;
+	char *ports[MAX_PORTS];
+	char *mbccbs[MAX_PORTS];
+	char port_bufs[MAX_PORTS][256];
+	char mbccb_bufs[MAX_PORTS][256];
+	int debug;
+} hm2_modbus_mod_t;
 
 // Forward declarations
 static int parse_data_frame(hm2_modbus_inst_t *inst);
 static int build_data_frame(hm2_modbus_inst_t *inst);
 static rtapi_u16 crc_modbus(const rtapi_u8 *buffer, size_t len);
-
-
-/*
- * The PktUART interfaces to be linked to the hm2_modbus module. This consists
- * of a list of HAL names like:
- *   ports="hm2_7i95.0.pktuart.0","hm2_5i25.0.pktuart.7"
- */
-static char *ports[MAX_PORTS];
-
-/*
- * The Modbus configuration and command structure files for each PktUART
- * interface to be read by the hm2_modbus module. This should be a list of
- * absolute path file names like:
- *   files="/usr/share/linuxcnc/modbus/spindle.mbccb","/home/test/xyz.mbccb"
- */
-static char *mbccbs[MAX_PORTS];
-
-/*
- * Set the message level for debugging purpose. This has the (side-)effect that
- * all modules within this process will start spitting out messages at the
- * requested level.
- * The upstream message level is not touched if debug == -1.
- */
-static int debug = -1;
 
 
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
@@ -726,11 +713,6 @@ static void do_timeout(hm2_modbus_inst_t *inst)
 //   d) read and handle reply
 // That way we can assure no wrong replies being attached to a sent command.
 //
-#ifdef DEBUG_STATE
-static rtapi_u32 oldtx;
-static rtapi_u32 oldrx;
-static int oldst = -1;
-#endif
 static void process(void *arg, long period)
 {
 	hm2_modbus_inst_t *inst = (hm2_modbus_inst_t *)arg;
@@ -783,11 +765,11 @@ static void process(void *arg, long period)
 	case STATE_START:
 #ifdef DEBUG_STATE
 		{
-			if(oldst != inst->state || oldrx != rxstatus || oldtx != txstatus) {
+			if(inst->dbg_oldst != inst->state || inst->dbg_oldrx != rxstatus || inst->dbg_oldtx != txstatus) {
 				MSG_DBG("START txstatus=0x%08x rxstatus=0x%08x\n", txstatus, rxstatus);
-				oldrx = rxstatus;
-				oldtx = txstatus;
-				oldst = inst->state;
+				inst->dbg_oldrx = rxstatus;
+				inst->dbg_oldtx = txstatus;
+				inst->dbg_oldst = inst->state;
 			}
 		}
 #endif
@@ -926,11 +908,11 @@ retry_next_init:
 	case STATE_WAIT_FOR_TIMEOUT:
 #ifdef DEBUG_STATE
 		{
-			if(oldst != inst->state || oldrx != rxstatus || oldtx != txstatus) {
+			if(inst->dbg_oldst != inst->state || inst->dbg_oldrx != rxstatus || inst->dbg_oldtx != txstatus) {
 				MSG_DBG("WAIT_FOR_TIMEOUT RX 0x%08x TX 0x%08x\n", txstatus, rxstatus);
-				oldrx = rxstatus;
-				oldtx = txstatus;
-				oldst = inst->state;
+				inst->dbg_oldrx = rxstatus;
+				inst->dbg_oldtx = txstatus;
+				inst->dbg_oldst = inst->state;
 			}
 		}
 #endif
@@ -956,11 +938,11 @@ retry_next_init:
 	case STATE_WAIT_FOR_SEND_COMPLETE:
 #ifdef DEBUG_STATE
 		{
-			if(oldst != inst->state || oldrx != rxstatus || oldtx != txstatus) {
+			if(inst->dbg_oldst != inst->state || inst->dbg_oldrx != rxstatus || inst->dbg_oldtx != txstatus) {
 				MSG_DBG("WAIT_FOR_SEND_COMPLETE txstatus=0x%08x rxstatus=0x%08x\n", txstatus, rxstatus);
-				oldrx = rxstatus;
-				oldtx = txstatus;
-				oldst = inst->state;
+				inst->dbg_oldrx = rxstatus;
+				inst->dbg_oldtx = txstatus;
+				inst->dbg_oldst = inst->state;
 			}
 		}
 #endif
@@ -985,11 +967,11 @@ retry_next_init:
 wait_for_data_frame:
 #ifdef DEBUG_STATE
 		{
-			if(oldst != inst->state || oldrx != rxstatus || oldtx != txstatus) {
+			if(inst->dbg_oldst != inst->state || inst->dbg_oldrx != rxstatus || inst->dbg_oldtx != txstatus) {
 				MSG_DBG("WAIT_FOR_DATA_FRAME rxstatus=0x%08x\n", rxstatus);
-				oldrx = rxstatus;
-				oldtx = txstatus;
-				oldst = inst->state;
+				inst->dbg_oldrx = rxstatus;
+				inst->dbg_oldtx = txstatus;
+				inst->dbg_oldst = inst->state;
 			}
 		}
 #endif
@@ -2541,89 +2523,87 @@ errout:
 /*                        Main entry and exit point                        */
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
-static void docleanup(void)
+static void docleanup(hm2_modbus_mod_t *mod)
 {
-	if(comp_id >= 0)
-		mod_env->hal->exit(mod_env->hal->ctx, comp_id);
+	if(mod->comp_id >= 0)
+		mod->env->hal->exit(mod->env->hal->ctx, mod->comp_id);
 
-	if(mb.insts) {
-		for(int i = 0; i < mb.ninsts; i++) {
-			if(mb.insts[i].cmds)
-				rtapi_free(mb.insts[i].cmds);
-			if(mb.insts[i].mbccb)
-				rtapi_free(mb.insts[i].mbccb);
+	if(mod->mb.insts) {
+		for(int i = 0; i < mod->mb.ninsts; i++) {
+			if(mod->mb.insts[i].cmds)
+				rtapi_free(mod->mb.insts[i].cmds);
+			if(mod->mb.insts[i].mbccb)
+				rtapi_free(mod->mb.insts[i].mbccb);
 		}
-		rtapi_free(mb.insts);
+		rtapi_free(mod->mb.insts);
 	}
 }
 
 static void hm2_modbus_destroy(cmod_t *self);
 
-static void hm2_modbus_parse_argv(int argc, const char **argv) {
-    static char port_bufs[MAX_PORTS][256];
-    static char mbccb_bufs[MAX_PORTS][256];
+static void hm2_modbus_parse_argv(hm2_modbus_mod_t *mod, int argc, const char **argv) {
     int port_idx = 0, mbccb_idx = 0;
 
     for (int i = 0; i < argc; i++) {
         if (strncmp(argv[i], "ports=", 6) == 0 && port_idx < MAX_PORTS) {
-            strncpy(port_bufs[port_idx], argv[i] + 6, sizeof(port_bufs[0]) - 1);
-            ports[port_idx] = port_bufs[port_idx];
+            strncpy(mod->port_bufs[port_idx], argv[i] + 6, sizeof(mod->port_bufs[0]) - 1);
+            mod->ports[port_idx] = mod->port_bufs[port_idx];
             port_idx++;
         } else if (strncmp(argv[i], "mbccbs=", 7) == 0 && mbccb_idx < MAX_PORTS) {
-            strncpy(mbccb_bufs[mbccb_idx], argv[i] + 7, sizeof(mbccb_bufs[0]) - 1);
-            mbccbs[mbccb_idx] = mbccb_bufs[mbccb_idx];
+            strncpy(mod->mbccb_bufs[mbccb_idx], argv[i] + 7, sizeof(mod->mbccb_bufs[0]) - 1);
+            mod->mbccbs[mbccb_idx] = mod->mbccb_bufs[mbccb_idx];
             mbccb_idx++;
         } else if (strncmp(argv[i], "debug=", 6) == 0) {
-            debug = simple_strtol(argv[i] + 6, NULL, 0);
+            mod->debug = simple_strtol(argv[i] + 6, NULL, 0);
         }
     }
 }
 
-static int hm2_modbus_init(void)
+static int hm2_modbus_init(hm2_modbus_mod_t *mod)
 {
 	int retval;
 
 	// Only touch the message level if requested
-	if(debug >= 0)
-		rtapi_set_msg_level(debug);
+	if(mod->debug >= 0)
+		rtapi_set_msg_level(mod->debug);
 
-	if(!ports[0]) {
+	if(!mod->ports[0]) {
 		MSG_ERR(COMP_NAME": The component requires at least one valid pktuart port, eg ports=\"hm2_5i25.0.pktuart.7\"\n");
 		return -EINVAL;
 	}
 
-	comp_id = mod_env->hal->init(mod_env->hal->ctx, COMP_NAME, mod_env->dl_handle, GOMC_HAL_COMP_REALTIME);
-	if(comp_id < 0) {
+	mod->comp_id = mod->env->hal->init(mod->env->hal->ctx, COMP_NAME, mod->env->dl_handle, GOMC_HAL_COMP_REALTIME);
+	if(mod->comp_id < 0) {
 		MSG_ERR(COMP_NAME": hal_init() failed\n");
-		return comp_id;
+		return mod->comp_id;
 	}
 
 	// Count the instances.
-	for(mb.ninsts = 0; mb.ninsts < MAX_PORTS && ports[mb.ninsts]; mb.ninsts++) {}
+	for(mod->mb.ninsts = 0; mod->mb.ninsts < MAX_PORTS && mod->ports[mod->mb.ninsts]; mod->mb.ninsts++) {}
 	// Allocate memory for the instances
-	if(!(mb.insts = (hm2_modbus_inst_t *)rtapi_calloc(mb.ninsts * sizeof(*mb.insts)))) {
+	if(!(mod->mb.insts = (hm2_modbus_inst_t *)rtapi_calloc(mod->mb.ninsts * sizeof(*mod->mb.insts)))) {
 		MSG_ERR(COMP_NAME": Allocate instance memory failed\n");
-		mod_env->hal->exit(mod_env->hal->ctx, comp_id);
+		mod->env->hal->exit(mod->env->hal->ctx, mod->comp_id);
 		return -ENOMEM;
 	}
 
 	// Parse the config string and assign to instances
-	for(int i = 0; i < mb.ninsts; i++) {
-		hm2_modbus_inst_t *inst = &mb.insts[i];
+	for(int i = 0; i < mod->mb.ninsts; i++) {
+		hm2_modbus_inst_t *inst = &mod->mb.insts[i];
 
 		rtapi_snprintf(inst->name, sizeof(inst->name), COMP_NAME".%d", i);
-		rtapi_strlcpy(inst->uart, ports[i], sizeof(inst->uart)-1);
+		rtapi_strlcpy(inst->uart, mod->ports[i], sizeof(inst->uart)-1);
 
-		if(!mbccbs[i]) {
+		if(!mod->mbccbs[i]) {
 			MSG_ERR("%s: error: Missing mbccb file path for instance %d in 'mbccbs' argument\n", inst->name, i);
 			retval = -EINVAL;
 			goto errout;
 		}
-		if('/' != mbccbs[i][0]) {
-			MSG_WARN("%s: warning: The 'mbccb' file path '%s' for instance %d in 'mbccbs' argument is not absolute\n", inst->name, mbccbs[i], i);
+		if('/' != mod->mbccbs[i][0]) {
+			MSG_WARN("%s: warning: The 'mbccb' file path '%s' for instance %d in 'mbccbs' argument is not absolute\n", inst->name, mod->mbccbs[i], i);
 		}
 
-		if((retval = load_mbccb(inst, mbccbs[i])) < 0) {
+		if((retval = load_mbccb(inst, mod->mbccbs[i])) < 0) {
 			// Messages printed in load function
 			goto errout;
 		}
@@ -2680,7 +2660,7 @@ static int hm2_modbus_init(void)
 		// Export the HAL process function
 		char pname[HAL_NAME_LEN+1];
 		rtapi_snprintf(pname, sizeof(pname), COMP_NAME".%d.process", i);
-		if((retval = hal_export_funct(pname, process, inst, 1, 0, comp_id)) < 0) {
+		if((retval = hal_export_funct(pname, process, inst, 1, 0, mod->comp_id)) < 0) {
 			MSG_ERR("%s: error: Function export failed\n", inst->name);
 			goto errout;
 		}
@@ -2692,19 +2672,19 @@ static int hm2_modbus_init(void)
 						goto errout; \
 					} \
 				} while(0)
-		CHECK(hal_param_u32_newf(HAL_RO, &(inst->hal->baudrate), comp_id, "%s.baudrate", inst->name));
-		CHECK(hal_param_u32_newf(HAL_RO, &(inst->hal->parity),   comp_id, "%s.parity", inst->name));
-		CHECK(hal_param_u32_newf(HAL_RO, &(inst->hal->stopbits), comp_id, "%s.stopbits", inst->name));
-		CHECK(hal_param_u32_newf(HAL_RO, &(inst->hal->icdelay),  comp_id, "%s.icdelay", inst->name));
-		CHECK(hal_param_u32_newf(HAL_RO, &(inst->hal->txdelay),  comp_id, "%s.txdelay", inst->name));
-		CHECK(hal_param_u32_newf(HAL_RO, &(inst->hal->rxdelay),  comp_id, "%s.rxdelay", inst->name));
-		CHECK(hal_param_u32_newf(HAL_RO, &(inst->hal->drvdelay), comp_id, "%s.drivedelay", inst->name));
+		CHECK(hal_param_u32_newf(HAL_RO, &(inst->hal->baudrate), mod->comp_id, "%s.baudrate", inst->name));
+		CHECK(hal_param_u32_newf(HAL_RO, &(inst->hal->parity),   mod->comp_id, "%s.parity", inst->name));
+		CHECK(hal_param_u32_newf(HAL_RO, &(inst->hal->stopbits), mod->comp_id, "%s.stopbits", inst->name));
+		CHECK(hal_param_u32_newf(HAL_RO, &(inst->hal->icdelay),  mod->comp_id, "%s.icdelay", inst->name));
+		CHECK(hal_param_u32_newf(HAL_RO, &(inst->hal->txdelay),  mod->comp_id, "%s.txdelay", inst->name));
+		CHECK(hal_param_u32_newf(HAL_RO, &(inst->hal->rxdelay),  mod->comp_id, "%s.rxdelay", inst->name));
+		CHECK(hal_param_u32_newf(HAL_RO, &(inst->hal->drvdelay), mod->comp_id, "%s.drivedelay", inst->name));
 
-		CHECK(hal_pin_bit_newf(HAL_IN,  &(inst->hal->suspend),   comp_id, "%s.suspend", inst->name));
-		CHECK(hal_pin_bit_newf(HAL_IN,  &(inst->hal->reset),     comp_id, "%s.reset", inst->name));
-		CHECK(hal_pin_bit_newf(HAL_OUT, &(inst->hal->fault),     comp_id, "%s.fault", inst->name));
-		CHECK(hal_pin_u32_newf(HAL_OUT, &(inst->hal->faultcmd),  comp_id, "%s.fault-command", inst->name));
-		CHECK(hal_pin_u32_newf(HAL_OUT, &(inst->hal->lasterror), comp_id, "%s.last-error-code", inst->name));
+		CHECK(hal_pin_bit_newf(HAL_IN,  &(inst->hal->suspend),   mod->comp_id, "%s.suspend", inst->name));
+		CHECK(hal_pin_bit_newf(HAL_IN,  &(inst->hal->reset),     mod->comp_id, "%s.reset", inst->name));
+		CHECK(hal_pin_bit_newf(HAL_OUT, &(inst->hal->fault),     mod->comp_id, "%s.fault", inst->name));
+		CHECK(hal_pin_u32_newf(HAL_OUT, &(inst->hal->faultcmd),  mod->comp_id, "%s.fault-command", inst->name));
+		CHECK(hal_pin_u32_newf(HAL_OUT, &(inst->hal->lasterror), mod->comp_id, "%s.last-error-code", inst->name));
 
 		inst->hal->baudrate = inst->cfg_rx.baudrate = inst->cfg_tx.baudrate = inst->mbccb->baudrate;
 		unsigned parity = 0;
@@ -2825,15 +2805,15 @@ static int hm2_modbus_init(void)
 		for(unsigned c = 0; c < inst->ncmds; c++) {
 			// First create command status pins
 			CHECK(hal_pin_bit_newf(HAL_IN, &(inst->hal->cmds[c].disable),
-					comp_id, "%s.command.%02d.disable", inst->name, c));
+					mod->comp_id, "%s.command.%02d.disable", inst->name, c));
 			CHECK(hal_pin_bit_newf(HAL_OUT, &(inst->hal->cmds[c].disabled),
-					comp_id, "%s.command.%02d.disabled", inst->name, c));
+					mod->comp_id, "%s.command.%02d.disabled", inst->name, c));
 			CHECK(hal_pin_u32_newf(HAL_OUT, &(inst->hal->cmds[c].error),
-					comp_id, "%s.command.%02d.errors", inst->name, c));
+					mod->comp_id, "%s.command.%02d.errors", inst->name, c));
 			CHECK(hal_pin_u32_newf(HAL_OUT, &(inst->hal->cmds[c].errorcode),
-					comp_id, "%s.command.%02d.error-code", inst->name, c));
+					mod->comp_id, "%s.command.%02d.error-code", inst->name, c));
 			CHECK(hal_pin_bit_newf(HAL_IN, &(inst->hal->cmds[c].reset),
-					comp_id, "%s.command.%02d.reset", inst->name, c));
+					mod->comp_id, "%s.command.%02d.reset", inst->name, c));
 
 			hm2_modbus_cmd_t *cc = &inst->_cmds[c];
 
@@ -2857,7 +2837,7 @@ static int hm2_modbus_init(void)
 				case MBCMD_W_COIL:
 				case MBCMD_W_COILS:
 					CHECK(hal_pin_bit_newf(dir, (hal_bit_t**)&(inst->hal->pins[p++]),
-							comp_id, "%s.%s", inst->name, CPTR(dptr)));
+							mod->comp_id, "%s.%s", inst->name, CPTR(dptr)));
 					break;
 
 				case MBCMD_R_INPUTREGS:
@@ -2870,72 +2850,72 @@ static int hm2_modbus_init(void)
 					default:
 					case HAL_BIT:
 						CHECK(hal_pin_bit_newf(dir, (hal_bit_t**)&(inst->hal->pins[p++]),
-								comp_id, "%s.%s", inst->name, CPTR(dptr)));
+								mod->comp_id, "%s.%s", inst->name, CPTR(dptr)));
 						break;
 
 					case HAL_U32:
 						CHECK(hal_pin_u32_newf(dir, (hal_u32_t**)&(inst->hal->pins[p++]),
-								comp_id, "%s.%s", inst->name, CPTR(dptr)));
+								mod->comp_id, "%s.%s", inst->name, CPTR(dptr)));
 						break;
 
 					case HAL_S32:
 						CHECK(hal_pin_s32_newf(dir, (hal_s32_t**)&(inst->hal->pins[p]),
-								comp_id, "%s.%s", inst->name, CPTR(dptr)));
+								mod->comp_id, "%s.%s", inst->name, CPTR(dptr)));
 						if(haspinscale(&cc->typeptr[j])) {
 							CHECK(hal_pin_float_newf(HAL_IN, &(inst->hal->pins[p].scale),
-									comp_id, "%s.%s.scale", inst->name, CPTR(dptr)));
+									mod->comp_id, "%s.%s.scale", inst->name, CPTR(dptr)));
 							*(inst->hal->pins[p].scale) = 1.0;
 							if(HAL_OUT == dir) {
 								CHECK(hal_pin_float_newf(HAL_OUT, &(inst->hal->pins[p].scaled),
-										comp_id, "%s.%s.scaled", inst->name, CPTR(dptr)));
+										mod->comp_id, "%s.%s.scaled", inst->name, CPTR(dptr)));
 								switch(mtypetype(cc->typeptr[j].mtype)) {
 								case MBT_U:
 									CHECK(hal_pin_u32_newf(HAL_IN, (hal_u32_t**)&(inst->hal->pins[p].offset),
-											comp_id, "%s.%s.offset", inst->name, CPTR(dptr)));
+											mod->comp_id, "%s.%s.offset", inst->name, CPTR(dptr)));
 									break;
 								case MBT_S:
 									CHECK(hal_pin_s32_newf(HAL_IN, (hal_s32_t**)&(inst->hal->pins[p].offset),
-											comp_id, "%s.%s.offset", inst->name, CPTR(dptr)));
+											mod->comp_id, "%s.%s.offset", inst->name, CPTR(dptr)));
 									break;
 								case MBT_F:
 									CHECK(hal_pin_float_newf(HAL_IN, (hal_float_t**)&(inst->hal->pins[p].offset),
-											comp_id, "%s.%s.offset", inst->name, CPTR(dptr)));
+											mod->comp_id, "%s.%s.offset", inst->name, CPTR(dptr)));
 									break;
 								}
 							} else {
 								CHECK(hal_pin_s32_newf(HAL_IN, (hal_s32_t**)&(inst->hal->pins[p].offset),
-										comp_id, "%s.%s.offset", inst->name, CPTR(dptr)));
+										mod->comp_id, "%s.%s.offset", inst->name, CPTR(dptr)));
 							}
 						}
 						p++;
 						break;
 					case HAL_FLOAT:
 						CHECK(hal_pin_float_newf(dir, (hal_float_t**)&(inst->hal->pins[p]),
-								comp_id, "%s.%s", inst->name, CPTR(dptr)));
+								mod->comp_id, "%s.%s", inst->name, CPTR(dptr)));
 						if(haspinscale(&cc->typeptr[j])) {
 							CHECK(hal_pin_float_newf(HAL_IN, &(inst->hal->pins[p].scale),
-									comp_id, "%s.%s.scale", inst->name, CPTR(dptr)));
+									mod->comp_id, "%s.%s.scale", inst->name, CPTR(dptr)));
 							*(inst->hal->pins[p].scale) = 1.0;
 							if(HAL_OUT == dir) {
 								CHECK(hal_pin_float_newf(HAL_OUT, &(inst->hal->pins[p].scaled),
-										comp_id, "%s.%s.scaled", inst->name, CPTR(dptr)));
+										mod->comp_id, "%s.%s.scaled", inst->name, CPTR(dptr)));
 								switch(mtypetype(cc->typeptr[j].mtype)) {
 								case MBT_U:
 									CHECK(hal_pin_u32_newf(HAL_IN, (hal_u32_t**)&(inst->hal->pins[p].offset),
-											comp_id, "%s.%s.offset", inst->name, CPTR(dptr)));
+											mod->comp_id, "%s.%s.offset", inst->name, CPTR(dptr)));
 									break;
 								case MBT_S:
 									CHECK(hal_pin_s32_newf(HAL_IN, (hal_s32_t**)&(inst->hal->pins[p].offset),
-											comp_id, "%s.%s.offset", inst->name, CPTR(dptr)));
+											mod->comp_id, "%s.%s.offset", inst->name, CPTR(dptr)));
 									break;
 								case MBT_F:
 									CHECK(hal_pin_float_newf(HAL_IN, (hal_float_t**)&(inst->hal->pins[p].offset),
-											comp_id, "%s.%s.offset", inst->name, CPTR(dptr)));
+											mod->comp_id, "%s.%s.offset", inst->name, CPTR(dptr)));
 									break;
 								}
 							} else {
 								CHECK(hal_pin_float_newf(HAL_IN, (hal_float_t**)&(inst->hal->pins[p].offset),
-										comp_id, "%s.%s.offset", inst->name, CPTR(dptr)));
+										mod->comp_id, "%s.%s.offset", inst->name, CPTR(dptr)));
 							}
 							inst->hal->pins[p].offset->f = 0.0;
 						}
@@ -2962,32 +2942,41 @@ static int hm2_modbus_init(void)
 		inst->cfg_rx.flags &= ~HM2_PKTUART_CONFIG_FLUSH;
 		inst->cfg_tx.flags &= ~HM2_PKTUART_CONFIG_FLUSH;
 	}
-	mod_env->hal->ready(mod_env->hal->ctx, comp_id);
+	mod->env->hal->ready(mod->env->hal->ctx, mod->comp_id);
 	return 0;
 
 errout:
-	docleanup();
+	docleanup(mod);
 	return retval;
 }
 
 int New(const cmod_env_t *env, const char *name,
         int argc, const char **argv, cmod_t **out)
 {
-    hm2_modbus_parse_argv(argc, argv);
-    mod_env = env;
+    hm2_modbus_mod_t *mod = rtapi_calloc(sizeof(*mod));
+    if (!mod) return -ENOMEM;
+    mod->env = env;
+    mod->comp_id = -1;
+    mod->debug = -1;
 
-    int ret = hm2_modbus_init();
-    if (ret != 0) return ret;
+    hm2_modbus_parse_argv(mod, argc, argv);
 
-    static cmod_t cmod;
-    cmod.Destroy = hm2_modbus_destroy;
-    *out = &cmod;
+    int ret = hm2_modbus_init(mod);
+    if (ret != 0) {
+        rtapi_free(mod);
+        return ret;
+    }
+
+    mod->cmod.Destroy = hm2_modbus_destroy;
+    mod->cmod.priv = mod;
+    *out = &mod->cmod;
     return 0;
 }
 
 static void hm2_modbus_destroy(cmod_t *self)
 {
-	(void)self;
-	docleanup();
+	hm2_modbus_mod_t *mod = self->priv;
+	docleanup(mod);
+	rtapi_free(mod);
 }
 // vim: syn=c ts=4
