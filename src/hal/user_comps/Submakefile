@@ -1,4 +1,4 @@
-USER_COMP_PY = pyvcp gladevcp mqtt-publisher
+USER_COMP_PY = pyvcp gladevcp
 
 USER_COMPS := $(sort $(wildcard hal/user_comps/*.comp))
 ifeq ($(BUILD_GOLANG),yes)
