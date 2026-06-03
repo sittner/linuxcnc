@@ -841,16 +841,17 @@ func (g *generator) emitNew() {
 		g.printf("    memset(inst->hal, 0, sizeof(inst_hal_t));\n\n")
 	}
 
+	// Allocate option data (user-defined type, allocated separately).
+	// Must come before extra_setup so user code can access data.
+	if dataType, ok := g.comp.Options["data"]; ok {
+		g.printf("    inst->_data = env->rtapi->calloc(env->rtapi->ctx, sizeof(%s));\n", dataType)
+		g.printf("    if (!inst->_data) goto err;\n\n")
+	}
+
 	// Extra setup (runs before pins, can modify personality).
 	if g.hasExtraSetup() {
 		g.printf("    r = extra_setup(inst, name, argc, argv);\n")
 		g.printf("    if (r != 0) goto err;\n\n")
-	}
-
-	// Allocate option data (user-defined type, allocated separately).
-	if dataType, ok := g.comp.Options["data"]; ok {
-		g.printf("    inst->_data = env->rtapi->calloc(env->rtapi->ctx, sizeof(%s));\n", dataType)
-		g.printf("    if (!inst->_data) goto err;\n\n")
 	}
 
 	// Create pins.
