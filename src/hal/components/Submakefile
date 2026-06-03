@@ -473,6 +473,20 @@ modules: ../cmod/pmx485.so
 TARGETS += ../cmod/mitsub_vfd.so
 modules: ../cmod/mitsub_vfd.so
 
+# hal_input.so — hand-written cmod (Linux evdev input device driver)
+../cmod/hal_input.so: hal/user_comps/hal_input.c \
+                      $(wildcard gomc/pkg/cmodule/gomc_*.h) \
+                      | headers
+	$(ECHO) "Compiling cmod hal_input.so"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -fPIC -Os -Wall -shared \
+	    -DUSPACE -D_GNU_SOURCE \
+	    -I. -Igomc/pkg/cmodule -I../include \
+	    -o $@ hal/user_comps/hal_input.c \
+	    -lpthread
+TARGETS += ../cmod/hal_input.so
+modules: ../cmod/hal_input.so
+
 TARGETS += ../cmod/lcd.so
 modules: ../cmod/lcd.so
 
