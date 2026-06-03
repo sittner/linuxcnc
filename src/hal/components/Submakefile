@@ -10,9 +10,8 @@ CMOD_KINS_COMP_NAMES := millturn userkins xyzab_tdr_kins
 
 # ---------------------------------------------------------------------------
 # Components built via modcompile (cmod API, output to ../cmod/)
-# Exclude tpcomp (uses USE_TOPDIR includes incompatible with standalone cmod build)
 # ---------------------------------------------------------------------------
-CMOD_COMPS := $(filter-out hal/components/tpcomp.comp, $(sort $(wildcard hal/components/*.comp)))
+CMOD_COMPS := $(sort $(wildcard hal/components/*.comp))
 CMOD_COMP_NAMES := $(patsubst hal/components/%.comp,%,$(CMOD_COMPS))
 CMOD_TARGETS := $(addprefix ../cmod/, $(addsuffix .so, $(CMOD_COMP_NAMES)))
 
