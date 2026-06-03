@@ -487,6 +487,22 @@ modules: ../cmod/mitsub_vfd.so
 TARGETS += ../cmod/hal_input.so
 modules: ../cmod/hal_input.so
 
+# z_level_compensation.so — hand-written cmod (RT Z-axis surface compensation)
+../cmod/z_level_compensation.so: hal/components/z_level_compensation.c \
+                                 $(wildcard gomc/pkg/cmodule/gomc_*.h) \
+                                 gomc/generated/gmi/z_level_compensation/z_level_compensation_api.h \
+                                 | headers
+	$(ECHO) "Compiling cmod z_level_compensation.so"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -fPIC -Os -Wall -shared \
+	    -DUSPACE -D_GNU_SOURCE \
+	    -I. -Igomc/pkg/cmodule -I../include \
+	    -Igomc/generated/gmi/z_level_compensation \
+	    -o $@ hal/components/z_level_compensation.c \
+	    -lm
+TARGETS += ../cmod/z_level_compensation.so
+modules: ../cmod/z_level_compensation.so
+
 TARGETS += ../cmod/lcd.so
 modules: ../cmod/lcd.so
 

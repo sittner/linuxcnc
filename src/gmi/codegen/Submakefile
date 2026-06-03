@@ -693,6 +693,23 @@ $(GMI_HAL_STREAMER_GEN)/hal_streamer_stream_api.h: $(GMI_HAL_STREAMER_IDL) $(GMI
 $(GMI_HAL_STREAMER_GEN)/hal_streamer_stream.go: $(GMI_HAL_STREAMER_GEN)/hal_streamer_stream_api.h ;
 
 TARGETS += $(GMI_HAL_STREAMER_GEN)/hal_streamer_stream_api.h
+
+# --- z_level_compensation API ---
+
+GMI_ZLC_IDL := gmi/idl/z_level_compensation.gmi
+GMI_ZLC_GEN := gomc/generated/gmi/z_level_compensation
+
+$(GMI_ZLC_GEN)/z_level_compensation_api.h: $(GMI_ZLC_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI z_level_compensation from $(GMI_ZLC_IDL)"
+	@mkdir -p $(GMI_ZLC_GEN)
+	$(Q)$(GMICOMPILE) --server-c $(GMI_ZLC_IDL) -o $(GMI_ZLC_GEN)/z_level_compensation_api.h
+	$(Q)$(GMICOMPILE) --server-meta $(GMI_ZLC_IDL) -o $(GMI_ZLC_GEN)/zlc_cgo.go
+	$(Q)$(GMICOMPILE_BIN) add-gmi generated/gmi/z_level_compensation
+
+$(GMI_ZLC_GEN)/zlc_cgo.go: $(GMI_ZLC_GEN)/z_level_compensation_api.h ;
+
+TARGETS += $(GMI_ZLC_GEN)/z_level_compensation_api.h
+
 # ═══════════════════════════════════════════════════════════════════════════════
 
 clean: gmi-codegen-clean
