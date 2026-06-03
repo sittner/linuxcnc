@@ -415,6 +415,20 @@ ifdef HAVE_LIBUSB10
 	    -lpthread $(LIBUSB10_CFLAGS) $(LIBUSB10_LIBS) -L../lib -liniparse
 TARGETS += ../cmod/xhc-hb04.so
 modules: ../cmod/xhc-hb04.so
+
+# xhc-whb04b-6.so — hand-written cmod (XHC-WHB04B-6 wireless MPG pendant)
+../cmod/xhc-whb04b-6.so: hal/user_comps/xhc-whb04b-6.c \
+                          $(wildcard gomc/pkg/cmodule/gomc_*.h) \
+                          | headers
+	$(ECHO) "Compiling cmod xhc-whb04b-6.so"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -fPIC -Os -Wall -shared \
+	    -DUSPACE -D_GNU_SOURCE \
+	    -I. -Igomc/pkg/cmodule -I../include \
+	    -o $@ hal/user_comps/xhc-whb04b-6.c \
+	    -lpthread $(LIBUSB10_CFLAGS) $(LIBUSB10_LIBS)
+TARGETS += ../cmod/xhc-whb04b-6.so
+modules: ../cmod/xhc-whb04b-6.so
 endif # HAVE_LIBUSB10
 
 TARGETS += ../cmod/lcd.so
