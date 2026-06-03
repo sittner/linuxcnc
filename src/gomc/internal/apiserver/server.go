@@ -10,6 +10,7 @@ import (
 	"net/http/pprof"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -22,6 +23,10 @@ type Server struct {
 	prefix       string // e.g. "/api/v1"
 	logger       *slog.Logger
 	watchHandler *WatchHandler
+
+	streamMu    sync.Mutex
+	streamConns map[*streamConn]struct{}
+	streamWg    sync.WaitGroup
 }
 
 // NewServer creates a new API server bound to the given registry.
@@ -74,6 +79,15 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	if s.watchHandler != nil {
 		s.watchHandler.Close()
 	}
+	// Close all active stream WebSocket connections.
+	s.streamMu.Lock()
+	for sc := range s.streamConns {
+		sc.cancel()
+	}
+	s.streamMu.Unlock()
+	// Wait for all ServeConn goroutines to exit so no CGO calls are
+	// in-flight when modules are destroyed.
+	s.streamWg.Wait()
 	return s.server.Shutdown(ctx)
 }
 

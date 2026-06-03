@@ -44,6 +44,8 @@ type StreamConn interface {
 	WriteBinary(data []byte) error
 	// ReadBinary blocks until a binary frame is received. Returns data or error on disconnect.
 	ReadBinary() ([]byte, error)
+	// Done returns a channel that is closed when the connection should stop.
+	Done() <-chan struct{}
 }
 
 // StreamServer is the interface that generated stream_server types implement.

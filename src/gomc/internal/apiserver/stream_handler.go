@@ -26,9 +26,22 @@ func (s *Server) handleStreamUpgrade(w http.ResponseWriter, r *http.Request, ser
 		cancel: cancel,
 	}
 
+	s.streamMu.Lock()
+	if s.streamConns == nil {
+		s.streamConns = make(map[*streamConn]struct{})
+	}
+	s.streamConns[sc] = struct{}{}
+	s.streamMu.Unlock()
+	s.streamWg.Add(1)
+
 	// ServeConn blocks until the stream is done (poll_transmit returns <=0
 	// or a write error occurs).
 	server.ServeConn(sc)
+
+	s.streamWg.Done()
+	s.streamMu.Lock()
+	delete(s.streamConns, sc)
+	s.streamMu.Unlock()
 
 	conn.Close(websocket.StatusNormalClosure, "")
 	cancel()
@@ -51,4 +64,8 @@ func (c *streamConn) WriteBinary(data []byte) error {
 func (c *streamConn) ReadBinary() ([]byte, error) {
 	_, data, err := c.conn.Read(c.ctx)
 	return data, err
+}
+
+func (c *streamConn) Done() <-chan struct{} {
+	return c.ctx.Done()
 }
