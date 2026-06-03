@@ -445,6 +445,20 @@ endif # HAVE_LIBUSB10
 TARGETS += ../cmod/scorbot-er-3.so
 modules: ../cmod/scorbot-er-3.so
 
+# pmx485.so — hand-written cmod (Hypertherm Powermax RS-485 driver)
+../cmod/pmx485.so: hal/user_comps/pmx485.c \
+                   $(wildcard gomc/pkg/cmodule/gomc_*.h) \
+                   | headers
+	$(ECHO) "Compiling cmod pmx485.so"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -fPIC -Os -Wall -shared \
+	    -DUSPACE -D_GNU_SOURCE \
+	    -I. -Igomc/pkg/cmodule -I../include \
+	    -o $@ hal/user_comps/pmx485.c \
+	    -lpthread
+TARGETS += ../cmod/pmx485.so
+modules: ../cmod/pmx485.so
+
 TARGETS += ../cmod/lcd.so
 modules: ../cmod/lcd.so
 
