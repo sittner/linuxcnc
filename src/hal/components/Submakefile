@@ -243,7 +243,7 @@ modules: $(CMOD_C_TARGETS)
 # cmod userspace components (from hal/user_comps/)
 # ---------------------------------------------------------------------------
 
-CMOD_USER_COMPS := thermistor wj200_vfd pi500_vfd
+CMOD_USER_COMPS := thermistor wj200_vfd pi500_vfd svd_ps_vfd hy_gt_vfd gs2_vfd vfdb_vfd vfs11_vfd hy_vfd
 CMOD_USER_TARGETS := $(addprefix ../cmod/, $(addsuffix .so, $(CMOD_USER_COMPS)))
 
 # thermistor: hal/user_comps/thermistor.comp
@@ -278,6 +278,82 @@ objects/cmod/pi500_vfd.c: hal/user_comps/pi500_vfd/pi500_vfd.comp ../bin/modcomp
 	$(ECHO) "Compiling cmod $(notdir $@)"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) $(LIBMODBUS_CFLAGS) -o $@ $< -lm -lpthread -lmodbus
+
+# svd_ps_vfd: hal/user_comps/svd-ps_vfd.comp
+objects/cmod/svd_ps_vfd.c: hal/user_comps/svd-ps_vfd.comp ../bin/modcompile
+	$(ECHO) "Preprocessing cmod $(notdir $<)"
+	@mkdir -p $(dir $@)
+	$(Q)../bin/modcompile --preprocess $< > $@
+
+../cmod/svd_ps_vfd.so: objects/cmod/svd_ps_vfd.c
+	$(ECHO) "Compiling cmod $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) $(LIBMODBUS_CFLAGS) -o $@ $< -lm -lpthread -lmodbus
+
+# hy_gt_vfd: hal/user_comps/hy_gt_vfd.comp
+objects/cmod/hy_gt_vfd.c: hal/user_comps/hy_gt_vfd.comp ../bin/modcompile
+	$(ECHO) "Preprocessing cmod $(notdir $<)"
+	@mkdir -p $(dir $@)
+	$(Q)../bin/modcompile --preprocess $< > $@
+
+../cmod/hy_gt_vfd.so: objects/cmod/hy_gt_vfd.c
+	$(ECHO) "Compiling cmod $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) $(LIBMODBUS_CFLAGS) -o $@ $< -lm -lpthread -lmodbus
+
+# gs2_vfd: hal/user_comps/gs2_vfd.comp
+objects/cmod/gs2_vfd.c: hal/user_comps/gs2_vfd.comp ../bin/modcompile
+	$(ECHO) "Preprocessing cmod $(notdir $<)"
+	@mkdir -p $(dir $@)
+	$(Q)../bin/modcompile --preprocess $< > $@
+
+../cmod/gs2_vfd.so: objects/cmod/gs2_vfd.c
+	$(ECHO) "Compiling cmod $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) $(LIBMODBUS_CFLAGS) -o $@ $< -lm -lpthread -lmodbus
+
+# vfdb_vfd: hal/user_comps/vfdb_vfd/vfdb_vfd.comp
+objects/cmod/vfdb_vfd.c: hal/user_comps/vfdb_vfd/vfdb_vfd.comp ../bin/modcompile
+	$(ECHO) "Preprocessing cmod $(notdir $<)"
+	@mkdir -p $(dir $@)
+	$(Q)../bin/modcompile --preprocess $< > $@
+
+../cmod/vfdb_vfd.so: objects/cmod/vfdb_vfd.c
+	$(ECHO) "Compiling cmod $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I. -Ilibnml/inifile $(LIBMODBUS_CFLAGS) -o $@ $< -lm -lpthread -lmodbus -L../lib -liniparse
+
+# vfs11_vfd: hal/user_comps/vfs11_vfd/vfs11_vfd.comp
+objects/cmod/vfs11_vfd.c: hal/user_comps/vfs11_vfd/vfs11_vfd.comp ../bin/modcompile
+	$(ECHO) "Preprocessing cmod $(notdir $<)"
+	@mkdir -p $(dir $@)
+	$(Q)../bin/modcompile --preprocess $< > $@
+
+../cmod/vfs11_vfd.so: objects/cmod/vfs11_vfd.c
+	$(ECHO) "Compiling cmod $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I. -Ilibnml/inifile $(LIBMODBUS_CFLAGS) -o $@ $< -lm -lpthread -lmodbus -L../lib -liniparse
+
+# hy_vfd: hal/user_comps/huanyang-vfd/hy_vfd.comp + hy_comm.c
+objects/cmod/hy_vfd.c: hal/user_comps/huanyang-vfd/hy_vfd.comp ../bin/modcompile
+	$(ECHO) "Preprocessing cmod $(notdir $<)"
+	@mkdir -p $(dir $@)
+	$(Q)../bin/modcompile --preprocess $< > $@
+
+objects/cmod/hy_vfd.o: objects/cmod/hy_vfd.c
+	$(ECHO) "Compiling $(notdir $<)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -fPIC -Os -Wall -c -I $(CMOD_INCLUDE) -I. -Ihal/user_comps/huanyang-vfd -o $@ $<
+
+objects/cmod/hy_comm.o: hal/user_comps/huanyang-vfd/hy_comm.c
+	$(ECHO) "Compiling $(notdir $<)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -fPIC -Os -Wall -c -Ihal/user_comps/huanyang-vfd -o $@ $<
+
+../cmod/hy_vfd.so: objects/cmod/hy_vfd.o objects/cmod/hy_comm.o
+	$(ECHO) "Linking cmod $(notdir $@)"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -shared -o $@ $^ -lm -lpthread
 
 TARGETS += $(CMOD_USER_TARGETS)
 modules: $(CMOD_USER_TARGETS)
