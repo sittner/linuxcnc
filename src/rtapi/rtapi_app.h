@@ -16,7 +16,6 @@
 #ifndef RTAPI_APP_H
 #define RTAPI_APP_H
 
-EXPORT_SYMBOL(rtapi_app_main);
-EXPORT_SYMBOL(rtapi_app_exit);
+// rtapi_app_main and rtapi_app_exit are resolved by dlsym in the module loader.
 
 #endif /* RTAPI_APP_H */

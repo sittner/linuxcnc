@@ -36,11 +36,9 @@
 #define MAX_SUMMERS	8
 
 /* module information */
-MODULE_AUTHOR("Stephen Wille Padnos");
-MODULE_DESCRIPTION("Weighted Summer for EMC HAL");
-MODULE_LICENSE("GPL");
+// Author: Stephen Wille Padnos
+// Description: Weighted Summer for EMC HAL
 int wsum_sizes[MAX_SUMMERS] = { -1, -1, -1, -1, -1, -1, -1, -1 };
-RTAPI_MP_ARRAY_INT(wsum_sizes, MAX_SUMMERS, "Sizes of up to 8 weighted summers");
 
 /***********************************************************************
 *                STRUCTURES AND GLOBAL VARIABLES                       *

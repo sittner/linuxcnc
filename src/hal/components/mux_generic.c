@@ -23,9 +23,8 @@
 
 
 /* module information */
-MODULE_AUTHOR("Andy Pugh");
-MODULE_DESCRIPTION("Generic mux component for LinuxCNC");
-MODULE_LICENSE("GPL");
+// Author: Andy Pugh
+// Description: Generic mux component for LinuxCNC
 
 #define MAX_CHAN 100
 #define MAX_SIZE 1024
@@ -59,7 +58,6 @@ static void write_fp(void *arg, long period);
 static void write_nofp(void *arg, long period);
 
 char *config[MAX_CHAN];
-RTAPI_MP_ARRAY_STRING(config, MAX_CHAN, "mux specifiers inNUMout");
 
 int rtapi_app_main(void){
     int retval;

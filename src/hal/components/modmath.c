@@ -38,11 +38,9 @@
 #include "rtapi_math.h"
 
 /* module information */
-MODULE_AUTHOR("Stephen Wille Padnos");
-MODULE_DESCRIPTION("Modulo math blocks for EMC HAL");
-MODULE_LICENSE("GPL");
+// Author: Stephen Wille Padnos
+// Description: Modulo math blocks for EMC HAL
 static int mod_dir = 0;	/* number of mod_dirs */
-RTAPI_MP_INT(mod_dir, "Modulo direction blocks");
 
 /***********************************************************************
 *                STRUCTURES AND GLOBAL VARIABLES                       *

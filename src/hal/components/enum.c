@@ -26,9 +26,8 @@
 #include <stdlib.h>
 
 /* module information */
-MODULE_AUTHOR("Andy Pugh");
-MODULE_DESCRIPTION("convert enumerated types to HAL_BIT pins");
-MODULE_LICENSE("GPL");
+// Author: Andy Pugh
+// Description: convert enumerated types to HAL_BIT pins
 
 #define MAX_CHAN 256
 
@@ -53,9 +52,7 @@ static int comp_id;
 static enum_t e;
 
 static char *enums[MAX_CHAN] = {0,};
-RTAPI_MP_ARRAY_STRING(enums, MAX_CHAN, "states, ; delimited");
 static char *names[MAX_CHAN] = {0,};
-RTAPI_MP_ARRAY_STRING(names, MAX_CHAN, "component names (optional)");
 
 static void decode(void *inst, long period);
 static void encode(void *inst, long period);

@@ -26,11 +26,9 @@
 #include "hal.h"		/* HAL public API decls */
 
 /* module information */
-MODULE_AUTHOR("Stephen Wille Padnos");
-MODULE_DESCRIPTION("Multiple input watchdog for EMC HAL");
-MODULE_LICENSE("GPL");
+// Author: Stephen Wille Padnos
+// Description: Multiple input watchdog for EMC HAL
 int num_inputs=-1;			// must specify a count on the loadrt line
-RTAPI_MP_INT(num_inputs, "Number of inputs");
 
 /***********************************************************************
 *                STRUCTURES AND GLOBAL VARIABLES                       *

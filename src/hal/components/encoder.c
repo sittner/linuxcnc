@@ -65,18 +65,15 @@
 #include "hal.h"		/* HAL public API decls */
 
 /* module information */
-MODULE_AUTHOR("John Kasunich");
-MODULE_DESCRIPTION("Encoder Counter for EMC HAL");
-MODULE_LICENSE("GPL");
+// Author: John Kasunich
+// Description: Encoder Counter for EMC HAL
 
 static int num_chan;
 static int default_num_chan=3;
 static int howmany;
-RTAPI_MP_INT(num_chan, "number of encoder channels");
 
 #define MAX_CHAN 8
 char *names[MAX_CHAN] = {0,};
-RTAPI_MP_ARRAY_STRING(names, MAX_CHAN, "names of encoder");
 
 /***********************************************************************
 *                STRUCTURES AND GLOBAL VARIABLES                       *

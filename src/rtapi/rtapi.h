@@ -1,8 +1,8 @@
 #ifndef RTAPI_H
 #define RTAPI_H
 
-/** RTAPI is a library providing a uniform API for several real time
-    operating systems.  As of ver 2.0, RTLinux and RTAI are supported.
+/** RTAPI is a library providing a uniform API for realtime operations.
+    Only the POSIX/uspace implementation is supported.
 */
 /********************************************************************
 * Description:  rtapi.h
@@ -527,130 +527,6 @@ RTAPI_BEGIN_DECLS
     extern int rtapi_sem_try(int sem_id);
 
 /***********************************************************************
-*                        FIFO RELATED FUNCTIONS                        *
-************************************************************************/
-
-/** 'rtapi_fifo_new()' creates a realtime fifo. 'key' identifies the
-    fifo, all modules wishing to access the same fifo must use the same
-    key.  'module_id' is the ID of the module making the call (see
-    rtapi_init).  'size' is the depth of the fifo.  'mode' is either
-    'R' or 'W', to request either read or write access to the fifo.
-    On success, it returns a positive integer ID, which is used for
-    subsequent calls dealing with the fifo.  On failure, returns a
-    negative error code.  Call only from within user or init/cleanup
-    code, not from realtime tasks.
-*/
-
-/* NOTE - RTAI fifos require (stacksize >= fifosze + 256) to avoid
-   oops messages on removal.
-*/
-    extern int rtapi_fifo_new(int key, int module_id,
-	unsigned long int size, char mode);
-
-/** 'rtapi_fifo_delete()' is the counterpart to 'rtapi_fifo_new()'.
-    It closes the fifo associated with 'fifo_ID'.  'module_id' is the
-    ID of the calling module.  Returns status code.  Call only from
-    within user or init/cleanup code, not from realtime tasks.
-*/
-    extern int rtapi_fifo_delete(int fifo_id, int module_id);
-
-/** FIFO notes. These comments apply to both read and write functions.
-    A fifo is a character device, an int is typically four bytes long...
-    If less than four bytes are sent to the fifo, expect corrupt data
-    out of the other end !
-    The RTAI programming manual clearly states that the programmer is
-    responsible for the data format and integrity.
-
-    Additional NOTE:  IMHO you should be able to write any amount of
-    data to a fifo, from 1 byte up to (and even beyond) the size of
-    the fifo.  At a future date, the somewhat peculiar RTAI fifos
-    will be replaced with something that works better.   John Kasunich
-*/
-
-/** NOTE:  The fifo read and write functions operated differently in
-    realtime and user space.  The realtime versions do not block,
-    but the userspace ones do.  A future version of the RTAPI may
-    defined different names for the blocking and non-blocking
-    functions, but for now, just read the following docs carefully!
-*/
-
-/** 'rtapi_fifo_read()' reads data from 'fifo_id'.  'buf' is a buffer
-    for the data, and 'size' is the maximum number of bytes to read.
-    Returns the number of bytes actually read, or -EINVAL.  Does not
-    block.  If 'size' bytes are not available, it will read whatever is
-    available, and return that count (which could be zero).  Call only
-    from within a realtime task.
-*/
-
-/** 'rtapi_fifo_read()' reads data from 'fifo_id'.  'buf' is a buffer
-    for the data, and 'size' is the maximum number of bytes to read.
-    Returns the number of bytes actually read, or -EINVAL.  If
-    there is no data in the fifo, it blocks until data appears (or
-    a signal occurs).  If 'size' bytes are not available, it will
-    read whatever is available, and return that count (will be
-    greater than zero).  If interrupted by a signal or some other
-    error occurs, will return -EINVAL.
-*/
-
-    extern int rtapi_fifo_read(int fifo_id, char *buf,
-	unsigned long int size);
-
-/** 'rtapi_fifo_write()' writes data to 'fifo_id'. Up to 'size' bytes
-    are taken from the buffer at 'buf'.  Returns the number of bytes
-    actually written, or -EINVAL.  Does not block.  If 'size' bytes
-    of space are not available in the fifo, it will write as many bytes
-    as it can and return that count (which may be zero).
-*/
-
-/** 'rtapi_fifo_write()' writes data to 'fifo_id'. Up to 'size' bytes
-    are taken from the buffer at 'buf'.  Returns the number of bytes
-    actually written, or -EINVAL.  If 'size' bytes of space are
-    not available in the fifo, rtapi_fifo_write() may block, or it
-    may write as many bytes as it can and return that count (which
-    may be zero).
-*/
-
-    extern int rtapi_fifo_write(int fifo_id, char *buf,
-	unsigned long int size);
-
-/***********************************************************************
-*                    INTERRUPT RELATED FUNCTIONS                       *
-************************************************************************/
-
-/** NOTE: These interrupt related functions are only available in
-    realtime modules.  User processes may not call them!
-*/
-
-/** 'rtapi_assign_interrupt_handler()' is used to set up a handler for
-    a hardware interrupt.  'irq' is the interrupt number, and 'handler'
-    is a pointer to a function taking no arguments and returning void.
-    'handler will be called when the interrupt occurs.  'owner' is the
-    ID of the calling module (see rtapi_init).  Returns a status
-    code.  Note:  The simulated RTOS does not support interrupts.
-    Call only from within init/cleanup code, not from realtime tasks.
-*/
-    extern int rtapi_irq_new(unsigned int irq_num, int owner,
-	void (*handler) (void));
-
-/** 'rtapi_free_interrupt_handler()' removes an interrupt handler that
-    was previously installed by rtapi_assign_interrupt_handler(). 'irq'
-    is the interrupt number.  Removing a realtime module without freeing
-    any handlers it has installed will almost certainly crash the box.
-    Returns 0 or -EINVAL.  Call only from within
-    init/cleanup code, not from realtime tasks.
-*/
-    extern int rtapi_irq_delete(unsigned int irq_num);
-
-/** 'rtapi_enable_interrupt()' and 'rtapi_disable_interrupt()' are
-    are used to enable and disable interrupts, presumably ones that
-    have handlers assigned to them.  Returns a status code.  May be
-    called from init/cleanup code, and from within realtime tasks.
-
-*/
-    extern int rtapi_enable_interrupt(unsigned int irq);
-    extern int rtapi_disable_interrupt(unsigned int irq);
-
-/***********************************************************************
 *                        I/O RELATED FUNCTIONS                         *
 ************************************************************************/
 
@@ -671,82 +547,6 @@ RTAPI_BEGIN_DECLS
 #define rtapi_request_region(base, size, name) ((void*)-1)
 #define rtapi_release_region(base, size) ((void)0)
 
-/***********************************************************************
-*                      MODULE PARAMETER MACROS                         *
-************************************************************************/
-
-/* The API for module parameters has changed as the kernel evolved,
-   and will probably change again.  We define our own macro for
-   declaring parameters, so the code that uses RTAPI can ignore
-   the issue.
-*/
-
-/** RTAPI_MP_INT() declares a single integer module parameter.
-    RTAPI_MP_LONG() declares a single long module parameter.
-    RTAPI_MP_STRING() declares a single string module parameter.
-    RTAPI_MP_ARRAY_INT() declares an array of integer module parameters.
-    RTAPI_MP_ARRAY_LONG() declares an array of long module parameters.
-    RTAPI_MP_ARRAY_STRING() declares a single string module parameters.
-    'var' is the name of the variable used for the parameter, which
-    should be initialized with the default value(s) when it is declared.
-    'descr' is a short description of the parameter.
-    'num' is the number of elements in an array.
-*/
-
-/* --- MODULE_INFO / EXPORT infrastructure --- */
-
-#define EXPORT_SYMBOL(x) __attribute__((section(".rtapi_export"))) \
-    char rtapi_exported_##x[] = #x;
-
-#define EXPORT_SYMBOL_GPL(x) __attribute__((section(".rtapi_export"))) \
-    char rtapi_exported_##x[] = #x;
-
-#define MODULE_INFO1(t, a, c) __attribute__((section(".modinfo"))) \
-    t rtapi_info_##a = c; EXPORT_SYMBOL(rtapi_info_##a);
-
-#define MODULE_INFO2(t, a, b, c) __attribute__((section(".modinfo"))) \
-    t rtapi_info_##a##_##b = c; EXPORT_SYMBOL(rtapi_info_##a##_##b);
-
-#define MODULE_INFO2x(t, a, b, c) MODULE_INFO2(t,a,b,c)
-
-#define MODULE_PARM(v,t)             MODULE_INFO2(const char*, type, v, t) MODULE_INFO2(void*, address, v, &v)
-#define MODULE_PARM_DESC(v,t)        MODULE_INFO2(const char*, description, v, t)
-#define MODULE_LICENSE(s)            MODULE_INFO1(const char*, license, s)
-#define MODULE_AUTHOR(s)             MODULE_INFO1(const char*, author, s)
-#define MODULE_DESCRIPTION(s)        MODULE_INFO1(const char*, description, s)
-#define MODULE_SUPPORTED_DEVICE(s)   MODULE_INFO1(const char*, supported_device, s)
-#define MODULE_DEVICE_TABLE(x,y)     MODULE_INFO2(struct rtapi_pci_device_id*, device_table, x, y)
-#define MODULE_INFO(x,y)             MODULE_INFO2x(char*, x, __LINE__, y)
-
-/* --- RTAPI_MP_* parameter macros --- */
-
-#define RTAPI_STRINGIFY(x) #x
-
-#define RTAPI_MP_INT(var,descr)    \
-  MODULE_PARM(var,"i");            \
-  MODULE_PARM_DESC(var,descr);
-
-#define RTAPI_MP_LONG(var,descr)   \
-  MODULE_PARM(var,"l");            \
-  MODULE_PARM_DESC(var,descr);
-
-#define RTAPI_MP_STRING(var,descr) \
-  MODULE_PARM(var,"s");            \
-  MODULE_PARM_DESC(var,descr);
-
-#define RTAPI_MP_ARRAY(type, var, num, descr)      \
-  MODULE_PARM(var,type);                           \
-  MODULE_INFO2(int, size, var, num);               \
-  MODULE_PARM_DESC(var,descr);
-
-#define RTAPI_MP_ARRAY_INT(var,num,descr)          \
-  RTAPI_MP_ARRAY("i", var, num, descr);
-
-#define RTAPI_MP_ARRAY_LONG(var,num,descr)         \
-  RTAPI_MP_ARRAY("l", var, num, descr);
-
-#define RTAPI_MP_ARRAY_STRING(var,num,descr)       \
-  RTAPI_MP_ARRAY("s", var, num, descr);
 extern long int simple_strtol(const char *nptr, char **endptr, int base);
 
 #include <spawn.h>

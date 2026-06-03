@@ -97,17 +97,14 @@
 #include "hal.h"		/* HAL public API decls */
 
 /* module information */
-MODULE_AUTHOR("John Kasunich");
-MODULE_DESCRIPTION("Encoder Ratio Module for HAL");
-MODULE_LICENSE("GPL");
+// Author: John Kasunich
+// Description: Encoder Ratio Module for HAL
 static int num_chan;	/* number of channels*/
 static int default_num_chan = 1;
-RTAPI_MP_INT(num_chan, "number of channels");
 
 static int howmany;
 #define MAX_CHAN 8
 static char *names[MAX_CHAN] = {0,};
-RTAPI_MP_ARRAY_STRING(names,MAX_CHAN,"encoder_ratio names");
 
 /***********************************************************************
 *                STRUCTURES AND GLOBAL VARIABLES                       *

@@ -49,11 +49,9 @@
 #include "hal.h"		/* HAL public API decls */
 
 /* module information */
-MODULE_AUTHOR("Matt Shaver");
-MODULE_DESCRIPTION("Supply Component for EMC HAL");
-MODULE_LICENSE("GPL");
+// Author: Matt Shaver
+// Description: Supply Component for EMC HAL
 static int num_chan = 1;	/* number of channels - default = 1 */
-RTAPI_MP_INT(num_chan, "number of channels");
 
 /***********************************************************************
 *                STRUCTURES AND GLOBAL VARIABLES                       *

@@ -14,14 +14,6 @@
 * Last change: 
 ********************************************************************/
 
-#if defined(PM_PRINT_ERROR) && defined(rtai)
-#undef PM_PRINT_ERROR
-#endif
-
-#if defined(PM_DEBUG) && defined(rtai)
-#undef PM_DEBUG
-#endif
-
 #ifdef PM_PRINT_ERROR
 #define PM_DEBUG		/* have to have debug with printing */
 #include <stdio.h>

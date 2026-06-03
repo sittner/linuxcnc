@@ -154,9 +154,7 @@ extern int kinematicsSwitch(int switchkins_type);
 
 #define KINS_NOT_SWITCHABLE \
 extern int kinematicsSwitchable() {return 0;} \
-extern int kinematicsSwitch(int switchkins_type) {return 0;} \
-EXPORT_SYMBOL(kinematicsSwitchable); \
-EXPORT_SYMBOL(kinematicsSwitch);
+extern int kinematicsSwitch(int switchkins_type) {return 0;}
 
 
 // support for template for user-defined switchkins_type==2

@@ -51,13 +51,10 @@ func halGetLock() int        { return 0 }
 func halAlias(_, _, _ string) error { return ErrNoCGO }
 func halUnAlias(_, _ string) error  { return ErrNoCGO }
 
-func halLoadRT(_ string, _ []string) error { return ErrNoCGO }
-func halUnloadRT(_ string) error           { return ErrNoCGO }
-func halNewInst(_, _, _ string) error      { return ErrNoCGO }
-func halRtapiAppInit() error               { return ErrNoCGO }
-func halRtapiAppCleanup()                  {}
-func halRtapiInitializeApp()               {}
-
+func halNewInst(_, _, _ string) error { return ErrNoCGO }
+func halRtapiAppInit() error          { return ErrNoCGO }
+func halRtapiAppCleanup()             {}
+func halRtapiInitializeApp()          {}
 
 func halListPins(_ string) ([]string, error)       { return nil, ErrNoCGO }
 func halListSigs(_ string) ([]string, error)       { return nil, ErrNoCGO }

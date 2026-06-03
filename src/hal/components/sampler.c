@@ -61,13 +61,10 @@
 #include "rtapi_string.h"
 
 /* module information */
-MODULE_AUTHOR("John Kasunich");
-MODULE_DESCRIPTION("Realtime HAL Sampler");
-MODULE_LICENSE("GPL");
+// Author: John Kasunich
+// Description: Realtime HAL Sampler
 static char *cfg[MAX_SAMPLERS];	/* config string, no default */
-RTAPI_MP_ARRAY_STRING(cfg,MAX_SAMPLERS,"config string");
 static int depth[MAX_SAMPLERS];	/* depth of fifo, default 0 */
-RTAPI_MP_ARRAY_INT(depth,MAX_SAMPLERS,"fifo depth");
 
 /***********************************************************************
 *                STRUCTURES AND GLOBAL VARIABLES                       *

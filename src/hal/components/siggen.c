@@ -77,17 +77,14 @@
 #include <rtapi_string.h>
 
 /* module information */
-MODULE_AUTHOR("John Kasunich");
-MODULE_DESCRIPTION("Signal Generator Component for EMC HAL");
-MODULE_LICENSE("GPL");
+// Author: John Kasunich
+// Description: Signal Generator Component for EMC HAL
 static int num_chan;	/* number of channels */
 static int default_num_chan = 1;
 static int howmany;
-RTAPI_MP_INT(num_chan, "number of channels");
 
 #define MAX_CHAN 16
 static char *names[MAX_CHAN] = {0,};
-RTAPI_MP_ARRAY_STRING(names, MAX_CHAN, "names of siggen");
 
 /***********************************************************************
 *                STRUCTURES AND GLOBAL VARIABLES                       *

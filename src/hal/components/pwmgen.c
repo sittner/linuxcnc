@@ -72,12 +72,10 @@
 #define MAX_CHAN 8
 
 /* module information */
-MODULE_AUTHOR("John Kasunich");
-MODULE_DESCRIPTION("PWM/PDM Generator for EMC HAL");
-MODULE_LICENSE("GPL");
+// Author: John Kasunich
+// Description: PWM/PDM Generator for EMC HAL
 #define MAX_OUTPUT_TYPE 2
 int output_type[MAX_CHAN] = { -1, -1, -1, -1, -1, -1, -1, -1 };
-RTAPI_MP_ARRAY_INT(output_type, 8, "output types for up to 8 channels");
 
 /***********************************************************************
 *                STRUCTURES AND GLOBAL VARIABLES                       *

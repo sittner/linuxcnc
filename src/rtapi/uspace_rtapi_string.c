@@ -168,8 +168,3 @@ char **rtapi_argv_split(const char *str, int *argcp)
 	rtapi_argv_free(argv);
 	return NULL;
 }
-
-EXPORT_SYMBOL(rtapi_strdup);
-EXPORT_SYMBOL(rtapi_strndup);
-EXPORT_SYMBOL(rtapi_argv_split);
-EXPORT_SYMBOL(rtapi_argv_free);

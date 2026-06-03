@@ -4,80 +4,39 @@ CONVERTERS :=  \
     conv_s32_float.comp conv_s32_bit.comp conv_s32_u32.comp \
     conv_u32_float.comp conv_u32_bit.comp conv_u32_s32.comp
 
-# ---------------------------------------------------------------------------
-# Legacy components that stay with halcompile (explicit list)
-# These use features not supported by cmod or have special requirements
-# ---------------------------------------------------------------------------
-HALCOMPILE_COMP_NAMES := \
-    tpcomp
-# Reasons:
-#   tpcomp                - uses EXTRA_SETUP with HOMING_BASE include (motion controller integration)
-
 # Kinematics .comp modules: built via modcompile with gmi_provide kins.
 # Need the GMI kins API header path at compile time.
 CMOD_KINS_COMP_NAMES := millturn userkins xyzab_tdr_kins
 
-HALCOMPILE_COMPS := $(addprefix hal/components/, $(addsuffix .comp, $(HALCOMPILE_COMP_NAMES)))
-
 # ---------------------------------------------------------------------------
 # Components built via modcompile (cmod API, output to ../cmod/)
-# All .comp files except those in HALCOMPILE_COMPS
+# Exclude tpcomp (uses USE_TOPDIR includes incompatible with standalone cmod build)
 # ---------------------------------------------------------------------------
-CMOD_COMPS := $(filter-out $(HALCOMPILE_COMPS), $(sort $(wildcard hal/components/*.comp)))
+CMOD_COMPS := $(filter-out hal/components/tpcomp.comp, $(sort $(wildcard hal/components/*.comp)))
 CMOD_COMP_NAMES := $(patsubst hal/components/%.comp,%,$(CMOD_COMPS))
 CMOD_TARGETS := $(addprefix ../cmod/, $(addsuffix .so, $(CMOD_COMP_NAMES)))
 
-# Everything in HALCOMPILE_COMPS except tpcomp (which is special)
-COMPS := $(filter-out hal/components/tpcomp.comp, $(HALCOMPILE_COMPS))
-
-# Man pages: cmod components use modcompile, legacy use halcompile
-CMOD_MANPAGES := $(patsubst hal/components/%.comp, ../docs/man/man9/%.9, $(CMOD_COMPS))
-HALCOMPILE_MANPAGES := $(patsubst hal/components/%.comp, ../docs/man/man9/%.9, $(COMPS)) ../docs/man/man9/tpcomp.9
-COMP_MANPAGES := $(CMOD_MANPAGES) $(HALCOMPILE_MANPAGES)
+# Man pages via modcompile
+# Exclude legacy driver .comps that use unsupported features (option singleton, RTAPI_MP_ARRAY_INT)
+COMP_DRIVERS := $(filter-out hal/drivers/pcl720.comp hal/drivers/pluto_servo.comp hal/drivers/pluto_step.comp, $(wildcard hal/drivers/*.comp))
+COMP_MANPAGES := $(patsubst hal/components/%.comp, ../docs/man/man9/%.9, $(CMOD_COMPS))
 COMP_DRIVER_MANPAGES := $(patsubst hal/drivers/%.comp, ../docs/man/man9/%.9, $(COMP_DRIVERS))
 TARGETS += manpages
 GENERATED_MANPAGES += $(COMP_MANPAGES)
 GENERATED_MANPAGES += $(COMP_DRIVER_MANPAGES)
 .PHONY: manpages
-ifeq ($(TRIVIAL_BUILD),no)
--include $(patsubst %.comp, objects/%.mak, $(COMPS) $(COMP_DRIVERS))
-Makefile: $(patsubst %.comp, objects/%.mak, $(COMPS) $(COMP_DRIVERS))
-endif
 
-RTMODULES += $(patsubst hal/drivers/%.comp, %.o, $(patsubst hal/components/%.comp, %.o, $(COMPS) $(COMP_DRIVERS)))
-
-# Man pages for cmod components (use modcompile)
-$(CMOD_MANPAGES): ../docs/man/man9/%.9: hal/components/%.comp ../bin/modcompile
+$(COMP_MANPAGES): ../docs/man/man9/%.9: hal/components/%.comp ../bin/modcompile
 	$(ECHO) Making modcompile manpage $(notdir $@)
 	@mkdir -p $(dir $@)
 	$(Q)../bin/modcompile --document -o $@.new $< && preconv -r < $@.new > $@
 	$(RM) $@.new
 
-# Man pages for legacy halcompile components
-$(HALCOMPILE_MANPAGES): ../docs/man/man9/%.9: hal/components/%.comp ../bin/halcompile
-	$(ECHO) Making halcompile manpage $(notdir $@)
+$(COMP_DRIVER_MANPAGES): ../docs/man/man9/%.9: hal/drivers/%.comp ../bin/modcompile
+	$(ECHO) Making modcompile manpage $(notdir $@)
 	@mkdir -p $(dir $@)
-	$(Q)../bin/halcompile -U --document -o $@.new $< && preconv -r < $@.new > $@
+	$(Q)../bin/modcompile --document -o $@.new $< && preconv -r < $@.new > $@
 	$(RM) $@.new
-
-$(COMP_DRIVER_MANPAGES): ../docs/man/man9/%.9: hal/drivers/%.comp ../bin/halcompile
-	$(ECHO) Making halcompile manpage $(notdir $@)
-	@mkdir -p $(dir $@)
-	$(Q)../bin/halcompile -U --document -o $@ $<
-
-objects/%.mak: %.comp hal/components/Submakefile
-	$(ECHO) "Creating $(notdir $@)"
-	@mkdir -p $(dir $@)
-	$(Q)echo $(notdir $*)-objs := objects/$*.o > $@.tmp
-	$(Q)echo ../rtlib/$(notdir $*)$(MODULE_EXT): objects/rtobjects/$*.o >> $@.tmp
-	$(Q)mv -f $@.tmp $@
-
-objects/%.c: %.comp ../bin/halcompile
-	$(ECHO) "Preprocessing $(notdir $<)"
-	@mkdir -p $(dir $@)
-	$(Q)../bin/halcompile -U -o $@ $<
-
-modules: $(patsubst %.comp, objects/%.c, $(COMPS) $(COMP_DRIVERS))
 
 # keep this make target in 2.6, remove in 2.7 (just use 'clean-manpages' in 2.7+)
 clean-comp-manpages: clean-manpages

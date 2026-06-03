@@ -49,11 +49,9 @@
 #define MAX_GROUP 8
 #define STRINGIZE(x) #x
 #define MAX_GROUP_STR STRINGIZE(MAX_GROUP)
-MODULE_AUTHOR("John Kasunich");
-MODULE_DESCRIPTION("Debounce filter for EMC HAL");
-MODULE_LICENSE("GPL");
+// Author: John Kasunich
+// Description: Debounce filter for EMC HAL
 int cfg[MAX_GROUP] = {0,};
-RTAPI_MP_ARRAY_INT(cfg,MAX_GROUP,"Group size for up to "MAX_GROUP_STR" groups");
 
 /***********************************************************************
 *                STRUCTURES AND GLOBAL VARIABLES                       *

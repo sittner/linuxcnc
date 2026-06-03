@@ -66,15 +66,12 @@
 #define MAX_CHAN 8
 
 /* module information */
-MODULE_AUTHOR("John Kasunich");
-MODULE_DESCRIPTION("Simulated Encoder for EMC HAL");
-MODULE_LICENSE("GPL");
+// Author: John Kasunich
+// Description: Simulated Encoder for EMC HAL
 static int num_chan;
 static int default_num_chan = 1;
-RTAPI_MP_INT(num_chan, "number of 'sim_encoders'");
 static int howmany;
 static char *names[MAX_CHAN] = {0,};
-RTAPI_MP_ARRAY_STRING(names, MAX_CHAN, "names of sim_encoder");
 
 /***********************************************************************
 *                STRUCTURES AND GLOBAL VARIABLES                       *

@@ -588,15 +588,6 @@ void rtapi_release_firmware(const struct rtapi_firmware *fw) {
     free((void*)fw);
 }
 
-EXPORT_SYMBOL(rtapi_iounmap);
-EXPORT_SYMBOL(rtapi_pci_enable_device);
-EXPORT_SYMBOL(rtapi_pci_disable_device);
-EXPORT_SYMBOL(rtapi_pci_register_driver);
-EXPORT_SYMBOL(rtapi_pci_unregister_driver);
-EXPORT_SYMBOL(rtapi_pci_ioremap_bar);
-EXPORT_SYMBOL(rtapi_request_firmware);
-EXPORT_SYMBOL(rtapi_release_firmware);
-
 /* Initialize euid/ruid for with_root functions */
 void __attribute__((constructor)) rtapi_pci_init(void) {
     euid = geteuid();

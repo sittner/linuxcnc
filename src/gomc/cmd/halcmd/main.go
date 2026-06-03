@@ -146,9 +146,6 @@ Commands:
   unlinkp <pin>           Unlink pin from signal
   
   load <mod> [args]       Load cmod plugin
-  loadusr [-W] [-i] <cmd> Load user component
-  unloadusr <comp>        Unload user component
-  waitusr <comp>          Wait for user component
   
   newthread <n> <period>  Create thread (period in ns)
   delthread <name>        Delete thread
@@ -390,16 +387,6 @@ func executeCommand(args []string) error {
 	// Modules
 	case "load":
 		return cmdLoad(args)
-	case "loadrt":
-		return fmt.Errorf("loadrt is no longer supported; use 'load' for cmod plugins")
-	case "unloadrt":
-		return fmt.Errorf("unloadrt is no longer supported; use 'unload' instead")
-	case "loadusr":
-		return fmt.Errorf("loadusr is no longer supported; start user-space components externally")
-	case "unloadusr":
-		return fmt.Errorf("unloadusr is no longer supported; user-space components are managed externally")
-	case "waitusr":
-		return fmt.Errorf("waitusr is no longer supported; user-space components are managed externally")
 	case "unload":
 		return fmt.Errorf("unload is no longer supported; use 'unload' instead")
 
@@ -507,8 +494,6 @@ var commandHelp = map[string]string{
   Link two pins together (creates an implicit signal).`,
 	"unlinkp": `unlinkp <pin>
   Unlink a pin from its signal.`,
-	"loadrt": `loadrt is no longer supported; use 'load' for cmod plugins.`,
-	"unloadrt": `unloadrt is no longer supported; use 'unload' instead.`,
 	"load": `load <module> [args...]
   Load a cmod plugin module into gomc-server.`,
 	"unload": `unload is no longer supported.`,

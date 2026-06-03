@@ -25,12 +25,6 @@ int epp_wide = 1;
 int watchdog = 1;
 struct hal_parport_t portdata;
 
-RTAPI_MP_INT(ioaddr, "Address of parallel port where pluto-p is attached");
-RTAPI_MP_INT(ioaddr_hi,
-	"Secondary address of parallel port (0 to use ioaddr+0x400)");
-RTAPI_MP_INT(epp_wide, "Use 16- and 32-bit EPP transfers with hardware EPP");
-RTAPI_MP_INT(watchdog,
-	"Enable hardware watchdog to tristate outputs if EMC crashes");
 
 #ifndef llabs // linux/kernel.h may provide labs for realtime systems
 static int64_t llabs(int64_t l) { if(l < 0) return -l; return l; }

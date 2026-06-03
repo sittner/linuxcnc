@@ -48,11 +48,9 @@
 #include "hal.h"                /* HAL public API decls */
 
 /* module information */
-MODULE_AUTHOR("Chris Radek");
-MODULE_DESCRIPTION("Pulse Counter for EMC HAL");
-MODULE_LICENSE("GPL");
+// Author: Chris Radek
+// Description: Pulse Counter for EMC HAL
 static int num_chan = 1;        /* number of channels - default = 1 */
-RTAPI_MP_INT(num_chan, "number of channels");
 
 /***********************************************************************
 *                STRUCTURES AND GLOBAL VARIABLES                       *

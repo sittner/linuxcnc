@@ -126,13 +126,10 @@ typedef int                     BOOL;
 
 
 // Module information.
-MODULE_AUTHOR("Pete Vavaroutsos");
-MODULE_DESCRIPTION("Bridgeport BOSS PLC for EMC HAL");
-MODULE_LICENSE("GPL");
+// Author: Pete Vavaroutsos
+// Description: Bridgeport BOSS PLC for EMC HAL
 static unsigned long                    count = 1;
-RTAPI_MP_LONG(count, "Number of BOSS PLCs to instance");
 static int                              debug = 0;
-RTAPI_MP_INT(debug, "Enables optional params");
 
 
 /******************************************************************************

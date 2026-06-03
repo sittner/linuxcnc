@@ -139,20 +139,16 @@
 #include "hal.h"		/* HAL public API decls */
 
 /* module information */
-MODULE_AUTHOR("John Kasunich");
-MODULE_DESCRIPTION("PID Loop Component for EMC HAL with auto tune support");
-MODULE_LICENSE("GPL");
+// Author: John Kasunich
+// Description: PID Loop Component for EMC HAL with auto tune support
 static int num_chan;		/* number of channels */
 static int default_num_chan = 3;
-RTAPI_MP_INT(num_chan, "number of channels");
 
 static int howmany;
 #define MAX_CHAN 16
 char *names[MAX_CHAN] ={0,};
-RTAPI_MP_ARRAY_STRING(names, MAX_CHAN,"pid names");
 
 static int debug = 0;		/* flag to export optional params */
-RTAPI_MP_INT(debug, "enables optional params");
 
 #define NAME "PID"
 

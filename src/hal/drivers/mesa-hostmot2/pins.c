@@ -30,7 +30,6 @@
 
 
 int debug_pin_descriptors = 0;
-RTAPI_MP_INT(debug_pin_descriptors, "Developer/debug use only!  Enable debug logging of the HostMot2\nPin Descriptors.");
 
 
 

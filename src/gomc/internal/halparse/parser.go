@@ -678,10 +678,6 @@ func parseLine(tokens []string, loc SourceLoc) (Token, *ParseError) {
 	args := tokens[1:]
 
 	switch cmd {
-	case "loadrt":
-		return Token{}, &ParseError{Loc: loc, Msg: "loadrt is no longer supported; use 'load' for cmod plugins"}
-	case "loadusr":
-		return Token{}, &ParseError{Loc: loc, Msg: "loadusr is no longer supported; start user-space components externally"}
 	case "net":
 		return parseNet(args, loc)
 	case "setp":
@@ -728,14 +724,6 @@ func parseLine(tokens []string, loc SourceLoc) (Token, *ParseError) {
 		return parseLock(args, loc)
 	case "unlock":
 		return parseUnlock(args, loc)
-	case "unloadrt":
-		return Token{}, &ParseError{Loc: loc, Msg: "unloadrt is no longer supported; use 'unload' instead"}
-	case "unloadusr":
-		return Token{}, &ParseError{Loc: loc, Msg: "unloadusr is no longer supported; user-space components are managed externally"}
-	case "unload":
-		return Token{}, &ParseError{Loc: loc, Msg: "unload is no longer supported"}
-	case "waitusr":
-		return Token{}, &ParseError{Loc: loc, Msg: "waitusr is no longer supported; user-space components are managed externally"}
 	case "list":
 		return parseList(args, loc)
 	case "show":
