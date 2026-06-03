@@ -36,3 +36,18 @@ type RegisteredAPI struct {
 	Instance  string         // "default" — unique instance name within an API
 	Callbacks unsafe.Pointer // opaque — *tp_callbacks_t (cmod) or Go interface
 }
+
+// StreamConn represents a single WebSocket connection for stream_server.
+// The generated bridge calls WriteBinary to send data frames to the client.
+type StreamConn interface {
+	// WriteBinary sends a binary WebSocket frame. Returns error on disconnect.
+	WriteBinary(data []byte) error
+	// ReadBinary blocks until a binary frame is received. Returns data or error on disconnect.
+	ReadBinary() ([]byte, error)
+}
+
+// StreamServer is the interface that generated stream_server types implement.
+type StreamServer interface {
+	// ServeConn handles one WebSocket connection. Blocks until done.
+	ServeConn(conn StreamConn)
+}

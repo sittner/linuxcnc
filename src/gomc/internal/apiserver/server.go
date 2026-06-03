@@ -82,6 +82,16 @@ func (s *Server) SetLogger(logger *slog.Logger) {
 	s.logger = logger
 }
 
+// RegisterStream registers a stream_server endpoint.
+// Connections to /stream/{apiName}/{instanceName} will be handled by the server.
+func (s *Server) RegisterStream(apiName, instanceName string, server StreamServer) {
+	path := "/stream/" + apiName + "/" + instanceName
+	s.mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+		s.handleStreamUpgrade(w, r, server)
+	})
+	s.logger.Info("registered stream server", "api", apiName, "instance", instanceName, "path", path)
+}
+
 // handleAPIRequest is the generic REST dispatcher.
 // URL format: /api/v1/{instance}/{func-path...}
 func (s *Server) handleAPIRequest(w http.ResponseWriter, r *http.Request) {

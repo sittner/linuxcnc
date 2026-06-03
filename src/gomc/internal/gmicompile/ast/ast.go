@@ -42,12 +42,13 @@ type API struct {
 	RestExport bool   // Whether to expose via REST from @rest_export directive
 	Pos        Pos    // Position of @api directive
 
-	Consts    []Const
-	Enums     []Enum
-	Types     []Type
-	Callbacks []Callback
-	Imports   []Import
-	Funcs     []Func
+	Consts        []Const
+	Enums         []Enum
+	Types         []Type
+	Callbacks     []Callback
+	Imports       []Import
+	Funcs         []Func
+	StreamServers []StreamServer
 }
 
 // ---------------------------------------------------------------------------
@@ -236,4 +237,26 @@ type Param struct {
 	IsOut bool // output-only parameter (out keyword) — caller receives value
 	IsPtr bool // passed as opaque typed pointer (ptr keyword) — no marshaling
 	Pos   Pos
+}
+
+// ---------------------------------------------------------------------------
+// StreamServer — bidirectional streaming endpoint
+// ---------------------------------------------------------------------------
+
+// StreamServer represents a per-connection streaming interface.
+// The generated bridge spawns one goroutine per WebSocket connection.
+// The cmod implements the callback functions (new_conn, closed_conn,
+// poll_transmit / data_received).
+type StreamServer struct {
+	Name  string // stream server name (e.g. "hal_sampler")
+	Pos   Pos
+	Funcs []StreamFunc // callback functions in this stream server
+}
+
+// StreamFunc represents a single function in a stream_server block.
+type StreamFunc struct {
+	Name   string
+	Pos    Pos
+	Params []Param
+	Return *TypeRef // nil if void
 }

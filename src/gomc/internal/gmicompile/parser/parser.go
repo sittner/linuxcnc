@@ -93,6 +93,12 @@ func (p *Parser) parseAPI() *ast.API {
 				pendingAnns = nil
 			}
 			api.Callbacks = append(api.Callbacks, p.parseCallback())
+		case p.cur.Type == STREAM_SERVER:
+			if len(pendingAnns) > 0 {
+				p.errorf("annotations before stream_server are not supported")
+				pendingAnns = nil
+			}
+			api.StreamServers = append(api.StreamServers, p.parseStreamServer())
 		case p.cur.Type == FUNC:
 			fn := p.parseFunc(pendingAnns)
 			pendingAnns = nil
@@ -271,6 +277,66 @@ func (p *Parser) parseCallback() ast.Callback {
 	}
 
 	return cb
+}
+
+func (p *Parser) parseStreamServer() ast.StreamServer {
+	pos := p.pos()
+	p.advance() // skip "stream_server"
+	name := p.cur.Text
+	p.advance()
+
+	ss := ast.StreamServer{Name: name, Pos: pos}
+	p.expect(LBRACE)
+
+	for p.cur.Type != RBRACE && p.cur.Type != EOF {
+		sf := p.parseStreamFunc()
+		ss.Funcs = append(ss.Funcs, sf)
+	}
+	p.expect(RBRACE)
+	return ss
+}
+
+func (p *Parser) parseStreamFunc() ast.StreamFunc {
+	pos := p.pos()
+	name := p.cur.Text
+	p.advance()
+
+	sf := ast.StreamFunc{Name: name, Pos: pos}
+
+	p.expect(LPAREN)
+	for p.cur.Type != RPAREN && p.cur.Type != EOF {
+		ppos := p.pos()
+		pname := p.cur.Text
+		p.advance()
+		p.expect(COLON)
+		ptype := p.parseTypeRef()
+		byref := false
+		isPtr := false
+		isOut := false
+		if p.cur.Type == IDENT && p.cur.Text == "byref" {
+			byref = true
+			p.advance()
+		} else if p.cur.Type == IDENT && p.cur.Text == "out" {
+			isOut = true
+			p.advance()
+		} else if p.cur.Type == IDENT && p.cur.Text == "ptr" {
+			isPtr = true
+			p.advance()
+		}
+		sf.Params = append(sf.Params, ast.Param{Name: pname, Type: ptype, ByRef: byref, IsOut: isOut, IsPtr: isPtr, Pos: ppos})
+		if p.cur.Type == COMMA {
+			p.advance()
+		}
+	}
+	p.expect(RPAREN)
+
+	if p.cur.Type == ARROW {
+		p.advance()
+		ret := p.parseTypeRef()
+		sf.Return = &ret
+	}
+
+	return sf
 }
 
 func (p *Parser) parseFunc(anns []annotation) ast.Func {

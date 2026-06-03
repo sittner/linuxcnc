@@ -972,17 +972,19 @@ Usage:
     modcompile gmi [options] file.gmi...
 
 Options:
-    --help           Show this help message
-    --parse          Parse only — print AST as JSON
-    --server-c       Generate C server header only (types, callback typedefs)
-    --server-meta    Generate Go META dispatch (cgo types, converters, dispatch, init)
-    --server-go      Generate Go provider interface + cbridge
-    --client-c       Generate C REST client (header + source)
-    --client-go      Generate Go REST client
-    --client-python  Generate Python REST client
-    --client-ts      Generate TypeScript REST client
-    --client-ts-ws   Generate TypeScript WebSocket watch client
-    -o PATH          Output file or directory
+    --help              Show this help message
+    --parse             Parse only — print AST as JSON
+    --server-c          Generate C server header only (types, callback typedefs)
+    --server-meta       Generate Go META dispatch (cgo types, converters, dispatch, init)
+    --server-go         Generate Go provider interface + cbridge
+    --client-c          Generate C REST client (header + source)
+    --client-go         Generate Go REST client
+    --client-python     Generate Python REST client
+    --client-ts         Generate TypeScript REST client
+    --client-ts-ws      Generate TypeScript WebSocket watch client
+    --stream-server-c   Generate C header for stream_server blocks
+    --stream-server-go  Generate Go bridge for stream_server blocks
+    -o PATH             Output file or directory
 `
 
 type gmiMode int
@@ -1000,6 +1002,8 @@ const (
 	gmiModeClientTS
 	gmiModeClientTSWS
 	gmiModeClientCgo
+	gmiModeStreamServerC
+	gmiModeStreamServerGo
 )
 
 func cmdGMI(args []string) {
@@ -1042,6 +1046,10 @@ func cmdGMI(args []string) {
 			m = gmiModeClientTSWS
 		case "--client-cgo":
 			m = gmiModeClientCgo
+		case "--stream-server-c":
+			m = gmiModeStreamServerC
+		case "--stream-server-go":
+			m = gmiModeStreamServerGo
 		case "-o":
 			if i+1 < len(args) {
 				i++
@@ -1129,6 +1137,16 @@ func processGMIFile(file string, m gmiMode, outputPath string) error {
 			return fmt.Errorf("%s: --client-ts-ws requires at least one @watch function", file)
 		}
 		return gmiGenerateClientTSWS(api, outputPath)
+	case gmiModeStreamServerC:
+		if !gmicgen.HasStreamServers(api) {
+			return fmt.Errorf("%s: --stream-server-c requires at least one stream_server block", file)
+		}
+		return gmiGenerateStreamServerC(api, outputPath)
+	case gmiModeStreamServerGo:
+		if !gmicgen.HasStreamServers(api) {
+			return fmt.Errorf("%s: --stream-server-go requires at least one stream_server block", file)
+		}
+		return gmiGenerateStreamServerGo(api, outputPath)
 	}
 	return nil
 }
@@ -1448,6 +1466,49 @@ func gmiGenerateClientCgo(api *gmiast.API, outputPath string) error {
 	defer f.Close()
 
 	if err := gmicgen.GenerateClientCgo(f, api, pkgName); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stderr, "generated %s\n", outputPath)
+	return nil
+}
+
+func gmiGenerateStreamServerC(api *gmiast.API, outputPath string) error {
+	if outputPath == "" {
+		outputPath = api.Name + "_stream_api.h"
+	}
+
+	f, err := os.Create(outputPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if _, err := gmicgen.GenerateStreamServerHeader(f, api); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stderr, "generated %s\n", outputPath)
+	return nil
+}
+
+func gmiGenerateStreamServerGo(api *gmiast.API, outputPath string) error {
+	if outputPath == "" {
+		outputPath = api.Name + "_stream.go"
+	}
+
+	pkgName := api.Name
+	if dir := filepath.Dir(outputPath); dir != "." && dir != "" {
+		pkgName = filepath.Base(dir)
+	}
+
+	f, err := os.Create(outputPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if _, err := gmicgen.GenerateStreamServerGo(f, api, pkgName); err != nil {
 		return err
 	}
 

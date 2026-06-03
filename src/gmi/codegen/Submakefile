@@ -662,7 +662,29 @@ $(GMI_HALCMD_CLIENT_GO): $(GMI_HALCMD_IDL) $(GMI_HALCMD_GEN)/halcmd_api.h $(GMIC
 	$(Q)$(GMICOMPILE) --client-go $(GMI_HALCMD_IDL) -o $(GMI_HALCMD_CLIENT_GO)
 
 TARGETS += $(GMI_HALCMD_CLIENT_GO)
+# --- hal_sampler stream server ---
 
+GMI_HAL_SAMPLER_IDL := gmi/idl/hal_sampler.gmi
+GMI_HAL_SAMPLER_GEN := gomc/generated/gmi/hal_sampler
+
+$(GMI_HAL_SAMPLER_GEN)/hal_sampler_stream_api.h: $(GMI_HAL_SAMPLER_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI hal_sampler stream from $(GMI_HAL_SAMPLER_IDL)"
+	@mkdir -p $(GMI_HAL_SAMPLER_GEN)
+	$(Q)$(GMICOMPILE) --stream-server-c $(GMI_HAL_SAMPLER_IDL) -o $(GMI_HAL_SAMPLER_GEN)/hal_sampler_stream_api.h
+
+TARGETS += $(GMI_HAL_SAMPLER_GEN)/hal_sampler_stream_api.h
+
+# --- hal_streamer stream server ---
+
+GMI_HAL_STREAMER_IDL := gmi/idl/hal_streamer.gmi
+GMI_HAL_STREAMER_GEN := gomc/generated/gmi/hal_streamer
+
+$(GMI_HAL_STREAMER_GEN)/hal_streamer_stream_api.h: $(GMI_HAL_STREAMER_IDL) $(GMICOMPILE_BIN)
+	$(ECHO) "Generating GMI hal_streamer stream from $(GMI_HAL_STREAMER_IDL)"
+	@mkdir -p $(GMI_HAL_STREAMER_GEN)
+	$(Q)$(GMICOMPILE) --stream-server-c $(GMI_HAL_STREAMER_IDL) -o $(GMI_HAL_STREAMER_GEN)/hal_streamer_stream_api.h
+
+TARGETS += $(GMI_HAL_STREAMER_GEN)/hal_streamer_stream_api.h
 # ═══════════════════════════════════════════════════════════════════════════════
 
 clean: gmi-codegen-clean

@@ -23,6 +23,7 @@ const (
 	FUNC
 	CONST
 	CALLBACK
+	STREAM_SERVER
 
 	// Punctuation
 	LBRACE   // {
@@ -216,6 +217,8 @@ func (s *Scanner) keyword(text string) TokenType {
 		return CONST
 	case "callback":
 		return CALLBACK
+	case "stream_server":
+		return STREAM_SERVER
 	}
 	return IDENT
 }
