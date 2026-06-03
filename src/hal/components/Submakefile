@@ -373,6 +373,34 @@ modules: $(CMOD_USER_TARGETS)
 TARGETS += ../cmod/matrix_kb.so
 modules: ../cmod/matrix_kb.so
 
+# sendkeys.so — hand-written cmod (uinput virtual keyboard)
+../cmod/sendkeys.so: hal/user_comps/sendkeys.c \
+                     $(wildcard gomc/pkg/cmodule/gomc_*.h) \
+                     | headers
+	$(ECHO) "Compiling cmod sendkeys.so"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -fPIC -Os -Wall -shared \
+	    -DUSPACE -D_GNU_SOURCE \
+	    -I. -Igomc/pkg/cmodule \
+	    -o $@ hal/user_comps/sendkeys.c \
+	    -lpthread
+TARGETS += ../cmod/sendkeys.so
+modules: ../cmod/sendkeys.so
+
+# shuttle.so — hand-written cmod (Contour Design USB jog devices)
+../cmod/shuttle.so: hal/user_comps/shuttle.c \
+                    $(wildcard gomc/pkg/cmodule/gomc_*.h) \
+                    | headers
+	$(ECHO) "Compiling cmod shuttle.so"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -fPIC -Os -Wall -shared \
+	    -DUSPACE -D_GNU_SOURCE \
+	    -I. -Igomc/pkg/cmodule \
+	    -o $@ hal/user_comps/shuttle.c \
+	    -lpthread
+TARGETS += ../cmod/shuttle.so
+modules: ../cmod/shuttle.so
+
 TARGETS += ../cmod/lcd.so
 modules: ../cmod/lcd.so
 

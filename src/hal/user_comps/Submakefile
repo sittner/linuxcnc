@@ -21,14 +21,7 @@ PYTARGETS += $(patsubst %, ../bin/%, $(USER_COMP_PY))
 
 
 
-ifeq ($(HIDRAW_H_USABLE),yes)
-SHUTTLE_SRC = hal/user_comps/shuttle.c
-USERSRCS += $(SHUTTLE_SRC)
-../bin/shuttle: $(call TOOBJS, $(SHUTTLE_SRC)) ../lib/liblinuxcnchal.so.0
-	$(ECHO) Linking $(notdir $@)
-	$(Q)$(CC) $(LDFLAGS) -o $@ $^
-TARGETS += ../bin/shuttle
-endif
+# shuttle: now built as cmod (see hal/components/Submakefile)
 
 ifdef HAVE_LIBUSB10
 XHC_HB04_SRC = hal/user_comps/xhc-hb04.cc
@@ -40,12 +33,7 @@ $(call TOOBJSDEPS, $(XHC_HB04_SRC)) : EXTRAFLAGS += $(LIBUSB10_CFLAGS)
 TARGETS += ../bin/xhc-hb04
 endif # HAVE_LIBUSB10
 
-SENDKEYS_SRC = hal/user_comps/sendkeys.c
-USERSRCS += $(SENDKEYS_SRC)
-../bin/sendkeys: $(call TOOBJS, $(SENDKEYS_SRC)) ../lib/liblinuxcnchal.so.0
-	$(ECHO) Linking $(notdir $@)
-	$(Q)$(CC) $(LDFLAGS) -o $@ $^
-TARGETS += ../bin/sendkeys
+# sendkeys: now built as cmod (see hal/components/Submakefile)
 
 $(patsubst ./hal/user_comps/%,../include/%,$(wildcard ./hal/user_comps/*.h)): ../include/%.h: ./hal/user_comps/%.h
 	cp $^ $@
