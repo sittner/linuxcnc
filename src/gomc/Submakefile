@@ -139,6 +139,7 @@ gomc/go.mod: gomc/go.mod.in $(wildcard gomc/external/*/go.deps)
 	else \
 		cp $< $@; \
 	fi
+	$(Q)cd gomc && $(GO) mod download
 
 $(IMPORTS_GENERATED): gomc/packages.conf ../bin/modcompile $(GMI_ALL_GEN_GO)
 	$(Q)cd gomc && $(TOP)/bin/modcompile regenerate-imports
@@ -171,11 +172,11 @@ $(IMPORTS_GENERATED): gomc/packages.conf ../bin/modcompile $(GMI_ALL_GEN_GO)
 
 ../bin/halsampler: $(GOMC_SRC_BASE) gomc/cmd/halsampler/main.go
 	$(ECHO) Building halsampler
-	$(Q)cd gomc && CGO_ENABLED=0 $(GO) build -o $(TOP)/bin/halsampler ./cmd/halsampler
+	$(Q)cd gomc && CGO_ENABLED=0 GOFLAGS=-mod=mod $(GO) build -o $(TOP)/bin/halsampler ./cmd/halsampler
 
 ../bin/halstreamer: $(GOMC_SRC_BASE) gomc/cmd/halstreamer/main.go
 	$(ECHO) Building halstreamer
-	$(Q)cd gomc && CGO_ENABLED=0 $(GO) build -o $(TOP)/bin/halstreamer ./cmd/halstreamer
+	$(Q)cd gomc && CGO_ENABLED=0 GOFLAGS=-mod=mod $(GO) build -o $(TOP)/bin/halstreamer ./cmd/halstreamer
 
 TARGETS += ../bin/halsampler ../bin/halstreamer
 

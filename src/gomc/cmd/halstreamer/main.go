@@ -39,7 +39,7 @@ func main() {
 	flag.IntVar(&numLines, "n", -1, "number of lines to send (-1 = all)")
 	flag.Parse()
 
-	instance := "streamer.0"
+	instance := "streamer"
 	if flag.NArg() > 0 {
 		instance = flag.Arg(0)
 	}

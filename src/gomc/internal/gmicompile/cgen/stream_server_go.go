@@ -76,6 +76,10 @@ func (g *streamServerGoGen) emitCgoPreamble() {
 		for _, fn := range ss.Funcs {
 			g.emitCallWrapper(ss, fn)
 		}
+		// Emit cfg accessor (CGO can't expose char* struct fields directly)
+		g.printf("static inline char *%s_get_cfg(%s_stream_callbacks_t *cb) {\n", ss.Name, ss.Name)
+		g.printf("    return cb->cfg;\n")
+		g.printf("}\n\n")
 	}
 
 	g.printf("*/\n")
@@ -109,16 +113,33 @@ func (g *streamServerGoGen) emitCallWrapper(ss ast.StreamServer, fn ast.StreamFu
 }
 
 func (g *streamServerGoGen) emitImports() {
+	// Check if any stream server uses poll_transmit (needs time package)
+	needsTime := false
+	for _, ss := range g.api.StreamServers {
+		for _, fn := range ss.Funcs {
+			if fn.Name == "poll_transmit" {
+				needsTime = true
+			}
+		}
+	}
+
 	g.printf("import (\n")
 	g.printf("\t\"sync\"\n")
 	g.printf("\t\"sync/atomic\"\n")
+	if needsTime {
+		g.printf("\t\"time\"\n")
+	}
 	g.printf("\t\"unsafe\"\n")
 	g.printf("\n")
 	g.printf("\t\"github.com/sittner/linuxcnc/src/gomc/internal/apiserver\"\n")
 	g.printf(")\n\n")
 	g.printf("var _ unsafe.Pointer\n")
 	g.printf("var _ sync.Mutex\n")
-	g.printf("var _ atomic.Uint32\n\n")
+	g.printf("var _ atomic.Uint32\n")
+	if needsTime {
+		g.printf("var _ time.Duration\n")
+	}
+	g.printf("\n")
 }
 
 func (g *streamServerGoGen) emitStreamServerType(ss ast.StreamServer) {
@@ -166,14 +187,27 @@ func (g *streamServerGoGen) emitServeConn(ss ast.StreamServer) {
 	g.printf("\tdefer C.%s_call_closed_conn(s.cb, C.uint32_t(connID))\n", ss.Name)
 	g.printf("\n")
 
+	// Send config header if cfg is set
+	g.printf("\tif cfgStr := C.%s_get_cfg(s.cb); cfgStr != nil {\n", ss.Name)
+	g.printf("\t\thdr := \"cfg:\" + C.GoString(cfgStr)\n")
+	g.printf("\t\tif err := conn.WriteBinary([]byte(hdr)); err != nil {\n")
+	g.printf("\t\t\treturn\n")
+	g.printf("\t\t}\n")
+	g.printf("\t}\n")
+	g.printf("\n")
+
 	if hasPollTransmit {
 		// Transmit loop: poll C for data, send to client
 		g.printf("\tbuf := make([]byte, 4096)\n")
 		g.printf("\tfor {\n")
 		g.printf("\t\tn := C.%s_call_poll_transmit(s.cb, C.uint32_t(connID),\n", ss.Name)
 		g.printf("\t\t\tunsafe.Pointer(&buf[0]), C.int32_t(len(buf)))\n")
-		g.printf("\t\tif n <= 0 {\n")
+		g.printf("\t\tif n < 0 {\n")
 		g.printf("\t\t\tbreak\n")
+		g.printf("\t\t}\n")
+		g.printf("\t\tif n == 0 {\n")
+		g.printf("\t\t\ttime.Sleep(time.Millisecond)\n")
+		g.printf("\t\t\tcontinue\n")
 		g.printf("\t\t}\n")
 		g.printf("\t\tif err := conn.WriteBinary(buf[:n]); err != nil {\n")
 		g.printf("\t\t\tbreak\n")

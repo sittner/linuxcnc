@@ -38,7 +38,7 @@ func main() {
 	flag.BoolVar(&showTag, "t", false, "print sample number")
 	flag.Parse()
 
-	instance := "sampler.0"
+	instance := "sampler"
 	if flag.NArg() > 0 {
 		instance = flag.Arg(0)
 	}

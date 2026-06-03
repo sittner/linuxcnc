@@ -115,6 +115,11 @@ func (l *Launcher) Run() (runErr error) {
 	// Initialize the API registry so cmod plugins can register/lookup APIs.
 	apiserver.SetDefaultRegistry(apiserver.NewRegistry())
 
+	// Create the API server early so that stream_server registrations
+	// from cmod plugins (which happen during HAL file loading) can find it.
+	// The server won't start listening until startAPIServer() is called later.
+	l.createAPIServer()
+
 	// Register the halcmd REST API handler (uses internal HAL access, not liblinuxcnchal.so).
 	if err := halrest.Register(apiserver.DefaultRegistry()); err != nil {
 		l.logger.Warn("failed to register halcmd REST API", "error", err)

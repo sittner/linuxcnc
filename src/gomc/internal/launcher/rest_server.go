@@ -15,10 +15,10 @@ const (
 	defaultRESTAddr = "127.0.0.1:5080"
 )
 
-// startAPIServer starts the REST API server in the background.
-// The listen address is read from [GMC]REST_ADDR in the INI file,
-// defaulting to "127.0.0.1:5080".
-func (l *Launcher) startAPIServer() {
+// createAPIServer creates the API server instance and sets it as the
+// default. Called early in startup so that stream_server registrations
+// from cmod plugins can find it. Does not start listening.
+func (l *Launcher) createAPIServer() {
 	addr := defaultRESTAddr
 	if l.ini != nil {
 		if v := l.ini.Get("GMC", "REST_ADDR"); v != "" {
@@ -28,13 +28,25 @@ func (l *Launcher) startAPIServer() {
 
 	reg := apiserver.DefaultRegistry()
 	if reg == nil {
-		l.logger.Warn("no API registry available, REST server not started")
+		l.logger.Warn("no API registry available, API server not created")
 		return
 	}
 
 	l.apiServer = apiserver.NewServer(reg, addr)
 	l.apiServer.SetLogger(l.logger)
 	apiserver.SetDefaultServer(l.apiServer)
+}
+
+// startAPIServer starts the REST API server in the background.
+// The listen address is read from [GMC]REST_ADDR in the INI file,
+// defaulting to "127.0.0.1:5080".
+func (l *Launcher) startAPIServer() {
+	if l.apiServer == nil {
+		l.createAPIServer()
+	}
+	if l.apiServer == nil {
+		return
+	}
 
 	// Add WebSocket watch endpoint if a watch registry is available
 	watchReg := apiserver.DefaultWatchRegistry()
@@ -63,6 +75,14 @@ func (l *Launcher) startAPIServer() {
 	} else {
 		l.logger.Warn("EMC2WebAppDir not set, web apps disabled")
 	}
+
+	addr := defaultRESTAddr
+	if l.ini != nil {
+		if v := l.ini.Get("GMC", "REST_ADDR"); v != "" {
+			addr = v
+		}
+	}
+	l.apiServer.SetAddr(addr)
 
 	go func() {
 		l.logger.Info("starting REST API server", "addr", addr)

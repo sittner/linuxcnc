@@ -64,6 +64,7 @@ func (g *streamServerCGen) emitStreamServer(ss ast.StreamServer) {
 	// Emit callbacks struct
 	g.printf("typedef struct {\n")
 	g.printf("    void *ctx;\n")
+	g.printf("    char *cfg;  // config string sent to client on connect (e.g. \"fff\")\n")
 	for _, fn := range ss.Funcs {
 		g.printf("    %s_%s_fn %s;\n", prefix, fn.Name, fn.Name)
 	}

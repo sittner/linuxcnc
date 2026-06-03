@@ -52,6 +52,11 @@ func NewServer(registry *Registry, addr string) *Server {
 	return s
 }
 
+// SetAddr updates the listen address before ListenAndServe is called.
+func (s *Server) SetAddr(addr string) {
+	s.server.Addr = addr
+}
+
 // ListenAndServe starts the HTTP server. Blocks until the server stops.
 func (s *Server) ListenAndServe() error {
 	return s.server.ListenAndServe()
@@ -83,9 +88,9 @@ func (s *Server) SetLogger(logger *slog.Logger) {
 }
 
 // RegisterStream registers a stream_server endpoint.
-// Connections to /stream/{apiName}/{instanceName} will be handled by the server.
+// Connections to {prefix}/stream/{apiName}/{instanceName} will be handled by the server.
 func (s *Server) RegisterStream(apiName, instanceName string, server StreamServer) {
-	path := "/stream/" + apiName + "/" + instanceName
+	path := s.prefix + "/stream/" + apiName + "/" + instanceName
 	s.mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 		s.handleStreamUpgrade(w, r, server)
 	})

@@ -401,6 +401,7 @@ int New(const cmod_env_t *env, const char *name,
 
     // Register stream server callbacks
     priv->stream_cb.ctx = priv;
+    priv->stream_cb.cfg = inst->pin_types;
     priv->stream_cb.new_conn = on_new_conn;
     priv->stream_cb.closed_conn = on_closed_conn;
     priv->stream_cb.poll_transmit = on_poll_transmit;
