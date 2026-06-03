@@ -42,6 +42,7 @@ oprofile*
 *.log
 position.txt
 # *.9
+docs/man/man9/sim_torch.9
 *.glade.h
 # Ignore test results
 *.result

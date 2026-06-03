@@ -762,12 +762,8 @@ install-python: install-dirs
 	$(EXE) ../bin/stepconf $(DESTDIR)$(bindir)
 	$(EXE) ../bin/pncconf $(DESTDIR)$(bindir)
 	$(EXE) ../bin/pyui $(DESTDIR)$(bindir)
-	$(EXE) ../bin/hal_input $(DESTDIR)$(bindir)
-	$(EXE) ../bin/mitsub_vfd $(DESTDIR)$(bindir)
 	$(EXE) ../bin/mqtt-publisher $(DESTDIR)$(bindir)
 	$(EXE) ../bin/z_level_compensation $(DESTDIR)$(bindir)
-	$(EXE) ../bin/pmx485 $(DESTDIR)$(bindir)
-	$(EXE) ../bin/sim-torch $(DESTDIR)$(bindir)
 	$(EXE) ../bin/pyvcp $(DESTDIR)$(bindir)
 	$(EXE) ../bin/gladevcp $(DESTDIR)$(bindir)
 	$(EXE) ../bin/axis $(DESTDIR)$(bindir)
@@ -783,7 +779,6 @@ install-python: install-dirs
 	$(EXE) ../lib/python/qtvcp/designer/install_script $(DESTDIR)$(SITEPY)/qtvcp/designer/
 	$(EXE) ../bin/gmoccapy $(DESTDIR)$(bindir)
 	$(EXE) ../bin/teach-in $(DESTDIR)$(bindir)
-	$(EXE) ../bin/scorbot-er-3 $(DESTDIR)$(bindir)
 	$(EXE) $(patsubst %.py,../bin/%,$(VISMACH_PY)) $(DESTDIR)$(bindir)
 	$(EXE) $(patsubst %.py,../bin/%,$(QTPLASMAC_PY)) $(DESTDIR)$(bindir)
 	$(FILE) ../share/linuxcnc/linuxcnc-wizard.gif $(DESTDIR)$(prefix)/share/linuxcnc
