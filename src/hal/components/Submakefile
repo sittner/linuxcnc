@@ -401,6 +401,22 @@ modules: ../cmod/sendkeys.so
 TARGETS += ../cmod/shuttle.so
 modules: ../cmod/shuttle.so
 
+# xhc-hb04.so — hand-written cmod (XHC-HB04 wireless MPG pendant)
+ifdef HAVE_LIBUSB10
+../cmod/xhc-hb04.so: hal/user_comps/xhc-hb04.c \
+                      $(wildcard gomc/pkg/cmodule/gomc_*.h) \
+                      | headers ../lib/libiniparse.so
+	$(ECHO) "Compiling cmod xhc-hb04.so"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -fPIC -Os -Wall -shared \
+	    -DUSPACE -D_GNU_SOURCE \
+	    -I. -Igomc/pkg/cmodule -Ilibnml/inifile -I../include \
+	    -o $@ hal/user_comps/xhc-hb04.c \
+	    -lpthread $(LIBUSB10_CFLAGS) $(LIBUSB10_LIBS) -L../lib -liniparse
+TARGETS += ../cmod/xhc-hb04.so
+modules: ../cmod/xhc-hb04.so
+endif # HAVE_LIBUSB10
+
 TARGETS += ../cmod/lcd.so
 modules: ../cmod/lcd.so
 
