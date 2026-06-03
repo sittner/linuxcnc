@@ -459,6 +459,20 @@ modules: ../cmod/scorbot-er-3.so
 TARGETS += ../cmod/pmx485.so
 modules: ../cmod/pmx485.so
 
+# mitsub_vfd.so — hand-written cmod (Mitsubishi VFD COMPUTER-LINK driver)
+../cmod/mitsub_vfd.so: hal/user_comps/mitsub_vfd.c \
+                       $(wildcard gomc/pkg/cmodule/gomc_*.h) \
+                       | headers
+	$(ECHO) "Compiling cmod mitsub_vfd.so"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) -fPIC -Os -Wall -shared \
+	    -DUSPACE -D_GNU_SOURCE \
+	    -I. -Igomc/pkg/cmodule -I../include \
+	    -o $@ hal/user_comps/mitsub_vfd.c \
+	    -lpthread -lm
+TARGETS += ../cmod/mitsub_vfd.so
+modules: ../cmod/mitsub_vfd.so
+
 TARGETS += ../cmod/lcd.so
 modules: ../cmod/lcd.so
 
