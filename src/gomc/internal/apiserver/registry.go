@@ -278,6 +278,19 @@ func DefaultWatchRegistry() *WatchRegistry {
 	return defaultWatchRegistry
 }
 
+// defaultServer is the package-level API server for stream endpoint registration.
+var defaultServer *Server
+
+// SetDefaultServer sets the package-level server.
+func SetDefaultServer(s *Server) {
+	defaultServer = s
+}
+
+// DefaultServer returns the package-level server.
+func DefaultServer() *Server {
+	return defaultServer
+}
+
 // ─── Meta Registry ───
 //
 // APIMeta objects are registered by generated cgo packages at init() time.
@@ -323,4 +336,25 @@ func RegisterWatchFactory(apiName string, f WatchAPIFactory) {
 // GetWatchFactory looks up a registered watch factory by API name.
 func GetWatchFactory(apiName string) WatchAPIFactory {
 	return watchFactoryRegistry[apiName]
+}
+
+// ─── Stream Server Factory Registry ───
+//
+// StreamServerFactory creates a StreamServer for a given instance from C
+// callbacks pointer.  Generated stream_server_go packages register a factory
+// in init() so gomc_api_register_cb can wire stream servers.
+
+// StreamServerFactory creates a StreamServer from an instance name and C callbacks ptr.
+type StreamServerFactory func(instance string, callbacks unsafe.Pointer) StreamServer
+
+var streamFactoryRegistry = map[string]StreamServerFactory{}
+
+// RegisterStreamFactory registers a factory for the given API name.
+func RegisterStreamFactory(apiName string, f StreamServerFactory) {
+	streamFactoryRegistry[apiName] = f
+}
+
+// GetStreamFactory looks up a registered stream factory by API name.
+func GetStreamFactory(apiName string) StreamServerFactory {
+	return streamFactoryRegistry[apiName]
 }

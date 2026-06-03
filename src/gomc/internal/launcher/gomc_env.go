@@ -330,6 +330,13 @@ func gomc_api_register_cb(ctx unsafe.Pointer, apiName *C.char, version C.int,
 		watchReg.Register(factory(instance, callbacks))
 	}
 
+	// If a stream server factory exists, create and register the stream endpoint.
+	if factory := apiserver.GetStreamFactory(name); factory != nil {
+		if srv := apiserver.DefaultServer(); srv != nil {
+			srv.RegisterStream(name, instance, factory(instance, callbacks))
+		}
+	}
+
 	return 0
 }
 

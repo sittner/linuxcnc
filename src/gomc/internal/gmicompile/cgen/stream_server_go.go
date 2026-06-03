@@ -54,6 +54,7 @@ func (g *streamServerGoGen) generate() error {
 	}
 
 	g.emitRegisterStreams()
+	g.emitInit()
 	return g.err
 }
 
@@ -64,6 +65,9 @@ func (g *streamServerGoGen) emitHeader() {
 
 func (g *streamServerGoGen) emitCgoPreamble() {
 	g.printf("/*\n")
+	// Define the CGO guard so the C header skips the register helper
+	// (which needs gomc_api.h — not available in the Go build context).
+	g.printf("#define %s_API_CGO\n", strings.ToUpper(g.api.Name))
 	g.printf("#include \"%s_stream_api.h\"\n", g.api.Name)
 	g.printf("#include <stdlib.h>\n\n")
 
@@ -135,21 +139,23 @@ func (g *streamServerGoGen) emitStreamServerType(ss ast.StreamServer) {
 func (g *streamServerGoGen) emitServeConn(ss ast.StreamServer) {
 	typeName := streamGoTypeName(ss.Name)
 
-	// Check if this stream has poll_transmit
+	// Check which pattern this stream uses
 	hasPollTransmit := false
+	hasDataReceived := false
 	for _, fn := range ss.Funcs {
 		if fn.Name == "poll_transmit" {
 			hasPollTransmit = true
-			break
+		}
+		if fn.Name == "data_received" {
+			hasDataReceived = true
 		}
 	}
 
-	if !hasPollTransmit {
+	if !hasPollTransmit && !hasDataReceived {
 		return
 	}
 
 	g.printf("// ServeConn handles a single WebSocket connection for %s.\n", ss.Name)
-	g.printf("// It calls new_conn, then loops poll_transmit until shutdown, then calls closed_conn.\n")
 	g.printf("func (s *%s) ServeConn(conn apiserver.StreamConn) {\n", typeName)
 	g.printf("\tconnID := s.next.Add(1)\n")
 	g.printf("\n")
@@ -159,17 +165,38 @@ func (g *streamServerGoGen) emitServeConn(ss ast.StreamServer) {
 	g.printf("\t}\n")
 	g.printf("\tdefer C.%s_call_closed_conn(s.cb, C.uint32_t(connID))\n", ss.Name)
 	g.printf("\n")
-	g.printf("\tbuf := make([]byte, 4096)\n")
-	g.printf("\tfor {\n")
-	g.printf("\t\tn := C.%s_call_poll_transmit(s.cb, C.uint32_t(connID),\n", ss.Name)
-	g.printf("\t\t\tunsafe.Pointer(&buf[0]), C.int32_t(len(buf)))\n")
-	g.printf("\t\tif n <= 0 {\n")
-	g.printf("\t\t\tbreak\n")
-	g.printf("\t\t}\n")
-	g.printf("\t\tif err := conn.WriteBinary(buf[:n]); err != nil {\n")
-	g.printf("\t\t\tbreak\n")
-	g.printf("\t\t}\n")
-	g.printf("\t}\n")
+
+	if hasPollTransmit {
+		// Transmit loop: poll C for data, send to client
+		g.printf("\tbuf := make([]byte, 4096)\n")
+		g.printf("\tfor {\n")
+		g.printf("\t\tn := C.%s_call_poll_transmit(s.cb, C.uint32_t(connID),\n", ss.Name)
+		g.printf("\t\t\tunsafe.Pointer(&buf[0]), C.int32_t(len(buf)))\n")
+		g.printf("\t\tif n <= 0 {\n")
+		g.printf("\t\t\tbreak\n")
+		g.printf("\t\t}\n")
+		g.printf("\t\tif err := conn.WriteBinary(buf[:n]); err != nil {\n")
+		g.printf("\t\t\tbreak\n")
+		g.printf("\t\t}\n")
+		g.printf("\t}\n")
+	} else if hasDataReceived {
+		// Receive loop: read from client, pass to C
+		g.printf("\tfor {\n")
+		g.printf("\t\tdata, err := conn.ReadBinary()\n")
+		g.printf("\t\tif err != nil {\n")
+		g.printf("\t\t\tbreak\n")
+		g.printf("\t\t}\n")
+		g.printf("\t\tif len(data) == 0 {\n")
+		g.printf("\t\t\tcontinue\n")
+		g.printf("\t\t}\n")
+		g.printf("\t\tret := C.%s_call_data_received(s.cb, C.uint32_t(connID),\n", ss.Name)
+		g.printf("\t\t\tunsafe.Pointer(&data[0]), C.int32_t(len(data)))\n")
+		g.printf("\t\tif ret < 0 {\n")
+		g.printf("\t\t\tbreak\n")
+		g.printf("\t\t}\n")
+		g.printf("\t}\n")
+	}
+
 	g.printf("}\n\n")
 }
 
@@ -226,4 +253,17 @@ func streamGoTypeName(name string) string {
 		}
 	}
 	return result + "Stream"
+}
+
+func (g *streamServerGoGen) emitInit() {
+	// The stream_server uses a different API name suffix (_stream) to
+	// distinguish from normal API registrations.
+	g.printf("\nfunc init() {\n")
+	for _, ss := range g.api.StreamServers {
+		typeName := streamGoTypeName(ss.Name)
+		g.printf("\tapiserver.RegisterStreamFactory(\"%s_stream\", func(instance string, callbacks unsafe.Pointer) apiserver.StreamServer {\n", ss.Name)
+		g.printf("\t\treturn New%s(callbacks)\n", typeName)
+		g.printf("\t})\n")
+	}
+	g.printf("}\n")
 }

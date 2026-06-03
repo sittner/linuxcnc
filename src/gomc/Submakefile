@@ -92,6 +92,8 @@ GMI_MOTCTL_CLIENT_GO := gomc/generated/gmi/motctl/motctl_client_cgo.go
 GMI_MOTSTAT_CLIENT_GO := gomc/generated/gmi/motstat/motstat_client_cgo.go
 GMI_EMCIO_CLIENT_GO := gomc/generated/gmi/emcio/emcio_client_cgo.go
 GMI_CLASSICLADDER_SERVER_GO := gomc/generated/gmi/classicladder/classicladder_cgo.go
+GMI_HAL_SAMPLER_STREAM_GO := gomc/generated/gmi/hal_sampler/hal_sampler_stream.go
+GMI_HAL_STREAMER_STREAM_GO := gomc/generated/gmi/hal_streamer/hal_streamer_stream.go
 
 # Explicit list of ALL generated GMI Go files (one per package with init()).
 # This must be kept in sync with gmi/codegen/Submakefile.
@@ -121,7 +123,9 @@ GMI_ALL_GEN_GO := \
     gomc/generated/gmi/pyvcp/pyvcp_cgo.go \
     gomc/generated/gmi/tools/tools_cgo.go \
     gomc/generated/gmi/tooltable/tooltable_cgo.go \
-    gomc/generated/gmi/tp/tp_cgo.go
+    gomc/generated/gmi/tp/tp_cgo.go \
+    gomc/generated/gmi/hal_sampler/hal_sampler_stream.go \
+    gomc/generated/gmi/hal_streamer/hal_streamer_stream.go
 
 # Runtime files generated from .in bases on fresh checkouts.
 # imports_generated.go is produced by modcompile directly from packages.conf
@@ -149,7 +153,7 @@ $(IMPORTS_GENERATED): gomc/packages.conf ../bin/modcompile $(GMI_ALL_GEN_GO)
 #
 # GOFLAGS=-mod=mod allows Go to update go.sum automatically when new local
 # packages appear (e.g. generated GMI code).
-../bin/gomc-server: $(GOMC_SRC) $(GMI_KINS_GEN_GO) $(GMI_TOOLS_GEN_GO) $(GMI_EMCSTAT_PUSH_GO) $(GMI_MOTCTL_CLIENT_GO) $(GMI_MOTSTAT_CLIENT_GO) $(GMI_EMCIO_CLIENT_GO) $(GMI_CLASSICLADDER_SERVER_GO) $(IMPORTS_GENERATED) gomc/go.mod ../lib/liblinuxcnchal.so ../lib/libposemath.so ../lib/librs274.so Makefile.inc
+../bin/gomc-server: $(GOMC_SRC) $(GMI_KINS_GEN_GO) $(GMI_TOOLS_GEN_GO) $(GMI_EMCSTAT_PUSH_GO) $(GMI_MOTCTL_CLIENT_GO) $(GMI_MOTSTAT_CLIENT_GO) $(GMI_EMCIO_CLIENT_GO) $(GMI_CLASSICLADDER_SERVER_GO) $(GMI_HAL_SAMPLER_STREAM_GO) $(GMI_HAL_STREAMER_STREAM_GO) $(IMPORTS_GENERATED) gomc/go.mod ../lib/liblinuxcnchal.so ../lib/libposemath.so ../lib/librs274.so Makefile.inc
 	$(ECHO) Building gomc-server
 	$(Q)cd gomc && CGO_LDFLAGS="-Wl,-rpath,$(LIB_DIR) -Wl,--disable-new-dtags" GOFLAGS=-mod=mod $(GO) build -ldflags "$(GOMC_LDFLAGS)" -o $(TOP)/bin/gomc-server ./cmd/gomc-server
 
