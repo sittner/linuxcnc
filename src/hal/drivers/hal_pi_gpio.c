@@ -18,12 +18,8 @@
 * Last change: Modify for Pi400 3/2022 elovalvo
 s********************************************************************/
 
-
-#include "rtapi.h"		/* RTAPI realtime OS API */
-#include "rtapi_bitops.h"
 #include "gomc_env.h"		/* cmod API */
-                                /* this also includes config.h */
-#include "hal.h"		/* HAL public API decls */
+#include "gomc_log.h"
 #include "bcm2835.h"
 #include "cpuinfo.h"
 
@@ -60,6 +56,8 @@ static unsigned char rpi2_pins[] =  {3, 5, 7, 29, 31, 26, 24, 21, 19, 23, 32, 33
 typedef struct {
     cmod_t cmod;
     const cmod_env_t *env;
+    const gomc_log_t *log;
+    const gomc_rtapi_t *rtapi;
     int comp_id;
 
     int npins;
@@ -69,7 +67,7 @@ typedef struct {
     unsigned exclude_map;
     unsigned char *pins;
     unsigned char *gpios;
-    hal_bit_t **port_data;
+    gomc_hal_bit_t **port_data;
 
     char *dir;
     char *exclude;
@@ -158,9 +156,9 @@ void bcm2835_gpio_fsel(inst_t *inst, uint8_t pin, uint8_t mode)
 static int setup_gpiomem_access(inst_t *inst)
 {
   if ((inst->mem_fd = open("/dev/gpiomem", O_RDWR|O_SYNC)) < 0) {
-    rtapi_print_msg(RTAPI_MSG_ERR,"HAL_PI_GPIO: can't open /dev/gpiomem:  %d - %s\n"
-        "If the error is 'permission denied' then try adding the user who runs\n"
-        "LinuxCNC to the gpio group: sudo gpasswd -a username gpio\n", errno, strerror(errno));
+    gomc_log_errorf(inst->log, "hal_pi_gpio","HAL_PI_GPIO: can't open /dev/gpiomem:  %d - %s"
+        "If the error is 'permission denied' then try adding the user who runs"
+        "LinuxCNC to the gpio group: sudo gpasswd -a username gpio", errno, strerror(errno));
     return -1;
   }
 
@@ -169,7 +167,7 @@ static int setup_gpiomem_access(inst_t *inst)
   if (inst->gpio == MAP_FAILED) {
     close(inst->mem_fd);
     inst->mem_fd = -1;
-    rtapi_print_msg(RTAPI_MSG_ERR, "HAL_PI_GPIO: mmap failed: %d - %s\n", errno, strerror(errno));
+    gomc_log_errorf(inst->log, "hal_pi_gpio", "HAL_PI_GPIO: mmap failed: %d - %s", errno, strerror(errno));
     return -1;
   }
 
@@ -180,7 +178,7 @@ static int  setup_gpio_access(inst_t *inst, int rev, int ncores)
 {
   // open /dev/mem
   if ((inst->mem_fd = open("/dev/mem", O_RDWR|O_SYNC) ) < 0) {
-      rtapi_print_msg(RTAPI_MSG_ERR,"HAL_PI_GPIO: can't open /dev/mem:  %d - %s\n",
+      gomc_log_errorf(inst->log, "hal_pi_gpio","HAL_PI_GPIO: can't open /dev/mem:  %d - %s",
 		      errno, strerror(errno));
     return -1;
   }
@@ -193,15 +191,15 @@ static int  setup_gpio_access(inst_t *inst, int rev, int ncores)
 		   MAP_SHARED, inst->mem_fd, BCM2709_GPIO_BASE);
 
   if (inst->gpio == MAP_FAILED) {
-    rtapi_print_msg(RTAPI_MSG_ERR,
-		    "HAL_PI_GPIO: mmap failed: %d - %s\n",
+    gomc_log_errorf(inst->log, "hal_pi_gpio",
+		    "HAL_PI_GPIO: mmap failed: %d - %s",
 		    errno, strerror(errno));
     return -1;;
   }
   return 0;
 }
 
-static int number_of_cores(void)
+static int number_of_cores(const gomc_log_t *log)
 {
     char str[256];
     int procCount = 0;
@@ -212,7 +210,7 @@ static int number_of_cores(void)
 	    if( !memcmp(str, "processor", 9) ) procCount++;
     }
     if ( !procCount ) {
-	rtapi_print_msg(RTAPI_MSG_ERR,"HAL_PI_GPIO: Unable to get proc count. Defaulting to 2");
+	gomc_log_errorf(log, "hal_pi_gpio","Unable to get proc count. Defaulting to 2");
 	procCount = 2;
     }
     return procCount;
@@ -237,9 +235,11 @@ int New(const cmod_env_t *env, const char *name,
     int rev, ncores, pinno;
     char *endptr;
 
-    inst_t *inst = rtapi_calloc(sizeof(*inst));
+    inst_t *inst = env->rtapi->calloc(env->rtapi->ctx, sizeof(*inst));
     if (!inst) return -ENOMEM;
     inst->env = env;
+    inst->log = env->log;
+    inst->rtapi = env->rtapi;
     inst->mem_fd = -1;
 
     // defaults
@@ -249,13 +249,13 @@ int New(const cmod_env_t *env, const char *name,
     parse_argv(inst, argc, argv);
 
     if ((rev = get_rpi_revision()) < 0) {
-      rtapi_print_msg(RTAPI_MSG_ERR,
-		      "unrecognized Raspberry revision, see /proc/cpuinfo\n");
-      rtapi_free(inst);
+      gomc_log_errorf(inst->log, "hal_pi_gpio",
+		      "unrecognized Raspberry revision, see /proc/cpuinfo");
+      inst->rtapi->free(inst->rtapi->ctx, inst);
       return -EINVAL;
     }
-    ncores = number_of_cores();
-    rtapi_print_msg(RTAPI_MSG_INFO, "%d cores rev %d", ncores, rev);
+    ncores = number_of_cores(inst->log);
+    gomc_log_infof(inst->log, "hal_pi_gpio", "%d cores rev %d", ncores, rev);
 
     switch (rev) {
      case 1:
@@ -273,75 +273,72 @@ int New(const cmod_env_t *env, const char *name,
       inst->gpios = rpi2_gpios;
       inst->npins = sizeof(rpi2_pins);
       if (rev > 20){ // Rev 20 is Compute Module 4
-	int db = rtapi_get_msg_level();
-	rtapi_set_msg_level(3);
-	rev = get_rpi_revision(); // call the function with a higher message level to print model
-	rtapi_print_msg(RTAPI_MSG_INFO, "The Pi model %i is not known to "
+	rev = get_rpi_revision();
+	gomc_log_infof(inst->log, "hal_pi_gpio", "The Pi model %i is not known to "
 	      "work with this driver but will be assumed to be be using "
-	      "the RPi2+ layout 40 pin connector\n", rev);
-	rtapi_set_msg_level(db);
+	      "the RPi2+ layout 40 pin connector", rev);
       }
       break;
     }
 
     if (inst->dir == 0) {
-	rtapi_print_msg(RTAPI_MSG_ERR, "HAL_PI_GPIO: ERROR: no config string\n");
-	rtapi_free(inst);
+	gomc_log_errorf(inst->log, "hal_pi_gpio", "HAL_PI_GPIO: ERROR: no config string");
+	inst->rtapi->free(inst->rtapi->ctx, inst);
 	return -1;
     }
     inst->dir_map = strtoul(inst->dir, &endptr,0);
     if (*endptr) {
-	rtapi_print_msg(RTAPI_MSG_ERR,
-			"HAL_PI_GPIO: dir=%s - trailing garbage: '%s'\n",
+	gomc_log_errorf(inst->log, "hal_pi_gpio",
+			"HAL_PI_GPIO: dir=%s - trailing garbage: '%s'",
 			inst->dir, endptr);
-	rtapi_free(inst);
+	inst->rtapi->free(inst->rtapi->ctx, inst);
 	return -1;
     }
 
     if (inst->exclude == 0) {
-	rtapi_print_msg(RTAPI_MSG_ERR, "HAL_PI_GPIO: ERROR: no exclude string\n");
-	rtapi_free(inst);
+	gomc_log_errorf(inst->log, "hal_pi_gpio", "HAL_PI_GPIO: ERROR: no exclude string");
+	inst->rtapi->free(inst->rtapi->ctx, inst);
 	return -1;
     }
     inst->exclude_map = strtoul(inst->exclude, &endptr,0);
     if (*endptr) {
-	rtapi_print_msg(RTAPI_MSG_ERR,
-			"HAL_PI_GPIO: exclude=%s - trailing garbage: '%s'\n",
+	gomc_log_errorf(inst->log, "hal_pi_gpio",
+			"HAL_PI_GPIO: exclude=%s - trailing garbage: '%s'",
 			inst->exclude, endptr);
-	rtapi_free(inst);
+	inst->rtapi->free(inst->rtapi->ctx, inst);
 	return -1;
     }
 
     if (setup_gpiomem_access(inst)) {
       if (setup_gpio_access(inst, rev, ncores)) {
-        rtapi_free(inst);
+        inst->rtapi->free(inst->rtapi->ctx, inst);
         return -1;
       }
     }
 
     int r = hal->init(hal->ctx, "hal_pi_gpio", env->dl_handle, GOMC_HAL_COMP_REALTIME);
     if (r < 0) {
-	rtapi_print_msg(RTAPI_MSG_ERR,
-	    "HAL_PI_GPIO: ERROR: hal_init() failed\n");
+	gomc_log_errorf(inst->log, "hal_pi_gpio",
+	    "HAL_PI_GPIO: ERROR: hal_init() failed");
 	if (inst->gpio)
 	    munmap((void *)inst->gpio, BCM2835_BLOCK_SIZE);
 	if (inst->mem_fd > -1)
 	    close(inst->mem_fd);
-	rtapi_free(inst);
+	inst->rtapi->free(inst->rtapi->ctx, inst);
 	return -1;
     }
     inst->comp_id = r;
 
-    inst->port_data = hal_malloc(inst->npins * sizeof(void *));
+    inst->port_data = hal->malloc(hal->ctx, inst->npins * sizeof(void *));
     if (inst->port_data == 0) {
-	rtapi_print_msg(RTAPI_MSG_ERR,
-	    "HAL_PI_GPIO: ERROR: hal_malloc() failed\n");
+	gomc_log_errorf(inst->log, "hal_pi_gpio",
+	    "HAL_PI_GPIO: ERROR: hal->malloc(hal->ctx, ) failed");
 	hal->exit(hal->ctx, inst->comp_id);
 	if (inst->gpio)
 	    munmap((void *)inst->gpio, BCM2835_BLOCK_SIZE);
 	if (inst->mem_fd > -1)
 	    close(inst->mem_fd);
-	rtapi_free(inst);
+	inst->rtapi->free(inst->rtapi->ctx, inst);
 	return -1;
     }
 
@@ -351,58 +348,58 @@ int New(const cmod_env_t *env, const char *name,
       pinno = inst->pins[n];
       if (inst->dir_map & RTAPI_BIT(n)) {
 	bcm2835_gpio_fsel(inst, inst->gpios[n], BCM2835_GPIO_FSEL_OUTP);
-	if ((retval = hal_pin_bit_newf(HAL_IN, &inst->port_data[n],
+	if ((retval = gomc_hal_pin_bit_newf(hal, GOMC_HAL_IN, &inst->port_data[n],
 				       inst->comp_id, "hal_pi_gpio.pin-%02d-out", pinno)) < 0)
 	  break;
       } else {
 	bcm2835_gpio_fsel(inst, inst->gpios[n], BCM2835_GPIO_FSEL_INPT);
-	if ((retval = hal_pin_bit_newf(HAL_OUT, &inst->port_data[n],
+	if ((retval = gomc_hal_pin_bit_newf(hal, GOMC_HAL_OUT, &inst->port_data[n],
 				       inst->comp_id, "hal_pi_gpio.pin-%02d-in", pinno)) < 0)
 	  break;
       }
     }
     if (retval < 0) {
-      rtapi_print_msg(RTAPI_MSG_ERR,
-		      "HAL_PI_GPIO: ERROR: pin %d export failed with err=%i\n",
+      gomc_log_errorf(inst->log, "hal_pi_gpio",
+		      "HAL_PI_GPIO: ERROR: pin %d export failed with err=%i",
 		      n,retval);
       hal->exit(hal->ctx, inst->comp_id);
       if (inst->gpio)
 	  munmap((void *)inst->gpio, BCM2835_BLOCK_SIZE);
       if (inst->mem_fd > -1)
 	  close(inst->mem_fd);
-      rtapi_free(inst);
+      inst->rtapi->free(inst->rtapi->ctx, inst);
       return -1;
     }
 
-    retval = hal_export_funct("hal_pi_gpio.write", write_port, inst,
+    retval = hal->export_funct(hal->ctx, "hal_pi_gpio.write", write_port, inst,
 			      0, 0, inst->comp_id);
     if (retval < 0) {
-	rtapi_print_msg(RTAPI_MSG_ERR,
-	    "HAL_PI_GPIO: ERROR: write funct export failed\n");
+	gomc_log_errorf(inst->log, "hal_pi_gpio",
+	    "HAL_PI_GPIO: ERROR: write funct export failed");
 	hal->exit(hal->ctx, inst->comp_id);
 	if (inst->gpio)
 	    munmap((void *)inst->gpio, BCM2835_BLOCK_SIZE);
 	if (inst->mem_fd > -1)
 	    close(inst->mem_fd);
-	rtapi_free(inst);
+	inst->rtapi->free(inst->rtapi->ctx, inst);
 	return -1;
     }
-    retval = hal_export_funct("hal_pi_gpio.read", read_port, inst,
+    retval = hal->export_funct(hal->ctx, "hal_pi_gpio.read", read_port, inst,
 			      0, 0, inst->comp_id);
     if (retval < 0) {
-	rtapi_print_msg(RTAPI_MSG_ERR,
-	    "HAL_PI_GPIO: ERROR: read funct export failed\n");
+	gomc_log_errorf(inst->log, "hal_pi_gpio",
+	    "HAL_PI_GPIO: ERROR: read funct export failed");
 	hal->exit(hal->ctx, inst->comp_id);
 	if (inst->gpio)
 	    munmap((void *)inst->gpio, BCM2835_BLOCK_SIZE);
 	if (inst->mem_fd > -1)
 	    close(inst->mem_fd);
-	rtapi_free(inst);
+	inst->rtapi->free(inst->rtapi->ctx, inst);
 	return -1;
     }
 
-    rtapi_print_msg(RTAPI_MSG_INFO,
-	"HAL_PI_GPIO: installed driver\n");
+    gomc_log_infof(inst->log, "hal_pi_gpio",
+	"HAL_PI_GPIO: installed driver");
     hal->ready(hal->ctx, inst->comp_id);
 
     inst->cmod.Destroy = hal_pi_gpio_destroy;
@@ -421,7 +418,7 @@ static void hal_pi_gpio_destroy(cmod_t *self)
     if (inst->mem_fd > -1)
 	close(inst->mem_fd);
     hal->exit(hal->ctx, inst->comp_id);
-    rtapi_free(inst);
+    inst->rtapi->free(inst->rtapi->ctx, inst);
 }
 
 static void write_port(void *arg, long period)
