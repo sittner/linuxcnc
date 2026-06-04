@@ -32,3 +32,18 @@ $(HALMODULE): $(call TOOBJS, $(HALMODULESRCS)) $(HALLIB)
 
 TARGETS += $(HALLIB) ../lib/liblinuxcnchal.so.0
 PYTARGETS += $(HALMODULE)
+
+# Standalone PCI + firmware library (no hal/rtapi dependency)
+RTAPI_PCI_SRCS := rtapi/pci/rtapi_pci.c
+$(call TOOBJSDEPS, $(RTAPI_PCI_SRCS)): EXTRAFLAGS += -fPIC $(LIBUDEV_CFLAGS)
+USERSRCS += $(RTAPI_PCI_SRCS)
+
+RTAPI_PCI_LIB := ../lib/librtapi_pci.so
+
+$(RTAPI_PCI_LIB).0: $(call TOOBJS, $(RTAPI_PCI_SRCS))
+	$(ECHO) Creating shared library $(notdir $@)
+	@mkdir -p ../lib
+	@rm -f $@
+	$(Q)$(CC) $(LDFLAGS) -Wl,-soname,$(notdir $@) -shared -o $@ $^ $(LIBUDEV_LIBS)
+
+TARGETS += $(RTAPI_PCI_LIB) ../lib/librtapi_pci.so.0
