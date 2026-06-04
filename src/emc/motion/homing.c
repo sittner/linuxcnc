@@ -11,25 +11,20 @@
 * Copyright (c) 2004 All rights reserved.
 ********************************************************************/
 
-#include "rtapi.h"
-#include "rtapi_math.h"
-#include "motion.h"
-#include "homing.h"
-#include "hal.h"
-
 #include <stdint.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
+
 #include "gomc_env.h"
 #include "home_api.h"
 #include "mot_api.h"
+#include "motion.h"
+#include "homing.h"
 
 
 #define ABS(x) (((x) < 0) ? -(x) : (x))
-
-// Mark strings for translation, but defer translation to userspace
-#define _(s) (s)
 
 
 
@@ -112,12 +107,12 @@ typedef struct {
 
 // data for per-joint homing-specific hal pins:
 typedef struct {
-    hal_bit_t *home_sw;      // home switch input
-    hal_bit_t *homing;       // joint is homing
-    hal_bit_t *homed;        // joint was homed
-    hal_bit_t *index_enable; // motmod sets: request reset on index
+    gomc_hal_bit_t *home_sw;      // home switch input
+    gomc_hal_bit_t *homing;       // joint is homing
+    gomc_hal_bit_t *homed;        // joint was homed
+    gomc_hal_bit_t *index_enable; // motmod sets: request reset on index
                              //        encoder clears: index arrived
-    hal_s32_t *home_state;   // homing state machine state
+    gomc_hal_s32_t *home_state;   // homing state machine state
 } one_joint_home_data_t;
 
 typedef struct {
@@ -131,9 +126,11 @@ typedef struct {
 typedef struct {
     const mot_callbacks_t *mot;
     const gomc_api_t *api;
-    char name[HAL_NAME_LEN];
-    char pin_prefix[HAL_NAME_LEN]; /* "" when default, "name." when aliased */
-    char mot_instance[HAL_NAME_LEN];
+    const gomc_hal_t *hal;
+    const gomc_log_t *log;
+    char name[GOMC_HAL_NAME_LEN + 1];
+    char pin_prefix[GOMC_HAL_NAME_LEN + 1]; /* "" when default, "name." when aliased */
+    char mot_instance[GOMC_HAL_NAME_LEN + 1];
     int comp_id;
     double servo_freq;
     int all_joints;
@@ -199,7 +196,7 @@ static bool home_do_moving_checks(homemod_inst_t *inst, int jno)
         /* on limit, check to see if we should trip */
         if (!(inst->H[jno].home_flags & HOME_IGNORE_LIMITS)) {
             /* not ignoring limits, time to quit */
-            rtapi_print_msg(RTAPI_MSG_ERR, _("j%d hit limit in home state %d"),jno, inst->H[jno].home_state);
+            gomc_log_errorf(inst->log, inst->name, "j%d hit limit in home state %d", jno, inst->H[jno].home_state);
             inst->H[jno].home_state = HOME_ABORT;
             return 1; // abort reqd
         }
@@ -208,7 +205,7 @@ static bool home_do_moving_checks(homemod_inst_t *inst, int jno)
     if (! inst->mot->joint_get_free_tp_active(inst->mot->ctx, jno)) {
         /* reached end of move without hitting switch */
          inst->mot->joint_set_free_tp_enable(inst->mot->ctx, jno, 0);
-        rtapi_print_msg(RTAPI_MSG_ERR,_("j%d end of move in home state %d"),jno, inst->H[jno].home_state);
+        gomc_log_errorf(inst->log, inst->name, "j%d end of move in home state %d", jno, inst->H[jno].home_state);
         inst->H[jno].home_state = HOME_ABORT;
         return 1; // abort reqd
     }
@@ -246,9 +243,9 @@ static int base_make_joint_home_pins(homemod_inst_t *inst, int id, int njoints)
     one_joint_home_data_t *addr;
     const char *P = inst->pin_prefix;
 
-    inst->joint_home_data = hal_malloc(sizeof(all_joints_home_data_t));
+    inst->joint_home_data = inst->hal->malloc(inst->hal->ctx, sizeof(all_joints_home_data_t));
     if (inst->joint_home_data == 0) {
-        rtapi_print_msg(RTAPI_MSG_ERR, _("HOMING: all_joints_home_data_t malloc failed\n"));
+        gomc_log_errorf(inst->log, inst->name, "all_joints_home_data_t malloc failed");
         return -1;
     }
 
@@ -256,15 +253,15 @@ static int base_make_joint_home_pins(homemod_inst_t *inst, int id, int njoints)
     for (jno = 0; jno < njoints; jno++) {
         addr = &(inst->joint_home_data->jhd[jno]);
 
-        retval += hal_pin_bit_newf(HAL_IN, &(addr->home_sw), id,
+        retval += gomc_hal_pin_bit_newf(inst->hal, GOMC_HAL_IN, &(addr->home_sw), id,
                                   "%sjoint.%d.home-sw-in", P, jno);
-        retval += hal_pin_bit_newf(HAL_OUT, &(addr->homing), id,
+        retval += gomc_hal_pin_bit_newf(inst->hal, GOMC_HAL_OUT, &(addr->homing), id,
                                   "%sjoint.%d.homing", P, jno);
-        retval += hal_pin_bit_newf(HAL_OUT, &(addr->homed), id,
+        retval += gomc_hal_pin_bit_newf(inst->hal, GOMC_HAL_OUT, &(addr->homed), id,
                                   "%sjoint.%d.homed", P, jno);
-        retval += hal_pin_s32_newf(HAL_OUT, &(addr->home_state), id,
+        retval += gomc_hal_pin_s32_newf(inst->hal, GOMC_HAL_OUT, &(addr->home_state), id,
                                   "%sjoint.%d.home-state", P, jno);
-        retval += hal_pin_bit_newf(HAL_IO, &(addr->index_enable), id,
+        retval += gomc_hal_pin_bit_newf(inst->hal, GOMC_HAL_IO, &(addr->index_enable), id,
                                   "%sjoint.%d.index-enable", P, jno);
     }
     return retval;
@@ -308,20 +305,20 @@ static void set_all_unhomed(homemod_inst_t *inst, int unhome_method, motion_stat
     for (jno = 0; jno < inst->all_joints; jno++) {
         if(inst->mot->joint_get_active_flag(inst->mot->ctx, jno)) {
             if (base_get_homing(inst, jno)) {
-                rtapi_print_msg(RTAPI_MSG_ERR,
-                     _("Cannot unhome while homing, joint %d"), jno);
+                gomc_log_errorf(inst->log, inst->name,
+                     "Cannot unhome while homing, joint %d", jno);
                 return;
             }
             if (!inst->mot->joint_get_inpos_flag(inst->mot->ctx, jno)) {
-                rtapi_print_msg(RTAPI_MSG_ERR,
-                     _("Cannot unhome while moving, joint %d"), jno);
+                gomc_log_errorf(inst->log, inst->name,
+                     "Cannot unhome while moving, joint %d", jno);
                 return;
             }
         }
         if (   (jno >= (inst->all_joints - inst->extra_joints))  // jno is extrajoint
             && (motstate != EMCMOT_MOTION_DISABLED)) {
-            rtapi_print_msg(RTAPI_MSG_ERR,
-                 _("Cannot unhome extrajoint <%d> with motion enabled"), jno);
+            gomc_log_errorf(inst->log, inst->name,
+                 "Cannot unhome extrajoint <%d> with motion enabled", jno);
             return;
         }
     }
@@ -372,8 +369,8 @@ static void do_homing_sequence(homemod_inst_t *inst)
                 if (inst->H[i].home_state == HOME_START) {
                     if (   sequence_is_set
                         && (ABS(inst->H[i].home_sequence) != inst->current_sequence)) {
-                        rtapi_print_msg(RTAPI_MSG_ERR,
-                           _("homing.c Unexpected joint=%d jseq=%d current_seq=%d\n")
+                        gomc_log_errorf(inst->log, inst->name,
+                           "Unexpected joint=%d jseq=%d current_seq=%d"
                            ,i,inst->H[i].home_sequence,inst->current_sequence);
                     }
                     inst->current_sequence = ABS(inst->H[i].home_sequence);
@@ -485,7 +482,7 @@ static void do_homing_sequence(homemod_inst_t *inst)
 
     default:
         /* should never get here */
-        rtapi_print_msg(RTAPI_MSG_ERR, _("unknown state '%d' during homing sequence"),
+        gomc_log_errorf(inst->log, inst->name, "unknown state '%d' during homing sequence",
                         inst->sequence_state);
         inst->sequence_state = HOME_SEQUENCE_IDLE;
         inst->homing_active = 0;
@@ -503,14 +500,12 @@ static int base_homing_init(homemod_inst_t *inst, int id,
     inst->extra_joints = nextrajoints;
 
     if (servo_period < 1e-9) {
-        rtapi_print_msg(RTAPI_MSG_ERR,"%s: bad servo_period:%g\n",
-                        __FUNCTION__,
+        gomc_log_errorf(inst->log, inst->name, "bad servo_period:%g",
                         servo_period);
         return -1;
     }
     if (base_make_joint_home_pins(inst, id, inst->all_joints)) {
-        rtapi_print_msg(RTAPI_MSG_ERR,"%s: base_make_joint_home_pins fail\n",
-                        __FUNCTION__);
+        gomc_log_errorf(inst->log, inst->name, "base_make_joint_home_pins fail");
         return -1;
     }
 
@@ -577,32 +572,32 @@ static void base_set_unhomed(homemod_inst_t *inst, int jno, motion_state_t motst
 
     if (jno > inst->all_joints) {
         /* invalid joint number specified */
-        rtapi_print_msg(RTAPI_MSG_ERR,
-             _("Cannot unhome invalid joint %d (max %d)\n"), jno, (inst->all_joints-1));
+        gomc_log_errorf(inst->log, inst->name,
+             "Cannot unhome invalid joint %d (max %d)", jno, (inst->all_joints-1));
         return;
     }
     /* request was for one joint number */
     if (   (jno >= (inst->all_joints - inst->extra_joints) )  // jno is extrajoint
         && (motstate != EMCMOT_MOTION_DISABLED)) {
-        rtapi_print_msg(RTAPI_MSG_ERR,
-             _("Cannot unhome extrajoint <%d> with motion enabled\n"), jno);
+        gomc_log_errorf(inst->log, inst->name,
+             "Cannot unhome extrajoint <%d> with motion enabled", jno);
         return;
     }
     if(inst->mot->joint_get_active_flag(inst->mot->ctx, jno) ) {
         if (base_get_homing(inst, jno) ) {
-            rtapi_print_msg(RTAPI_MSG_ERR,
-                 _("Cannot unhome while homing, joint %d\n"), jno);
+            gomc_log_errorf(inst->log, inst->name,
+                 "Cannot unhome while homing, joint %d", jno);
             return;
         }
         if (!inst->mot->joint_get_inpos_flag(inst->mot->ctx, jno) ) {
-            rtapi_print_msg(RTAPI_MSG_ERR,
-                 _("Cannot unhome while moving, joint %d\n"), jno);
+            gomc_log_errorf(inst->log, inst->name,
+                 "Cannot unhome while moving, joint %d", jno);
             return;
         }
         inst->H[jno].homed = 0;
     } else {
-        rtapi_print_msg(RTAPI_MSG_ERR,
-             _("Cannot unhome inactive joint %d\n"), jno);
+        gomc_log_errorf(inst->log, inst->name,
+             "Cannot unhome inactive joint %d", jno);
     }
 } // base_set_unhomed()
 
@@ -753,7 +748,7 @@ static int base_1joint_state_machine(homemod_inst_t *inst, int joint_num)
                started.  It doesn't actually do anything, it simply
                determines what state is next */
             if (inst->H[joint_num].home_flags & HOME_IS_SHARED && home_sw_active) {
-                rtapi_print_msg(RTAPI_MSG_ERR, _("Cannot home while shared home switch is closed j=%d"),
+                gomc_log_errorf(inst->log, inst->name, "Cannot home while shared home switch is closed j=%d",
                                 joint_num);
                 inst->H[joint_num].home_state = HOME_IDLE;
                 break;
@@ -811,8 +806,8 @@ static int base_1joint_state_machine(homemod_inst_t *inst, int joint_num)
                     inst->H[joint_num].home_state = HOME_INDEX_ONLY_START;
                     immediate_state = 1;
                 } else {
-                    rtapi_print_msg(RTAPI_MSG_ERR,
-                         _("invalid homing config: non-zero LATCH_VEL needs either SEARCH_VEL or USE_INDEX"));
+                    gomc_log_errorf(inst->log, inst->name,
+                         "invalid homing config: non-zero LATCH_VEL needs either SEARCH_VEL or USE_INDEX");
                     inst->H[joint_num].home_state = HOME_IDLE;
                 }
             } else {
@@ -821,8 +816,8 @@ static int base_1joint_state_machine(homemod_inst_t *inst, int joint_num)
                     inst->H[joint_num].home_state = HOME_INITIAL_SEARCH_START;
                     immediate_state = 1;
                 } else {
-                    rtapi_print_msg(RTAPI_MSG_ERR,
-                         _("invalid homing config: non-zero SEARCH_VEL needs LATCH_VEL"));
+                    gomc_log_errorf(inst->log, inst->name,
+                         "invalid homing config: non-zero SEARCH_VEL needs LATCH_VEL");
                     inst->H[joint_num].home_state = HOME_IDLE;
                 }
             }
@@ -969,8 +964,8 @@ static int base_1joint_state_machine(homemod_inst_t *inst, int joint_num)
             inst->H[joint_num].pause_timer = 0;
             /* we should still be on the switch */
             if (! home_sw_active) {
-                rtapi_print_msg(RTAPI_MSG_ERR,
-                     _("Home switch inactive before start of backoff move j=%d"),
+                gomc_log_errorf(inst->log, inst->name,
+                     "Home switch inactive before start of backoff move j=%d",
                      joint_num);
                 inst->H[joint_num].home_state = HOME_IDLE;
                 break;
@@ -1018,7 +1013,7 @@ static int base_1joint_state_machine(homemod_inst_t *inst, int joint_num)
             inst->H[joint_num].pause_timer = 0;
             /* we should still be off of the switch */
             if (home_sw_active) {
-                rtapi_print_msg(RTAPI_MSG_ERR, _("Home switch active before start of latch move j=%d"),
+                gomc_log_errorf(inst->log, inst->name, "Home switch active before start of latch move j=%d",
                                 joint_num);
                 inst->H[joint_num].home_state = HOME_IDLE;
                 break;
@@ -1074,8 +1069,8 @@ static int base_1joint_state_machine(homemod_inst_t *inst, int joint_num)
             inst->H[joint_num].pause_timer = 0;
             /* we should still be on the switch */
             if (!home_sw_active) {
-                rtapi_print_msg(RTAPI_MSG_ERR,
-                     _("Home switch inactive before start of latch move j=%d"),
+                gomc_log_errorf(inst->log, inst->name,
+                     "Home switch inactive before start of latch move j=%d",
                      joint_num);
                 inst->H[joint_num].home_state = HOME_IDLE;
                 break;
@@ -1314,7 +1309,7 @@ static int base_1joint_state_machine(homemod_inst_t *inst, int joint_num)
                 /* on limit, check to see if we should trip */
                 if (!(inst->H[joint_num].home_flags & HOME_IGNORE_LIMITS)) {
                     /* not ignoring limits, time to quit */
-                    rtapi_print_msg(RTAPI_MSG_ERR, _("hit limit in home state j=%d"),joint_num);
+                    gomc_log_errorf(inst->log, inst->name, "hit limit in home state j=%d", joint_num);
                     inst->H[joint_num].home_state = HOME_ABORT;
                     immediate_state = 1;
                     break;
@@ -1365,7 +1360,7 @@ static int base_1joint_state_machine(homemod_inst_t *inst, int joint_num)
 
         default:
             /* should never get here */
-            rtapi_print_msg(RTAPI_MSG_ERR, _("unknown state '%d' during homing j=%d"),
+            gomc_log_errorf(inst->log, inst->name, "unknown state '%d' during homing j=%d",
                             inst->H[joint_num].home_state,joint_num);
             inst->H[joint_num].home_state = HOME_ABORT;
             immediate_state = 1;
@@ -1501,6 +1496,8 @@ int New(const cmod_env_t *env, const char *name,
     if (!inst) return -1;
 
     inst->api = env->api;
+    inst->hal = env->hal;
+    inst->log = env->log;
     snprintf(inst->name, sizeof(inst->name), "%s", name);
 
     /* Set pin_prefix: empty for default module name (bare pins), "name." for aliases */

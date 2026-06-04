@@ -14,7 +14,8 @@
 #include "posemath.h"
 #include "spherical_arc.h"
 #include "tp_types.h"
-#include "rtapi_math.h"
+#include <math.h>
+#include <float.h>
 
 #include "tp_debug.h"
 

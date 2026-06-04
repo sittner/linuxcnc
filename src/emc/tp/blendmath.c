@@ -15,9 +15,11 @@
 #include "tc_types.h"
 #include "tc.h"
 #include "tp_types.h"
-#include "rtapi_math.h"
 #include "spherical_arc.h"
 #include "blendmath.h"
+#include "gomc_log.h"
+#include <math.h>
+#include <float.h>
 #include "tp_debug.h"
 
 /** @section utilityfuncs Utility functions */
@@ -60,7 +62,6 @@ double findKinkAccel(double kink_angle, double v_plan, double cycle_time)
     if (dx > 0.0) {
         return (dx * kink_angle);
     } else {
-        rtapi_print_msg(RTAPI_MSG_ERR, "dx < 0 in KinkAccel\n");
         return 0;
     }
 }
@@ -581,14 +582,15 @@ int quadraticFormula(double A, double B, double C, double * const root0,
  */
 int blendGeom3Init(BlendGeom3 * const geom,
         TC_STRUCT const * const prev_tc,
-        TC_STRUCT const * const tc)
+        TC_STRUCT const * const tc,
+        const void *log, const char *log_comp)
 {
     geom->v_max1 = prev_tc->maxvel;
     geom->v_max2 = tc->maxvel;
 
     // Get tangent unit vectors to each arc at the intersection point
-    int res_u1 = tcGetEndTangentUnitVector(prev_tc, &geom->u_tan1);
-    int res_u2 = tcGetStartTangentUnitVector(tc, &geom->u_tan2);
+    int res_u1 = tcGetEndTangentUnitVector(prev_tc, &geom->u_tan1, log, log_comp);
+    int res_u2 = tcGetStartTangentUnitVector(tc, &geom->u_tan2, log, log_comp);
 
     // Initialize u1 and u2 by assuming they match the tangent direction
     geom->u1 = geom->u_tan1;
@@ -734,14 +736,15 @@ int blendInit3FromLineArc(BlendGeom3 * const geom, BlendParameters * const param
         TC_STRUCT const * const tc,
         PmCartesian const * const acc_bound,
         PmCartesian const * const vel_bound,
-        double maxFeedScale)
+        double maxFeedScale,
+        const void *log, const char *log_comp)
 {
 
     if (tc->motion_type != TC_CIRCULAR || prev_tc->motion_type != TC_LINEAR) {
         return TP_ERR_INPUT_TYPE;
     }
 
-    int res_init = blendGeom3Init(geom, prev_tc, tc);
+    int res_init = blendGeom3Init(geom, prev_tc, tc, log, log_comp);
     if (res_init != TP_ERR_OK) {
         return res_init;
     }
@@ -821,14 +824,15 @@ int blendInit3FromArcLine(BlendGeom3 * const geom, BlendParameters * const param
         TC_STRUCT const * const tc,
         PmCartesian const * const acc_bound,
         PmCartesian const * const vel_bound,
-        double maxFeedScale)
+        double maxFeedScale,
+        const void *log, const char *log_comp)
 {
 
     if (tc->motion_type != TC_LINEAR || prev_tc->motion_type != TC_CIRCULAR) {
         return TP_ERR_INPUT_TYPE;
     }
 
-    int res_init = blendGeom3Init(geom, prev_tc, tc);
+    int res_init = blendGeom3Init(geom, prev_tc, tc, log, log_comp);
     if (res_init != TP_ERR_OK) {
         return res_init;
     }
@@ -921,13 +925,14 @@ int blendInit3FromArcArc(BlendGeom3 * const geom, BlendParameters * const param,
         TC_STRUCT const * const tc,
         PmCartesian const * const acc_bound,
         PmCartesian const * const vel_bound,
-        double maxFeedScale)
+        double maxFeedScale,
+        const void *log, const char *log_comp)
 {
     if (tc->motion_type != TC_CIRCULAR || prev_tc->motion_type != TC_CIRCULAR) {
         return TP_ERR_FAIL;
     }
 
-    int res_init = blendGeom3Init(geom, prev_tc, tc);
+    int res_init = blendGeom3Init(geom, prev_tc, tc, log, log_comp);
     if (res_init != TP_ERR_OK) {
         return res_init;
     }
@@ -1060,14 +1065,15 @@ int blendInit3FromLineLine(BlendGeom3 * const geom, BlendParameters * const para
         TC_STRUCT const * const tc,
         PmCartesian const * const acc_bound,
         PmCartesian const * const vel_bound,
-        double maxFeedScale)
+        double maxFeedScale,
+        const void *log, const char *log_comp)
 {
 
     if (tc->motion_type != TC_LINEAR || prev_tc->motion_type != TC_LINEAR) {
         return TP_ERR_FAIL;
     }
 
-    int res_init = blendGeom3Init(geom, prev_tc, tc);
+    int res_init = blendGeom3Init(geom, prev_tc, tc, log, log_comp);
     if (res_init != TP_ERR_OK) {
         return res_init;
     }
@@ -1696,7 +1702,8 @@ PmCircleLimits pmCircleActualMaxVel(PmCircle const * circle,
 static int pmCircleAngleFromParam(PmCircle const * const circle,
         SpiralArcLengthFit const * const fit,
         double t,
-        double * const angle)
+        double * const angle,
+        const void *log, const char *log_comp)
 {
     if (fit->spiral_in) {
         t = 1.0 - t;
@@ -1712,7 +1719,7 @@ static int pmCircleAngleFromParam(PmCircle const * const circle,
 
     double disc = pmSq(B) - 4.0 * A * C ;
     if (disc < 0) {
-        rtapi_print_msg(RTAPI_MSG_ERR, "discriminant %f is negative in angle calculation\n",disc);
+        gomc_log_errorf(log, log_comp, "discriminant %f is negative in angle calculation", disc);
         return TP_ERR_FAIL;
     }
 
@@ -1776,7 +1783,8 @@ static void printSpiralArcLengthFit(SpiralArcLengthFit const * const fit)
  * nominal speed.
  */
 int findSpiralArcLengthFit(PmCircle const * const circle,
-        SpiralArcLengthFit * const fit)
+        SpiralArcLengthFit * const fit,
+        const void *log, const char *log_comp)
 {
     // Additional data for arc length approximation
     double spiral_coef = circle->spiral / circle->angle;
@@ -1810,19 +1818,17 @@ int findSpiralArcLengthFit(PmCircle const * const circle,
 
     // Check against start and end angle
     double angle_end_chk = 0.0;
-    int res_angle = pmCircleAngleFromParam(circle, fit, 1.0, &angle_end_chk);
+    int res_angle = pmCircleAngleFromParam(circle, fit, 1.0, &angle_end_chk, log, log_comp);
     if (res_angle != TP_ERR_OK) {
-        //TODO better error message
-        rtapi_print_msg(RTAPI_MSG_ERR,
-                "Spiral fit failed\n");
+        gomc_log_errorf(log, log_comp, "Spiral fit failed");
         return TP_ERR_FAIL;
     }
 
     // Check fit against angle
     double fit_err = angle_end_chk - circle->angle;
     if (fabs(fit_err) > TP_ANGLE_EPSILON) {
-        rtapi_print_msg(RTAPI_MSG_ERR,
-                "Spiral fit angle difference is %e, maximum allowed is %e\n",
+        gomc_log_errorf(log, log_comp,
+                "Spiral fit angle difference is %e, maximum allowed is %e",
                 fit_err,
                 TP_ANGLE_EPSILON);
         return TP_ERR_FAIL;
@@ -1839,14 +1845,15 @@ int findSpiralArcLengthFit(PmCircle const * const circle,
 int pmCircleAngleFromProgress(PmCircle const * const circle,
         SpiralArcLengthFit const * const fit,
         double progress,
-        double * const angle)
+        double * const angle,
+        const void *log, const char *log_comp)
 {
     double h2;
     pmCartMagSq(&circle->rHelix, &h2);
     double s_end = pmSqrt(pmSq(fit->total_planar_length) + h2);
     // Parameterize by total progress along helix
     double t = progress / s_end;
-    return pmCircleAngleFromParam(circle, fit, t, angle);
+    return pmCircleAngleFromParam(circle, fit, t, angle, log, log_comp);
 }
 
 

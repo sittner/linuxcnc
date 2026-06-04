@@ -125,6 +125,7 @@ static inline int64_t gomc_log_now_ns(void) {
 static inline int
 gomc_log_emit(const gomc_log_t *log, gomc_log_level_t level,
               const char *component, const char *fmt, va_list ap) {
+    if (!log) return -1;
     gomc_log_ring_t *ring = log->ring;
 
     // Claim a slot (lock-free, multi-producer safe).

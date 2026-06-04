@@ -835,12 +835,12 @@ HOMEMOD_CMOD_DEPS := \
     $(wildcard emc/motion/homing.h) \
     $(wildcard emc/motion/motion.h)
 
-../cmod/homemod.so: $(HOMEMOD_CMOD_SRCS) $(HOMEMOD_CMOD_DEPS) | headers ../lib/liblinuxcnchal.so
+../cmod/homemod.so: $(HOMEMOD_CMOD_SRCS) $(HOMEMOD_CMOD_DEPS) | headers
 	$(ECHO) "Compiling cmod homemod.so"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HOMEMOD_CMOD_CFLAGS) \
 	    -o $@ $(HOMEMOD_CMOD_SRCS) \
-	    -L../lib -llinuxcnchal -lm
+	    -lm
 
 TARGETS += ../cmod/homemod.so
 modules: ../cmod/homemod.so
@@ -880,12 +880,12 @@ TPMOD_CMOD_DEPS := \
     $(wildcard emc/tp/*.h) \
     $(wildcard emc/motion/motion.h)
 
-../cmod/tpmod.so: $(TPMOD_CMOD_SRCS) $(TPMOD_CMOD_DEPS) | headers ../lib/liblinuxcnchal.so ../lib/libposemath.so
+../cmod/tpmod.so: $(TPMOD_CMOD_SRCS) $(TPMOD_CMOD_DEPS) | headers ../lib/libposemath.so
 	$(ECHO) "Compiling cmod tpmod.so"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(TPMOD_CMOD_CFLAGS) \
 	    -o $@ $(TPMOD_CMOD_SRCS) \
-	    -L../lib -llinuxcnchal -lposemath -lm
+	    -L../lib -lposemath -lm
 
 TARGETS += ../cmod/tpmod.so
 modules: ../cmod/tpmod.so
