@@ -115,6 +115,13 @@ func SetLogRing(ring unsafe.Pointer) {
 	halSetLogRing(ring)
 }
 
+// ClearMsgHandler disconnects the RTAPI message handler so that
+// subsequent rtapi_print_msg calls are silently discarded.  Call
+// before destroying the log ring.
+func ClearMsgHandler() {
+	halClearMsgHandler()
+}
+
 // RtapiAppInit initializes the in-process RTAPI/HAL environment.
 // Sets up HAL shared memory.
 // Must be called before hal_init() / hal.NewComponent().

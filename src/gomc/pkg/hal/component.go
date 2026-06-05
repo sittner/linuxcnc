@@ -2,11 +2,7 @@ package hal
 
 import (
 	"fmt"
-	"log"
-	"os"
-	"os/signal"
 	"sync"
-	"syscall"
 )
 
 // Component represents a HAL component.
@@ -58,9 +54,6 @@ func NewComponent(name string) (*Component, error) {
 		running: true,
 		done:    make(chan struct{}),
 	}
-
-	// Set up signal handling for graceful shutdown
-	comp.setupSignalHandler()
 
 	return comp, nil
 }
@@ -170,34 +163,4 @@ func (c *Component) String() string {
 	defer c.mu.RUnlock()
 	return fmt.Sprintf("Component{name=%s, id=%d, ready=%t, running=%t}",
 		c.name, c.id, c.ready, c.running)
-}
-
-// setupSignalHandler sets up handlers for SIGTERM and SIGINT signals.
-//
-// When either signal is received, the component's running flag is set to false,
-// which causes Running() to return false and allows the main loop to exit
-// gracefully. This ensures hal_exit() is called via defer.
-//
-// SIGTERM is sent by halcmd when unloading a component.
-// SIGINT is sent when the user presses Ctrl+C.
-//
-// The goroutine is properly cleaned up when Exit() is called.
-func (c *Component) setupSignalHandler() {
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
-
-	go func() {
-		select {
-		case sig := <-sigChan:
-			log.Printf("Received signal %v, initiating shutdown", sig)
-			c.mu.Lock()
-			c.running = false
-			c.mu.Unlock()
-			// Stop listening for signals
-			signal.Stop(sigChan)
-		case <-c.done:
-			// Component exiting, clean up
-			signal.Stop(sigChan)
-		}
-	}()
 }

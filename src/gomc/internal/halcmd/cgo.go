@@ -1719,6 +1719,13 @@ func halSetLogRing(ring unsafe.Pointer) {
 	C.hal_shim_set_log_ring((*C.gomc_log_ring_t)(ring))
 }
 
+// halClearMsgHandler sets the RTAPI message handler to NULL so that
+// subsequent rtapi_print_msg calls are silently discarded.  Must be
+// called before the log ring is destroyed.
+func halClearMsgHandler() {
+	C.rtapi_set_msg_handler(nil)
+}
+
 // halRtapiInitializeApp wraps rtapi_initialize_app() — idempotently sets up
 // RT rlimits, mlockall(MCL_CURRENT), signal handlers, and io privileges.
 // Safe to call multiple times (guarded internally by a once flag).

@@ -157,6 +157,9 @@ func (r *gomcLogRing) drainAll(logger *slog.Logger) int {
 
 		// Convert C-side wall clock timestamp to Go time.
 		logTime := time.Unix(0, tsNano)
+		if !logger.Handler().Enabled(context.Background(), logLevel) {
+			continue
+		}
 		record := slog.NewRecord(logTime, logLevel, msg, 0)
 		record.AddAttrs(slog.String("component", component))
 		_ = logger.Handler().Handle(context.Background(), record)

@@ -35,17 +35,26 @@ func (l *Launcher) cleanup() {
 //  7. startGoModules, startCModules
 //
 // Shutdown order (strict reverse):
+//
 //  1. stopCModules, stopGoModules (reverse of 7)
+//
 //  2. StopThreads — SYNCHRONOUS   (reverse of 6, waits for all RT idle)
 //     ── barrier: no RT function executes past this point ──
+//
 //  3. SHUTDOWN halfile
+//
 //  4. destroyCModules             (reverse of 4, frees EC masters etc.)
+//
 //  5. destroyGoModules            (reverse of 4)
+//
 //  6. UnloadAll                   (reverse of 4, unloads components)
+//
 //  7. wait for unload             (userspace processes may still be exiting)
+//
 //  8. halComp.Exit                (reverse of 2)
 //
 //  9. RtapiAppCleanup             (reverse of 1)
+//
 // 10. Release lock file
 //
 // All errors are logged but not returned so that every step runs even if a
@@ -156,6 +165,17 @@ func (l *Launcher) doCleanup() {
 		// RtapiAppCleanup() tears it down.
 		if err := l.halComp.Exit(); err != nil {
 			l.logger.Debug("hal exit returned error", "error", err)
+		}
+
+		// Step 12b — Tear down the log ring.
+		// Disconnect the RTAPI message handler first so that any stray
+		// rtapi_print_msg calls during RtapiAppCleanup are silently
+		// discarded rather than writing to freed memory.
+		halcmd.ClearMsgHandler()
+		if l.logRing != nil {
+			l.logRing.stopDrain(l.logger)
+			l.logRing.destroy()
+			l.logRing = nil
 		}
 
 		// Step 12 — Shut down the in-process RTAPI/HAL environment.

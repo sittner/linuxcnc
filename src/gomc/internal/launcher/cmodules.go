@@ -497,8 +497,10 @@ func (l *Launcher) stopCModules() {
 }
 
 // destroyCModules calls Destroy() on all loaded C plugin modules in reverse
-// order, unlocks and closes the dlopen handles, stops the log drain, and
-// frees all arena-tracked strings and gomc env structs.
+// order, unlocks and closes the dlopen handles, and frees all arena-tracked
+// strings and gomc env structs.  The log ring is NOT destroyed here — it
+// remains active so that later cleanup steps (destroyGoModules, UnloadAll)
+// can still emit log messages.  See doCleanup() for ring teardown.
 func (l *Launcher) destroyCModules() {
 	l.unlockRTModules()
 	for i := len(l.cModules) - 1; i >= 0; i-- {
@@ -512,12 +514,6 @@ func (l *Launcher) destroyCModules() {
 			C.dlclose(unsafe.Pointer(cm.handle))
 		}
 		cm.hCtx.Delete()
-	}
-	// Stop the log drain goroutine and do a final flush.
-	if l.logRing != nil {
-		l.logRing.stopDrain(l.logger)
-		l.logRing.destroy()
-		l.logRing = nil
 	}
 	// Free arena strings after all modules have been destroyed.
 	for _, p := range l.cModArena {
