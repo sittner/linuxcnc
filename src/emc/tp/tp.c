@@ -18,9 +18,6 @@
 #include "spherical_arc.h"
 #include "blendmath.h"
 #include "axis.h"
-//KLUDGE Don't include all of emc.hh here, just hand-copy the TERM COND
-//definitions until we can break the emc constants out into a separate file.
-//#include "emc.hh"
 #define EMC_TRAJ_TERM_COND_STOP  0
 #define EMC_TRAJ_TERM_COND_EXACT 1
 #define EMC_TRAJ_TERM_COND_BLEND 2
