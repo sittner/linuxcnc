@@ -1557,6 +1557,10 @@ HAVE_EMCCALIB=no
 HAVE_HALJSON=no
 HAVE_NGCPREVIEW=no
 HAVE_MILLTASK_GO=no
+HAVE_MQTTBRIDGE=no
+HAVE_PYVCP=no
+HAVE_TASKTEST=no
+HAVE_TOOLTABLE=no
 
 if test "x$HAVE_GOLANG" = "xyes"; then
     AC_ARG_ENABLE([adsserver],
@@ -1614,6 +1618,38 @@ if test "x$HAVE_GOLANG" = "xyes"; then
     if test "x$enable_milltask_go" = "xyes"; then
         HAVE_MILLTASK_GO=yes
     fi
+
+    AC_ARG_ENABLE([mqttbridge],
+        AS_HELP_STRING([--enable-mqttbridge], [Build MQTT bridge Go module (default: yes)]),
+        [enable_mqttbridge=$enableval],
+        [enable_mqttbridge=yes])
+    if test "x$enable_mqttbridge" = "xyes"; then
+        HAVE_MQTTBRIDGE=yes
+    fi
+
+    AC_ARG_ENABLE([pyvcp],
+        AS_HELP_STRING([--enable-pyvcp], [Build PyVCP Go module (default: yes)]),
+        [enable_pyvcp=$enableval],
+        [enable_pyvcp=yes])
+    if test "x$enable_pyvcp" = "xyes"; then
+        HAVE_PYVCP=yes
+    fi
+
+    AC_ARG_ENABLE([tasktest],
+        AS_HELP_STRING([--enable-tasktest], [Build task test Go module (default: no)]),
+        [enable_tasktest=$enableval],
+        [enable_tasktest=no])
+    if test "x$enable_tasktest" = "xyes"; then
+        HAVE_TASKTEST=yes
+    fi
+
+    AC_ARG_ENABLE([tooltable],
+        AS_HELP_STRING([--enable-tooltable], [Build tool table Go module (default: yes)]),
+        [enable_tooltable=$enableval],
+        [enable_tooltable=yes])
+    if test "x$enable_tooltable" = "xyes"; then
+        HAVE_TOOLTABLE=yes
+    fi
 fi
 
 AC_SUBST([HAVE_ADSSERVER])
@@ -1623,6 +1659,10 @@ AC_SUBST([HAVE_EMCCALIB])
 AC_SUBST([HAVE_HALJSON])
 AC_SUBST([HAVE_NGCPREVIEW])
 AC_SUBST([HAVE_MILLTASK_GO])
+AC_SUBST([HAVE_MQTTBRIDGE])
+AC_SUBST([HAVE_PYVCP])
+AC_SUBST([HAVE_TASKTEST])
+AC_SUBST([HAVE_TOOLTABLE])
 
 # Web application build dependencies (Node.js for Vite/Vue webapp builds)
 HAVE_NODEJS=no
@@ -1787,6 +1827,10 @@ echo "    ADS server module:          $HAVE_ADSSERVER"
 echo "    HAL oscilloscope module:    $HAVE_HALSCOPE"
 echo "    Classic Ladder PLC module:  $HAVE_CLASSICLADDER"
 echo "    Go milltask module:         $HAVE_MILLTASK_GO"
+echo "    MQTT bridge module:         $HAVE_MQTTBRIDGE"
+echo "    PyVCP module:               $HAVE_PYVCP"
+echo "    Task test module:           $HAVE_TASKTEST"
+echo "    Tool table module:          $HAVE_TOOLTABLE"
 echo "    Node.js (webapp build):     $HAVE_NODEJS"
 echo "    WebKit2GTK (gmcui):         $HAVE_WEBKIT2GTK"
 fi

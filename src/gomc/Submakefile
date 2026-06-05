@@ -31,7 +31,11 @@ GOMC_BUILD_FLAGS := $(subst $(space),$(comma),$(strip \
     $(if $(filter yes,$(BUILD_EMCCALIB)),EMCCALIB) \
     $(if $(filter yes,$(BUILD_HALJSON)),HALJSON) \
     $(if $(filter yes,$(BUILD_NGCPREVIEW)),NGCPREVIEW) \
-    $(if $(filter yes,$(BUILD_MILLTASK_GO)),MILLTASK_GO)))
+    $(if $(filter yes,$(BUILD_MILLTASK_GO)),MILLTASK_GO) \
+    $(if $(filter yes,$(BUILD_MQTTBRIDGE)),MQTTBRIDGE) \
+    $(if $(filter yes,$(BUILD_PYVCP)),PYVCP) \
+    $(if $(filter yes,$(BUILD_TASKTEST)),TASKTEST) \
+    $(if $(filter yes,$(BUILD_TOOLTABLE)),TOOLTABLE)))
 
 # Compile-time variables injected via -ldflags
 GOMC_LDFLAGS := \
