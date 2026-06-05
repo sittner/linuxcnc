@@ -248,7 +248,7 @@ int New(const cmod_env_t *env, const char *name,
 
     parse_argv(inst, argc, argv);
 
-    if ((rev = get_rpi_revision()) < 0) {
+    if ((rev = get_rpi_revision(inst->log)) < 0) {
       gomc_log_errorf(inst->log, "hal_pi_gpio",
 		      "unrecognized Raspberry revision, see /proc/cpuinfo");
       inst->rtapi->free(inst->rtapi->ctx, inst);
@@ -273,7 +273,7 @@ int New(const cmod_env_t *env, const char *name,
       inst->gpios = rpi2_gpios;
       inst->npins = sizeof(rpi2_pins);
       if (rev > 20){ // Rev 20 is Compute Module 4
-	rev = get_rpi_revision();
+	rev = get_rpi_revision(inst->log);
 	gomc_log_infof(inst->log, "hal_pi_gpio", "The Pi model %i is not known to "
 	      "work with this driver but will be assumed to be be using "
 	      "the RPi2+ layout 40 pin connector", rev);
