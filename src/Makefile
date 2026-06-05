@@ -839,7 +839,7 @@ HOMEMOD_CMOD_DEPS := \
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HOMEMOD_CMOD_CFLAGS) \
 	    -o $@ $(HOMEMOD_CMOD_SRCS) \
-	    -lm
+	    $(CMOD_LDFLAGS) -lm
 
 TARGETS += ../cmod/homemod.so
 modules: ../cmod/homemod.so
@@ -881,7 +881,7 @@ TPMOD_CMOD_DEPS := \
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(TPMOD_CMOD_CFLAGS) \
 	    -o $@ $(TPMOD_CMOD_SRCS) \
-	    -L../lib -lposemath -lm
+	    $(CMOD_LDFLAGS) -L../lib -lposemath -lm
 
 TARGETS += ../cmod/tpmod.so
 modules: ../cmod/tpmod.so

@@ -28,6 +28,9 @@ long long rtapi_get_time(void);
 long int  rtapi_delay_max(void);
 void      rtapi_delay(long ns);
 
+/* Compatibility */
+long int simple_strtol(const char *nptr, char **endptr, int base);
+
 #ifdef __cplusplus
 }
 #endif

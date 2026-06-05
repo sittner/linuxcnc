@@ -116,3 +116,11 @@ void rtapi_delay(long ns) {
     struct timespec ts = {0, ns};
     clock_nanosleep(CLOCK_MONOTONIC, 0, &ts, NULL);
 }
+
+/* ------------------------------------------------------------------ */
+/* Compatibility                                                       */
+/* ------------------------------------------------------------------ */
+
+long int simple_strtol(const char *nptr, char **endptr, int base) {
+    return strtol(nptr, endptr, base);
+}

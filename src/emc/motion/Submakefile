@@ -45,7 +45,7 @@ MOTMOD_CMOD_CFLAGS := \
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(MOTMOD_CMOD_CFLAGS) \
 	    -o $@ $(MOTMOD_CMOD_SRCS) \
-	    $(LDFLAGS) -lrtapi_core -lm
+	    $(CMOD_LDFLAGS) -lrtapi_core -lm
 
 TARGETS += ../cmod/motmod.so
 modules: ../cmod/motmod.so

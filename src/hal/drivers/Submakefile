@@ -14,7 +14,7 @@ GPIO_CMOD_CFLAGS := \
     -I$(GPIO_DIR) \
     -Igomc/pkg/cmodule
 
-GPIO_CMOD_LDFLAGS = $(LDFLAGS) -lm
+GPIO_CMOD_LDFLAGS = $(CMOD_LDFLAGS) -lm
 
 # hal_parport.so (x86 only — uses sys/io.h + librtapi_parport)
 ifeq ($(X86ARCH),true)
@@ -90,7 +90,7 @@ endif
 	    -fno-strict-aliasing -fwrapv \
 	    -I. -I../include -Igomc/pkg/cmodule -Irtapi/pci \
 	    -o $@ hal/drivers/hal_gm.c \
-	    $(LDFLAGS) -lrtapi_pci -lm
+	    $(CMOD_LDFLAGS) -lrtapi_pci -lm
 
 TARGETS += ../cmod/hal_gm.so
 modules: ../cmod/hal_gm.so
@@ -109,7 +109,7 @@ ifeq ($(X86ARCH),true)
 	    -fno-strict-aliasing -fwrapv \
 	    -I. -I../include -Igomc/pkg/cmodule -Irtapi/parport -Ihal \
 	    -o $@ hal/drivers/hal_ppmc.c \
-	    $(LDFLAGS) -lrtapi_parport -lm
+	    $(CMOD_LDFLAGS) -lrtapi_parport -lm
 
 TARGETS += ../cmod/hal_ppmc.so
 modules: ../cmod/hal_ppmc.so

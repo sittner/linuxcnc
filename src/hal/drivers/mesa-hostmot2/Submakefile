@@ -60,7 +60,7 @@ HM2_CMOD_CFLAGS := \
     -Igomc/generated/gmi/hm2_llio \
     -Igomc/generated/gmi/hm2_serial
 
-HM2_CMOD_LDFLAGS = $(LDFLAGS) -lm
+HM2_CMOD_LDFLAGS = $(CMOD_LDFLAGS) -lrtapi_core -lm
 HM2_CMOD_LDFLAGS_PCI = $(HM2_CMOD_LDFLAGS) -lrtapi_pci
 HM2_CMOD_LDFLAGS_PARPORT = $(HM2_CMOD_LDFLAGS) -lrtapi_parport
 
@@ -69,7 +69,7 @@ HM2_CMOD_LDFLAGS_PARPORT = $(HM2_CMOD_LDFLAGS) -lrtapi_parport
                      $(wildcard gomc/pkg/cmodule/gomc_*.h) \
                      gomc/generated/gmi/hm2_llio/hm2_llio_api.h \
                      gomc/generated/gmi/hm2_serial/hm2_serial_api.h \
-                     | headers
+                     | headers ../lib/librtapi_core.so
 	$(ECHO) "Compiling cmod hostmot2.so"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HM2_CMOD_CFLAGS) \
@@ -87,7 +87,7 @@ modules: ../cmod/hostmot2.so
                     $(wildcard $(HM2_DIR)/*.h) \
                     $(wildcard gomc/pkg/cmodule/gomc_*.h) \
                     gomc/generated/gmi/hm2_llio/hm2_llio_api.h \
-                    | headers
+                    | headers ../lib/librtapi_core.so
 	$(ECHO) "Compiling cmod hm2_eth.so"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HM2_CMOD_CFLAGS) \
@@ -105,7 +105,7 @@ modules: ../cmod/hm2_eth.so
                     $(wildcard $(HM2_DIR)/*.h) \
                     $(wildcard gomc/pkg/cmodule/gomc_*.h) \
                     gomc/generated/gmi/hm2_llio/hm2_llio_api.h \
-                    | headers
+                    | headers ../lib/librtapi_core.so
 	$(ECHO) "Compiling cmod hm2_pci.so"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HM2_CMOD_CFLAGS) \
@@ -124,7 +124,7 @@ ifeq ($(X86ARCH),true)
                      $(wildcard $(HM2_DIR)/*.h) \
                      $(wildcard gomc/pkg/cmodule/gomc_*.h) \
                      gomc/generated/gmi/hm2_llio/hm2_llio_api.h \
-                     | headers
+                     | headers ../lib/librtapi_core.so
 	$(ECHO) "Compiling cmod hm2_7i43.so"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HM2_CMOD_CFLAGS) \
@@ -138,7 +138,7 @@ modules: ../cmod/hm2_7i43.so
                      $(wildcard $(HM2_DIR)/*.h) \
                      $(wildcard gomc/pkg/cmodule/gomc_*.h) \
                      gomc/generated/gmi/hm2_llio/hm2_llio_api.h \
-                     | headers
+                     | headers ../lib/librtapi_core.so
 	$(ECHO) "Compiling cmod hm2_7i90.so"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HM2_CMOD_CFLAGS) \
@@ -158,7 +158,7 @@ endif # X86ARCH
                     $(wildcard $(HM2_DIR)/*.h) \
                     $(wildcard gomc/pkg/cmodule/gomc_*.h) \
                     gomc/generated/gmi/hm2_llio/hm2_llio_api.h \
-                    | headers
+                    | headers ../lib/librtapi_core.so
 	$(ECHO) "Compiling cmod hm2_spi.so"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HM2_CMOD_CFLAGS) \
@@ -176,7 +176,7 @@ modules: ../cmod/hm2_spi.so
                       $(wildcard $(HM2_DIR)/*.h) \
                       $(wildcard gomc/pkg/cmodule/gomc_*.h) \
                       gomc/generated/gmi/hm2_llio/hm2_llio_api.h \
-                      | headers
+                      | headers ../lib/librtapi_core.so
 	$(ECHO) "Compiling cmod hm2_rpspi.so"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HM2_CMOD_CFLAGS) \
@@ -202,7 +202,7 @@ HM2_SPIX_SRCS := \
                      $(wildcard $(HM2_DIR)/*.h) \
                      $(wildcard gomc/pkg/cmodule/gomc_*.h) \
                      gomc/generated/gmi/hm2_llio/hm2_llio_api.h \
-                     | headers
+                     | headers ../lib/librtapi_core.so
 	$(ECHO) "Compiling cmod hm2_spix.so"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HM2_CMOD_CFLAGS) \
@@ -221,12 +221,12 @@ modules: ../cmod/hm2_spix.so
                        $(wildcard gomc/pkg/cmodule/gomc_*.h) \
                        gomc/generated/gmi/hm2_llio/hm2_llio_api.h \
                        gomc/generated/gmi/hm2_serial/hm2_serial_api.h \
-                       | headers
+                       | headers ../lib/librtapi_core.so ../cmod/hostmot2.so
 	$(ECHO) "Compiling cmod hm2_modbus.so"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HM2_CMOD_CFLAGS) \
 	    -o $@ $(HM2_DIR)/hm2_modbus.c \
-	    $(HM2_CMOD_LDFLAGS)
+	    ../cmod/hostmot2.so $(HM2_CMOD_LDFLAGS)
 
 TARGETS += ../cmod/hm2_modbus.so
 modules: ../cmod/hm2_modbus.so
@@ -239,12 +239,12 @@ modules: ../cmod/hm2_modbus.so
                       $(wildcard $(HM2_DIR)/*.h) \
                       $(wildcard gomc/pkg/cmodule/gomc_*.h) \
                       gomc/generated/gmi/hm2_llio/hm2_llio_api.h \
-                      | headers
+                      | headers ../lib/librtapi_core.so ../cmod/hostmot2.so
 	$(ECHO) "Compiling cmod setsserial.so"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HM2_CMOD_CFLAGS) \
 	    -o $@ $(HM2_DIR)/setsserial.c \
-	    $(HM2_CMOD_LDFLAGS_PCI)
+	    ../cmod/hostmot2.so $(HM2_CMOD_LDFLAGS_PCI)
 
 TARGETS += ../cmod/setsserial.so
 modules: ../cmod/setsserial.so
@@ -257,7 +257,7 @@ modules: ../cmod/setsserial.so
                     $(wildcard $(HM2_DIR)/*.h) \
                     $(wildcard gomc/pkg/cmodule/gomc_*.h) \
                     gomc/generated/gmi/hm2_llio/hm2_llio_api.h \
-                    | headers
+                    | headers ../lib/librtapi_core.so
 	$(ECHO) "Compiling cmod hm2_test.so"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HM2_CMOD_CFLAGS) \

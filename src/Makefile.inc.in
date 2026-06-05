@@ -118,6 +118,8 @@ CPPFLAGS = @CPPFLAGS@
 CXXFLAGS = @CXXFLAGS@
 CFLAGS = @CFLAGS@
 LDFLAGS = @LDFLAGS@
+# Shared link flags for cmod .so files — fail on unresolved symbols
+CMOD_LDFLAGS = $(LDFLAGS) -Wl,--no-undefined
 RANLIB = @RANLIB@
 RANLIBFLAGS = 
 MSGFMT = @MSGFMT@
