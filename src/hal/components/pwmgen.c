@@ -1,5 +1,5 @@
 /*
- * pwmgen_cmod.c — cmod HAL component: PWM/PDM generator.
+ * pwmgen.c — cmod HAL component: PWM/PDM generator.
  *
  * Single-channel PWM/PDM signal generator.
  *

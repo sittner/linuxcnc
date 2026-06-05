@@ -1,5 +1,5 @@
 /*
- * pid_cmod.c — cmod HAL component: PID controller with auto-tune.
+ * pid.c — cmod HAL component: PID controller with auto-tune.
  *
  * Single PID loop with P/I/D/FF0/FF1/FF2/FF3 and relay auto-tuner.
  *

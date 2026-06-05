@@ -1,5 +1,5 @@
 /*
- * encoder_cmod.c — cmod HAL component: software quadrature encoder counter.
+ * encoder.c — cmod HAL component: software quadrature encoder counter.
  *
  * Single-channel quadrature encoder with index, latch, velocity estimation,
  * and missing-tooth support.

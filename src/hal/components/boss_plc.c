@@ -1,5 +1,5 @@
 /*
- * boss_plc_cmod.c — cmod HAL component: Bridgeport Boss PLC.
+ * boss_plc.c — cmod HAL component: Bridgeport Boss PLC.
  *
  * Hard-coded PLC for a Bridgeport Boss milling machine.
  * Handles feed hold logic, limit conditioning, amp fault detection,

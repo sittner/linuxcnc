@@ -1,5 +1,5 @@
 /*
- * mux_generic_cmod.c — cmod HAL component: generic configurable multiplexer.
+ * mux_generic.c — cmod HAL component: generic configurable multiplexer.
  *
  * Selects one of N inputs and routes it to the output with optional
  * type conversion. Supports bit, float, s32, u32 types.

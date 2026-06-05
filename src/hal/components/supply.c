@@ -1,5 +1,5 @@
 /*
- * supply_cmod.c — cmod HAL component supplying preset pin values.
+ * supply.c — cmod HAL component supplying preset pin values.
  *
  * Provides HAL pins preset to useful values like TRUE and 1.0.
  * Each load creates one supply instance.

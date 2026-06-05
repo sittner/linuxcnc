@@ -1,5 +1,5 @@
 /*
- * enum_cmod.c — cmod HAL component: convert enumerated ints to/from bit pins.
+ * enum.c — cmod HAL component: convert enumerated ints to/from bit pins.
  *
  * Each instance is either an encoder (bits→int) or decoder (int→bits).
  * The mode and pin names are specified in the 'enums' argument string.

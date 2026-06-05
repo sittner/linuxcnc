@@ -1,5 +1,5 @@
 /*
- * debounce_cmod.c — cmod HAL component: input debounce filter.
+ * debounce.c — cmod HAL component: input debounce filter.
  *
  * Single debounce group with N filters. All filters share the same
  * delay (sample count threshold).

@@ -1,5 +1,5 @@
 /*
- * encoder_ratio_cmod.c — cmod HAL component: encoder ratio (electronic gear).
+ * encoder_ratio.c — cmod HAL component: encoder ratio (electronic gear).
  *
  * Counts encoder pulses from master and slave axes and produces an error
  * value for PID to synchronize them at a specified gear ratio.

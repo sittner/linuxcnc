@@ -170,11 +170,6 @@ CMOD_MTC_CFLAGS := -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I $(CMOD_GMI_MTC_
 # Step 2e: hm2_serial consumers need the GMI hm2_serial API header path.
 CMOD_GMI_HM2_SERIAL_API := gomc/generated/gmi/hm2_serial
 
-# Step 2f: lcd — hand-written cmod (not from .comp)
-../cmod/lcd.so: hal/components/lcd_cmod.c
-	$(ECHO) "Compiling cmod $(notdir $@)"
-	@mkdir -p $(dir $@)
-	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -o $@ $< $(CMOD_LDFLAGS) -lm
 CMOD_HM2_SERIAL_CFLAGS := -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I $(CMOD_GMI_HM2_SERIAL_API)
 
 # mesa_pktgyro_test (hal/components/)
@@ -220,17 +215,11 @@ modules: $(CMOD_TARGETS)
 
 CMOD_C_SRCS := spindle supply watchdog modmath weighted_sum counter \
     debounce siggen encoder_ratio sim_encoder pwmgen encoder pid stepgen \
-    boss_plc enum mux_generic
+    boss_plc enum mux_generic lcd
 CMOD_C_TARGETS := $(addprefix ../cmod/, $(addsuffix .so, $(CMOD_C_SRCS)))
 
 # Generic rule for hand-written cmod C components
-../cmod/%.so: hal/components/%_cmod.c
-	$(ECHO) "Compiling cmod $(notdir $@)"
-	@mkdir -p $(dir $@)
-	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -o $@ $< $(CMOD_LDFLAGS) -lm
-
-# spindle.c uses a different naming convention (no _cmod suffix)
-../cmod/spindle.so: hal/components/spindle.c
+../cmod/%.so: hal/components/%.c
 	$(ECHO) "Compiling cmod $(notdir $@)"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -o $@ $< $(CMOD_LDFLAGS) -lm
@@ -502,21 +491,18 @@ modules: ../cmod/hal_input.so
 TARGETS += ../cmod/z_level_compensation.so
 modules: ../cmod/z_level_compensation.so
 
-TARGETS += ../cmod/lcd.so
-modules: ../cmod/lcd.so
-
-# sampler_cmod — streams HAL pin data to WebSocket clients
+# sampler — streams HAL pin data to WebSocket clients
 CMOD_GMI_HAL_SAMPLER_API := gomc/generated/gmi/hal_sampler
-../cmod/sampler.so: hal/components/sampler_cmod.c $(CMOD_GMI_HAL_SAMPLER_API)/hal_sampler_stream_api.h
+../cmod/sampler.so: hal/components/sampler.c $(CMOD_GMI_HAL_SAMPLER_API)/hal_sampler_stream_api.h
 	$(ECHO) "Compiling cmod $(notdir $@)"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I $(CMOD_GMI_HAL_SAMPLER_API) -o $@ $<
 TARGETS += ../cmod/sampler.so
 modules: ../cmod/sampler.so
 
-# streamer_cmod — receives WebSocket data and outputs to HAL pins
+# streamer — receives WebSocket data and outputs to HAL pins
 CMOD_GMI_HAL_STREAMER_API := gomc/generated/gmi/hal_streamer
-../cmod/streamer.so: hal/components/streamer_cmod.c $(CMOD_GMI_HAL_STREAMER_API)/hal_streamer_stream_api.h
+../cmod/streamer.so: hal/components/streamer.c $(CMOD_GMI_HAL_STREAMER_API)/hal_streamer_stream_api.h
 	$(ECHO) "Compiling cmod $(notdir $@)"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I $(CMOD_GMI_HAL_STREAMER_API) -o $@ $<

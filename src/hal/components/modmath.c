@@ -1,5 +1,5 @@
 /*
- * modmath_cmod.c — cmod HAL component: modulo direction finder.
+ * modmath.c — cmod HAL component: modulo direction finder.
  *
  * Computes the shortest direction (up/down) from actual to desired
  * in a modular number space, with optional wrap-around.

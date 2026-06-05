@@ -1,5 +1,5 @@
 //
-// sampler_cmod.c — HAL sampler component (cmod version)
+// sampler.c — HAL sampler component (cmod version)
 //
 // Captures HAL pin data at the servo rate into a ring buffer.
 // Connected WebSocket clients receive the data via the stream_server API.

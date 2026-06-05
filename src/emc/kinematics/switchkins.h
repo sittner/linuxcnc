@@ -1,4 +1,4 @@
-// switchkins_cmod.h — common infrastructure for switchable kins cmods
+// switchkins.h — common infrastructure for switchable kins cmods
 //
 // Provides coordinate-to-joint mapping, identity kins, and switch dispatch.
 // Used by all switchkins-based cmod kinematics modules.

@@ -1,5 +1,5 @@
 /*
- * siggen_cmod.c — cmod HAL component: signal generator.
+ * siggen.c — cmod HAL component: signal generator.
  *
  * Generates square, triangle, sine, cosine, sawtooth, and clock signals.
  *

@@ -10,7 +10,7 @@
 #include <math.h>
 #include <string.h>
 #include "gomc_env.h"
-#include "switchkins_cmod.h"
+#include "switchkins.h"
 #include "gotypes.h"
 #include "gomath.h"
 

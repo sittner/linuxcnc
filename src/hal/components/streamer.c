@@ -1,5 +1,5 @@
 //
-// streamer_cmod.c — HAL streamer component (cmod version)
+// streamer.c — HAL streamer component (cmod version)
 //
 // Receives data from WebSocket clients and outputs it onto HAL pins
 // at the servo rate.

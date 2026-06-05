@@ -1,5 +1,5 @@
 /*
- * watchdog_cmod.c — cmod HAL component: multiple-input watchdog.
+ * watchdog.c — cmod HAL component: multiple-input watchdog.
  *
  * Monitors N input bits for transitions. If any input stops toggling
  * within its timeout, the output goes low.

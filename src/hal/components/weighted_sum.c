@@ -1,5 +1,5 @@
 /*
- * weighted_sum_cmod.c — cmod HAL component: weighted summer.
+ * weighted_sum.c — cmod HAL component: weighted summer.
  *
  * Single weighted summer with N bit inputs. Each bit has a weight;
  * the output is the sum of weights for which the input bit is true.

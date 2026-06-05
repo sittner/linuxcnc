@@ -1,5 +1,5 @@
 /*
- * stepgen_cmod.c — cmod HAL component: software step pulse generator.
+ * stepgen.c — cmod HAL component: software step pulse generator.
  *
  * Single-channel step pulse generator supporting step/dir, up/down,
  * and state-pattern stepping types 0-14.

@@ -1,5 +1,5 @@
 /*
- * counter_cmod.c — cmod HAL component: software pulse counter.
+ * counter.c — cmod HAL component: software pulse counter.
  *
  * Single-channel software counter for unidirectional pulse streams.
  * Counts rising edges on phase-A, optional index reset on phase-Z.

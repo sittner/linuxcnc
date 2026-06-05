@@ -1,5 +1,5 @@
 /*
- * sim_encoder_cmod.c — cmod HAL component: simulated quadrature encoder.
+ * sim_encoder.c — cmod HAL component: simulated quadrature encoder.
  *
  * Generates A, B, Z quadrature signals at a commanded speed.
  *
