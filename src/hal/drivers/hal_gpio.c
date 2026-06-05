@@ -39,6 +39,7 @@
 #include <gpiod.h>
 #include <string.h>
 #include <errno.h>
+#include <time.h>
 #include "config.h"             /* includes the GPIOD version 105 = 1.5 */
 #if LIBGPIOD_VER >= 200
     #include <sys/stat.h>	/* to avoid following symlinks in /dev */
@@ -105,7 +106,6 @@ typedef struct {
     const gomc_rtapi_t *rtapi;
     int comp_id;
 
-    unsigned long ns2tsc_factor;
     int reset_active;
     long long last_reset;
 
@@ -122,16 +122,14 @@ typedef struct {
     char *pullup[MAX_CHAN];
 } inst_t;
 
-#define ns2tsc(inst, x) (((x) * (unsigned long long)(inst)->ns2tsc_factor) >> 12)
-
 /***********************************************************************
 *                  LOCAL FUNCTION DECLARATIONS                         *
 ************************************************************************/
 
-static inline long long get_tsc_clocks(void) {
-    unsigned int lo, hi;
-    __asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
-    return (long long)hi << 32 | lo;
+static inline long long get_time_ns(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (long long)ts.tv_sec * 1000000000LL + ts.tv_nsec;
 }
 
 static void hal_gpio_read(void *arg, long period);
@@ -397,7 +395,6 @@ int New(const cmod_env_t *env, const char *name,
 
 gomc_log_infof(inst->log, "hal_gpio", "Libgpiod is %i", LIBGPIOD_VER);
 
-    inst->ns2tsc_factor = 1ll<<12;
     
     int r = hal->init(hal->ctx, "hal_gpio", env->dl_handle, GOMC_HAL_COMP_REALTIME);
     if (r < 0) {
@@ -563,8 +560,8 @@ static void hal_gpio_write(void *arg, long period)
 	gpiod_line_set_value_bulk(gpio->out_chips[c].lines, gpio->out_chips[c].vals);
 #endif
     }
-    // store the time (in CPU clocks) for the reset function
-    inst->last_reset = get_tsc_clocks();
+    // store the time for the reset function
+    inst->last_reset = get_time_ns();
 }
 
 static void hal_gpio_reset(void *arg, long period)
@@ -582,8 +579,8 @@ static void hal_gpio_reset(void *arg, long period)
 	    }
 	}
 	if (*gpio->reset_ns > period/4) *gpio->reset_ns = period/4;
-	deadline = inst->last_reset + ns2tsc(inst, *gpio->reset_ns);
-        while(get_tsc_clocks() < deadline) {} // busy-wait!
+	deadline = inst->last_reset + *gpio->reset_ns;
+        while(get_time_ns() < deadline) {} // busy-wait!
 #if LIBGPIOD_VER > 200
 	gpiod_line_request_set_values(gpio->out_chips[c].lines, gpio->out_chips[c].vals);
 #else
