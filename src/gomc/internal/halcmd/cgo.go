@@ -75,6 +75,10 @@ static int hal_shim_list_comps(char *buf, int buf_size) {
 // RT threads push messages into the gomc_log ring buffer.  The Go drain
 // goroutine reads them and handles stdout/stderr output + subscriber fan-out.
 
+// Forward declaration — defined in uspace_common.h (linked via hallib).
+typedef void(*rtapi_msg_handler_t)(msg_level_t level, const char *fmt, va_list ap);
+extern void rtapi_set_msg_handler(rtapi_msg_handler_t handler);
+
 static gomc_log_t rt_log;  // initialized by hal_shim_set_log_ring
 
 static gomc_log_level_t rtapi_level_to_gomc(msg_level_t level) {
@@ -1099,12 +1103,6 @@ static int hal_shim_status(hal_shim_status_t *st) {
     st->lock        = (int)hal_data->lock;
     rtapi_mutex_give(&(hal_data->mutex));
     return 0;
-}
-
-// hal_shim_debug sets the RTAPI message level (0–5).
-// Returns 0 on success or a negative errno value on error.
-static int hal_shim_debug(int level) {
-    return rtapi_set_msg_level(level);
 }
 
 // buf_write_line copies line into buf[*pos] as a null-terminated entry and
@@ -2155,12 +2153,6 @@ func halSave(saveType string) ([]string, error) {
 		return lines, nil
 	}
 	return nil, fmt.Errorf("hal_shim_save: output exceeds maximum buffer size (%d bytes)", saveBufMax)
-}
-
-// halSetDebug sets the RTAPI message verbosity level.
-func halSetDebug(level int) error {
-	ret := C.hal_shim_debug(C.int(level))
-	return halError(int(ret), "hal_shim_debug")
 }
 
 // rtapiIsRealtime wraps rtapi_is_realtime(). Returns true if the process is

@@ -147,10 +147,9 @@ RTAPI_BEGIN_DECLS
     extern void rtapi_print(const char *fmt, ...)
 	    __attribute__((format(printf,1,2)));
 
-/** 'rtapi_print_msg()' prints a printf-style message when the level
-    is less than or equal to the current message level set by
-    rtapi_set_msg_level().  May be called from user, init/cleanup,
-    and realtime code.
+/** 'rtapi_print_msg()' prints a printf-style message at the given level.
+    The level is passed through to the log ring for filtering at the output
+    stage.  May be called from user, init/cleanup, and realtime code.
 */
     typedef enum {
 	RTAPI_MSG_NONE = 0,
@@ -163,28 +162,6 @@ RTAPI_BEGIN_DECLS
 
     extern void rtapi_print_msg(msg_level_t level, const char *fmt, ...)
 	    __attribute__((format(printf,2,3)));
-
-
-/** Set the maximum level of message to print.  In userspace code,
-    each component has its own independent message level.  In realtime
-    code, all components share a single message level.  Returns 0 for
-    success or -EINVAL if the level is out of range. */
-    extern int rtapi_set_msg_level(int level);
-/** Retrieve the message level set by the last call to rtapi_set_msg_level */
-    extern int rtapi_get_msg_level(void);
-
-/** 'rtapi_get_msg_handler' and 'rtapi_set_msg_handler' access the function
-    pointer used by rtapi_print and rtapi_print_msg.  By default, messages
-    appear in the kernel log, but by replacing the handler a user of the rtapi
-    library can send the messages to another destination.  Calling
-    rtapi_set_msg_handler with NULL restores the default handler. Call from
-    real-time init/cleanup code only.  When called from rtapi_print(),
-    'level' is RTAPI_MSG_ALL, a level which should not normally be used
-    with rtapi_print_msg().
-*/
-    typedef void(*rtapi_msg_handler_t)(msg_level_t level, const char *fmt, va_list ap);
-    extern void rtapi_set_msg_handler(rtapi_msg_handler_t handler);
-    extern rtapi_msg_handler_t rtapi_get_msg_handler(void);
 
 /***********************************************************************
 *                      TIME RELATED FUNCTIONS                          *

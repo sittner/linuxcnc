@@ -29,7 +29,6 @@
 
 #include <rtapi_errno.h>
 #include <rtapi_mutex.h>
-static int msg_level = RTAPI_MSG_ERR;	/* message printing level */
 
 /* These structs hold data associated with objects like tasks, etc. */
 /* Task handles are pointers to these structs.                      */
@@ -137,17 +136,14 @@ int rtapi_shmem_delete(int handle, int module_id)
 
 
 
-void default_rtapi_msg_handler(msg_level_t level, const char *fmt, va_list ap);
-
-static rtapi_msg_handler_t rtapi_msg_handler = default_rtapi_msg_handler;
-
-rtapi_msg_handler_t rtapi_get_msg_handler(void) {
-    return rtapi_msg_handler;
-}
+// Internal message handler function pointer — set once by gomc-server to
+// connect rtapi_print/rtapi_print_msg to the lock-free log ring.
+// Before the ring is connected, messages are silently discarded.
+typedef void(*rtapi_msg_handler_t)(msg_level_t level, const char *fmt, va_list ap);
+static rtapi_msg_handler_t rtapi_msg_handler = NULL;
 
 void rtapi_set_msg_handler(rtapi_msg_handler_t handler) {
-    if(handler == NULL) rtapi_msg_handler = default_rtapi_msg_handler;
-    else rtapi_msg_handler = handler;
+    rtapi_msg_handler = handler;
 }
 
 
@@ -155,9 +151,11 @@ void rtapi_print(const char *fmt, ...)
 {
     va_list args;
 
-    va_start(args, fmt);
-    rtapi_msg_handler(RTAPI_MSG_ALL, fmt, args);
-    va_end(args);
+    if (rtapi_msg_handler) {
+        va_start(args, fmt);
+        rtapi_msg_handler(RTAPI_MSG_ALL, fmt, args);
+        va_end(args);
+    }
 }
 
 
@@ -165,10 +163,10 @@ void rtapi_print_msg(msg_level_t level, const char *fmt, ...)
 {
     va_list args;
 
-    if ((level <= msg_level) && (msg_level != RTAPI_MSG_NONE)) {
-	va_start(args, fmt);
-	rtapi_msg_handler(level, fmt, args);
-	va_end(args);
+    if (rtapi_msg_handler) {
+        va_start(args, fmt);
+        rtapi_msg_handler(level, fmt, args);
+        va_end(args);
     }
 }
 
@@ -186,15 +184,6 @@ int rtapi_snprintf(char *buffer, unsigned long int size, const char *msg, ...) {
 int rtapi_vsnprintf(char *buffer, unsigned long int size, const char *fmt,
 	va_list args) {
     return vsnprintf(buffer, size, fmt, args);
-}
-
-int rtapi_set_msg_level(int level) {
-    msg_level = level;
-    return 0;
-}
-
-int rtapi_get_msg_level() {
-    return msg_level;
 }
 
 #if defined(__i386) || defined(__amd64)

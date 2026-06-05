@@ -10,8 +10,7 @@
 //
 // Options:
 //
-//	-d          Turn on "debug" mode
-//	-v          Turn on "verbose" mode
+//	-d level    Set log level: 0=DEBUG, 1=INFO (default), 2=WARN, 3=ERROR
 //	-r          Disable redirection of stdout/stderr (for tests)
 //	-l          Use the last-used INI file
 //	-k          Continue in the presence of errors in HAL files
@@ -97,8 +96,7 @@ Options:
 	}
 
 	var (
-		debug         = fs.Bool("d", false, `Turn on "debug" mode`)
-		verbose       = fs.Bool("v", false, `Turn on "verbose" mode`)
+		debugLevel    = fs.Int("d", 1, `Log level: 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR`)
 		noRedirect    = fs.Bool("r", false, "Disable redirection of stdout/stderr to log files (use for tests)")
 		useLast       = fs.Bool("l", false, "Use the last-used INI file")
 		continueOnErr = fs.Bool("k", false, "Continue in the presence of errors in HAL files")
@@ -149,16 +147,14 @@ Options:
 		return 1
 	}
 
-	// Configure logger.
-	logLevel := slog.LevelInfo
-	if *debug || *verbose {
-		logLevel = slog.LevelDebug
+	// Configure logger with dynamic level.
+	if err := halcmd.SetDebug(*debugLevel); err != nil {
+		fmt.Fprintf(os.Stderr, "gomc-server: %v\n", err)
+		return 1
 	}
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel}))
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: &halcmd.LogLevel}))
 
 	opts := launcher.Options{
-		Debug:           *debug,
-		Verbose:         *verbose,
 		NoRedirect:      *noRedirect,
 		UseLast:         *useLast,
 		ContinueOnError: *continueOnErr,

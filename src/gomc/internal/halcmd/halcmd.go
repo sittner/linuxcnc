@@ -2,6 +2,7 @@ package halcmd
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path"
 	"strings"
@@ -9,6 +10,12 @@ import (
 
 	hal "github.com/sittner/linuxcnc/src/gomc/pkg/hal"
 )
+
+// LogLevel is the dynamic log level variable that controls which messages are
+// emitted by the slog handler.  It is set at startup by gomc-server and can be
+// changed at runtime via SetDebug / "halcmd debug <level>".
+// Levels follow gomc_log_level_t: 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR.
+var LogLevel slog.LevelVar
 
 // lockAll is the HAL_LOCK_ALL bitmask value.
 const lockAll = 255
@@ -591,10 +598,21 @@ func Status() (*StatusInfo, error) {
 	return halStatus()
 }
 
-// SetDebug sets the RTAPI message verbosity level (0–5).
-// 0 = RTAPI_MSG_NONE, 1 = RTAPI_MSG_ERR, 2 = RTAPI_MSG_WARN,
-// 3 = RTAPI_MSG_INFO, 4 = RTAPI_MSG_DBG, 5 = RTAPI_MSG_ALL.
+// SetDebug sets the log output verbosity level.
+// Levels follow gomc_log_level_t: 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR.
 // Equivalent to "halcmd debug <level>".
 func SetDebug(level int) error {
-	return halSetDebug(level)
+	switch level {
+	case 0:
+		LogLevel.Set(slog.LevelDebug)
+	case 1:
+		LogLevel.Set(slog.LevelInfo)
+	case 2:
+		LogLevel.Set(slog.LevelWarn)
+	case 3:
+		LogLevel.Set(slog.LevelError)
+	default:
+		return fmt.Errorf("invalid debug level %d (valid: 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR)", level)
+	}
+	return nil
 }

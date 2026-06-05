@@ -32,10 +32,6 @@ import (
 
 // Options holds the parsed command-line options.
 type Options struct {
-	// Debug enables verbose script tracing (corresponds to -d flag).
-	Debug bool
-	// Verbose enables verbose message printing (corresponds to -v flag).
-	Verbose bool
 	// NoRedirect disables stdout/stderr redirection; used for tests (-r flag).
 	NoRedirect bool
 	// UseLast causes the last-used INI file to be loaded (-l flag).
