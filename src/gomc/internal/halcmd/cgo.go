@@ -1411,6 +1411,37 @@ func halStopThreads() error {
 	return halError(int(ret), "hal_stop_threads")
 }
 
+// halDelFunctsByComp removes all functions owned by comp_id from all threads.
+func halDelFunctsByComp(compID int) (int, error) {
+	ret := C.hal_del_functs_by_comp(C.int(compID))
+	if ret < 0 {
+		return 0, halError(int(ret), "hal_del_functs_by_comp")
+	}
+	return int(ret), nil
+}
+
+// halGetMaxCycleCount returns the maximum cycle_count across all threads.
+func halGetMaxCycleCount() uint32 {
+	return uint32(C.hal_get_max_cycle_count())
+}
+
+// halWaitCycleAdvance waits for all threads to advance past baseline.
+func halWaitCycleAdvance(baseline uint32) error {
+	ret := C.hal_wait_cycle_advance(C.uint(baseline))
+	return halError(int(ret), "hal_wait_cycle_advance")
+}
+
+// halFindCompID returns the comp_id for a named component, or 0 if not found.
+func halFindCompID(name string) int {
+	cName := C.CString(name)
+	defer C.free(unsafe.Pointer(cName))
+	comp := C.halpr_find_comp_by_name(cName)
+	if comp == nil {
+		return 0
+	}
+	return int(comp.comp_id)
+}
+
 // halListComponents wraps hal_shim_list_comps() to return all HAL component names.
 // Returns a slice of component name strings, or an error on failure.
 func halListComponents() ([]string, error) {

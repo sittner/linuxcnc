@@ -79,6 +79,28 @@ func UnloadAll(exceptCompID int) error {
 	return halUnloadAll(exceptCompID)
 }
 
+// DelFunctsByComp removes all functions owned by comp_id from all threads.
+// Returns the number of functions removed.
+func DelFunctsByComp(compID int) (int, error) {
+	return halDelFunctsByComp(compID)
+}
+
+// WaitCycleAdvance waits until all threads have advanced their cycle counter
+// past the given baseline.  Returns error on timeout (100ms).
+func WaitCycleAdvance(baseline uint32) error {
+	return halWaitCycleAdvance(baseline)
+}
+
+// GetMaxCycleCount returns the current maximum cycle count across all threads.
+func GetMaxCycleCount() uint32 {
+	return halGetMaxCycleCount()
+}
+
+// FindCompID returns the comp_id for a named HAL component, or 0 if not found.
+func FindCompID(name string) int {
+	return halFindCompID(name)
+}
+
 // LockDLHandle locks the PT_LOAD segments of a single dlopen handle
 // into memory, preventing page faults during RT execution.
 func LockDLHandle(handle unsafe.Pointer) {

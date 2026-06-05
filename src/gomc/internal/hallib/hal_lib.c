@@ -2289,6 +2289,100 @@ int hal_add_funct_to_thread(const char *funct_name, const char *thread_name, int
     return 0;
 }
 
+/* hal_del_functs_by_comp removes all functions owned by comp_id from all
+   threads.  Returns the number of functions removed on success, or a
+   negative errno on error.  After calling this, the caller should wait
+   for all thread cycle_counts to advance before freeing module resources. */
+int hal_del_functs_by_comp(int comp_id)
+{
+    hal_thread_t *thread;
+    hal_funct_t *funct;
+    hal_funct_entry_t *funct_entry;
+    hal_list_t *list_root, *list_entry, *next_entry;
+    int removed = 0;
+
+    if (hal_data == 0) {
+	rtapi_print_msg(RTAPI_MSG_ERR,
+	    "HAL: ERROR: del_functs_by_comp called before init\n");
+	return -EINVAL;
+    }
+
+    rtapi_mutex_get(&(hal_data->mutex));
+
+    /* walk all threads */
+    thread = hal_data->thread_list_ptr;
+    while (thread != NULL) {
+	list_root = &(thread->funct_list);
+	list_entry = list_next(list_root);
+	while (list_entry != list_root) {
+	    next_entry = list_next(list_entry);
+	    funct_entry = (hal_funct_entry_t *) list_entry;
+	    funct = funct_entry->funct_ptr;
+	    if (funct->owner_ptr != NULL &&
+		funct->owner_ptr->comp_id == comp_id) {
+		list_remove_entry(list_entry);
+		funct->users--;
+		free_funct_entry_struct(funct_entry);
+		removed++;
+	    }
+	    list_entry = next_entry;
+	}
+	thread = thread->next_ptr;
+    }
+
+    rtapi_mutex_give(&(hal_data->mutex));
+    return removed;
+}
+
+/* hal_get_max_cycle_count returns the maximum cycle_count across all threads.
+   Used for unload synchronization: wait for this value to advance. */
+unsigned int hal_get_max_cycle_count(void)
+{
+    hal_thread_t *thread;
+    unsigned int max = 0;
+
+    if (hal_data == 0) return 0;
+
+    rtapi_mutex_get(&(hal_data->mutex));
+    thread = hal_data->thread_list_ptr;
+    while (thread != NULL) {
+	unsigned int c = __sync_fetch_and_add(&thread->cycle_count, 0);
+	if (c > max) max = c;
+	thread = thread->next_ptr;
+    }
+    rtapi_mutex_give(&(hal_data->mutex));
+    return max;
+}
+
+/* hal_wait_cycle_advance waits until all threads have advanced their
+   cycle_count past the given baseline.  Returns 0 on success, -ETIMEDOUT
+   if 100ms passes without all threads advancing. */
+int hal_wait_cycle_advance(unsigned int baseline)
+{
+    hal_thread_t *thread;
+    int i;
+
+    if (hal_data == 0) return 0;
+
+    for (i = 0; i < 1000; i++) {  /* up to 100ms in 100us steps */
+	int all_advanced = 1;
+	rtapi_mutex_get(&(hal_data->mutex));
+	thread = hal_data->thread_list_ptr;
+	while (thread != NULL) {
+	    unsigned int c = __sync_fetch_and_add(&thread->cycle_count, 0);
+	    if (c <= baseline) {
+		all_advanced = 0;
+		break;
+	    }
+	    thread = thread->next_ptr;
+	}
+	rtapi_mutex_give(&(hal_data->mutex));
+	if (all_advanced) return 0;
+	usleep(100);
+    }
+    return -ETIMEDOUT;
+}
+
 int hal_del_funct_from_thread(const char *funct_name, const char *thread_name)
 {
     hal_thread_t *thread;
@@ -2910,6 +3004,8 @@ static void thread_task(void *arg)
 	    thread->idle = 1;
 	    __sync_synchronize();
 	}
+	/* advance cycle counter for unload synchronization */
+	__sync_fetch_and_add(&thread->cycle_count, 1);
 	/* wait until next period */
 	rtapi_wait();
     }

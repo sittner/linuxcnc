@@ -174,6 +174,46 @@ func (r *Registry) Consumers() []ConsumerRecord {
 	return out
 }
 
+// ConsumersOfProvider returns consumer instance names that depend on APIs
+// provided by the given providerInstance.
+func (r *Registry) ConsumersOfProvider(providerInstance string) []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	seen := make(map[string]bool)
+	var out []string
+	for _, c := range r.consumers {
+		if c.ProviderInstance == providerInstance && !seen[c.ConsumerInstance] {
+			seen[c.ConsumerInstance] = true
+			out = append(out, c.ConsumerInstance)
+		}
+	}
+	return out
+}
+
+// UnregisterByInstance removes all API registrations and consumer records
+// associated with the given instance name.  Returns the number of APIs removed.
+func (r *Registry) UnregisterByInstance(instance string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	removed := 0
+	for key, api := range r.instances {
+		if api.Instance == instance {
+			delete(r.instances, key)
+			removed++
+		}
+	}
+	// Remove consumer records where this instance is the consumer.
+	n := 0
+	for _, c := range r.consumers {
+		if c.ConsumerInstance != instance {
+			r.consumers[n] = c
+			n++
+		}
+	}
+	r.consumers = r.consumers[:n]
+	return removed
+}
+
 // Get returns the full RegisteredAPI matching the given instance name, or nil
 // if not found.  This performs a linear scan because the internal map is keyed
 // by api:instance.  Used by the REST server where the URL path contains only

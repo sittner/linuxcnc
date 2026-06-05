@@ -124,6 +124,7 @@ func (l *Launcher) Run() (runErr error) {
 	// Set the load-module hook so halcmd's \"load\" command can dynamically
 	// load cmod plugins at runtime via the REST API.
 	halrest.SetLoadModuleFunc(l.runtimeLoadModule)
+	halrest.SetUnloadModuleFunc(l.UnloadModule)
 
 	l.setupEnvironment()
 

@@ -345,6 +345,16 @@ func (h *halcmdImpl) Load(module string, args []string) (*halcmdapi.CmdResult, e
 	return okCmd(), nil
 }
 
+func (h *halcmdImpl) Unload(name string) (*halcmdapi.CmdResult, error) {
+	if unloadModuleHook == nil {
+		return errCmd(fmt.Errorf("unload: not supported (gomc-server launcher not initialized)"))
+	}
+	if err := unloadModuleHook(name); err != nil {
+		return errCmd(err)
+	}
+	return okCmd(), nil
+}
+
 func (h *halcmdImpl) Newthread(name string, periodNs int64, fp *bool, cpuId *int32) (*halcmdapi.CmdResult, error) {
 	usesFP := 0
 	if fp != nil && *fp {

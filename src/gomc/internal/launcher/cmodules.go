@@ -55,6 +55,15 @@ static void rt_dl_handles_add(void *handle) {
     rt_dl_handles[rt_dl_count++] = handle;
 }
 
+static void rt_dl_handles_remove(void *handle) {
+    for (int i = 0; i < rt_dl_count; i++) {
+        if (rt_dl_handles[i] == handle) {
+            rt_dl_handles[i] = rt_dl_handles[--rt_dl_count];
+            return;
+        }
+    }
+}
+
 static void rt_dl_handles_free(void) {
     free(rt_dl_handles);
     rt_dl_handles = NULL;
@@ -522,4 +531,30 @@ func (l *Launcher) destroyCModules() {
 	l.cModArena = nil
 	// Free the RT handle tracking array.
 	C.rt_dl_handles_free()
+}
+
+// cmodStop calls Stop() on a single cmod.
+func cmodStop(cm *cModule) {
+	C.cmod_call_stop(cm.mod)
+}
+
+// cmodDestroy calls Destroy() on a single cmod.
+func cmodDestroy(cm *cModule) {
+	C.cmod_call_destroy(cm.mod)
+}
+
+// cmodDestroyEnv frees the gomc env struct.
+func cmodDestroyEnv(cm *cModule) {
+	if cm.env != nil {
+		C.gomc_env_destroy(cm.env)
+		cm.env = nil
+	}
+}
+
+// cmodDlclose closes the dlopen handle.
+func cmodDlclose(cm *cModule) {
+	if cm.handle != nil {
+		C.rt_dl_handles_remove(unsafe.Pointer(cm.handle))
+		C.dlclose(unsafe.Pointer(cm.handle))
+	}
 }

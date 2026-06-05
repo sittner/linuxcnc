@@ -341,6 +341,7 @@ struct hal_thread_t {
     char name[HAL_NAME_LEN + 1];	/* thread name */
     int comp_id;
     volatile int idle;		/* set by thread_task when not executing functions */
+    volatile unsigned int cycle_count;	/* incremented each period, for unload sync */
 };
 
 /***********************************************************************
@@ -395,6 +396,17 @@ extern hal_sig_t *halpr_find_sig_by_name(const char *name);
 extern hal_param_t *halpr_find_param_by_name(const char *name);
 extern hal_thread_t *halpr_find_thread_by_name(const char *name);
 extern hal_funct_t *halpr_find_funct_by_name(const char *name);
+
+/** Remove all functions owned by comp_id from all threads.
+    Returns number removed, or negative errno. */
+extern int hal_del_functs_by_comp(int comp_id);
+
+/** Returns maximum cycle_count across all threads (for unload sync). */
+extern unsigned int hal_get_max_cycle_count(void);
+
+/** Waits until all thread cycle_counts advance past baseline.
+    Returns 0 on success, -ETIMEDOUT after 100ms. */
+extern int hal_wait_cycle_advance(unsigned int baseline);
 
 /** Allocates a HAL component structure */
 extern hal_comp_t *halpr_alloc_comp_struct(void);

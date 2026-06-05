@@ -388,7 +388,7 @@ func executeCommand(args []string) error {
 	case "load":
 		return cmdLoad(args)
 	case "unload":
-		return fmt.Errorf("unload is no longer supported; use 'unload' instead")
+		return cmdUnload(args)
 
 	// Threads
 	case "newthread":
@@ -496,7 +496,10 @@ var commandHelp = map[string]string{
   Unlink a pin from its signal.`,
 	"load": `load <module> [args...]
   Load a cmod plugin module into gomc-server.`,
-	"unload": `unload is no longer supported.`,
+	"unload": `Unload a module by instance name.
+Usage: halcmd unload <name>
+Removes the module's RT functions from threads, stops and destroys it.
+Returns EBUSY if another module depends on this module's APIs.`,
 	"newthread": `newthread <name> <period-ns> [fp] [cpu=N]
   Create a new realtime thread.
   period-ns is the period in nanoseconds.
@@ -1056,6 +1059,23 @@ func cmdLoad(args []string) error {
 		modArgs = append(modArgs, &s)
 	}
 	result, err := client.Load(module, modArgs)
+	if err != nil {
+		return err
+	}
+	if err := checkResult(result); err != nil {
+		return err
+	}
+	if result.Output != nil && *result.Output != "" && !quietMode {
+		fmt.Println(*result.Output)
+	}
+	return nil
+}
+
+func cmdUnload(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("unload requires module instance name")
+	}
+	result, err := client.Unload(args[0])
 	if err != nil {
 		return err
 	}

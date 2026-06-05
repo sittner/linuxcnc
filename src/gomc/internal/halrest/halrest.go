@@ -17,12 +17,22 @@ import (
 // cmod plugin at runtime.  The launcher sets this via SetLoadModuleFunc.
 type LoadModuleFunc func(module string, args []string) error
 
+// UnloadModuleFunc is the callback signature for unloading a module
+// by instance name.  The launcher sets this via SetUnloadModuleFunc.
+type UnloadModuleFunc func(name string) error
+
 var loadModuleHook LoadModuleFunc
+var unloadModuleHook UnloadModuleFunc
 
 // SetLoadModuleFunc sets the callback used by the "load" command to
 // dynamically load a cmod .so into gomc-server.
 func SetLoadModuleFunc(fn LoadModuleFunc) {
 	loadModuleHook = fn
+}
+
+// SetUnloadModuleFunc sets the callback used by the "unload" command.
+func SetUnloadModuleFunc(fn UnloadModuleFunc) {
+	unloadModuleHook = fn
 }
 
 // Register registers the halcmd REST API with the given registry.

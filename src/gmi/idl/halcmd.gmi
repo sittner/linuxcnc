@@ -234,6 +234,12 @@ func net(signal: string, pins: []string) -> CmdResult
 @rt_safe "false"
 func load(module: string, args: []string?) -> CmdResult
 
+# Unload module by instance name (unload)
+@method "DELETE"
+@path "/module/{name}"
+@rt_safe "false"
+func unload(name: string) -> CmdResult
+
 
 
 # ─── Thread Commands ───
