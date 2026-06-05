@@ -35,9 +35,6 @@ static const void *hm2_log;
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <hal.h>
-#include <rtapi.h>
-
 #include "gomc_env.h"
 #include "hm2_core_api.h"
 #include "hostmot2-lowlevel.h"

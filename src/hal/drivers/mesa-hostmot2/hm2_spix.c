@@ -22,8 +22,6 @@ const void *hm2_log;
 #include <string.h>
 #include <errno.h>
 
-#include <rtapi.h>
-
 #include "gomc_env.h"
 #include "hm2_core_api.h"
 

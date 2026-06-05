@@ -24,8 +24,6 @@ static const void *hm2_log;
 #include <sys/ioctl.h>
 #include <linux/spi/spidev.h>
 
-#include <rtapi.h>
-
 #define HM2_LLIO_NAME "spix_spidev"
 
 #include "hostmot2-lowlevel.h"

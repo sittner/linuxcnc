@@ -14,7 +14,6 @@
 #include "motion_struct.h"
 #include "mot_priv.h"
 #include "state_tag.h"
-#include "rtapi.h"
 
 #define MOTCTL_API_CGO
 #include "motctl_api.h"

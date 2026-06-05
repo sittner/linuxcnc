@@ -13,7 +13,6 @@
 #include "mot_priv.h"
 #include "axis.h"
 #include "state_tag.h"
-#include "rtapi.h"
 
 #define MOTSTAT_API_CGO
 #include "motstat_api.h"
