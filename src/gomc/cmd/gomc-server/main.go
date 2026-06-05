@@ -29,6 +29,7 @@ import (
 	"path/filepath"
 	"runtime"
 
+	_ "github.com/sittner/linuxcnc/src/gomc/internal/hallib"
 	"github.com/sittner/linuxcnc/src/gomc/internal/launcher"
 
 	halcmd "github.com/sittner/linuxcnc/src/gomc/internal/halcmd"

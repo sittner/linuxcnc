@@ -6,7 +6,7 @@ package classicladder
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../hal -I${SRCDIR}/../../.. -I${SRCDIR}/../../../rtapi -I${SRCDIR}/../../../../include
-#cgo LDFLAGS: -L${SRCDIR}/../../../../lib -llinuxcnchal
+#cgo LDFLAGS:
 
 #include "classicladder_rt.h"
 

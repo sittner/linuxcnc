@@ -13,7 +13,7 @@ package launcher
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../pkg/cmodule -I${SRCDIR}/../../../hal -I${SRCDIR}/../../.. -I${SRCDIR}/../../../rtapi -I${SRCDIR}/../../../../include
-#cgo LDFLAGS: -ldl -L${SRCDIR}/../../../../lib -llinuxcnchal
+#cgo LDFLAGS: -ldl
 
 #include <dlfcn.h>
 #include <stdlib.h>

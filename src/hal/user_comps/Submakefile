@@ -1,13 +1,15 @@
 USER_COMP_PY = pyvcp gladevcp
 
-USER_COMPS := $(sort $(wildcard hal/user_comps/*.comp))
-USER_COMPS := $(filter-out hal/user_comps/thermistor.comp, $(USER_COMPS))
-USER_COMPS := $(filter-out hal/user_comps/gs2_vfd.comp hal/user_comps/hy_gt_vfd.comp hal/user_comps/svd-ps_vfd.comp, $(USER_COMPS))
-USER_COMP_BINS := $(patsubst hal/user_comps/%.comp, ../bin/%, $(USER_COMPS))
-USER_COMP_MANPAGES := $(patsubst hal/user_comps/%.comp, ../docs/man/man1/%.1, $(USER_COMPS))
-USER_COMP_SRCS := $(patsubst %.comp, objects/%.c, $(USER_COMPS))
-GENERATED_MANPAGES += $(USER_COMP_MANPAGES)
-USERSRCS += $(USER_COMP_SRCS)
+# Legacy .comp userspace components — disabled (halcompile no longer exists).
+# These have been superseded by cmod equivalents or removed.
+#USER_COMPS := $(sort $(wildcard hal/user_comps/*.comp))
+#USER_COMPS := $(filter-out hal/user_comps/thermistor.comp, $(USER_COMPS))
+#USER_COMPS := $(filter-out hal/user_comps/gs2_vfd.comp hal/user_comps/hy_gt_vfd.comp hal/user_comps/svd-ps_vfd.comp, $(USER_COMPS))
+#USER_COMP_BINS := $(patsubst hal/user_comps/%.comp, ../bin/%, $(USER_COMPS))
+#USER_COMP_MANPAGES := $(patsubst hal/user_comps/%.comp, ../docs/man/man1/%.1, $(USER_COMPS))
+#USER_COMP_SRCS := $(patsubst %.comp, objects/%.c, $(USER_COMPS))
+#GENERATED_MANPAGES += $(USER_COMP_MANPAGES)
+#USERSRCS += $(USER_COMP_SRCS)
 
 $(patsubst %, ../bin/%, $(USER_COMP_PY)) : ../bin/%: hal/user_comps/%.py
 	@$(ECHO) Syntax checking python script $(notdir $@)
@@ -30,22 +32,22 @@ $(patsubst ./hal/user_comps/%,../include/%,$(wildcard ./hal/user_comps/*.h)): ..
 $(patsubst ./hal/user_comps/%,../include/%,$(wildcard ./hal/user_comps/*.hh)): ../include/%.hh: ./hal/user_comps/%.hh
 	cp $^ $@
 
-$(USER_COMP_MANPAGES): ../docs/man/man1/%.1: hal/user_comps/%.comp ../bin/halcompile
-	$(ECHO) Making halcompile manpage $(notdir $@)
-	@mkdir -p $(dir $@)
-	$(Q)../bin/halcompile -U --userspace --document -o $@ $<
+#$(USER_COMP_MANPAGES): ../docs/man/man1/%.1: hal/user_comps/%.comp ../bin/halcompile
+#	$(ECHO) Making halcompile manpage $(notdir $@)
+#	@mkdir -p $(dir $@)
+#	$(Q)../bin/halcompile -U --userspace --document -o $@ $<
 
-$(USER_COMP_SRCS): objects/%.c: %.comp ../bin/halcompile
-	$(ECHO) "Preprocessing $(notdir $<)"
-	@mkdir -p $(dir $@)
-	$(Q)../bin/halcompile -U --userspace --require-license -o $@ $<
+#$(USER_COMP_SRCS): objects/%.c: %.comp ../bin/halcompile
+#	$(ECHO) "Preprocessing $(notdir $<)"
+#	@mkdir -p $(dir $@)
+#	$(Q)../bin/halcompile -U --userspace --require-license -o $@ $<
 
-$(USER_COMP_BINS): ../bin/%: objects/objects/hal/user_comps/%.o ../lib/liblinuxcnchal.so
-	$(ECHO) Linking $(notdir $@)
-	$(Q)$(CC) $(LDFLAGS) -o $@ $^ -lm -lstdc++
+#$(USER_COMP_BINS): ../bin/%: objects/objects/hal/user_comps/%.o ../lib/liblinuxcnchal.so
+#	$(ECHO) Linking $(notdir $@)
+#	$(Q)$(CC) $(LDFLAGS) -o $@ $^ -lm -lstdc++
 
 .PHONY: user-comps
-user-comps: $(USER_COMP_BINS)
+#user-comps: $(USER_COMP_BINS)
 
-TARGETS += $(patsubst %.comp, ../bin/%, $(notdir $(USER_COMPS)))
+#TARGETS += $(patsubst %.comp, ../bin/%, $(notdir $(USER_COMPS)))
 #modules: $(patsubst %.comp, objects/%.c, $(COMPS) $(COMP_DRIVERS))

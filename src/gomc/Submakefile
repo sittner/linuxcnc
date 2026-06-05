@@ -144,15 +144,15 @@ $(IMPORTS_GENERATED): gomc/packages.conf ../bin/modcompile $(GMI_ALL_GEN_GO)
 
 # Build the gomc-server binary.
 #
-# CGO_LDFLAGS adds -Wl,-rpath so the dynamic linker finds liblinuxcnchal.so
-# and its companions at runtime (RIP and installed builds alike).
+# CGO_LDFLAGS adds -Wl,-rpath so the dynamic linker finds libposemath.so
+# and librs274.so at runtime (RIP and installed builds alike).
 # --disable-new-dtags forces DT_RPATH instead of DT_RUNPATH; RUNPATH is
 # ignored by the dynamic linker when the binary has file capabilities (setcap).
 # LIB_DIR is $(EMC2_HOME)/lib, defined in Makefile.inc.
 #
 # GOFLAGS=-mod=mod allows Go to update go.sum automatically when new local
 # packages appear (e.g. generated GMI code).
-../bin/gomc-server: $(GOMC_SRC) $(GMI_KINS_GEN_GO) $(GMI_TOOLS_GEN_GO) $(GMI_EMCSTAT_PUSH_GO) $(GMI_MOTCTL_CLIENT_GO) $(GMI_MOTSTAT_CLIENT_GO) $(GMI_EMCIO_CLIENT_GO) $(GMI_CLASSICLADDER_SERVER_GO) $(GMI_HAL_SAMPLER_STREAM_GO) $(GMI_HAL_STREAMER_STREAM_GO) $(IMPORTS_GENERATED) gomc/go.mod ../lib/liblinuxcnchal.so ../lib/libposemath.so ../lib/librs274.so Makefile.inc
+../bin/gomc-server: $(GOMC_SRC) $(GMI_KINS_GEN_GO) $(GMI_TOOLS_GEN_GO) $(GMI_EMCSTAT_PUSH_GO) $(GMI_MOTCTL_CLIENT_GO) $(GMI_MOTSTAT_CLIENT_GO) $(GMI_EMCIO_CLIENT_GO) $(GMI_CLASSICLADDER_SERVER_GO) $(GMI_HAL_SAMPLER_STREAM_GO) $(GMI_HAL_STREAMER_STREAM_GO) $(IMPORTS_GENERATED) gomc/go.mod ../lib/libposemath.so ../lib/librs274.so Makefile.inc
 	$(ECHO) Building gomc-server
 	$(Q)cd gomc && CGO_LDFLAGS="-Wl,-rpath,$(LIB_DIR) -Wl,--disable-new-dtags" GOFLAGS=-mod=mod $(GO) build -ldflags "$(GOMC_LDFLAGS)" -o $(TOP)/bin/gomc-server ./cmd/gomc-server
 
@@ -214,7 +214,7 @@ GOMC_PKG_FILES := \
 # ---------------------------------------------------------------------------
 
 HAL_GO_CGO_CFLAGS := -I$(TOP)/src -I$(TOP)/src/hal -I$(TOP)/src/rtapi -I$(TOP)/include
-HAL_GO_CGO_LDFLAGS := -L$(TOP)/lib -llinuxcnchal
+HAL_GO_CGO_LDFLAGS :=
 
 TARGETS += ../bin/gomc-server ../bin/ads-xml-gen $(GOMC_PKG_FILES)
 

@@ -3,26 +3,6 @@ INCLUDES += hal
 ../include/%.h: ./hal/%.h
 	cp $^ $@
 
-HALLIBSRCS := \
-  hal/hal_lib.c \
-  rtapi/uspace_rtapi_lib.c \
-  rtapi/uspace_rtapi_string.c \
-  rtapi/rtapi_pci.c
-
-$(call TOOBJSDEPS, $(HALLIBSRCS)): EXTRAFLAGS += -fPIC $(ULAPI_CFLAGS) $(LIBUDEV_CFLAGS)
-USERSRCS += $(HALLIBSRCS)
-HALLIB_LIBS := -pthread -lrt $(LIBUDEV_LIBS)
-
-HALLIB := ../lib/liblinuxcnchal.so
-
-$(HALLIB).0: $(call TOOBJS, $(HALLIBSRCS))
-	$(ECHO) Creating shared library $(notdir $@)
-	@mkdir -p ../lib
-	@rm -f $@
-	$(Q)$(CC) $(LDFLAGS) -Wl,-soname,$(notdir $@) -shared -o $@ $^ $(HALLIB_LIBS) $(ULAPI_LDFLAGS)
-
-TARGETS += $(HALLIB) ../lib/liblinuxcnchal.so.0
-
 # Standalone PCI + firmware library (no hal/rtapi dependency)
 RTAPI_PCI_SRCS := rtapi/pci/rtapi_pci.c
 $(call TOOBJSDEPS, $(RTAPI_PCI_SRCS)): EXTRAFLAGS += -fPIC $(LIBUDEV_CFLAGS)

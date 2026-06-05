@@ -8,7 +8,7 @@ package halscope
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../hal -I${SRCDIR}/../../.. -I${SRCDIR}/../../../rtapi -I${SRCDIR}/../../../../include
-#cgo LDFLAGS: -L${SRCDIR}/../../../../lib -llinuxcnchal
+#cgo LDFLAGS:
 
 #include "halscope_rt.h"
 #include "hal_priv.h"
