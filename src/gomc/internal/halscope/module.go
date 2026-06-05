@@ -202,18 +202,12 @@ func (m *halscope) Stop() {
 }
 
 func (m *halscope) Destroy() {
-	// Unwire from thread if attached.
-	s := m.s
-	if s.thread_name[0] != 0 {
-		cThread := C.GoString(&s.thread_name[0])
-		ct := C.CString(cThread)
-		cf := C.CString(m.functName)
-		C.hal_del_funct_from_thread(cf, ct)
-		C.free(unsafe.Pointer(ct))
-		C.free(unsafe.Pointer(cf))
-	}
+	// hal_exit removes the component and all its functions/pins from HAL,
+	// including any thread linkages.  No need to call hal_del_funct_from_thread
+	// explicitly — it would access thread structures that may already be torn
+	// down during the shutdown sequence.
 	C.hal_exit(m.compID)
-	C.halscope_free(s)
+	C.halscope_free(m.s)
 }
 
 // ------------------------------------------------------------------ //
