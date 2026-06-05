@@ -53,6 +53,7 @@ HM2_CMOD_CFLAGS := \
     -fPIC -Os -Wall -Wextra \
     -DUSPACE -D_GNU_SOURCE -Drealtime \
     -fno-strict-aliasing -fwrapv \
+    -Irtapi/pci \
     -I. -I../include \
     -I$(HM2_DIR) \
     -Igomc/pkg/cmodule \

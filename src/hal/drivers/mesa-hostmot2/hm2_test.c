@@ -1,3 +1,4 @@
+static const void *hm2_log;
 
 //
 //    Copyright (C) 2007-2008 Sebastian Kuzminsky
@@ -26,10 +27,7 @@
 //
 
 
-#include "rtapi.h"
-#include "rtapi_string.h"
 
-#include "hal.h"
 
 #include "gomc_env.h"
 #include "hm2_core_api.h"
@@ -70,14 +68,14 @@ static void set32(hm2_test_t *me, uint16_t addr, uint32_t val) {
 //
 
 
-static int hm2_test_read(hm2_lowlevel_io_t *this, rtapi_u32 addr, void *buffer, int size) {
+static int hm2_test_read(hm2_lowlevel_io_t *this, uint32_t addr, void *buffer, int size) {
     hm2_test_t *me = this->private;
     memcpy(buffer, &me->test_pattern.tp8[addr], size);
     return 1;  // success
 }
 
 
-static int hm2_test_write(hm2_lowlevel_io_t *this, rtapi_u32 addr, const void *buffer, int size) {
+static int hm2_test_write(hm2_lowlevel_io_t *this, uint32_t addr, const void *buffer, int size) {
     (void)this; (void)addr; (void)buffer; (void)size;
     return 1;  // success
 }
@@ -555,7 +553,7 @@ static int hm2_test_init(hm2_test_inst_t *inst) {
     }
 
 
-    rtapi_snprintf(me->llio.name, sizeof(me->llio.name), "hm2_test.0");
+    snprintf(me->llio.name, sizeof(me->llio.name), "hm2_test.0");
 
     me->llio.fpga_part_number = "none";
 

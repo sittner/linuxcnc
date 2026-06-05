@@ -274,7 +274,7 @@ void rtapi_pci_unregister_driver(struct rtapi_pci_driver *driver)
 void *rtapi_pci_ioremap_bar(struct rtapi_pci_dev *dev, int bar)
 {
     void *mmio;
-    char path[256];
+    char path[280];
     int fd;
     size_t resource_len;
     int i;

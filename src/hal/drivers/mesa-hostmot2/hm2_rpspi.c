@@ -1,3 +1,5 @@
+extern char **environ;
+static const void *hm2_log;
 /*    This is a component for RaspberryPi to hostmot2 over SPI for linuxcnc.
  *    Copyright 2016 Matsche <tinker@play-pla.net>
  *    Copyright 2017 B.Stultiens <lcnc@vagrearg.org>
@@ -966,7 +968,7 @@ static int probe_board(hm2_rpspi_t *board) {
 	}
 
 	rtapi_print_msg(RPSPI_INFO, "hm2_rpspi: SPI%d/CE%d Base: %s.%d\n", board->spidevid, board->spiceid, base, board->nr);
-	rtapi_snprintf(board->llio.name, sizeof(board->llio.name), "%s.%d", base, board->nr);
+	snprintf(board->llio.name, sizeof(board->llio.name), "%s.%d", base, board->nr);
 	board->llio.comp_id = board->inst->comp_id;
 	board->llio.private = board;	// Self reference
 

@@ -19,11 +19,7 @@
 
 #include <rtapi_list.h>
 
-#include "rtapi.h"
-#include "rtapi_string.h"
-#include "rtapi_math.h"
 
-#include "hal.h"
 
 #include "hal/drivers/mesa-hostmot2/hostmot2.h"
 
@@ -42,7 +38,7 @@
 // in the future this function will inform the Translation RAM
 //
 
-int hm2_register_tram_read_region(hostmot2_t *hm2, rtapi_u16 addr, rtapi_u16 size, rtapi_u32 **buffer) {
+int hm2_register_tram_read_region(hostmot2_t *hm2, uint16_t addr, uint16_t size, uint32_t **buffer) {
     hm2_tram_entry_t *tram_entry;
 
     tram_entry = rtapi_malloc(sizeof(hm2_tram_entry_t));
@@ -61,7 +57,7 @@ int hm2_register_tram_read_region(hostmot2_t *hm2, rtapi_u16 addr, rtapi_u16 siz
 }
 
 
-int hm2_register_tram_write_region(hostmot2_t *hm2, rtapi_u16 addr, rtapi_u16 size, rtapi_u32 **buffer) {
+int hm2_register_tram_write_region(hostmot2_t *hm2, uint16_t addr, uint16_t size, uint32_t **buffer) {
     hm2_tram_entry_t *tram_entry;
 
     tram_entry = rtapi_malloc(sizeof(hm2_tram_entry_t));
@@ -82,7 +78,7 @@ int hm2_register_tram_write_region(hostmot2_t *hm2, rtapi_u16 addr, rtapi_u16 si
 
 int hm2_allocate_tram_regions(hostmot2_t *hm2) {
     struct rtapi_list_head *ptr;
-    rtapi_u16 offset;
+    uint16_t offset;
     
     int old_tram_read_size = hm2->tram_read_size;
     int old_tram_write_size = hm2->tram_write_size;
@@ -105,7 +101,7 @@ int hm2_allocate_tram_regions(hostmot2_t *hm2) {
         hm2->tram_write_size
     );
 
-    hm2->tram_read_buffer = (rtapi_u32 *)rtapi_realloc(hm2->tram_read_buffer, hm2->tram_read_size);
+    hm2->tram_read_buffer = (uint32_t *)rtapi_realloc(hm2->tram_read_buffer, hm2->tram_read_size);
     if (hm2->tram_read_buffer == NULL) {
         HM2_ERR("Error while (re)allocating Translation RAM read buffer (%d bytes)\n", hm2->tram_read_size);
         return -ENOMEM;
@@ -113,7 +109,7 @@ int hm2_allocate_tram_regions(hostmot2_t *hm2) {
     if(hm2->tram_read_size>old_tram_read_size)
         memset((char*)hm2->tram_read_buffer+old_tram_read_size, 0, hm2->tram_read_size-old_tram_read_size);
     
-    hm2->tram_write_buffer = (rtapi_u32 *)rtapi_realloc(hm2->tram_write_buffer, hm2->tram_write_size);
+    hm2->tram_write_buffer = (uint32_t *)rtapi_realloc(hm2->tram_write_buffer, hm2->tram_write_size);
     if (hm2->tram_write_buffer == NULL) {
         HM2_ERR("Error while (re)allocating Translation RAM write buffer (%d bytes)\n", hm2->tram_write_size);
         return -ENOMEM;
@@ -126,7 +122,7 @@ int hm2_allocate_tram_regions(hostmot2_t *hm2) {
     offset = 0;
     rtapi_list_for_each(ptr, &hm2->tram_read_entries) {
         hm2_tram_entry_t *tram_entry = rtapi_list_entry(ptr, hm2_tram_entry_t, list);
-        *tram_entry->buffer = (rtapi_u32*)((rtapi_u8*)hm2->tram_read_buffer + offset);
+        *tram_entry->buffer = (uint32_t*)((uint8_t*)hm2->tram_read_buffer + offset);
         offset += tram_entry->size;
         HM2_DBG("    addr=0x%04x, size=%d, buffer=%p\n", tram_entry->addr, tram_entry->size, *tram_entry->buffer);
     }
@@ -135,7 +131,7 @@ int hm2_allocate_tram_regions(hostmot2_t *hm2) {
     offset = 0;
     rtapi_list_for_each(ptr, &hm2->tram_write_entries) {
         hm2_tram_entry_t *tram_entry = rtapi_list_entry(ptr, hm2_tram_entry_t, list);
-        *tram_entry->buffer = (rtapi_u32*)((rtapi_u8*)hm2->tram_write_buffer + offset);
+        *tram_entry->buffer = (uint32_t*)((uint8_t*)hm2->tram_write_buffer + offset);
         offset += tram_entry->size;
         HM2_DBG("    addr=0x%04x, size=%d, buffer=%p\n", tram_entry->addr, tram_entry->size, *tram_entry->buffer);
     }
@@ -144,7 +140,7 @@ int hm2_allocate_tram_regions(hostmot2_t *hm2) {
 }
 
 
-static rtapi_u32 tram_read_iteration = 0;
+static uint32_t tram_read_iteration = 0;
 int hm2_tram_read(hostmot2_t *hm2) {
     struct rtapi_list_head *ptr;
 
@@ -184,7 +180,7 @@ int hm2_finish_read(hostmot2_t *hm2) {
 }
 
 
-static rtapi_u32 tram_write_iteration = 0;
+static uint32_t tram_write_iteration = 0;
 int hm2_tram_write(hostmot2_t *hm2) {
     struct rtapi_list_head *ptr;
 

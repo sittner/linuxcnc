@@ -7,7 +7,6 @@
 // The callbacks struct is populated by hm2_serial_provider_init() and
 // registered with the GMI API registry by hostmot2.c in New().
 
-#include "rtapi.h"
 #include "rtapi_stdint.h"
 #include "hm2_serial_api.h"
 #include "hostmot2-serial.h"
@@ -35,7 +34,7 @@ static int32_t shim_pktuart_send(void *ctx, const char *name,
 {
     (void)ctx;
     return hm2_pktuart_send(name, (unsigned char *)data,
-                            (rtapi_u8 *)&num_frames, (rtapi_u16 *)frame_sizes);
+                            (uint8_t *)&num_frames, (uint16_t *)frame_sizes);
 }
 
 static int32_t shim_pktuart_read(void *ctx, const char *name,
@@ -43,23 +42,23 @@ static int32_t shim_pktuart_read(void *ctx, const char *name,
 {
     (void)ctx;
     return hm2_pktuart_read(name, (unsigned char *)data,
-                            (rtapi_u8 *)num_frames,
-                            (rtapi_u16 *)max_frame_length,
-                            (rtapi_u16 *)frame_sizes);
+                            (uint8_t *)num_frames,
+                            (uint16_t *)max_frame_length,
+                            (uint16_t *)frame_sizes);
 }
 
 static int32_t shim_pktuart_queue_get_frame_sizes(void *ctx, const char *name,
     void *fsizes)
 {
     (void)ctx;
-    return hm2_pktuart_queue_get_frame_sizes(name, (rtapi_u32 *)fsizes);
+    return hm2_pktuart_queue_get_frame_sizes(name, (uint32_t *)fsizes);
 }
 
 static int32_t shim_pktuart_queue_read_data(void *ctx, const char *name,
     void *data, int32_t bytes)
 {
     (void)ctx;
-    return hm2_pktuart_queue_read_data(name, (rtapi_u32 *)data, bytes);
+    return hm2_pktuart_queue_read_data(name, (uint32_t *)data, bytes);
 }
 
 static void shim_pktuart_reset(void *ctx, const char *name)
@@ -170,7 +169,7 @@ static int32_t shim_bspi_tram_add_frame(void *ctx, const char *name,
 {
     (void)ctx;
     return hm2_tram_add_bspi_frame((char *)name, chan,
-                                   (rtapi_u32 **)wbuff, (rtapi_u32 **)rbuff);
+                                   (uint32_t **)wbuff, (uint32_t **)rbuff);
 }
 
 static int32_t shim_bspi_clear_fifo(void *ctx, const char *name)

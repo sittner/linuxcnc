@@ -1,3 +1,4 @@
+static const void *hm2_log;
 /*
  * This is a component for hostmot2 over SPI for linuxcnc.
  * Copyright (c) 2024 B.Stultiens <lcnc@vagrearg.org>
@@ -165,7 +166,7 @@ static void buffer_free(buffer_t *b)
  * HM2 interface: Write buffer to SPI
  * Writes the buffer to SPI, prepended with a command word.
  */
-static int hm2_spix_write(hm2_lowlevel_io_t *llio, rtapi_u32 addr, const void *buffer, int size)
+static int hm2_spix_write(hm2_lowlevel_io_t *llio, uint32_t addr, const void *buffer, int size)
 {
 	spix_board_t *brd = (spix_board_t *)llio;
 	int txlen = size / sizeof(uint32_t);	// uint32_t words to transmit
@@ -186,7 +187,7 @@ static int hm2_spix_write(hm2_lowlevel_io_t *llio, rtapi_u32 addr, const void *b
  * Reads from SPI after sending the appropriate command. Sends one word with
  * the command followed by writing zeros while reading.
  */
-static int hm2_spix_read(hm2_lowlevel_io_t *llio, rtapi_u32 addr, void *buffer, int size)
+static int hm2_spix_read(hm2_lowlevel_io_t *llio, uint32_t addr, void *buffer, int size)
 {
 	spix_board_t *brd = (spix_board_t *)llio;
 	int rxlen = size / sizeof(uint32_t);	// uint32_t words to receive
@@ -209,7 +210,7 @@ static int hm2_spix_read(hm2_lowlevel_io_t *llio, rtapi_u32 addr, void *buffer, 
  * HM2 interface: Queue read
  * Collects the read address and buffer for bulk-read later on.
  */
-static int hm2_spix_queue_read(hm2_lowlevel_io_t *llio, rtapi_u32 addr, void *buffer, int size)
+static int hm2_spix_queue_read(hm2_lowlevel_io_t *llio, uint32_t addr, void *buffer, int size)
 {
 	spix_board_t *brd = (spix_board_t *)llio;
 	int rxlen = size / sizeof(uint32_t);
@@ -295,7 +296,7 @@ static int hm2_spix_receive_queued_reads(hm2_lowlevel_io_t *llio)
  * HM2 interface: Queue write
  * Collects the write address and data for bulk-write later on.
  */
-static int hm2_spix_queue_write(hm2_lowlevel_io_t *llio, rtapi_u32 addr, const void *buffer, int size)
+static int hm2_spix_queue_write(hm2_lowlevel_io_t *llio, uint32_t addr, const void *buffer, int size)
 {
 	spix_board_t *brd = (spix_board_t *)llio;
 	int txlen = size / sizeof(uint32_t);
@@ -447,7 +448,7 @@ static int probe_board(hm2_spix_inst_t *inst, spix_board_t *board)
 
 	LL_INFO("%s: Base: %s.%d\n", port->name, base, board->nr);
 
-	rtapi_snprintf(board->llio.name, sizeof(board->llio.name), "%s.%d", base, board->nr);
+	snprintf(board->llio.name, sizeof(board->llio.name), "%s.%d", base, board->nr);
 	board->llio.comp_id = inst->comp_id;
 	board->llio.private = board;	// Self reference
 

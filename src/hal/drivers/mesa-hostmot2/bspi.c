@@ -1,3 +1,4 @@
+static const void *hm2_log;
 //
 //    Copyright (C) 2011 Andy Pugh
 //
@@ -17,10 +18,6 @@
 //
 
 #include <rtapi_bool.h>
-#include "rtapi.h"
-#include "rtapi_string.h"
-#include "rtapi_math.h"
-#include "hal.h"
 #include "hostmot2.h"
 
 int hm2_bspi_parse_md(hostmot2_t *hm2, int md_index) 
@@ -74,7 +71,7 @@ int hm2_bspi_parse_md(hostmot2_t *hm2, int md_index)
         hm2->bspi.num_instances = hm2->config.num_bspis;
     }
     
-    hm2->bspi.instance = (hm2_bspi_instance_t *)hal_malloc(hm2->bspi.num_instances 
+    hm2->bspi.instance = (hm2_bspi_instance_t *)hm2->llio->hal->malloc(hm2->llio->hal->ctx, hm2->bspi.num_instances 
                                                      * sizeof(hm2_bspi_instance_t));
     if (hm2->bspi.instance == NULL) {
         HM2_ERR("out of memory!\n");
@@ -91,10 +88,10 @@ int hm2_bspi_parse_md(hostmot2_t *hm2, int md_index)
         chan->base_address = md->base_address + i * md->instance_stride;
         chan->register_stride = md->register_stride;
         chan->instance_stride = md->instance_stride;
-        chan->cd_addr = md->base_address + md->register_stride + i * sizeof(rtapi_u32);
-        chan->count_addr = md->base_address + 2 * md->register_stride + i * sizeof(rtapi_u32);
+        chan->cd_addr = md->base_address + md->register_stride + i * sizeof(uint32_t);
+        chan->count_addr = md->base_address + 2 * md->register_stride + i * sizeof(uint32_t);
         for (j = 0 ; j < 16 ; j++ ){
-            chan->addr[j] = chan->base_address + j * sizeof(rtapi_u32);
+            chan->addr[j] = chan->base_address + j * sizeof(uint32_t);
         }
         
     }
@@ -110,12 +107,12 @@ void hm2_bspi_force_write(hostmot2_t *hm2)
         hm2_bspi_instance_t chan = hm2->bspi.instance[i];
         // write the channel descriptors
         for (j = 15 ; j >=0 ; j--){
-            hm2->llio->write(hm2->llio, chan.cd_addr, &(chan.cd[j]), sizeof(rtapi_u32));
+            hm2->llio->write(hm2->llio, chan.cd_addr, &(chan.cd[j]), sizeof(uint32_t));
         }
     }
 }
 
-int hm2_tram_add_bspi_frame(char *name, int chan, rtapi_u32 **wbuff, rtapi_u32 **rbuff)
+int hm2_tram_add_bspi_frame(char *name, int chan, uint32_t **wbuff, uint32_t **rbuff)
 {
     hostmot2_t *hm2;
     int i, r;
@@ -130,7 +127,7 @@ int hm2_tram_add_bspi_frame(char *name, int chan, rtapi_u32 **wbuff, rtapi_u32 *
         return -1;
     }
     if (wbuff != NULL) {
-        r = hm2_register_tram_write_region(hm2,hm2->bspi.instance[i].addr[chan], sizeof(rtapi_u32),wbuff);
+        r = hm2_register_tram_write_region(hm2,hm2->bspi.instance[i].addr[chan], sizeof(uint32_t),wbuff);
         if (r < 0) {
             HM2_ERR("Failed to add TRAM write entry for %s.\n", name);
             return -1;
@@ -148,7 +145,7 @@ int hm2_tram_add_bspi_frame(char *name, int chan, rtapi_u32 **wbuff, rtapi_u32 *
     if (rbuff != NULL){
         // Reading from addr[0] instead of addr[chan] is intentional
         // here - all the channels share one receive FIFO.
-        r = hm2_register_tram_read_region(hm2,hm2->bspi.instance[i].addr[0], sizeof(rtapi_u32),rbuff);
+        r = hm2_register_tram_read_region(hm2,hm2->bspi.instance[i].addr[0], sizeof(uint32_t),rbuff);
         if (r < 0) {
             HM2_ERR( "Failed to add TRAM read entry for %s\n", name);
             return -1;
@@ -186,8 +183,8 @@ int hm2_bspi_clear_fifo(char * name)
         HM2_ERR_NO_LL("Can not find BSPI instance %s.\n", name);
         return -1;
     }
-    rtapi_u32 zero = 0;
-    r = hm2->llio->write(hm2->llio, hm2->bspi.instance[i].count_addr, &zero, sizeof(rtapi_u32));
+    uint32_t zero = 0;
+    r = hm2->llio->write(hm2->llio, hm2->bspi.instance[i].count_addr, &zero, sizeof(uint32_t));
     if (r < 0) {
         HM2_ERR("BSPI: hm2->llio->write failure %s\n", name);
     }
@@ -195,10 +192,10 @@ int hm2_bspi_clear_fifo(char * name)
     return r;
 }
 
-int hm2_bspi_write_chan(char* name, int chan, rtapi_u32 val)
+int hm2_bspi_write_chan(char* name, int chan, uint32_t val)
 {
     hostmot2_t *hm2;
-    rtapi_u32 buff = val;
+    uint32_t buff = val;
     int i, r;
     i = hm2_get_bspi(&hm2, name);
     if (i < 0){
@@ -210,7 +207,7 @@ int hm2_bspi_write_chan(char* name, int chan, rtapi_u32 val)
                 "Has not been configured.\n", chan, name);
         return -1;
     }
-    r = hm2->llio->write(hm2->llio, hm2->bspi.instance[i].addr[chan], &buff, sizeof(rtapi_u32));
+    r = hm2->llio->write(hm2->llio, hm2->bspi.instance[i].addr[chan], &buff, sizeof(uint32_t));
     if (r < 0) {
         HM2_ERR("BSPI: hm2->llio->write failure %s\n", name);
     }
@@ -223,7 +220,7 @@ int hm2_bspi_setup_chan(char *name, int chan, int cs, int bits, double mhz,
                         int samplelate)
 {
     hostmot2_t *hm2;
-    rtapi_u32 buff = 0;
+    uint32_t buff = 0;
     int i;
     double board_mhz;
     i = hm2_get_bspi(&hm2, name);
@@ -261,12 +258,12 @@ int hm2_bspi_setup_chan(char *name, int chan, int cs, int bits, double mhz,
     buff = (noecho != 0) << 31
         |  (noclear != 0) << 30
         |  (samplelate != 0) << 29
-        | ((delay <= 0)? 0x10 : (rtapi_u32)((delay*board_mhz/1000.0)-1) & 0x1f) << 24
+        | ((delay <= 0)? 0x10 : (uint32_t)((delay*board_mhz/1000.0)-1) & 0x1f) << 24
         | (cs & 0xF) << 16
-        | (((rtapi_u16)(board_mhz / (mhz * 2) - 1) & 0xFF)) << 8
+        | (((uint16_t)(board_mhz / (mhz * 2) - 1) & 0xFF)) << 8
         | (cpha != 0) << 7
         | (cpol != 0) << 6
-        | (((rtapi_u16)(bits - 1)) & 0x3F);
+        | (((uint16_t)(bits - 1)) & 0x3F);
     HM2_DBG("BSPI %s Channel %i setup %x\n", name, chan, buff);
     hm2->bspi.instance[i].cd[chan] = buff;
     hm2->bspi.instance[i].conf_flag[chan] = true;

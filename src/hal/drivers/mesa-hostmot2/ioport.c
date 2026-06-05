@@ -18,11 +18,7 @@
 //
 
 
-#include "rtapi.h"
-#include "rtapi_string.h"
-#include "rtapi_math.h"
 
-#include "hal.h"
 
 #include "hal/drivers/mesa-hostmot2/hostmot2.h"
 
@@ -77,19 +73,19 @@ int hm2_ioport_parse_md(hostmot2_t *hm2, int md_index) {
     hm2->ioport.open_drain_addr = md->base_address + (3 * md->register_stride);
     hm2->ioport.output_invert_addr = md->base_address + (4 * md->register_stride);
 
-    r = hm2_register_tram_read_region(hm2, hm2->ioport.data_addr, (hm2->ioport.num_instances * sizeof(rtapi_u32)), &hm2->ioport.data_read_reg);
+    r = hm2_register_tram_read_region(hm2, hm2->ioport.data_addr, (hm2->ioport.num_instances * sizeof(uint32_t)), &hm2->ioport.data_read_reg);
     if (r < 0) {
         HM2_ERR("error registering tram read region for IOPort Data register (%d)\n", r);
         goto fail0;
     }
 
-    r = hm2_register_tram_write_region(hm2, hm2->ioport.data_addr, (hm2->ioport.num_instances * sizeof(rtapi_u32)), &hm2->ioport.data_write_reg);
+    r = hm2_register_tram_write_region(hm2, hm2->ioport.data_addr, (hm2->ioport.num_instances * sizeof(uint32_t)), &hm2->ioport.data_write_reg);
     if (r < 0) {
         HM2_ERR("error registering tram write region for IOPort Data register (%d)\n", r);
         goto fail0;
     }
 
-    hm2->ioport.ddr_reg = (rtapi_u32 *)rtapi_malloc(hm2->ioport.num_instances * sizeof(rtapi_u32));
+    hm2->ioport.ddr_reg = (uint32_t *)rtapi_malloc(hm2->ioport.num_instances * sizeof(uint32_t));
     if (hm2->ioport.ddr_reg == NULL) {
         HM2_ERR("out of memory!\n");
         r = -ENOMEM;
@@ -97,21 +93,21 @@ int hm2_ioport_parse_md(hostmot2_t *hm2, int md_index) {
     }
 
     // this one's not a real register
-    hm2->ioport.written_ddr = (rtapi_u32 *)rtapi_malloc(hm2->ioport.num_instances * sizeof(rtapi_u32));
+    hm2->ioport.written_ddr = (uint32_t *)rtapi_malloc(hm2->ioport.num_instances * sizeof(uint32_t));
     if (hm2->ioport.written_ddr == NULL) {
         HM2_ERR("out of memory!\n");
         r = -ENOMEM;
         goto fail1;
     }
 
-    hm2->ioport.alt_source_reg = (rtapi_u32 *)rtapi_malloc(hm2->ioport.num_instances * sizeof(rtapi_u32));
+    hm2->ioport.alt_source_reg = (uint32_t *)rtapi_malloc(hm2->ioport.num_instances * sizeof(uint32_t));
     if (hm2->ioport.alt_source_reg == NULL) {
         HM2_ERR("out of memory!\n");
         r = -ENOMEM;
         goto fail2;
     }
 
-    hm2->ioport.open_drain_reg = (rtapi_u32 *)rtapi_malloc(hm2->ioport.num_instances * sizeof(rtapi_u32));
+    hm2->ioport.open_drain_reg = (uint32_t *)rtapi_malloc(hm2->ioport.num_instances * sizeof(uint32_t));
     if (hm2->ioport.open_drain_reg == NULL) {
         HM2_ERR("out of memory!\n");
         r = -ENOMEM;
@@ -119,14 +115,14 @@ int hm2_ioport_parse_md(hostmot2_t *hm2, int md_index) {
     }
 
     // this one's not a real register
-    hm2->ioport.written_open_drain = (rtapi_u32 *)rtapi_malloc(hm2->ioport.num_instances * sizeof(rtapi_u32));
+    hm2->ioport.written_open_drain = (uint32_t *)rtapi_malloc(hm2->ioport.num_instances * sizeof(uint32_t));
     if (hm2->ioport.written_open_drain == NULL) {
         HM2_ERR("out of memory!\n");
         r = -ENOMEM;
         goto fail4;
     }
 
-    hm2->ioport.output_invert_reg = (rtapi_u32 *)rtapi_malloc(hm2->ioport.num_instances * sizeof(rtapi_u32));
+    hm2->ioport.output_invert_reg = (uint32_t *)rtapi_malloc(hm2->ioport.num_instances * sizeof(uint32_t));
     if (hm2->ioport.output_invert_reg == NULL) {
         HM2_ERR("out of memory!\n");
         r = -ENOMEM;
@@ -134,7 +130,7 @@ int hm2_ioport_parse_md(hostmot2_t *hm2, int md_index) {
     }
 
     // this one's not a real register
-    hm2->ioport.written_output_invert = (rtapi_u32 *)rtapi_malloc(hm2->ioport.num_instances * sizeof(rtapi_u32));
+    hm2->ioport.written_output_invert = (uint32_t *)rtapi_malloc(hm2->ioport.num_instances * sizeof(uint32_t));
     if (hm2->ioport.written_output_invert == NULL) {
         HM2_ERR("out of memory!\n");
         r = -ENOMEM;
@@ -199,13 +195,14 @@ void hm2_ioport_cleanup(hostmot2_t *hm2) {
 }
 
 
-static int do_alias(const char *orig_base, const char *alias_base,
-        const char *suffix, int (*funct)(const char *, const char *)) {
-    char orig_name[HAL_NAME_LEN];
-    char alias_name[HAL_NAME_LEN];
+static int do_alias(const gomc_hal_t *hal, const char *orig_base,
+        const char *alias_base, const char *suffix,
+        int (*funct)(void *, const char *, const char *)) {
+    char orig_name[GOMC_HAL_NAME_LEN];
+    char alias_name[GOMC_HAL_NAME_LEN];
     snprintf(orig_name, sizeof(orig_name), "%s%s", orig_base, suffix);
     snprintf(alias_name, sizeof(alias_name), "%s%s", alias_base, suffix);
-    return funct(orig_name, alias_name);
+    return funct(hal->ctx, orig_name, alias_name);
 }
 
 static void count_instances(hostmot2_t *hm2, int pin, int *this_instance, int *total_instances) {
@@ -229,7 +226,7 @@ int hm2_ioport_gpio_export_hal(hostmot2_t *hm2) {
 
     for (i = 0; i < hm2->num_pins; i ++) {
         // all pins get *some* gpio HAL presence
-        hm2->pin[i].instance = (hm2_gpio_instance_t *)hal_malloc(sizeof(hm2_gpio_instance_t));
+        hm2->pin[i].instance = (hm2_gpio_instance_t *)hm2->llio->hal->malloc(hm2->llio->hal->ctx, sizeof(hm2_gpio_instance_t));
         if (hm2->pin[i].instance == NULL) {
             HM2_ERR("out of memory!\n");
             return -ENOMEM;
@@ -242,8 +239,8 @@ int hm2_ioport_gpio_export_hal(hostmot2_t *hm2) {
         //
 
         // pins
-        r = hal_pin_bit_newf(
-            HAL_OUT,
+        r = gomc_hal_pin_bit_newf(hm2->llio->hal, 
+            GOMC_HAL_OUT,
             &(hm2->pin[i].instance->hal.pin.in),
             hm2->llio->comp_id,
             "%s.gpio.%03d.in",
@@ -255,8 +252,8 @@ int hm2_ioport_gpio_export_hal(hostmot2_t *hm2) {
             return -EINVAL;
         }
 
-        r = hal_pin_bit_newf(
-            HAL_OUT,
+        r = gomc_hal_pin_bit_newf(hm2->llio->hal, 
+            GOMC_HAL_OUT,
             &(hm2->pin[i].instance->hal.pin.in_not),
             hm2->llio->comp_id,
             "%s.gpio.%03d.in_not",
@@ -278,8 +275,8 @@ int hm2_ioport_gpio_export_hal(hostmot2_t *hm2) {
             || (hm2->pin[i].direction_at_start == HM2_PIN_DIR_IS_OUTPUT)
         ) {
 
-            r = hal_param_bit_newf(
-                HAL_RW,
+            r = gomc_hal_param_bit_newf(hm2->llio->hal, 
+                GOMC_HAL_RW,
                 &(hm2->pin[i].instance->hal.param.invert_output),
                 hm2->llio->comp_id,
                 "%s.gpio.%03d.invert_output",
@@ -291,8 +288,8 @@ int hm2_ioport_gpio_export_hal(hostmot2_t *hm2) {
                 return -EINVAL;
             }
 
-            r = hal_param_bit_newf(
-                HAL_RW,
+            r = gomc_hal_param_bit_newf(hm2->llio->hal, 
+                GOMC_HAL_RW,
                 &(hm2->pin[i].instance->hal.param.is_opendrain),
                 hm2->llio->comp_id,
                 "%s.gpio.%03d.is_opendrain",
@@ -315,8 +312,8 @@ int hm2_ioport_gpio_export_hal(hostmot2_t *hm2) {
 
         if (hm2->pin[i].gtag == HM2_GTAG_IOPORT) {
 
-            r = hal_pin_bit_newf(
-                HAL_IN,
+            r = gomc_hal_pin_bit_newf(hm2->llio->hal, 
+                GOMC_HAL_IN,
                 &(hm2->pin[i].instance->hal.pin.out),
                 hm2->llio->comp_id,
                 "%s.gpio.%03d.out",
@@ -331,8 +328,8 @@ int hm2_ioport_gpio_export_hal(hostmot2_t *hm2) {
             *(hm2->pin[i].instance->hal.pin.out) = 0;
 
             // parameters
-            r = hal_param_bit_newf(
-                HAL_RW,
+            r = gomc_hal_param_bit_newf(hm2->llio->hal, 
+                GOMC_HAL_RW,
                 &(hm2->pin[i].instance->hal.param.is_output),
                 hm2->llio->comp_id,
                 "%s.gpio.%03d.is_output",
@@ -356,8 +353,8 @@ int hm2_ioport_gpio_export_hal(hostmot2_t *hm2) {
 	    int this_instance = -1;
 	    int total_instances = 0;
 	    count_instances(hm2, i, &this_instance, &total_instances);
-            char orig_base[HAL_NAME_LEN];
-            char alias_base[HAL_NAME_LEN];
+            char orig_base[GOMC_HAL_NAME_LEN];
+            char alias_base[GOMC_HAL_NAME_LEN];
             size_t ret = snprintf(orig_base, sizeof(orig_base),
                 "%s.gpio.%03d",
                 hm2->llio->name,
@@ -389,14 +386,14 @@ int hm2_ioport_gpio_export_hal(hostmot2_t *hm2) {
 		    );
 		if (ret >= sizeof(alias_base)) return -EINVAL;
 	    }
-            r = do_alias(orig_base, alias_base, ".invert_output",
-                hal_param_alias);
+            r = do_alias(hm2->llio->hal, orig_base, alias_base, ".invert_output",
+                hm2->llio->hal->param_alias);
             if (r < 0) {
                 HM2_ERR("Failed to add %s.invert_output alias, continuing\n",
                     orig_base);
             }
-            r = do_alias(orig_base, alias_base, ".is_opendrain",
-                hal_param_alias);
+            r = do_alias(hm2->llio->hal, orig_base, alias_base, ".is_opendrain",
+                hm2->llio->hal->param_alias);
             if (r < 0) {
                 HM2_ERR("Failed to add %s.is_opendrain alias, continuing\n",
                     orig_base);
@@ -436,21 +433,21 @@ void hm2_ioport_print_module(hostmot2_t *hm2) {
 
 
 static void hm2_ioport_force_write_ddr(hostmot2_t *hm2) {
-    int size = hm2->ioport.num_instances * sizeof(rtapi_u32);
+    int size = hm2->ioport.num_instances * sizeof(uint32_t);
     hm2->llio->write(hm2->llio, hm2->ioport.ddr_addr, hm2->ioport.ddr_reg, size);
     memcpy(hm2->ioport.written_ddr, hm2->ioport.ddr_reg, size);
 }
 
 
 static void hm2_ioport_force_write_output_invert(hostmot2_t *hm2) {
-    int size = hm2->ioport.num_instances * sizeof(rtapi_u32);
+    int size = hm2->ioport.num_instances * sizeof(uint32_t);
     hm2->llio->write(hm2->llio, hm2->ioport.output_invert_addr, hm2->ioport.output_invert_reg, size);
     memcpy(hm2->ioport.written_output_invert, hm2->ioport.output_invert_reg, size);
 }
 
 
 static void hm2_ioport_force_write_open_drain(hostmot2_t *hm2) {
-    int size = hm2->ioport.num_instances * sizeof(rtapi_u32);
+    int size = hm2->ioport.num_instances * sizeof(uint32_t);
     hm2->llio->write(hm2->llio, hm2->ioport.open_drain_addr, hm2->ioport.open_drain_reg, size);
     memcpy(hm2->ioport.written_open_drain, hm2->ioport.open_drain_reg, size);
 }
@@ -511,7 +508,7 @@ void hm2_ioport_update(hostmot2_t *hm2) {
 
 
 void hm2_ioport_force_write(hostmot2_t *hm2) {
-    int size = hm2->ioport.num_instances * sizeof(rtapi_u32);
+    int size = hm2->ioport.num_instances * sizeof(uint32_t);
 
     hm2_ioport_update(hm2);
 
@@ -584,7 +581,7 @@ void hm2_ioport_gpio_process_tram_read(hostmot2_t *hm2) {
     for (port = 0; port < hm2->ioport.num_instances; port ++) {
         for (port_pin = 0; port_pin < (int)hm2->idrom.port_width; port_pin ++) {
             int io_pin = (port * hm2->idrom.port_width) + port_pin;
-            hal_bit_t bit;
+            gomc_hal_bit_t bit;
 
             bit = (hm2->ioport.data_read_reg[port] >> port_pin) & 0x1;
             *hm2->pin[io_pin].instance->hal.pin.in = bit;
@@ -635,14 +632,14 @@ void hm2_ioport_gpio_read(hostmot2_t *hm2) {
         hm2->llio,
         hm2->ioport.data_addr,
         hm2->ioport.data_read_reg,
-        hm2->ioport.num_instances * sizeof(rtapi_u32)
+        hm2->ioport.num_instances * sizeof(uint32_t)
     );
 
     // FIXME: this block duplicates code in hm2_ioport_gpio_process_tram_read()
     for (port = 0; port < hm2->ioport.num_instances; port ++) {
         for (port_pin = 0; port_pin < (int)hm2->idrom.port_width; port_pin ++) {
             int io_pin = (port * hm2->idrom.port_width) + port_pin;
-            hal_bit_t bit;
+            gomc_hal_bit_t bit;
 
             if (hm2->pin[io_pin].direction != HM2_PIN_DIR_IS_INPUT) continue;
 
@@ -679,7 +676,7 @@ void hm2_ioport_gpio_write(hostmot2_t *hm2) {
         hm2->llio,
         hm2->ioport.data_addr,
         hm2->ioport.data_write_reg,
-        hm2->ioport.num_instances * sizeof(rtapi_u32)
+        hm2->ioport.num_instances * sizeof(uint32_t)
     );
 }
 

@@ -1,3 +1,7 @@
+#include <ctype.h>
+extern char **environ;
+static const void *hm2_log;
+#include <math.h>
 /*    This is a component of LinuxCNC
  *    Copyright 2013,2014 Michael Geszkiewicz <micges@wp.pl>,
  *    Jeff Epler <jepler@unpythonic.net>
@@ -32,14 +36,10 @@
 #include <sys/wait.h>
 #include <stdlib.h>
 
-#include <rtapi_ctype.h>
 #include <rtapi_list.h>
 #include <rtapi_math64.h>
 
-#include "rtapi.h"
-#include "rtapi_string.h"
 
-#include "hal.h"
 
 #include "gomc_env.h"
 #include "hostmot2-lowlevel.h"
@@ -524,7 +524,7 @@ static char* fetch_ifname(int sockfd, char *buf, size_t n) {
     struct ifaddrs *ifa, *it;
 
     socklen_t addrlen = sizeof(srcaddr);
-    int res = getsockname(sockfd, &srcaddr, &addrlen);
+    int res = getsockname(sockfd, (struct sockaddr *)&srcaddr, &addrlen);
     if(res < 0) return NULL;
 
     if(getifaddrs(&ifa) < 0) {
@@ -588,11 +588,11 @@ static int install_iptables_board(int sockfd) {
     char srchost[16], dsthost[16]; // enough for 255.255.255.255\0
 
     socklen_t addrlen = sizeof(srcaddr);
-    int res = getsockname(sockfd, &srcaddr, &addrlen);
+    int res = getsockname(sockfd, (struct sockaddr *)&srcaddr, &addrlen);
     if(res < 0) return -errno;
 
     addrlen = sizeof(dstaddr);
-    res = getpeername(sockfd, &dstaddr, &addrlen);
+    res = getpeername(sockfd, (struct sockaddr *)&dstaddr, &addrlen);
     if(res < 0) return -errno;
 
     res = install_iptables_rule(
@@ -777,11 +777,11 @@ static int eth_socket_recv_loop(int sockfd, void *buffer, int len, int flags, lo
 
 /// hm2_eth io functions
 
-static int hm2_eth_read(hm2_lowlevel_io_t *this, rtapi_u32 addr, void *buffer, int size) {
+static int hm2_eth_read(hm2_lowlevel_io_t *this, uint32_t addr, void *buffer, int size) {
     hm2_eth_t *board = this->private;
     hm2_eth_inst_t *inst = board->inst;
     int send, recv, i = 0;
-    rtapi_u8 tmp_buffer[size + 4];
+    uint8_t tmp_buffer[size + 4];
     long long t1, t2;
 
     if (inst->comm_active == 0) return 1;
@@ -894,7 +894,7 @@ static int hm2_eth_receive_queued_reads(hm2_lowlevel_io_t *this) {
     hm2_eth_t *board = this->private;
     hm2_eth_inst_t *inst = board->inst;
     int recv, i = 0;
-    rtapi_u8 tmp_buffer[board->queue_buff_size];
+    uint8_t tmp_buffer[board->queue_buff_size];
     long long t1, t2;
     t1 = rtapi_get_time();
     
@@ -969,7 +969,7 @@ static int hm2_eth_reset(hm2_lowlevel_io_t *this) {
     return ret < 0 ? -errno : 0;
 }
 
-static int hm2_eth_enqueue_read(hm2_lowlevel_io_t *this, rtapi_u32 addr, void *buffer, int size) {
+static int hm2_eth_enqueue_read(hm2_lowlevel_io_t *this, uint32_t addr, void *buffer, int size) {
     hm2_eth_t *board = this->private;
     hm2_eth_inst_t *inst = board->inst;
     if (inst->comm_active == 0) return 1;
@@ -985,16 +985,16 @@ static int hm2_eth_enqueue_read(hm2_lowlevel_io_t *this, rtapi_u32 addr, void *b
     return 1;
 }
 
-static int hm2_eth_enqueue_write(hm2_lowlevel_io_t *this, rtapi_u32 addr, const void *buffer, int size);
+static int hm2_eth_enqueue_write(hm2_lowlevel_io_t *this, uint32_t addr, const void *buffer, int size);
 
-static int hm2_eth_write(hm2_lowlevel_io_t *this, rtapi_u32 addr, const void *buffer, int size) {
+static int hm2_eth_write(hm2_lowlevel_io_t *this, uint32_t addr, const void *buffer, int size) {
     if(rtapi_task_self() >= 0 || this->force_enqueue)
         return hm2_eth_enqueue_write(this, addr, buffer, size);
 
     int send;
     static struct {
         lbp16_cmd_addr wr_packet;
-        rtapi_u8 tmp_buffer[127*8];
+        uint8_t tmp_buffer[127*8];
     } packet;
 
     hm2_eth_t *board = this->private;
@@ -1043,7 +1043,7 @@ static int hm2_eth_send_queued_writes(hm2_lowlevel_io_t *this) {
     return 1;
 }
 
-static int hm2_eth_enqueue_write(hm2_lowlevel_io_t *this, rtapi_u32 addr, const void *buffer, int size) {
+static int hm2_eth_enqueue_write(hm2_lowlevel_io_t *this, uint32_t addr, const void *buffer, int size) {
     hm2_eth_t *board = this->private;
     hm2_eth_inst_t *inst = board->inst;
     if (inst->comm_active == 0) return 1;
@@ -1467,7 +1467,7 @@ static int hm2_eth_probe(hm2_eth_t *board) {
         // (such as 0 or -1) could be passed here and the layer which can
         // legitimately read idroms would read the values and store them, but
         // that wasn't trivial to do.
-        rtapi_u32 read_data;
+        uint32_t read_data;
         hm2_eth_read(&board->llio, HM2_ADDR_IDROM_OFFSET, &read_data, 4);
         unsigned int idrom_address = read_data & 0xffff;
         hm2_idrom_t idrom;
@@ -1485,7 +1485,7 @@ static int hm2_eth_probe(hm2_eth_t *board) {
 
     LL_PRINT("discovered %.*s\n", 16, board_name);
 
-    rtapi_snprintf(board->llio.name, sizeof(board->llio.name), "hm2_%.*s.%d", (int)strlen(llio_name), llio_name, llio_idx(&inst->board_num, llio_name));
+    snprintf(board->llio.name, sizeof(board->llio.name), "hm2_%.*s.%d", (int)strlen(llio_name), llio_name, llio_idx(&inst->board_num, llio_name));
 
     board->llio.comp_id = inst->comp_id;
 
@@ -1513,10 +1513,10 @@ static int hm2_eth_probe(hm2_eth_t *board) {
 static int hm2_eth_items(hm2_eth_t *board) {
     int r;
 
-    board->hal = hal_malloc(sizeof(*board->hal));
+    board->hal = board->llio.hal->malloc(board->llio.hal->ctx, sizeof(*board->hal));
     if(!board->hal) return -ENOMEM;
 
-    if((r = hal_param_s32_newf(HAL_RW,
+    if((r = gomc_hal_param_s32_newf(board->llio.hal, GOMC_HAL_RW,
             &board->hal->read_timeout,
             board->llio.comp_id,
             "%s.packet-read-timeout",
@@ -1524,7 +1524,7 @@ static int hm2_eth_items(hm2_eth_t *board) {
         return r;
     board->hal->read_timeout = 80;
 
-    if((r = hal_param_s32_newf(HAL_RW,
+    if((r = gomc_hal_param_s32_newf(board->llio.hal, GOMC_HAL_RW,
             &board->hal->packet_error_limit,
             board->llio.comp_id,
             "%s.packet-error-limit",
@@ -1532,7 +1532,7 @@ static int hm2_eth_items(hm2_eth_t *board) {
         return r;
     board->hal->packet_error_limit = 10;
 
-    if((r = hal_param_s32_newf(HAL_RW,
+    if((r = gomc_hal_param_s32_newf(board->llio.hal, GOMC_HAL_RW,
             &board->hal->packet_error_increment,
             board->llio.comp_id,
             "%s.packet-error-increment",
@@ -1540,7 +1540,7 @@ static int hm2_eth_items(hm2_eth_t *board) {
         return r;
     board->hal->packet_error_increment = 2;
 
-    if((r = hal_param_s32_newf(HAL_RO,
+    if((r = gomc_hal_param_s32_newf(board->llio.hal, GOMC_HAL_RO,
             &board->hal->packet_error_decrement,
             board->llio.comp_id,
             "%s.packet-error-decrement",
@@ -1548,7 +1548,7 @@ static int hm2_eth_items(hm2_eth_t *board) {
         return r;
     board->hal->packet_error_decrement = 1;
 
-    if((r = hal_pin_bit_newf(HAL_OUT,
+    if((r = gomc_hal_pin_bit_newf(board->llio.hal, GOMC_HAL_OUT,
             &board->hal->packet_error,
             board->llio.comp_id,
             "%s.packet-error",
@@ -1556,7 +1556,7 @@ static int hm2_eth_items(hm2_eth_t *board) {
         return r;
     *board->hal->packet_error = 0;
 
-    if((r = hal_pin_u32_newf(HAL_IO,
+    if((r = gomc_hal_pin_u32_newf(board->llio.hal, GOMC_HAL_IO,
             &board->hal->packet_error_total,
             board->llio.comp_id,
             "%s.packet-error-total",
@@ -1564,7 +1564,7 @@ static int hm2_eth_items(hm2_eth_t *board) {
         return r;
     *board->hal->packet_error_total = 0;
 
-    if((r = hal_pin_s32_newf(HAL_OUT,
+    if((r = gomc_hal_pin_s32_newf(board->llio.hal, GOMC_HAL_OUT,
             &board->hal->packet_error_level,
             board->llio.comp_id,
             "%s.packet-error-level",
@@ -1572,7 +1572,7 @@ static int hm2_eth_items(hm2_eth_t *board) {
         return r;
     *board->hal->packet_error_level = 0;
 
-    if((r = hal_pin_bit_newf(HAL_OUT,
+    if((r = gomc_hal_pin_bit_newf(board->llio.hal, GOMC_HAL_OUT,
             &board->hal->packet_error_exceeded,
             board->llio.comp_id,
             "%s.packet-error-exceeded",

@@ -1,3 +1,4 @@
+extern char **environ;
 /*
  * This is a component for hostmot2 board drivers
  * Copyright (c) 2013,2014,2020,2024 Michael Geszkiewicz <micges@wp.pl>,

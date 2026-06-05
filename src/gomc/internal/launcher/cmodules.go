@@ -97,6 +97,14 @@ static int gomc_hal_param_new_cb(void *ctx, const char *name, int type, int dir,
                          data_addr, comp_id);
 }
 
+static int gomc_hal_pin_alias_cb(void *ctx, const char *pin_name, const char *alias) {
+    return hal_pin_alias(pin_name, alias);
+}
+
+static int gomc_hal_param_alias_cb(void *ctx, const char *param_name, const char *alias) {
+    return hal_param_alias(param_name, alias);
+}
+
 static int gomc_hal_export_funct_cb(void *ctx, const char *name,
                                     void (*funct)(void *, long),
                                     void *arg, int uses_fp, int reentrant,
@@ -165,6 +173,8 @@ static void gomc_hal_init_struct(gomc_hal_t *hal) {
     hal->malloc       = gomc_hal_malloc_cb;
     hal->pin_new      = gomc_hal_pin_new_cb;
     hal->param_new    = gomc_hal_param_new_cb;
+    hal->pin_alias    = gomc_hal_pin_alias_cb;
+    hal->param_alias  = gomc_hal_param_alias_cb;
     hal->export_funct = gomc_hal_export_funct_cb;
 }
 

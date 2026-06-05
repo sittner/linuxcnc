@@ -192,7 +192,7 @@ int allocate_lines(inst_t *inst, char **names, hal_gpio_bulk_t **bulk){
     int n;
     int b = 0;
     int offset;
-    char path[32];
+    char path[280];
     struct dirent **namelist;
     
 // Get a list of all chips. the "filter" function identifies gpiochips

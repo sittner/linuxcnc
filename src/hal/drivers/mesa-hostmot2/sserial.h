@@ -61,8 +61,8 @@
 
 #define LBPCOOKIE               0x5A
 
-#define HM2WRITE(a,b)  hm2->llio->write(hm2->llio, a, &b, sizeof(rtapi_u32))
-#define HM2READ(a,b)  hm2->llio->read(hm2->llio, a, &b, sizeof(rtapi_u32))
+#define HM2WRITE(a,b)  hm2->llio->write(hm2->llio, a, &b, sizeof(uint32_t))
+#define HM2READ(a,b)  hm2->llio->read(hm2->llio, a, &b, sizeof(uint32_t))
 
 #define LBP_IN                  0x00
 #define LBP_IO                  0x40
@@ -109,44 +109,44 @@ typedef struct {
 }hm2_sserial_mode_t;
 
 typedef struct {
-    hal_u32_t *u32_pin;
-    hal_s32_t *s32_pin;
-    hal_s32_t *s32_pin2;
-    hal_float_t *float_pin;
-    hal_bit_t **bit_pins;
-    hal_bit_t **bit_pins_not;
-    hal_bit_t *invert;
-    hal_bit_t *boolean;
-    hal_bit_t *boolean2;
-    hal_float_t maxlim;
-    hal_float_t minlim;
-    hal_float_t fullscale;
-    hal_u32_t u32_param;
-    hal_bit_t graycode;
-    hal_bit_t nowrap;
-    rtapi_s64 oldval; // not pins, but this way every pin can have one
-    rtapi_s64 accum; // these two are only currently used by encoders
-    rtapi_s64 offset;
+    gomc_hal_u32_t *u32_pin;
+    gomc_hal_s32_t *s32_pin;
+    gomc_hal_s32_t *s32_pin2;
+    gomc_hal_float_t *float_pin;
+    gomc_hal_bit_t **bit_pins;
+    gomc_hal_bit_t **bit_pins_not;
+    gomc_hal_bit_t *invert;
+    gomc_hal_bit_t *boolean;
+    gomc_hal_bit_t *boolean2;
+    gomc_hal_float_t maxlim;
+    gomc_hal_float_t minlim;
+    gomc_hal_float_t fullscale;
+    gomc_hal_u32_t u32_param;
+    gomc_hal_bit_t graycode;
+    gomc_hal_bit_t nowrap;
+    int64_t oldval; // not pins, but this way every pin can have one
+    int64_t accum; // these two are only currently used by encoders
+    int64_t offset;
 }hm2_sserial_pins_t;
 
 typedef struct {
     int type;
     union {
         long long s64_param;
-        hal_u32_t u32_param;
-        hal_s32_t s32_param;
-        hal_float_t float_param;
-        hal_bit_t bit_param;
+        gomc_hal_u32_t u32_param;
+        gomc_hal_s32_t s32_param;
+        gomc_hal_float_t float_param;
+        gomc_hal_bit_t bit_param;
     };
     union {
         long long s64_written;
-        hal_u32_t u32_written;
-        hal_s32_t s32_written;
-        hal_float_t float_written;
-        hal_bit_t bit_written;
+        gomc_hal_u32_t u32_written;
+        gomc_hal_s32_t s32_written;
+        gomc_hal_float_t float_written;
+        gomc_hal_bit_t bit_written;
     };
-    hal_u32_t timer_num;
-    hal_bit_t *error;
+    gomc_hal_u32_t timer_num;
+    gomc_hal_bit_t *error;
 }hm2_sserial_params_t;
 
 typedef struct {
@@ -163,21 +163,21 @@ typedef struct {
     hm2_sserial_data_t *globals;
     hm2_sserial_pins_t *pins;
     hm2_sserial_params_t *params;
-    hal_u32_t serialnumber;
-    hal_u32_t status, seen_remote_errors;
+    gomc_hal_u32_t serialnumber;
+    gomc_hal_u32_t status, seen_remote_errors;
 
-    rtapi_u32 *reg_cs_read;
-    rtapi_u32 *reg_cs_write;
-    rtapi_u32 *read[HM2_SSERIAL_NUMREGS];
-    rtapi_u32 *write[HM2_SSERIAL_NUMREGS];
-    rtapi_u32 reg_cs_addr;
-    rtapi_u32 rw_addr[HM2_SSERIAL_NUMREGS];
+    uint32_t *reg_cs_read;
+    uint32_t *reg_cs_write;
+    uint32_t *read[HM2_SSERIAL_NUMREGS];
+    uint32_t *write[HM2_SSERIAL_NUMREGS];
+    uint32_t reg_cs_addr;
+    uint32_t rw_addr[HM2_SSERIAL_NUMREGS];
     int index;
-    rtapi_u32 command_reg_addr; // a duplicate so that a single channel can be passed
-    rtapi_u32 data_reg_addr;
-    rtapi_u32 data_written[3]; // only used by abs_encoder.c
+    uint32_t command_reg_addr; // a duplicate so that a single channel can be passed
+    uint32_t data_reg_addr;
+    uint32_t data_written[3]; // only used by abs_encoder.c
     int myinst;
-    char name[29];
+    char name[256];
     char raw_name[5];
 }hm2_sserial_remote_t;
 
@@ -189,31 +189,31 @@ typedef struct {
     int tag;
     hm2_sserial_remote_t *remotes;
     int index;
-    rtapi_u32 command_reg_addr;
-    rtapi_u32 *command_reg_read;
-    rtapi_u32 *command_reg_write;
-    rtapi_u32 data_reg_addr;
-    rtapi_u32 *data_reg_read;
-    rtapi_u32 *data_reg_write;
-    hal_u32_t *fault_count;
-    hal_u32_t fault_inc;
-    hal_u32_t fault_dec;
-    hal_u32_t fault_lim;
+    uint32_t command_reg_addr;
+    uint32_t *command_reg_read;
+    uint32_t *command_reg_write;
+    uint32_t data_reg_addr;
+    uint32_t *data_reg_read;
+    uint32_t *data_reg_write;
+    gomc_hal_u32_t *fault_count;
+    gomc_hal_u32_t fault_inc;
+    gomc_hal_u32_t fault_dec;
+    gomc_hal_u32_t fault_lim;
     
-    hal_bit_t *run;
-    hal_u32_t *state;
-    hal_u32_t *state2;
-    hal_u32_t *state3;
-    hal_s32_t *debug;
-    hal_u32_t r_index;
-    hal_u32_t g_index;
+    gomc_hal_bit_t *run;
+    gomc_hal_u32_t *state;
+    gomc_hal_u32_t *state2;
+    gomc_hal_u32_t *state3;
+    gomc_hal_s32_t *debug;
+    gomc_hal_u32_t r_index;
+    gomc_hal_u32_t g_index;
     int doit_err_count;
-    rtapi_s32 timer;
+    int32_t timer;
     bool ever_read;
 } hm2_sserial_instance_t;
 
 typedef struct {
-    rtapi_u8 version;
+    uint8_t version;
     int baudrate;
     int num_instances; // number of active instances
     hm2_sserial_instance_t *instance ;

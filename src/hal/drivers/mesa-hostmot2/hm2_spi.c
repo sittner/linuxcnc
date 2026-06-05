@@ -263,7 +263,7 @@ static int send_queued_writes(hm2_lowlevel_io_t *llio) {
     return do_pending(this) >= 0;
 }
 
-static int queue_write(hm2_lowlevel_io_t *llio, rtapi_u32 addr, const void *buffer, int size) {
+static int queue_write(hm2_lowlevel_io_t *llio, uint32_t addr, const void *buffer, int size) {
     hm2_spi_t *this = (hm2_spi_t*) llio;
     if(size == 0) return 0;
     if(size % 4) return -EINVAL;
@@ -289,7 +289,7 @@ static int send_queued_reads(hm2_lowlevel_io_t *llio) {
     return do_pending(this) >= 0;
 }
 
-static int queue_read(hm2_lowlevel_io_t *llio, rtapi_u32 addr, void *buffer, int size) {
+static int queue_read(hm2_lowlevel_io_t *llio, uint32_t addr, void *buffer, int size) {
     hm2_spi_t *this = (hm2_spi_t*) llio;
     if(size == 0) return 0;
     if(size % 4) return -EINVAL;
@@ -309,14 +309,14 @@ static int queue_read(hm2_lowlevel_io_t *llio, rtapi_u32 addr, void *buffer, int
     return 1;
 }
 
-static int do_write(hm2_lowlevel_io_t *llio, rtapi_u32 addr, const void *buffer, int size) {
+static int do_write(hm2_lowlevel_io_t *llio, uint32_t addr, const void *buffer, int size) {
     hm2_spi_t *this = (hm2_spi_t*) llio;
     int r = queue_write(llio, addr, buffer, size);
     if(r < 0) return r;
     return do_pending(this) >= 0;
 }
 
-static int do_read(hm2_lowlevel_io_t *llio, rtapi_u32 addr, void *buffer, int size) {
+static int do_read(hm2_lowlevel_io_t *llio, uint32_t addr, void *buffer, int size) {
     hm2_spi_t *this = (hm2_spi_t*) llio;
     int r = queue_read(llio, addr, buffer, size);
     if(r < 0) return r;
@@ -466,7 +466,7 @@ static int probe(hm2_spi_inst_t *inst, char *dev, int rate) {
         goto fail;
     }
 
-    rtapi_snprintf(board->llio.name, sizeof(board->llio.name),
+    snprintf(board->llio.name, sizeof(board->llio.name),
         "%s.%d", base, inst->nboards);
     board->llio.comp_id = inst->comp_id;
     board->llio.private = &board;

@@ -24,7 +24,7 @@ struct rtapi_firmware {
 
 /* device parameter is unused, kept for API compat */
 struct rtapi_device {
-    char name[48];
+    char name[256];
 };
 
 int rtapi_request_firmware(const struct rtapi_firmware **fw,

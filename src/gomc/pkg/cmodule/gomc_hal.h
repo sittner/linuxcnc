@@ -90,6 +90,10 @@ typedef struct {
     int   (*param_new)(void *ctx, const char *name, int type, int dir,
                        void *data_addr, int comp_id);
 
+    // Pin/param aliasing.
+    int   (*pin_alias)  (void *ctx, const char *pin_name, const char *alias);
+    int   (*param_alias)(void *ctx, const char *param_name, const char *alias);
+
     // RT function export.
     int   (*export_funct)(void *ctx, const char *name,
                           void (*funct)(void *, long),

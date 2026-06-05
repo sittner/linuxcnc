@@ -18,13 +18,28 @@
 //
 //    The code in this file is based on UFLBP.PAS by Peter C. Wallace.  
 
-#include <rtapi_firmware.h>
-#include <rtapi_string.h>
-#include "rtapi.h"
-#include "hal.h"
 #include "gomc_env.h"
 #include "hostmot2.h"
 #include "sserial.h"
+#include <stdlib.h>
+#include <string.h>
+
+// Local argv_split replacing argv_split.
+static char **argv_split(const char *str, int *argcp) {
+    int argc = 0;
+    const char *p = str;
+    while (*p) { while (*p && (*p == ' ' || *p == '\t')) p++; if (*p) { argc++; while (*p && *p != ' ' && *p != '\t') p++; } }
+    char **argv = calloc(argc + 1, sizeof(char *));
+    if (!argv) return NULL;
+    if (argcp) *argcp = argc;
+    p = str; int i = 0;
+    while (*p) {
+        while (*p && (*p == ' ' || *p == '\t')) p++;
+        if (*p) { const char *s = p; while (*p && *p != ' ' && *p != '\t') p++; argv[i] = strndup(s, p - s); if (!argv[i]) { for (int j=0; j<i; j++) free(argv[j]); free(argv); return NULL; } i++; }
+    }
+    argv[i] = NULL;
+    return argv;
+}
 
 // ---------------------------------------------------------------------------
 // Instance struct — all mutable state lives here (heap-allocated).
@@ -43,7 +58,7 @@ typedef struct {
 static int waitfor(setsserial_inst_t *inst){
     hostmot2_t *hm2 = inst->hm2;
     hm2_sserial_remote_t *remote = inst->remote;
-    rtapi_u32 buff;
+    uint32_t buff;
     long long int starttime = rtapi_get_time();
     do {
         rtapi_delay(50000);
@@ -60,7 +75,7 @@ static int waitfor(setsserial_inst_t *inst){
 static int doit(setsserial_inst_t *inst){
     hostmot2_t *hm2 = inst->hm2;
     hm2_sserial_remote_t *remote = inst->remote;
-    rtapi_u32 buff = 0x1000 | (1 << remote->index);
+    uint32_t buff = 0x1000 | (1 << remote->index);
     HM2WRITE(remote->command_reg_addr, buff);
     if (waitfor(inst) < 0) return -1;
     HM2READ(remote->data_reg_addr, buff);
@@ -75,7 +90,7 @@ static int doit(setsserial_inst_t *inst){
 static int stop_all(setsserial_inst_t *inst){
     hostmot2_t *hm2 = inst->hm2;
     hm2_sserial_remote_t *remote = inst->remote;
-    rtapi_u32 buff=0x8FF;
+    uint32_t buff=0x8FF;
     HM2WRITE(remote->command_reg_addr, buff);
     return waitfor(inst);
 }
@@ -83,7 +98,7 @@ static int stop_all(setsserial_inst_t *inst){
 static int setup_start(setsserial_inst_t *inst){
     hostmot2_t *hm2 = inst->hm2;
     hm2_sserial_remote_t *remote = inst->remote;
-    rtapi_u32 buff=0xF00 | 1 << remote->index;
+    uint32_t buff=0xF00 | 1 << remote->index;
     HM2WRITE(remote->command_reg_addr, buff);
     if (waitfor(inst) < 0) return -1;
     HM2READ(remote->data_reg_addr, buff); 
@@ -95,20 +110,20 @@ static int setup_start(setsserial_inst_t *inst){
     return 0;
 }
 
-static int nv_access(setsserial_inst_t *inst, rtapi_u32 type){
+static int nv_access(setsserial_inst_t *inst, uint32_t type){
     hostmot2_t *hm2 = inst->hm2;
     hm2_sserial_remote_t *remote = inst->remote;
-    rtapi_u32 buff = LBPNONVOL_flag + LBPWRITE;
+    uint32_t buff = LBPNONVOL_flag + LBPWRITE;
     rtapi_print("buff = %x\n", buff);
     HM2WRITE(remote->reg_cs_addr, buff);
     HM2WRITE(remote->rw_addr[0], type);
     return doit(inst);
 }
 
-static int set_nvram_param(setsserial_inst_t *inst, rtapi_u32 addr, rtapi_u32 value){
+static int set_nvram_param(setsserial_inst_t *inst, uint32_t addr, uint32_t value){
     hostmot2_t *hm2 = inst->hm2;
     hm2_sserial_remote_t *remote = inst->remote;
-    rtapi_u32 buff;
+    uint32_t buff;
     
     if (stop_all(inst) < 0) goto fail0;
     if (setup_start(inst) < 0) goto fail0;
@@ -131,16 +146,12 @@ fail0: // It's all gone wrong
     return -1;
 }
 
-static void setsserial_release(struct rtapi_device *dev) {
-    (void)dev;
-    // nothing to do here
-}
 
 static int __attribute__((unused)) getlocal(setsserial_inst_t *inst, int addr, int bytes){
     hostmot2_t *hm2 = inst->hm2;
     hm2_sserial_remote_t *remote = inst->remote;
-    rtapi_u32 val = 0;
-    rtapi_u32 buff;
+    uint32_t val = 0;
+    uint32_t buff;
     for (;bytes--;){
         buff = READ_LOCAL_CMD | (addr + bytes);
         HM2WRITE(remote->command_reg_addr, buff);
@@ -153,8 +164,8 @@ static int __attribute__((unused)) getlocal(setsserial_inst_t *inst, int addr, i
 static int __attribute__((unused)) setlocal(setsserial_inst_t *inst, int addr, int val, int bytes){
     hostmot2_t *hm2 = inst->hm2;
     hm2_sserial_remote_t *remote = inst->remote;
-    rtapi_u32 b = 0;
-    rtapi_u32 buff;
+    uint32_t b = 0;
+    uint32_t buff;
     int i;
     for (i = 0; i < bytes; i++){
         b = val & 0xFF;
@@ -167,10 +178,10 @@ static int __attribute__((unused)) setlocal(setsserial_inst_t *inst, int addr, i
     return 0;
 }
 
-static void sslbp_write_lbp(setsserial_inst_t *inst, rtapi_u32 cmd, rtapi_u32 data){
+static void sslbp_write_lbp(setsserial_inst_t *inst, uint32_t cmd, uint32_t data){
     hostmot2_t *hm2 = inst->hm2;
     hm2_sserial_remote_t *remote = inst->remote;
-    rtapi_u32 buff = LBPWRITE + cmd;
+    uint32_t buff = LBPWRITE + cmd;
     HM2WRITE(remote->reg_cs_addr, buff);
     HM2WRITE(remote->rw_addr[0], data);
     doit(inst);
@@ -181,8 +192,8 @@ static void sslbp_write_lbp(setsserial_inst_t *inst, rtapi_u32 cmd, rtapi_u32 da
 static int sslbp_read_cookie(setsserial_inst_t *inst){
     hostmot2_t *hm2 = inst->hm2;
     hm2_sserial_remote_t *remote = inst->remote;
-    rtapi_u32 buff = READ_COOKIE_CMD;
-    rtapi_u32 res;
+    uint32_t buff = READ_COOKIE_CMD;
+    uint32_t res;
     HM2WRITE(remote->reg_cs_addr, buff);
     if (doit(inst) < 0){
         HM2_ERR("Error in sslbp_read_cookie, trying to abort\n");
@@ -194,11 +205,11 @@ static int sslbp_read_cookie(setsserial_inst_t *inst){
     return res;
 }
 
-static rtapi_u8 sslbp_read_byte(setsserial_inst_t *inst, rtapi_u32 addr){
+static uint8_t sslbp_read_byte(setsserial_inst_t *inst, uint32_t addr){
     hostmot2_t *hm2 = inst->hm2;
     hm2_sserial_remote_t *remote = inst->remote;
-    rtapi_u32 buff = READ_REM_BYTE_CMD + addr;
-    rtapi_u32 res;
+    uint32_t buff = READ_REM_BYTE_CMD + addr;
+    uint32_t res;
     HM2WRITE(remote->reg_cs_addr, buff);
     if (doit(inst) < 0){
         HM2_ERR("Error in sslbp_read_byte, trying to abort\n");
@@ -207,14 +218,14 @@ static rtapi_u8 sslbp_read_byte(setsserial_inst_t *inst, rtapi_u32 addr){
     HM2READ(remote->rw_addr[0], res);
     buff = 0;
     HM2WRITE(remote->reg_cs_addr, buff);
-    return (rtapi_u8)res;
+    return (uint8_t)res;
 }
 
-static rtapi_u16 __attribute__((unused)) sslbp_read_word(setsserial_inst_t *inst, rtapi_u32 addr){
+static uint16_t __attribute__((unused)) sslbp_read_word(setsserial_inst_t *inst, uint32_t addr){
     hostmot2_t *hm2 = inst->hm2;
     hm2_sserial_remote_t *remote = inst->remote;
-    rtapi_u32 buff = READ_REM_WORD_CMD + addr;
-    rtapi_u32 res;
+    uint32_t buff = READ_REM_WORD_CMD + addr;
+    uint32_t res;
     HM2WRITE(remote->reg_cs_addr, buff);
     if (doit(inst) < 0){
         HM2_ERR("Error in sslbp_read_word, trying to abort\n");
@@ -223,14 +234,14 @@ static rtapi_u16 __attribute__((unused)) sslbp_read_word(setsserial_inst_t *inst
     HM2READ(remote->rw_addr[0], res);
     buff = 0;
     HM2WRITE(remote->reg_cs_addr, buff);
-    return (rtapi_u16)res;
+    return (uint16_t)res;
 }
 
-static rtapi_u32 __attribute__((unused)) sslbp_read_long(setsserial_inst_t *inst, rtapi_u32 addr){
+static uint32_t __attribute__((unused)) sslbp_read_long(setsserial_inst_t *inst, uint32_t addr){
     hostmot2_t *hm2 = inst->hm2;
     hm2_sserial_remote_t *remote = inst->remote;
-    rtapi_u32 buff = READ_REM_LONG_CMD + addr;
-    rtapi_u32 res=0;
+    uint32_t buff = READ_REM_LONG_CMD + addr;
+    uint32_t res=0;
     HM2WRITE(remote->reg_cs_addr, buff);
     if (doit(inst) < 0){
         HM2_ERR("Error in sslbp_read_long, trying to abort\n");
@@ -242,11 +253,11 @@ static rtapi_u32 __attribute__((unused)) sslbp_read_long(setsserial_inst_t *inst
     return res;
 }
 
-static rtapi_u64 __attribute__((unused)) sslbp_read_double(setsserial_inst_t *inst, rtapi_u32 addr){
+static rtapi_u64 __attribute__((unused)) sslbp_read_double(setsserial_inst_t *inst, uint32_t addr){
     hostmot2_t *hm2 = inst->hm2;
     hm2_sserial_remote_t *remote = inst->remote;
     rtapi_u64 res;
-    rtapi_u32 buff = READ_REM_DOUBLE_CMD + addr;
+    uint32_t buff = READ_REM_DOUBLE_CMD + addr;
     HM2WRITE(remote->reg_cs_addr, buff);
     if (doit(inst) < 0){
         HM2_ERR("Error in sslbp_read_double, trying to abort\n");
@@ -262,10 +273,10 @@ static rtapi_u64 __attribute__((unused)) sslbp_read_double(setsserial_inst_t *in
     return res;
 }
 
-static int sslbp_write_byte(setsserial_inst_t *inst, rtapi_u32 addr, rtapi_u32 data){
+static int sslbp_write_byte(setsserial_inst_t *inst, uint32_t addr, uint32_t data){
     hostmot2_t *hm2 = inst->hm2;
     hm2_sserial_remote_t *remote = inst->remote;
-    rtapi_u32 buff = WRITE_REM_BYTE_CMD + addr;
+    uint32_t buff = WRITE_REM_BYTE_CMD + addr;
     HM2WRITE(remote->reg_cs_addr, buff);
     HM2WRITE(remote->rw_addr[0], data);
     if (doit(inst) < 0){
@@ -277,10 +288,10 @@ static int sslbp_write_byte(setsserial_inst_t *inst, rtapi_u32 addr, rtapi_u32 d
     return 0;
 }
 
-static int __attribute__((unused)) sslbp_write_word(setsserial_inst_t *inst, rtapi_u32 addr, rtapi_u32 data){
+static int __attribute__((unused)) sslbp_write_word(setsserial_inst_t *inst, uint32_t addr, uint32_t data){
     hostmot2_t *hm2 = inst->hm2;
     hm2_sserial_remote_t *remote = inst->remote;
-    rtapi_u32 buff = WRITE_REM_WORD_CMD + addr;
+    uint32_t buff = WRITE_REM_WORD_CMD + addr;
     HM2WRITE(remote->reg_cs_addr, buff);
     HM2WRITE(remote->rw_addr[0], data);
     if (doit(inst) < 0){
@@ -292,10 +303,10 @@ static int __attribute__((unused)) sslbp_write_word(setsserial_inst_t *inst, rta
     return 0;
 }
 
-static int sslbp_write_long(setsserial_inst_t *inst, rtapi_u32 addr, rtapi_u32 data){
+static int sslbp_write_long(setsserial_inst_t *inst, uint32_t addr, uint32_t data){
     hostmot2_t *hm2 = inst->hm2;
     hm2_sserial_remote_t *remote = inst->remote;
-    rtapi_u32 buff = WRITE_REM_LONG_CMD + addr;
+    uint32_t buff = WRITE_REM_LONG_CMD + addr;
     HM2WRITE(remote->reg_cs_addr, buff);
     HM2WRITE(remote->rw_addr[0], data);
     if (doit(inst) < 0){
@@ -307,10 +318,10 @@ static int sslbp_write_long(setsserial_inst_t *inst, rtapi_u32 addr, rtapi_u32 d
     return 0;
 }
 
-static int sslbp_write_double(setsserial_inst_t *inst, rtapi_u32 addr, rtapi_u32 data0, rtapi_u32 data1){
+static int sslbp_write_double(setsserial_inst_t *inst, uint32_t addr, uint32_t data0, uint32_t data1){
     hostmot2_t *hm2 = inst->hm2;
     hm2_sserial_remote_t *remote = inst->remote;
-    rtapi_u32 buff = WRITE_REM_DOUBLE_CMD + addr;
+    uint32_t buff = WRITE_REM_DOUBLE_CMD + addr;
     HM2WRITE(remote->reg_cs_addr, buff);
     HM2WRITE(remote->rw_addr[0], data0);
     HM2WRITE(remote->rw_addr[1], data1);
@@ -360,17 +371,9 @@ static int sslbp_flash(setsserial_inst_t *inst, char *fname){
         return -1;
     }
      
-    //Copied direct from hostmot2.c. A bit of a faff, but seems to be necessary. 
     memset(&dev, '\0', sizeof(dev));
-    rtapi_dev_set_name(&dev, "%s", hm2->llio->name);
-    dev.release = setsserial_release;
-    r = rtapi_device_register(&dev);
-    if (r != 0) {
-        HM2_ERR("error with device_register\n");
-        return -1;
-    }
+    snprintf(dev.name, sizeof(dev.name), "%s", hm2->llio->name);
     r = rtapi_request_firmware(&fw, fname, &dev);
-    rtapi_device_unregister(&dev);
     if (r == -ENOENT) {
         HM2_ERR("firmware %s not found\n",fname);
         return -1;
@@ -413,7 +416,7 @@ static int sslbp_flash(setsserial_inst_t *inst, char *fname){
                 for (i = 0; i < erase_sz ; i += write_sz){
                     sslbp_write_long(inst, LBPFLASHOFFSETLOC, block_start + i);
                     for (j = 0 ; j < write_sz ; j += 8){
-                        rtapi_u32 data0, data1, m;
+                        uint32_t data0, data1, m;
                         m = block_start + i + j;
                         data0 = (fw->data[m] 
                               + (fw->data[m + 1] << 8)
@@ -463,7 +466,7 @@ static int setsserial_run(setsserial_inst_t *inst, const char *cmd_str)
     int cnt;
     hm2_sserial_remote_t *remote;
 
-    inst->cmd_list = rtapi_argv_split(cmd_str, &cnt);
+    inst->cmd_list = argv_split(cmd_str, &cnt);
 
     inst->remote = hm2_get_sserial(&inst->hm2, inst->cmd_list[1]);
     if (!inst->remote) {
@@ -476,8 +479,8 @@ static int setsserial_run(setsserial_inst_t *inst, const char *cmd_str)
     remote = inst->remote;
 
     if (!strncmp("set", inst->cmd_list[0], 3) && cnt == 3){
-        rtapi_u32 value;
-        rtapi_u32 addr;
+        uint32_t value;
+        uint32_t addr;
         int i;
         rtapi_print("set command %s\n", inst->cmd_list[1]);
         addr = 0;
