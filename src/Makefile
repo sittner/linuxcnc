@@ -160,8 +160,8 @@ GENERATED_MANPAGES :=
 
 # Submakefiles from each of these directories will be included if they exist
 SUBDIRS := \
-    libnml/linklist libnml/cms libnml/rcs libnml/inifile libnml/os_intf \
-    libnml/nml libnml/buffer libnml/posemath libnml \
+    libnml/cms libnml/rcs libnml/inifile \
+    libnml/nml libnml/posemath libnml \
     \
     gmi/lib \
     \
@@ -384,67 +384,31 @@ SRCHEADERS := \
     emc/rs274ngc/rs274ngc.hh \
     emc/rs274ngc/saicanon.hh \
     hal/hal.h \
-    hal/hal_parport.h \
     hal/drivers/mesa-hostmot2/hostmot2-serial.h \
-    libnml/buffer/locmem.hh \
-    libnml/buffer/memsem.hh \
-    libnml/buffer/phantom.hh \
-    libnml/buffer/physmem.hh \
-    libnml/buffer/recvn.h \
-    libnml/buffer/rem_msg.hh \
-    libnml/buffer/sendn.h \
-    libnml/buffer/shmem.hh \
-    libnml/buffer/tcpmem.hh \
-    libnml/cms/cms.hh \
-    libnml/cms/cms_aup.hh \
-    libnml/cms/cms_cfg.hh \
-    libnml/cms/cms_dup.hh \
-    libnml/cms/cms_srv.hh \
-    libnml/cms/cms_up.hh \
     libnml/cms/cms_user.hh \
-    libnml/cms/cms_xup.hh \
-    libnml/cms/cmsdiag.hh \
-    libnml/cms/tcp_opts.hh \
-    libnml/cms/tcp_srv.hh \
     libnml/inifile/inifile.h \
     libnml/inifile/inifile.hh \
-    libnml/linklist/linklist.hh \
     libnml/nml/cmd_msg.hh \
     libnml/nml/nml.hh \
-    libnml/nml/nml_mod.hh \
-    libnml/nml/nml_oi.hh \
-    libnml/nml/nml_srv.hh \
     libnml/nml/nml_type.hh \
-    libnml/nml/nmldiag.hh \
     libnml/nml/nmlmsg.hh \
     libnml/nml/stat_msg.hh \
-    libnml/os_intf/_sem.h \
-    libnml/os_intf/sem.hh \
-    libnml/os_intf/_shm.h \
-    libnml/os_intf/shm.hh \
-    libnml/os_intf/_timer.h \
-    libnml/os_intf/timer.hh \
     libnml/posemath/posemath.h \
     libnml/posemath/gotypes.h \
     libnml/posemath/gomath.h \
     libnml/posemath/sincos.h \
     libnml/rcs/rcs.hh \
-    libnml/rcs/rcs_exit.hh \
-    libnml/rcs/rcs_print.hh \
-    libnml/rcs/rcsversion.h \
     rtapi/rtapi.h \
     rtapi/rtapi_app.h \
     rtapi/rtapi_atomic.h \
     rtapi/rtapi_bitops.h \
     rtapi/rtapi_bool.h \
     rtapi/rtapi_byteorder.h \
-    rtapi/rtapi_device.h \
     rtapi/rtapi_firmware.h \
     rtapi/rtapi_io.h \
     rtapi/rtapi_limits.h \
     rtapi/rtapi_list.h \
     rtapi/rtapi_math.h \
-    rtapi/rtapi_math_i386.h \
     rtapi/rtapi_math64.h \
     rtapi/rtapi_mutex.h \
     rtapi/rtapi_parport.h \
