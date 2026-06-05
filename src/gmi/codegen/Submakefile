@@ -14,7 +14,6 @@
 # modcompile) and before any Submakefile that uses the generated headers.
 # ---------------------------------------------------------------------------
 
-ifeq ($(BUILD_GOLANG),yes)
 
 GMICOMPILE := ../bin/modcompile gmi
 GMICOMPILE_BIN := ../bin/modcompile
@@ -717,4 +716,3 @@ clean: gmi-codegen-clean
 gmi-codegen-clean:
 	rm -rf gomc/generated/
 
-endif # BUILD_GOLANG

@@ -29,7 +29,6 @@ $(patsubst ./emc/kinematics/%,../include/%,$(wildcard ./emc/kinematics/*.hh)): .
 # GMI kinematics cmod modules
 # ---------------------------------------------------------------------------
 
-ifeq ($(BUILD_GOLANG),yes)
 
 GMI_KINS_INCLUDE := gomc/pkg/cmodule
 GMI_KINS_API_INCLUDE := gomc/generated/gmi/kins
@@ -92,4 +91,3 @@ $(eval $(call GMI_KINS_POSEMATH_BUILD,genserkins,emc/kinematics))
 $(eval $(call GMI_KINS_POSEMATH_BUILD,pumakins,emc/kinematics))
 $(eval $(call GMI_KINS_POSEMATH_BUILD,pentakins,emc/kinematics))
 
-endif # BUILD_GOLANG

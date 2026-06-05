@@ -813,7 +813,6 @@ endif # userspace
 # ---------------------------------------------------------------------------
 # GMI home module (cmod)
 # ---------------------------------------------------------------------------
-ifeq ($(BUILD_GOLANG),yes)
 
 HOMEMOD_CMOD_SRCS := \
     emc/motion/homing.c
@@ -845,12 +844,9 @@ HOMEMOD_CMOD_DEPS := \
 TARGETS += ../cmod/homemod.so
 modules: ../cmod/homemod.so
 
-endif # BUILD_GOLANG
-
 # ---------------------------------------------------------------------------
 # GMI trajectory planner module (cmod)
 # ---------------------------------------------------------------------------
-ifeq ($(BUILD_GOLANG),yes)
 
 TPMOD_CMOD_SRCS := \
     emc/tp/tp.c \
@@ -889,8 +885,6 @@ TPMOD_CMOD_DEPS := \
 
 TARGETS += ../cmod/tpmod.so
 modules: ../cmod/tpmod.so
-
-endif # BUILD_GOLANG
 
 # Phony so that it is always rebuilt when requested, not because it
 # shouldn't exist as a file

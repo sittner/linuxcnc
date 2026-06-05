@@ -12,7 +12,6 @@ $(patsubst ./hal/drivers/mesa-hostmot2/%,../include/%,$(wildcard ./hal/drivers/m
 # Transport drivers provide hm2_llio API.
 # ---------------------------------------------------------------------------
 
-ifeq ($(BUILD_GOLANG),yes)
 
 HM2_DIR := hal/drivers/mesa-hostmot2
 
@@ -268,4 +267,3 @@ modules: ../cmod/setsserial.so
 TARGETS += ../cmod/hm2_test.so
 modules: ../cmod/hm2_test.so
 
-endif # BUILD_GOLANG

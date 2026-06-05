@@ -112,7 +112,6 @@ hal/components/conv_u32_s32.comp: hal/components/conv.comp.in hal/components/mkc
 # cmod build rules: .comp → modcompile → .c → gcc -shared → ../cmod/*.so
 # ---------------------------------------------------------------------------
 
-ifeq ($(BUILD_GOLANG),yes)
 
 CMOD_INCLUDE := gomc/pkg/cmodule
 CMOD_CFLAGS  := -fPIC -Os -Wall -shared -o
@@ -508,7 +507,7 @@ modules: ../cmod/lcd.so
 
 # sampler_cmod — streams HAL pin data to WebSocket clients
 CMOD_GMI_HAL_SAMPLER_API := gomc/generated/gmi/hal_sampler
-../cmod/sampler.so: hal/components/sampler_cmod.c $(CMOD_GMI_HAL_SAMPLER_API)/hal_sampler_stream_api.h | ../lib/liblinuxcnchal.so
+../cmod/sampler.so: hal/components/sampler_cmod.c $(CMOD_GMI_HAL_SAMPLER_API)/hal_sampler_stream_api.h
 	$(ECHO) "Compiling cmod $(notdir $@)"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I $(CMOD_GMI_HAL_SAMPLER_API) -o $@ $<
@@ -517,7 +516,7 @@ modules: ../cmod/sampler.so
 
 # streamer_cmod — receives WebSocket data and outputs to HAL pins
 CMOD_GMI_HAL_STREAMER_API := gomc/generated/gmi/hal_streamer
-../cmod/streamer.so: hal/components/streamer_cmod.c $(CMOD_GMI_HAL_STREAMER_API)/hal_streamer_stream_api.h | ../lib/liblinuxcnchal.so
+../cmod/streamer.so: hal/components/streamer_cmod.c $(CMOD_GMI_HAL_STREAMER_API)/hal_streamer_stream_api.h
 	$(ECHO) "Compiling cmod $(notdir $@)"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I $(CMOD_GMI_HAL_STREAMER_API) -o $@ $<
@@ -530,4 +529,3 @@ cmod-comp-clean:
 	rm -f $(CMOD_TARGETS) $(CMOD_C_TARGETS) $(CMOD_USER_TARGETS)
 	rm -rf objects/cmod/
 
-endif # BUILD_GOLANG

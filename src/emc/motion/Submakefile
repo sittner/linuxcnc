@@ -12,7 +12,6 @@ $(patsubst ./emc/motion/%,../include/%,$(wildcard ./emc/motion/*.hh)): ../includ
 # callbacks.  No direct link to liblinuxcnchal.
 # ---------------------------------------------------------------------------
 
-ifeq ($(BUILD_GOLANG),yes)
 
 MOTMOD_CMOD_SRCS := \
     emc/motion/motion.c \
@@ -51,4 +50,3 @@ MOTMOD_CMOD_CFLAGS := \
 TARGETS += ../cmod/motmod.so
 modules: ../cmod/motmod.so
 
-endif # BUILD_GOLANG

@@ -1,10 +1,8 @@
 USER_COMP_PY = pyvcp gladevcp
 
 USER_COMPS := $(sort $(wildcard hal/user_comps/*.comp))
-ifeq ($(BUILD_GOLANG),yes)
 USER_COMPS := $(filter-out hal/user_comps/thermistor.comp, $(USER_COMPS))
 USER_COMPS := $(filter-out hal/user_comps/gs2_vfd.comp hal/user_comps/hy_gt_vfd.comp hal/user_comps/svd-ps_vfd.comp, $(USER_COMPS))
-endif
 USER_COMP_BINS := $(patsubst hal/user_comps/%.comp, ../bin/%, $(USER_COMPS))
 USER_COMP_MANPAGES := $(patsubst hal/user_comps/%.comp, ../docs/man/man1/%.1, $(USER_COMPS))
 USER_COMP_SRCS := $(patsubst %.comp, objects/%.c, $(USER_COMPS))

@@ -1,7 +1,5 @@
 # gomc/Submakefile - Go-based LinuxCNC server (gomc-server)
-# Only included if BUILD_GOLANG is true (Go 1.21+ detected)
 
-ifeq ($(BUILD_GOLANG),yes)
 
 # Helper variables for string manipulation
 comma := ,
@@ -307,4 +305,3 @@ gomc-install: ../bin/gomc-server ../bin/ads-xml-gen ../bin/modcompile ../bin/hal
 			$(INSTALL) -m 0644 $$f $$dest; \
 		done
 
-endif # BUILD_GOLANG

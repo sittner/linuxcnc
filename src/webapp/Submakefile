@@ -5,7 +5,6 @@
 # share/gomc/webapp/<app>/ for serving by gomc-server.
 # ---------------------------------------------------------------------------
 
-ifeq ($(BUILD_GOLANG),yes)
 
 WEBAPP_DIR := webapp
 WEBAPP_DEST := ../share/gomc/webapp
@@ -176,4 +175,3 @@ webapp-clean:
 	rm -rf $(TOOLEDIT_WEBAPP_SRC)/node_modules
 	rm -rf $(CLASSICLADDER_WEBAPP_SRC)/node_modules
 
-endif # BUILD_GOLANG

@@ -2,7 +2,6 @@
 # cmod builds: GPIO drivers
 # ---------------------------------------------------------------------------
 
-ifeq ($(BUILD_GOLANG),yes)
 
 GPIO_DIR := hal/drivers
 
@@ -116,7 +115,6 @@ TARGETS += ../cmod/hal_ppmc.so
 modules: ../cmod/hal_ppmc.so
 endif
 
-endif # BUILD_GOLANG
 
 # ---------------------------------------------------------------------------
 # Legacy pluto firmware rules
