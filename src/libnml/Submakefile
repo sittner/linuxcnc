@@ -1,2 +1,1 @@
-# libnml is no longer built as a library.
-# linklist.cc is compiled directly by milltask (emc/task/Submakefile).
+# libnml: only inifile/ and posemath/ remain (build their own libraries).

@@ -160,8 +160,7 @@ GENERATED_MANPAGES :=
 
 # Submakefiles from each of these directories will be included if they exist
 SUBDIRS := \
-    libnml/cms libnml/rcs libnml/inifile \
-    libnml/nml libnml/posemath libnml \
+    libnml/inifile libnml/posemath libnml \
     \
     gmi/lib \
     \
@@ -367,14 +366,11 @@ SRCHEADERS := \
     emc/nml_intf/canon.hh \
     emc/nml_intf/canon_position.hh \
     emc/nml_intf/emctool.h \
-    emc/nml_intf/emc.hh \
-    emc/nml_intf/emc_nml.hh \
     emc/nml_intf/emccfg.h \
     emc/nml_intf/emcglb.h \
     emc/nml_intf/emcpos.h \
     emc/nml_intf/emcpose.h \
     emc/nml_intf/interp_return.hh \
-    emc/nml_intf/interpl.hh \
     emc/nml_intf/motion_types.h \
     emc/nml_intf/debugflags.h \
     emc/rs274ngc/interp_internal.hh \
@@ -385,19 +381,12 @@ SRCHEADERS := \
     emc/rs274ngc/saicanon.hh \
     hal/hal.h \
     hal/drivers/mesa-hostmot2/hostmot2-serial.h \
-    libnml/cms/cms_user.hh \
     libnml/inifile/inifile.h \
     libnml/inifile/inifile.hh \
-    libnml/nml/cmd_msg.hh \
-    libnml/nml/nml.hh \
-    libnml/nml/nml_type.hh \
-    libnml/nml/nmlmsg.hh \
-    libnml/nml/stat_msg.hh \
     libnml/posemath/posemath.h \
     libnml/posemath/gotypes.h \
     libnml/posemath/gomath.h \
     libnml/posemath/sincos.h \
-    libnml/rcs/rcs.hh \
     rtapi/rtapi.h \
     rtapi/rtapi_app.h \
     rtapi/rtapi_atomic.h \
