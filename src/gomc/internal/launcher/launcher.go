@@ -347,28 +347,8 @@ func (l *Launcher) Run() (runErr error) {
 
 	// Shutdown signal received — cleanup runs via deferred l.cleanup():
 	//   kill apps → stop modules → halcmd stop → halcmd unload all →
-	//   wait → realtime stop → NML shm → lock
+	//   wait → realtime stop → lock
 	return nil
-}
-
-// startServer loads and starts the NML server as a cmod plugin.
-// resolveNmlFile determines the NML configuration file path.
-//
-// Resolution order:
-//  1. [LINUXCNC]NML_FILE (preferred, new canonical section)
-//  2. [EMC]NML_FILE (legacy fallback)
-//  3. config.DefaultNmlFile (build-time default)
-//
-// Relative paths are resolved against the INI file's directory.
-func (l *Launcher) resolveNmlFile() string {
-	nmlFile := l.ini.Get("LINUXCNC", "NML_FILE")
-	if nmlFile == "" {
-		nmlFile = l.ini.Get("EMC", "NML_FILE")
-	}
-	if nmlFile == "" {
-		return config.DefaultNmlFile
-	}
-	return l.resolveRelativePath(nmlFile)
 }
 
 // resolveRelativePath resolves path against the INI file's directory when it

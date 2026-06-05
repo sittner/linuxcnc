@@ -74,7 +74,7 @@ func main() {
 	// sets up RLIMIT_MEMLOCK/RLIMIT_RTPRIO, calls mlockall(MCL_CURRENT) to lock
 	// all currently-mapped pages (libc, librtapi, vdso, initial Go runtime pages),
 	// installs signal handlers, and grants I/O privileges.
-	// Must precede any HAL, NML, or component initialization.
+	// Must precede any HAL or component initialization.
 	halcmd.RtapiInitializeApp()
 
 	os.Exit(run(os.Args[1:]))
@@ -139,16 +139,13 @@ Options:
 		}
 	}
 
-	// TODO (M7): if useLast && iniFile == "", look up the last-used INI file
-	// from ~/.linuxcncrc or similar.
 	if *useLast && iniFile == "" {
 		fmt.Fprintln(os.Stderr, "gomc-server: -l / last-used INI file not yet implemented")
 		return 1
 	}
 
-	// TODO (M7): if no INI file specified, launch pickconfig.tcl GUI.
 	if iniFile == "" {
-		fmt.Fprintln(os.Stderr, "gomc-server: no INI file specified (GUI picker not yet implemented)")
+		fmt.Fprintln(os.Stderr, "gomc-server: no INI file specified")
 		return 1
 	}
 

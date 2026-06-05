@@ -24,7 +24,6 @@ func TestPathsDefaultValues(t *testing.T) {
 		"HalibDir":       config.HalibDir,
 		"EMC2Version":    config.EMC2Version,
 		"RunInPlace":     config.RunInPlace,
-		"DefaultNmlFile": config.DefaultNmlFile,
 		"ModExt":         config.ModExt,
 		"KernelVers":     config.KernelVers,
 	}

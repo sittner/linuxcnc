@@ -95,7 +95,7 @@ func NewInst(compType, name, arg string) error {
 // handlers, and grants I/O privileges.  The function is idempotent: subsequent
 // calls return immediately.
 //
-// This must be called as early as possible — before any HAL, NML, or component
+// This must be called as early as possible — before any HAL or component
 // initialization — so that the locked page set is minimal and all RT privileges
 // are in place before any RT-sensitive code runs.
 func RtapiInitializeApp() {

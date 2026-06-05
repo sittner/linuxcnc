@@ -480,7 +480,6 @@ func buildServer() {
 			"-X '%s.EMC2WebAppDir=%s' "+
 			"-X '%s.EMC2Version=%s' "+
 			"-X '%s.RunInPlace=%s' "+
-			"-X '%s.DefaultNmlFile=%s' "+
 			"-X '%s.ModExt=%s' "+
 			"-X '%s.KernelVers=%s'",
 		pkg, config.EMC2Home,
@@ -501,7 +500,6 @@ func buildServer() {
 		pkg, config.EMC2WebAppDir,
 		pkg, config.EMC2Version,
 		pkg, config.RunInPlace,
-		pkg, config.DefaultNmlFile,
 		pkg, config.ModExt,
 		pkg, config.KernelVers,
 	)

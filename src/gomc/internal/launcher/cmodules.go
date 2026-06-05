@@ -455,7 +455,7 @@ func (l *Launcher) initCModules() error {
 }
 
 // startCModules calls Start() on all loaded C plugin modules that have not
-// already been started (e.g. modules started early via startCModuleByName).
+// already been started.
 func (l *Launcher) startCModules() error {
 	for _, cm := range l.cModules {
 		if cm.started {
@@ -468,26 +468,6 @@ func (l *Launcher) startCModules() error {
 		cm.started = true
 	}
 	return nil
-}
-
-// startCModuleByName calls Start() on a single loaded C module identified by
-// name.  This is used when a module must be started before the batch
-// startCModules() call (e.g. the NML server must run before NML clients).
-func (l *Launcher) startCModuleByName(name string) error {
-	for _, cm := range l.cModules {
-		if cm.name == name {
-			if cm.started {
-				return nil
-			}
-			rc := C.cmod_call_start(cm.mod)
-			if rc != 0 {
-				return fmt.Errorf("C module %q Start() returned error code %d", name, int(rc))
-			}
-			cm.started = true
-			return nil
-		}
-	}
-	return fmt.Errorf("C module %q not loaded", name)
 }
 
 // lockRTModules locks the PT_LOAD segments of all module .so files that

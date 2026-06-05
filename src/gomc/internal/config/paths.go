@@ -67,9 +67,6 @@ var (
 	// RunInPlace indicates whether LinuxCNC is being run from the build directory ("yes" or "no") (@RUN_IN_PLACE@).
 	RunInPlace string
 
-	// DefaultNmlFile is the path to the default NML configuration file (@DEFAULT_NMLFILE@).
-	DefaultNmlFile string
-
 	// Tclsh is the path to the Tcl shell interpreter (@TCLSH@).
 	// Falls back to looking up "tclsh" on PATH when empty.
 	Tclsh string
