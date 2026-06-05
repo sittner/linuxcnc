@@ -496,7 +496,7 @@ CMOD_GMI_HAL_SAMPLER_API := gomc/generated/gmi/hal_sampler
 ../cmod/sampler.so: hal/components/sampler.c $(CMOD_GMI_HAL_SAMPLER_API)/hal_sampler_stream_api.h
 	$(ECHO) "Compiling cmod $(notdir $@)"
 	@mkdir -p $(dir $@)
-	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I $(CMOD_GMI_HAL_SAMPLER_API) -o $@ $<
+	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I $(CMOD_GMI_HAL_SAMPLER_API) -o $@ $< $(CMOD_LDFLAGS)
 TARGETS += ../cmod/sampler.so
 modules: ../cmod/sampler.so
 
@@ -505,7 +505,7 @@ CMOD_GMI_HAL_STREAMER_API := gomc/generated/gmi/hal_streamer
 ../cmod/streamer.so: hal/components/streamer.c $(CMOD_GMI_HAL_STREAMER_API)/hal_streamer_stream_api.h
 	$(ECHO) "Compiling cmod $(notdir $@)"
 	@mkdir -p $(dir $@)
-	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I $(CMOD_GMI_HAL_STREAMER_API) -o $@ $<
+	$(Q)$(CC) -fPIC -Os -Wall -shared -I $(CMOD_INCLUDE) -I $(CMOD_GMI_HAL_STREAMER_API) -o $@ $< $(CMOD_LDFLAGS)
 TARGETS += ../cmod/streamer.so
 modules: ../cmod/streamer.so
 

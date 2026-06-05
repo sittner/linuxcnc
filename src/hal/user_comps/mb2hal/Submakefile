@@ -18,7 +18,7 @@ USERSRCS += $(MB2HAL_SRCS)
 ../cmod/mb2hal.so: $(call TOOBJS, $(MB2HAL_SRCS)) ../lib/libiniparse.so.0
 	$(ECHO) Linking $(notdir $@)
 	@mkdir -p ../cmod
-	@$(CC) -shared -o $@ $^ $(LDFLAGS) $(MB2HAL_LDFLAGS)
+	@$(CC) -shared -o $@ $^ $(CMOD_LDFLAGS) $(MB2HAL_LDFLAGS)
 
 TARGETS += ../cmod/mb2hal.so
 

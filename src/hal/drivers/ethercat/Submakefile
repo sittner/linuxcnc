@@ -77,7 +77,7 @@ $(call TOOBJSDEPS, $(LCEC_ALL_SRCS)): EXTRAFLAGS += \
 ../cmod/ethercat.so: $(call TOOBJS, $(LCEC_ALL_SRCS))
 	$(ECHO) Linking $(notdir $@)
 	@mkdir -p ../cmod
-	$(Q)$(CC) -shared -o $@ $^ $(LDFLAGS) -lexpat -lm $(ETHERCAT_LIBS)
+	$(Q)$(CC) -shared -o $@ $^ $(CMOD_LDFLAGS) -lexpat -lm $(ETHERCAT_LIBS)
 
 TARGETS += ../cmod/ethercat.so
 

@@ -14,7 +14,7 @@ $(call TOOBJSDEPS, $(STDGLUE_SRCS)): gomc/generated/gmi/interp_ctx/interp_ctx_ap
 ../cmod/stdglue.so: $(call TOOBJS, $(STDGLUE_SRCS))
 	$(ECHO) Linking $(notdir $@)
 	@mkdir -p ../cmod
-	@$(CC) -shared -o $@ $^ $(LDFLAGS)
+	@$(CC) -shared -o $@ $^ $(CMOD_LDFLAGS)
 TARGETS += ../cmod/stdglue.so
 
 # test_mcode_handler.so — test cmod for M-code handler API
@@ -29,5 +29,5 @@ $(call TOOBJSDEPS, $(TEST_MCODE_SRCS)): gomc/generated/gmi/mcode_handler/mcode_h
 ../cmod/test_mcode_handler.so: $(call TOOBJS, $(TEST_MCODE_SRCS))
 	$(ECHO) Linking $(notdir $@)
 	@mkdir -p ../cmod
-	@$(CC) -shared -o $@ $^ $(LDFLAGS)
+	@$(CC) -shared -o $@ $^ $(CMOD_LDFLAGS)
 TARGETS += ../cmod/test_mcode_handler.so
