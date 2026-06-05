@@ -17,6 +17,7 @@
 #define RTAPI_STRING_H
 
 #include <rtapi.h>
+#include <stdio.h>
 
 #ifdef __cplusplus
 #include <assert.h>
@@ -37,7 +38,7 @@ RTAPI_END_DECLS
 
 RTAPI_BEGIN_DECLS
 static inline size_t rtapi_strlcpy(char *dst, const char *src, size_t size) {
-    return rtapi_snprintf(dst, size, "%s", src);
+    return snprintf(dst, size, "%s", src);
 }
 #define rtapi_strxcpy(dst, src) ({ \
     rtapi_static_assert(rtapi_is_array(dst), "dst must be non-const array"); \
@@ -46,7 +47,7 @@ static inline size_t rtapi_strlcpy(char *dst, const char *src, size_t size) {
 
 static inline size_t rtapi_strlcat(char *dst, const char *src, size_t size) {
     size_t l = strlen(dst);
-    return rtapi_snprintf(dst+l, size-l, "%s", src);
+    return snprintf(dst+l, size-l, "%s", src);
 }
 
 #define rtapi_strxcat(dst, src) ({ \

@@ -36,9 +36,6 @@ static inline void rtapi_print_msg(int level, const char *fmt, ...) {
 static inline int rtapi_get_msg_level(void) { return RTAPI_MSG_INFO; }
 static inline void rtapi_set_msg_level(int level) { (void)level; }
 
-// rtapi_snprintf
-#define rtapi_snprintf snprintf
-
 // HAL stubs
 typedef int hal_bit_t;
 typedef int hal_s32_t;

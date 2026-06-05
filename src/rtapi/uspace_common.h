@@ -170,22 +170,6 @@ void rtapi_print_msg(msg_level_t level, const char *fmt, ...)
     }
 }
 
-int rtapi_snprintf(char *buffer, unsigned long int size, const char *msg, ...) {
-    va_list args;
-    int result;
-
-    va_start(args, msg);
-    /* call the normal library vnsprintf() */
-    result = vsnprintf(buffer, size, msg, args);
-    va_end(args);
-    return result;
-}
-
-int rtapi_vsnprintf(char *buffer, unsigned long int size, const char *fmt,
-	va_list args) {
-    return vsnprintf(buffer, size, fmt, args);
-}
-
 #if defined(__i386) || defined(__amd64)
 #define rdtscll(val) ((val) = __builtin_ia32_rdtsc())
 #else
