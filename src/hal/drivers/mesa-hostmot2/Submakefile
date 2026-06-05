@@ -54,13 +54,16 @@ HM2_CMOD_CFLAGS := \
     -DUSPACE -D_GNU_SOURCE -Drealtime \
     -fno-strict-aliasing -fwrapv \
     -Irtapi/pci \
+    -Irtapi/parport \
     -I. -I../include \
     -I$(HM2_DIR) \
     -Igomc/pkg/cmodule \
     -Igomc/generated/gmi/hm2_llio \
     -Igomc/generated/gmi/hm2_serial
 
-HM2_CMOD_LDFLAGS = $(LDFLAGS) -llinuxcnchal -lm
+HM2_CMOD_LDFLAGS = $(LDFLAGS) -lm
+HM2_CMOD_LDFLAGS_PCI = $(HM2_CMOD_LDFLAGS) -lrtapi_pci
+HM2_CMOD_LDFLAGS_PARPORT = $(HM2_CMOD_LDFLAGS) -lrtapi_parport
 
 ../cmod/hostmot2.so: $(HM2_CORE_SRCS) \
                      $(wildcard $(HM2_DIR)/*.h) \
@@ -72,7 +75,7 @@ HM2_CMOD_LDFLAGS = $(LDFLAGS) -llinuxcnchal -lm
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HM2_CMOD_CFLAGS) \
 	    -o $@ $(HM2_CORE_SRCS) \
-	    $(HM2_CMOD_LDFLAGS)
+	    $(HM2_CMOD_LDFLAGS_PCI)
 
 TARGETS += ../cmod/hostmot2.so
 modules: ../cmod/hostmot2.so
@@ -108,14 +111,15 @@ modules: ../cmod/hm2_eth.so
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HM2_CMOD_CFLAGS) \
 	    -o $@ $(HM2_DIR)/hm2_pci.c $(HM2_DIR)/bitfile.c \
-	    $(HM2_CMOD_LDFLAGS)
+	    $(HM2_CMOD_LDFLAGS_PCI)
 
 TARGETS += ../cmod/hm2_pci.so
 modules: ../cmod/hm2_pci.so
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# hm2_7i43.so — 7i43 EPP transport driver
+# hm2_7i43.so / hm2_7i90.so — EPP parport transport drivers (x86 only)
 # ═══════════════════════════════════════════════════════════════════════════════
+ifeq ($(X86ARCH),true)
 
 ../cmod/hm2_7i43.so: $(HM2_DIR)/hm2_7i43.c $(HM2_DIR)/bitfile.c \
                      $(wildcard $(HM2_DIR)/*.h) \
@@ -126,14 +130,10 @@ modules: ../cmod/hm2_pci.so
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HM2_CMOD_CFLAGS) \
 	    -o $@ $(HM2_DIR)/hm2_7i43.c $(HM2_DIR)/bitfile.c \
-	    $(HM2_CMOD_LDFLAGS)
+	    $(HM2_CMOD_LDFLAGS_PARPORT)
 
 TARGETS += ../cmod/hm2_7i43.so
 modules: ../cmod/hm2_7i43.so
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# hm2_7i90.so — 7i90 EPP transport driver
-# ═══════════════════════════════════════════════════════════════════════════════
 
 ../cmod/hm2_7i90.so: $(HM2_DIR)/hm2_7i90.c $(HM2_DIR)/bitfile.c \
                      $(wildcard $(HM2_DIR)/*.h) \
@@ -144,10 +144,12 @@ modules: ../cmod/hm2_7i43.so
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HM2_CMOD_CFLAGS) \
 	    -o $@ $(HM2_DIR)/hm2_7i90.c $(HM2_DIR)/bitfile.c \
-	    $(HM2_CMOD_LDFLAGS)
+	    $(HM2_CMOD_LDFLAGS_PARPORT)
 
 TARGETS += ../cmod/hm2_7i90.so
 modules: ../cmod/hm2_7i90.so
+
+endif # X86ARCH
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # hm2_spi.so — SPI transport driver
@@ -243,7 +245,7 @@ modules: ../cmod/hm2_modbus.so
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(HM2_CMOD_CFLAGS) \
 	    -o $@ $(HM2_DIR)/setsserial.c \
-	    $(HM2_CMOD_LDFLAGS)
+	    $(HM2_CMOD_LDFLAGS_PCI)
 
 TARGETS += ../cmod/setsserial.so
 modules: ../cmod/setsserial.so

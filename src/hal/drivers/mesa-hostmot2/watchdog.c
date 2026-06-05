@@ -119,7 +119,7 @@ int hm2_watchdog_parse_md(hostmot2_t *hm2, int md_index) {
     // allocate memory for register buffers
     //
 
-    hm2->watchdog.timer_reg = (uint32_t *)rtapi_malloc(hm2->watchdog.num_instances * sizeof(uint32_t));
+    hm2->watchdog.timer_reg = (uint32_t *)hm2->llio->rtapi->calloc(hm2->llio->rtapi->ctx, hm2->watchdog.num_instances * sizeof(uint32_t));
     if (hm2->watchdog.timer_reg == NULL) {
         HM2_ERR("out of memory!\n");
         r = -ENOMEM;
@@ -171,7 +171,7 @@ int hm2_watchdog_parse_md(hostmot2_t *hm2, int md_index) {
 
 
 fail1:
-    rtapi_free(hm2->watchdog.timer_reg);
+    hm2->llio->rtapi->free(hm2->llio->rtapi->ctx, hm2->watchdog.timer_reg);
 
 fail0:
     hm2->watchdog.num_instances = 0;
@@ -199,7 +199,7 @@ void hm2_watchdog_print_module(hostmot2_t *hm2) {
 
 void hm2_watchdog_cleanup(hostmot2_t *hm2) {
     if (hm2->watchdog.num_instances <= 0) return;
-    if (hm2->watchdog.timer_reg != NULL) rtapi_free(hm2->watchdog.timer_reg);
+    if (hm2->watchdog.timer_reg != NULL) hm2->llio->rtapi->free(hm2->llio->rtapi->ctx, hm2->watchdog.timer_reg);
 }
 
 
@@ -213,7 +213,7 @@ void hm2_watchdog_prepare_tram_write(hostmot2_t *hm2) {
 // (timeout_s * clock_hz) - 1 = timer_counts
 // (timeout_ns * (1 s/1e9 ns) * clock_hz) - 1 = timer_counts
 void hm2_watchdog_force_write(hostmot2_t *hm2) {
-    rtapi_u64 tmp;
+    uint64_t tmp;
 
     if (hm2->watchdog.num_instances != 1) return;
 

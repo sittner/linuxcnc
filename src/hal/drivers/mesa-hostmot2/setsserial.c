@@ -59,12 +59,12 @@ static int waitfor(setsserial_inst_t *inst){
     hostmot2_t *hm2 = inst->hm2;
     hm2_sserial_remote_t *remote = inst->remote;
     uint32_t buff;
-    long long int starttime = rtapi_get_time();
+    long long int starttime = inst->env->rtapi->get_time(inst->env->rtapi->ctx);
     do {
-        rtapi_delay(50000);
+        inst->env->rtapi->delay(inst->env->rtapi->ctx, 50000);
         HM2READ(remote->command_reg_addr, buff);
-        if (rtapi_get_time() - starttime > 1000000000){
-            rtapi_print_msg(RTAPI_MSG_ERR, "Timeout waiting for CMD to clear\n");
+        if (inst->env->rtapi->get_time(inst->env->rtapi->ctx) - starttime > 1000000000){
+            gomc_log_errorf(inst->env->log, "setsserial", "Timeout waiting for CMD to clear\n");
             return -1;
         }
     } while (buff);
@@ -80,7 +80,7 @@ static int doit(setsserial_inst_t *inst){
     if (waitfor(inst) < 0) return -1;
     HM2READ(remote->data_reg_addr, buff);
     if (buff & (1 << remote->index)){
-        rtapi_print_msg(RTAPI_MSG_ERR, "Error flag set after CMD Clear %08x\n",
+        gomc_log_errorf(inst->env->log, "setsserial", "Error flag set after CMD Clear %08x\n",
                         buff);
         return -1;
     }
@@ -102,9 +102,9 @@ static int setup_start(setsserial_inst_t *inst){
     HM2WRITE(remote->command_reg_addr, buff);
     if (waitfor(inst) < 0) return -1;
     HM2READ(remote->data_reg_addr, buff); 
-    rtapi_print("setup start: data_reg readback = %x\n", buff);
+    gomc_log_infof(inst->env->log, "setsserial", "setup start: data_reg readback = %x\n", buff);
     if (buff & (1 << remote->index)){
-        rtapi_print("Remote failed to start\n");
+        gomc_log_infof(inst->env->log, "setsserial", "Remote failed to start\n");
         return -1;
     }
     return 0;
@@ -114,7 +114,7 @@ static int nv_access(setsserial_inst_t *inst, uint32_t type){
     hostmot2_t *hm2 = inst->hm2;
     hm2_sserial_remote_t *remote = inst->remote;
     uint32_t buff = LBPNONVOL_flag + LBPWRITE;
-    rtapi_print("buff = %x\n", buff);
+    gomc_log_infof(inst->env->log, "setsserial", "buff = %x\n", buff);
     HM2WRITE(remote->reg_cs_addr, buff);
     HM2WRITE(remote->rw_addr[0], type);
     return doit(inst);
@@ -141,8 +141,7 @@ static int set_nvram_param(setsserial_inst_t *inst, uint32_t addr, uint32_t valu
 fail0: // It's all gone wrong
     buff=0x800; //Stop
     HM2WRITE(remote->command_reg_addr, buff);
-    rtapi_print_msg(RTAPI_MSG_ERR,
-                    "Problem with Smart Serial parameter setting, see dmesg\n");
+    gomc_log_errorf(inst->env->log, "setsserial",                     "Problem with Smart Serial parameter setting, see dmesg\n");
     return -1;
 }
 
@@ -253,10 +252,10 @@ static uint32_t __attribute__((unused)) sslbp_read_long(setsserial_inst_t *inst,
     return res;
 }
 
-static rtapi_u64 __attribute__((unused)) sslbp_read_double(setsserial_inst_t *inst, uint32_t addr){
+static uint64_t __attribute__((unused)) sslbp_read_double(setsserial_inst_t *inst, uint32_t addr){
     hostmot2_t *hm2 = inst->hm2;
     hm2_sserial_remote_t *remote = inst->remote;
-    rtapi_u64 res;
+    uint64_t res;
     uint32_t buff = READ_REM_DOUBLE_CMD + addr;
     HM2WRITE(remote->reg_cs_addr, buff);
     if (doit(inst) < 0){
@@ -352,20 +351,20 @@ static int sslbp_flash(setsserial_inst_t *inst, char *fname){
     
     if (strstr("8i20", remote->name)){
         if (hm2->sserial.version < 37){
-            rtapi_print("SSLBP Version must be at least v37 to flash the 8i20"
+            gomc_log_infof(inst->env->log, "setsserial", "SSLBP Version must be at least v37 to flash the 8i20"
                         "This firmware has v%i. Sorry about that\n"
                         ,hm2->sserial.version);
             return -1;
         }
     }
     else if (hm2->sserial.version < 34){
-        rtapi_print("SSLBP Version must be at least v34. This firmware has v%i"
+        gomc_log_infof(inst->env->log, "setsserial", "SSLBP Version must be at least v34. This firmware has v%i"
                     "\n",hm2->sserial.version);
         return -1;
     }
     
     if (hm2->sserial.baudrate != 115200){
-        rtapi_print("To flash firmware the baud rate of the board must be set "
+        gomc_log_infof(inst->env->log, "setsserial", "To flash firmware the baud rate of the board must be set "
                     "to 115200 by jumper, and in Hostmot2 using the "
                     "sserial_baudrate modparam\n");
         return -1;
@@ -382,7 +381,7 @@ static int sslbp_flash(setsserial_inst_t *inst, char *fname){
         HM2_ERR("request for firmware %s failed, aborting\n", fname);
         return -1;
     }    
-    rtapi_print("Firmware size 0x%zx\n", fw->size);
+    gomc_log_infof(inst->env->log, "setsserial", "Firmware size 0x%zx\n", fw->size);
     
     if (setup_start(inst) < 0) goto fail0;
     flash_start(inst);
@@ -458,7 +457,7 @@ static void setsserial_destroy(cmod_t *self)
 {
     setsserial_inst_t *inst = self->priv;
     inst->env->hal->exit(inst->env->hal->ctx, inst->comp_id);
-    rtapi_free(inst);
+    inst->env->rtapi->free(inst->env->rtapi->ctx, inst);
 }
 
 static int setsserial_run(setsserial_inst_t *inst, const char *cmd_str)
@@ -470,8 +469,7 @@ static int setsserial_run(setsserial_inst_t *inst, const char *cmd_str)
 
     inst->remote = hm2_get_sserial(&inst->hm2, inst->cmd_list[1]);
     if (!inst->remote) {
-        rtapi_print_msg(RTAPI_MSG_ERR,
-                        "Unable to find sserial remote corresponding to %s\n",
+        gomc_log_errorf(inst->env->log, "setsserial",                         "Unable to find sserial remote corresponding to %s\n",
                         inst->cmd_list[1]);
         return -1;
     }
@@ -482,7 +480,7 @@ static int setsserial_run(setsserial_inst_t *inst, const char *cmd_str)
         uint32_t value;
         uint32_t addr;
         int i;
-        rtapi_print("set command %s\n", inst->cmd_list[1]);
+        gomc_log_infof(inst->env->log, "setsserial", "set command %s\n", inst->cmd_list[1]);
         addr = 0;
         for (i = 0; i < remote->num_globals; i++){
             if (strstr(inst->cmd_list[1], remote->globals[i].NameString)){
@@ -491,40 +489,38 @@ static int setsserial_run(setsserial_inst_t *inst, const char *cmd_str)
             }
         }
         if (!addr) {
-            rtapi_print_msg(RTAPI_MSG_ERR,
-                            "Unable to find parameter corresponding to %s\n",
+            gomc_log_errorf(inst->env->log, "setsserial",                             "Unable to find parameter corresponding to %s\n",
                             inst->cmd_list[1]);
             return -1;
         }
         value = simple_strtol(inst->cmd_list[2], NULL, 0);
-        rtapi_print("remote name = %s ParamAddr = %x Value = %i\n",
+        gomc_log_infof(inst->env->log, "setsserial", "remote name = %s ParamAddr = %x Value = %i\n",
                     remote->name, addr, value);
         if (set_nvram_param(inst, addr, value) < 0) {
-            rtapi_print_msg(RTAPI_MSG_ERR, "Parameter setting failed\n");
+            gomc_log_errorf(inst->env->log, "setsserial", "Parameter setting failed\n");
             return -1;
         } else {
-            rtapi_print_msg(RTAPI_MSG_ERR, "Parameter setting success\n");
+            gomc_log_errorf(inst->env->log, "setsserial", "Parameter setting success\n");
             return 0;
         }
     }
     else if (!strncmp("flash", inst->cmd_list[0], 5) && cnt == 3){
-        rtapi_print("flash command\n");
+        gomc_log_infof(inst->env->log, "setsserial", "flash command\n");
         if (!strstr(inst->cmd_list[2], ".BIN")){
-            rtapi_print("Smart-Serial remote firmwares are .BIN format\n "
+            gomc_log_infof(inst->env->log, "setsserial", "Smart-Serial remote firmwares are .BIN format\n "
                         "flashing with the wrong one would be bad. Aborting\n");
             return -EINVAL;
         }
         if (sslbp_flash(inst, inst->cmd_list[2]) < 0){
-            rtapi_print_msg(RTAPI_MSG_ERR, "Firmware Flash Failed\n");
+            gomc_log_errorf(inst->env->log, "setsserial", "Firmware Flash Failed\n");
             return -1;
         } else {
-            rtapi_print_msg(RTAPI_MSG_ERR, "Firmware Flash Success\n");
+            gomc_log_errorf(inst->env->log, "setsserial", "Firmware Flash Success\n");
             return 0;
         }
     }
     else {
-        rtapi_print_msg(RTAPI_MSG_ERR,
-                        "Unknown command or wrong number of parameters to "
+        gomc_log_errorf(inst->env->log, "setsserial",                         "Unknown command or wrong number of parameters to "
                         "setsserial command");
         return -1;
     }
@@ -545,11 +541,11 @@ int New(const cmod_env_t *env, const char *name,
             cmd_str = argv[i] + 4;
     }
     if (!cmd_str) {
-        rtapi_print_msg(RTAPI_MSG_ERR, "setsserial: missing cmd= parameter\n");
+        gomc_log_errorf(env->log, "setsserial", "setsserial: missing cmd= parameter\n");
         return -EINVAL;
     }
 
-    inst = rtapi_malloc(sizeof(*inst));
+    inst = env->rtapi->calloc(env->rtapi->ctx, sizeof(*inst));
     if (!inst) return -ENOMEM;
     memset(inst, 0, sizeof(*inst));
 
@@ -559,7 +555,7 @@ int New(const cmod_env_t *env, const char *name,
                                    env->dl_handle, GOMC_HAL_COMP_REALTIME);
     if (inst->comp_id < 0) {
         ret = inst->comp_id;
-        rtapi_free(inst);
+        inst->env->rtapi->free(inst->env->rtapi->ctx, inst);
         return ret;
     }
     env->hal->ready(env->hal->ctx, inst->comp_id);
@@ -567,7 +563,7 @@ int New(const cmod_env_t *env, const char *name,
     ret = setsserial_run(inst, cmd_str);
     if (ret != 0) {
         env->hal->exit(env->hal->ctx, inst->comp_id);
-        rtapi_free(inst);
+        inst->env->rtapi->free(inst->env->rtapi->ctx, inst);
         return ret;
     }
 

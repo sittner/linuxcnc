@@ -442,7 +442,7 @@ int hm2_encoder_parse_md(hostmot2_t *hm2, int md_index) {
         goto fail0;
     }
 
-    hm2->encoder.control_reg = (uint32_t *)rtapi_malloc(hm2->encoder.num_instances * sizeof(uint32_t));
+    hm2->encoder.control_reg = (uint32_t *)hm2->llio->rtapi->calloc(hm2->llio->rtapi->ctx, hm2->encoder.num_instances * sizeof(uint32_t));
     if (hm2->encoder.control_reg == NULL) {
         HM2_ERR("out of memory!\n");
         r = -ENOMEM;
@@ -704,7 +704,7 @@ int hm2_encoder_parse_md(hostmot2_t *hm2, int md_index) {
     return hm2->encoder.num_instances;
 
 fail1:
-    rtapi_free(hm2->encoder.control_reg);
+    hm2->llio->rtapi->free(hm2->llio->rtapi->ctx, hm2->encoder.control_reg);
 
 fail0:
     hm2->encoder.num_instances = 0;
@@ -1107,7 +1107,7 @@ void hm2_encoder_process_tram_read(hostmot2_t *hm2, long l_period_ns) {
 
 void hm2_encoder_cleanup(hostmot2_t *hm2) {
     if (hm2->encoder.num_instances <= 0) return;
-    rtapi_free(hm2->encoder.control_reg);
+    hm2->llio->rtapi->free(hm2->llio->rtapi->ctx, hm2->encoder.control_reg);
 }
 
 

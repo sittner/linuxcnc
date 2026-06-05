@@ -433,7 +433,7 @@ int hm2_pwmgen_parse_md(hostmot2_t *hm2, int md_index) {
         goto fail0;
     }
 
-    hm2->pwmgen.pwm_mode_reg = (uint32_t *)rtapi_malloc(hm2->pwmgen.num_instances * sizeof(uint32_t));
+    hm2->pwmgen.pwm_mode_reg = (uint32_t *)hm2->llio->rtapi->calloc(hm2->llio->rtapi->ctx, hm2->pwmgen.num_instances * sizeof(uint32_t));
     if (hm2->pwmgen.pwm_mode_reg == NULL) {
         HM2_ERR("out of memory!\n");
         r = -ENOMEM;
@@ -547,7 +547,7 @@ int hm2_pwmgen_parse_md(hostmot2_t *hm2, int md_index) {
 
 
 fail1:
-    rtapi_free(hm2->pwmgen.pwm_mode_reg);
+    hm2->llio->rtapi->free(hm2->llio->rtapi->ctx, hm2->pwmgen.pwm_mode_reg);
 
 fail0:
     hm2->pwmgen.num_instances = 0;
@@ -560,7 +560,7 @@ fail0:
 void hm2_pwmgen_cleanup(hostmot2_t *hm2) {
     if (hm2->pwmgen.num_instances <= 0) return;
     if (hm2->pwmgen.pwm_mode_reg != NULL) {
-        rtapi_free(hm2->pwmgen.pwm_mode_reg);
+        hm2->llio->rtapi->free(hm2->llio->rtapi->ctx, hm2->pwmgen.pwm_mode_reg);
         hm2->pwmgen.pwm_mode_reg = NULL;
     }
     hm2->pwmgen.num_instances = 0;

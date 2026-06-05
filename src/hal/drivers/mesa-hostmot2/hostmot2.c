@@ -1316,6 +1316,9 @@ int hm2_register(hm2_lowlevel_io_t *llio, char *config_string) {
     memset(hm2, 0, sizeof(hostmot2_t));
 
     hm2->llio = llio;
+    llio->hal = hm2_inst->env->hal;
+    llio->log = hm2_inst->env->log;
+    llio->rtapi = hm2_inst->env->rtapi;
     hm2->use_serial_numbers = use_serial_numbers;
     hm2->sserial.baudrate = sserial_baudrate;
 
@@ -1827,6 +1830,7 @@ int New(const cmod_env_t *env, const char *name,
 {
     const gomc_hal_t *hal = env->hal;
     const gomc_log_t *log = env->log;
+    hm2_log = log;
     cmod_t *cmod;
 
     gomc_log_infof(log, name, "loading Mesa HostMot2 driver version %s\n", HM2_VERSION);

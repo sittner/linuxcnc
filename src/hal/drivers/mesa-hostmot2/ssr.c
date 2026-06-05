@@ -105,7 +105,7 @@ int hm2_ssr_parse_md(hostmot2_t *hm2, int md_index) {
     hm2->ssr.data_addr = md->base_address + (0 * md->register_stride);
     hm2->ssr.rate_addr = md->base_address + (1 * md->register_stride);
 
-    hm2->ssr.rate_reg = (uint32_t*)rtapi_malloc(hm2->ssr.num_instances * sizeof(uint32_t));
+    hm2->ssr.rate_reg = (uint32_t*)hm2->llio->rtapi->calloc(hm2->llio->rtapi->ctx, hm2->ssr.num_instances * sizeof(uint32_t));
     if (hm2->ssr.rate_reg == NULL) {
         HM2_ERR("out of memory!\n");
         r = -ENOMEM;
@@ -208,7 +208,7 @@ int hm2_ssr_parse_md(hostmot2_t *hm2, int md_index) {
     return hm2->ssr.num_instances;
 
 fail1:
-    rtapi_free(hm2->ssr.rate_reg);
+    hm2->llio->rtapi->free(hm2->llio->rtapi->ctx, hm2->ssr.rate_reg);
 
 fail0:
     hm2->ssr.num_instances = 0;

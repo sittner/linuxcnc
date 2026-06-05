@@ -400,7 +400,7 @@ static int peripheral_map(uintptr_t membase, size_t memsize)
 
 	peripheralsize = memsize;
 
-	if((fd = rtapi_open_as_root("/dev/mem", O_RDWR | O_SYNC)) < 0) {
+	if((fd = open("/dev/mem", O_RDWR | O_SYNC)) < 0) {
 		LL_ERR("Can't open /dev/mem\n");
 		return -errno;
 	}

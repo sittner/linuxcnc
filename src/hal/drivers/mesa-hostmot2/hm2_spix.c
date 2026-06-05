@@ -1,4 +1,4 @@
-static const void *hm2_log;
+const void *hm2_log;
 /*
  * This is a component for hostmot2 over SPI for linuxcnc.
  * Copyright (c) 2024 B.Stultiens <lcnc@vagrearg.org>
@@ -131,12 +131,12 @@ static const uint32_t iocookie[3] = {
 /*
  * Buffer management for queued transfers.
  */
-static int buffer_check_room(buffer_t *b, size_t n, size_t elmsize)
+static int buffer_check_room(const gomc_rtapi_t *rtapi, buffer_t *b, size_t n, size_t elmsize)
 {
 	if(!b->ptr || !b->na) {
 		b->na = 64;	// Default to this many elements
 		b->n = 0;
-		b->ptr = rtapi_malloc(elmsize * b->na);
+		b->ptr = rtapi->calloc(rtapi->ctx, elmsize * b->na);
 		return b->ptr == NULL;
 	}
 
@@ -144,7 +144,7 @@ static int buffer_check_room(buffer_t *b, size_t n, size_t elmsize)
 		do {
 			b->na *= 2;	// Double storage capacity
 		} while(b->n + n > b->na);	// Until we have enough room
-		void *p = rtapi_realloc(b->ptr, elmsize * b->na);
+		void *p = rtapi->realloc(rtapi->ctx, b->ptr, elmsize * b->na);
 		if(!p)
 			return 1;
 		b->ptr = p;
@@ -152,10 +152,10 @@ static int buffer_check_room(buffer_t *b, size_t n, size_t elmsize)
 	return 0;
 }
 
-static void buffer_free(buffer_t *b)
+static void buffer_free(const gomc_rtapi_t *rtapi, buffer_t *b)
 {
 	if(b->ptr) {
-		rtapi_free(b->ptr);
+		rtapi->free(rtapi->ctx, b->ptr);
 		b->ptr = NULL;
 		b->n = b->na = 0;
 	}
@@ -220,12 +220,12 @@ static int hm2_spix_queue_read(hm2_lowlevel_io_t *llio, uint32_t addr, void *buf
 	if((size % sizeof(uint32_t)) || rxlen + 1 > SPIX_MAX_MSG)
 		return 0;	// -EINVAL;
 
-	if(buffer_check_room(&brd->rbuf, rxlen + 1, sizeof(uint32_t))) {
+	if(buffer_check_room(llio->rtapi, &brd->rbuf, rxlen + 1, sizeof(uint32_t))) {
 		LL_ERR("Failed to allocate read buffer memory\n");
 		return 0;	// -ENOMEM;
 	}
 
-	if(buffer_check_room(&brd->rref, 1, sizeof(rxref_t))) {
+	if(buffer_check_room(llio->rtapi, &brd->rref, 1, sizeof(rxref_t))) {
 		LL_ERR("Failed to allocate read queue reference memory\n");
 		return 0;	// -ENOMEM;
 	}
@@ -306,7 +306,7 @@ static int hm2_spix_queue_write(hm2_lowlevel_io_t *llio, uint32_t addr, const vo
 	if((size % sizeof(uint32_t)) || txlen + 1 > SPIX_MAX_MSG)
 		return 0;	// -EINVAL;
 
-	if(buffer_check_room(&brd->wbuf, txlen + 1, sizeof(uint32_t))) {
+	if(buffer_check_room(llio->rtapi, &brd->wbuf, txlen + 1, sizeof(uint32_t))) {
 		LL_ERR("Failed to allocate write buffer memory\n");
 		return 0;	// -ENOMEM;
 	}
@@ -465,7 +465,7 @@ ssize_t spix_read_file(const char *fname, void *buffer, size_t bufsize)
 
 	memset(buffer, 0, bufsize);
 
-	if((fd = rtapi_open_as_root(fname, O_RDONLY)) < 0) {
+	if((fd = open(fname, O_RDONLY)) < 0) {
 		int e = errno;
 		LL_ERR("Cannot open '%s' for read (errno=%d: %s)\n", fname, e, strerror(e));
 		return -e;
@@ -527,7 +527,7 @@ static int spix_setup(hm2_spix_inst_t *inst)
 
 	// Set process-level message level if requested
 	if(inst->spi_debug >= RTAPI_MSG_NONE && inst->spi_debug <= RTAPI_MSG_ALL)
-		rtapi_set_msg_level(inst->spi_debug);
+		(void)inst->spi_debug; // TODO: per-module log level
 
 	// Read the 'compatible' string-list from the device-tree
 	buflen = spix_read_file("/proc/device-tree/compatible", buf, sizeof(buf));
@@ -650,9 +650,9 @@ static void spix_cleanup(hm2_spix_inst_t *inst)
 	int i;
 	// Cleanup memory allocations
 	for(i = 0; i < SPIX_MAX_BOARDS; i++) {
-		buffer_free(&inst->boards[i].wbuf);
-		buffer_free(&inst->boards[i].rbuf);
-		buffer_free(&inst->boards[i].rref);
+		buffer_free(inst->mod_env->rtapi, &inst->boards[i].wbuf);
+		buffer_free(inst->mod_env->rtapi, &inst->boards[i].rbuf);
+		buffer_free(inst->mod_env->rtapi, &inst->boards[i].rref);
 	}
 
 	if(inst->hwdriver) {
@@ -705,9 +705,10 @@ int New(const cmod_env_t *env, const char *name,
         int argc, const char **argv, cmod_t **out)
 {
 	const gomc_hal_t *hal = env->hal;
+	hm2_log = env->log;
 	int ret;
 
-	hm2_spix_inst_t *inst = rtapi_calloc(sizeof(*inst));
+	hm2_spix_inst_t *inst = env->rtapi->calloc(env->rtapi->ctx, sizeof(*inst));
 	if (!inst)
 		return -ENOMEM;
 
@@ -726,7 +727,7 @@ int New(const cmod_env_t *env, const char *name,
 	inst->hm2_core = hm2_core_api_get(env->api, "hostmot2");
 	if (!inst->hm2_core) {
 		gomc_log_errorf(env->log, name, "hm2_spix: hostmot2 core API not found (is hostmot2 loaded?)\n");
-		rtapi_free(inst);
+		inst->mod_env->rtapi->free(inst->mod_env->rtapi->ctx, inst);
 		return -1;
 	}
 
@@ -746,7 +747,7 @@ int New(const cmod_env_t *env, const char *name,
 
 fail:
 	spix_cleanup(inst);
-	rtapi_free(inst);
+	inst->mod_env->rtapi->free(inst->mod_env->rtapi->ctx, inst);
 	return ret;
 }
 
@@ -757,7 +758,7 @@ static void hm2_spix_destroy(cmod_t *self)
 	const gomc_hal_t *hal = inst->mod_env->hal;
 	spix_cleanup(inst);
 	hal->exit(hal->ctx, inst->comp_id);
-	rtapi_free(inst);
+	inst->mod_env->rtapi->free(inst->mod_env->rtapi->ctx, inst);
 }
 
 // vim: ts=4

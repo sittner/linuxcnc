@@ -498,7 +498,7 @@ int hm2_xy2mod_parse_md(hostmot2_t *hm2, int md_index) {
         goto fail0;
     }
 
-    hm2->xy2mod.command_reg = (uint32_t *)rtapi_malloc(hm2->xy2mod.num_instances * sizeof(uint32_t));
+    hm2->xy2mod.command_reg = (uint32_t *)hm2->llio->rtapi->calloc(hm2->llio->rtapi->ctx, hm2->xy2mod.num_instances * sizeof(uint32_t));
     if (hm2->xy2mod.command_reg == NULL) {
         HM2_ERR("out of memory!\n");
         r = -ENOMEM;

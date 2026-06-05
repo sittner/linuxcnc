@@ -53,26 +53,26 @@ struct kvlist {
     int value;
 };
 
-static int *kvlist_lookup(struct rtapi_list_head *head, const char *name) {
+static int *kvlist_lookup(const gomc_rtapi_t *rtapi, struct rtapi_list_head *head, const char *name) {
     struct rtapi_list_head *ptr;
     rtapi_list_for_each(ptr, head) {
         struct kvlist *ent = rtapi_list_entry(ptr, struct kvlist, list);
         if(strncmp(name, ent->key, sizeof(ent->key)) == 0) return &ent->value;
     }
-    struct kvlist *ent = rtapi_calloc(sizeof(struct kvlist));
+    struct kvlist *ent = rtapi->calloc(rtapi->ctx, sizeof(struct kvlist));
     strncpy(ent->key, name, sizeof(ent->key));
     rtapi_list_add(&ent->list, head);
     return &ent->value;
 }
 
-static void kvlist_free(struct rtapi_list_head *head) {
+static void kvlist_free(const gomc_rtapi_t *rtapi, struct rtapi_list_head *head) {
     struct rtapi_list_head *orig_head = head;
     for(head = head->next; head != orig_head;) {
         struct rtapi_list_head *ptr = head;
         head = head->next;
         struct kvlist *ent = rtapi_list_entry(ptr, struct kvlist, list);
         rtapi_list_del(ptr);
-        rtapi_free(ent);
+        rtapi->free(rtapi->ctx, ent);
     }
 }
 
@@ -459,8 +459,8 @@ static int eth_socket_recv(int sockfd, void *buffer, int len, int flags);
 static int shell(char *command) {
     char *const argv[] = {"sh", "-c", command, NULL};
     pid_t pid;
-    int res = rtapi_spawn_as_root(&pid, "/bin/sh", NULL, NULL, argv, environ);
-    if(res < 0) perror("rtapi_spawn_as_root");
+    int res = posix_spawn(&pid, "/bin/sh", NULL, NULL, argv, environ);
+    if(res < 0) perror("posix_spawn");
     int status;
     waitpid(pid, &status, 0);
     if(WIFEXITED(status)) return WEXITSTATUS(status);
@@ -766,12 +766,12 @@ static int eth_socket_recv(int sockfd, void *buffer, int len, int flags) {
     return recv(sockfd, buffer, len, flags);
 }
 
-static int eth_socket_recv_loop(int sockfd, void *buffer, int len, int flags, long timeout) {
-    long long end = rtapi_get_clocks() + timeout;
+static int eth_socket_recv_loop(const gomc_rtapi_t *rtapi, int sockfd, void *buffer, int len, int flags, long timeout) {
+    long long end = rtapi->get_time(rtapi->ctx) + timeout;
     int result;
     do {
         result = eth_socket_recv(sockfd, buffer, len, flags);
-    } while(result < 0 && rtapi_get_clocks() < end);
+    } while(result < 0 && rtapi->get_time(rtapi->ctx) < end);
     return result;
 }
 
@@ -788,7 +788,7 @@ static int hm2_eth_read(hm2_lowlevel_io_t *this, uint32_t addr, void *buffer, in
     if (size == 0) return 1;
     board->read_cnt++;
 
-    if(rtapi_task_self() >= 0) {
+    if(inst->env->rtapi->task_self(inst->env->rtapi->ctx) >= 0) {
         static bool printed = false;
         if(!printed) {
             LL_PRINT("ERROR: used llio->read in realtime task (addr=0x%04x)\n", addr);
@@ -806,12 +806,12 @@ static int hm2_eth_read(hm2_lowlevel_io_t *this, uint32_t addr, void *buffer, in
         LL_PRINT("ERROR: sending packet: %s\n", strerror(errno));
     LL_PRINT_IF(inst->debug, "read(%d) : PACKET SENT [CMD:%02X%02X | ADDR: %02X%02X | SIZE: %d]\n", board->read_cnt, read_packet.cmd_hi, read_packet.cmd_lo,
       read_packet.addr_lo, read_packet.addr_hi, size);
-    t1 = rtapi_get_time();
+    t1 = inst->env->rtapi->get_time(inst->env->rtapi->ctx);
     do {
         errno = 0;
         recv = eth_socket_recv(board->sockfd, (void*) &tmp_buffer, size, 0);
-        if(recv < 0) rtapi_delay(READ_PCK_DELAY_NS);
-        t2 = rtapi_get_time();
+        if(recv < 0) inst->env->rtapi->delay(inst->env->rtapi->ctx, READ_PCK_DELAY_NS);
+        t2 = inst->env->rtapi->get_time(inst->env->rtapi->ctx);
         i++;
     } while ((recv < 0) && ((t2 - t1) < 200*1000*1000));
 
@@ -896,7 +896,7 @@ static int hm2_eth_receive_queued_reads(hm2_lowlevel_io_t *this) {
     int recv, i = 0;
     uint8_t tmp_buffer[board->queue_buff_size];
     long long t1, t2;
-    t1 = rtapi_get_time();
+    t1 = inst->env->rtapi->get_time(inst->env->rtapi->ctx);
     
     // an error occurred in the past but the user has reset the io_error
     // pin (or they did something else like fiddle with the error limit
@@ -920,8 +920,8 @@ static int hm2_eth_receive_queued_reads(hm2_lowlevel_io_t *this) {
 do_recv_packet:
         errno = 0;
         recv = eth_socket_recv(board->sockfd, (void*) &tmp_buffer, board->queue_buff_size, MSG_DONTWAIT);
-        if(recv < 0) rtapi_delay(READ_PCK_DELAY_NS);
-        t2 = rtapi_get_time();
+        if(recv < 0) inst->env->rtapi->delay(inst->env->rtapi->ctx, READ_PCK_DELAY_NS);
+        t2 = inst->env->rtapi->get_time(inst->env->rtapi->ctx);
         i++;
     } while (recv != board->queue_buff_size && t2 < read_deadline);
     if(recv != board->queue_buff_size) {
@@ -988,7 +988,7 @@ static int hm2_eth_enqueue_read(hm2_lowlevel_io_t *this, uint32_t addr, void *bu
 static int hm2_eth_enqueue_write(hm2_lowlevel_io_t *this, uint32_t addr, const void *buffer, int size);
 
 static int hm2_eth_write(hm2_lowlevel_io_t *this, uint32_t addr, const void *buffer, int size) {
-    if(rtapi_task_self() >= 0 || this->force_enqueue)
+    if(this->rtapi->task_self(this->rtapi->ctx) >= 0 || this->force_enqueue)
         return hm2_eth_enqueue_write(this, addr, buffer, size);
 
     int send;
@@ -1030,13 +1030,13 @@ static int hm2_eth_send_queued_writes(hm2_lowlevel_io_t *this) {
     board->write_packet_ptr += 4;
     board->write_packet_size += (sizeof(*packet) + 4);
     
-    t0 = rtapi_get_time();
+    t0 = inst->env->rtapi->get_time(inst->env->rtapi->ctx);
     send = eth_socket_send(board->sockfd, (void*) &board->write_packet, board->write_packet_size, 0);
     if(send < 0) {
         LL_PRINT("ERROR: sending packet: %s\n", strerror(errno));
         return 0;
     }
-    t1 = rtapi_get_time();
+    t1 = inst->env->rtapi->get_time(inst->env->rtapi->ctx);
     LL_PRINT_IF(inst->debug, "enqueue_write(%d) : PACKET SEND [SIZE: %d | TIME: %llu]\n", board->write_cnt, send, t1 - t0);
     board->write_packet_ptr = board->write_packet;
     board->write_packet_size = 0;
@@ -1069,8 +1069,8 @@ static int hm2_eth_set_force_enqueue(hm2_lowlevel_io_t *this, int do_enqueue) {
     }
 }
 
-static int llio_idx(struct rtapi_list_head *board_num, const char *llio_name) {
-    int *idx = kvlist_lookup(board_num, llio_name);
+static int llio_idx(const gomc_rtapi_t *rtapi, struct rtapi_list_head *board_num, const char *llio_name) {
+    int *idx = kvlist_lookup(rtapi, board_num, llio_name);
     return (*idx)++;
 }
 
@@ -1088,7 +1088,7 @@ static int hm2_eth_probe(hm2_eth_t *board) {
         LL_PRINT("ERROR: sending packet: %s\n", strerror(errno));
         return -errno;
     }
-    recv = eth_socket_recv_loop(board->sockfd, (void*) &board_name, 16, 0,
+    recv = eth_socket_recv_loop(inst->env->rtapi, board->sockfd, (void*) &board_name, 16, 0,
                 200 * 1000 * 1000);
     if(recv < 0) {
         LL_PRINT("ERROR: receiving packet: %s\n", strerror(errno));
@@ -1485,7 +1485,7 @@ static int hm2_eth_probe(hm2_eth_t *board) {
 
     LL_PRINT("discovered %.*s\n", 16, board_name);
 
-    snprintf(board->llio.name, sizeof(board->llio.name), "hm2_%.*s.%d", (int)strlen(llio_name), llio_name, llio_idx(&inst->board_num, llio_name));
+    snprintf(board->llio.name, sizeof(board->llio.name), "hm2_%.*s.%d", (int)strlen(llio_name), llio_name, llio_idx(inst->env->rtapi, &inst->board_num, llio_name));
 
     board->llio.comp_id = inst->comp_id;
 
@@ -1502,7 +1502,7 @@ static int hm2_eth_probe(hm2_eth_t *board) {
 
     ret = inst->core->register_board(inst->core->ctx, &board->llio, inst->config[inst->boards_count]);
     if (ret != 0) {
-        rtapi_print("board fails HM2 registration\n");
+        LL_PRINT("board fails HM2 registration\n");
         return ret;
     }
     inst->boards_count++;
@@ -1609,8 +1609,9 @@ int New(const cmod_env_t *env, const char *name,
 {
     const gomc_hal_t *hal = env->hal;
     const gomc_log_t *log = env->log;
+    hm2_log = log;
 
-    hm2_eth_inst_t *inst = rtapi_calloc(sizeof(*inst));
+    hm2_eth_inst_t *inst = env->rtapi->calloc(env->rtapi->ctx, sizeof(*inst));
     if (!inst) return -ENOMEM;
     inst->env = env;
 
@@ -1620,7 +1621,7 @@ int New(const cmod_env_t *env, const char *name,
     inst->core = hm2_core_api_get(env->api, "hostmot2");
     if (!inst->core) {
         gomc_log_errorf(log, name, "hm2_eth: hostmot2 core API not found (is hostmot2 loaded?)\n");
-        rtapi_free(inst);
+        inst->env->rtapi->free(inst->env->rtapi->ctx, inst);
         return -1;
     }
 
@@ -1633,7 +1634,7 @@ int New(const cmod_env_t *env, const char *name,
 
     ret = hal->init(hal->ctx, HM2_LLIO_NAME, env->dl_handle, GOMC_HAL_COMP_REALTIME);
     if (ret < 0) {
-        rtapi_free(inst);
+        inst->env->rtapi->free(inst->env->rtapi->ctx, inst);
         return ret;
     }
     inst->comp_id = ret;
@@ -1673,7 +1674,7 @@ int New(const cmod_env_t *env, const char *name,
             continue;
         } 
         inst->boards[i].read_cnt = inst->boards[i].write_cnt = 0;
-        int *added = kvlist_lookup(&inst->ifnames, ifptr);
+        int *added = kvlist_lookup(inst->env->rtapi, &inst->ifnames, ifptr);
         if(*added) continue;
         install_iptables_perinterface(ifptr);
         *added = 1;
@@ -1691,10 +1692,10 @@ error:
     for(i = 0; i<MAX_ETH_BOARDS && inst->board_ip[i] && inst->board_ip[i][0]; i++)
         close_board(&inst->boards[i]);
     if(use_iptables()) clear_iptables();
-    kvlist_free(&inst->board_num);
-    kvlist_free(&inst->ifnames);
+    kvlist_free(inst->env->rtapi, &inst->board_num);
+    kvlist_free(inst->env->rtapi, &inst->ifnames);
     hal->exit(hal->ctx, inst->comp_id);
-    rtapi_free(inst);
+    inst->env->rtapi->free(inst->env->rtapi->ctx, inst);
     return ret;
 }
 
@@ -1711,10 +1712,10 @@ static void hm2_eth_destroy(cmod_t *self) {
 
     if(use_iptables()) clear_iptables();
 
-    kvlist_free(&inst->board_num);
-    kvlist_free(&inst->ifnames);
+    kvlist_free(inst->env->rtapi, &inst->board_num);
+    kvlist_free(inst->env->rtapi, &inst->ifnames);
 
     hal->exit(hal->ctx, inst->comp_id);
     LL_PRINT("HostMot2 ethernet driver unloaded\n");
-    rtapi_free(inst);
+    inst->env->rtapi->free(inst->env->rtapi->ctx, inst);
 }

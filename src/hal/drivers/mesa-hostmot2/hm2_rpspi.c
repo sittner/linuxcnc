@@ -787,7 +787,7 @@ static int32_t check_cookie(hm2_rpspi_t *board)
 	if(!memcmp(cookie, xcookie, sizeof(xcookie)))
 		return (int32_t)cookie[3];	// The cookie got read correctly
 
-	rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: SPI%d/CE%d Invalid cookie, read: %08x %08x %08x,"
+	gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: SPI%d/CE%d Invalid cookie, read: %08x %08x %08x,"
 			" expected: %08x %08x %08x\n",
 			board->spidevid, board->spiceid,
 			cookie[0], cookie[1], cookie[2],
@@ -798,11 +798,11 @@ static int32_t check_cookie(hm2_rpspi_t *board)
 	co = cookie[0] | cookie[1] | cookie[2];	// All zero -> co == zero
 
 	if((!co && board->inst->spi_pull_miso == SPI_PULL_DOWN) || (ca == 0xffffffff && board->inst->spi_pull_miso == SPI_PULL_UP)) {
-		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: SPI%d/CE%d No drive seen on MISO line (kept at pull-%s level)."
+		gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: SPI%d/CE%d No drive seen on MISO line (kept at pull-%s level)."
 			" No board connected or bad connection?\n",
 			board->spidevid, board->spiceid, board->inst->spi_pull_miso == SPI_PULL_DOWN ? "down" : "up");
 	} else if(!co || ca == 0xffffffff) {
-		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: SPI%d/CE%d MISO line stuck at %s level."
+		gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: SPI%d/CE%d MISO line stuck at %s level."
 			" Maybe bad connection, a short-circuit or no board attached?\n",
 			board->spidevid, board->spiceid, !co ? "low" : "high");
 	} else {
@@ -843,12 +843,12 @@ static int32_t check_cookie(hm2_rpspi_t *board)
 		}
 		if(!ones) {
 			// No ones in the XOR result -> the cookie is probably bit-shifted
-			rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: SPI%d/CE%d MISO input is bit-shifted by one bit."
+			gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: SPI%d/CE%d MISO input is bit-shifted by one bit."
 				" SPI read clock frequency probably too high.\n",
 				board->spidevid, board->spiceid);
 		} else {
 			// More bits are wrong, erratic behaviour
-			rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: SPI%d/CE%d MISO input does not match any expected bit-pattern (>= %u bit difference)."
+			gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: SPI%d/CE%d MISO input does not match any expected bit-pattern (>= %u bit difference)."
 				" Maybe SPI read clock frequency too high or noise on the input?\n",
 				board->spidevid, board->spiceid, ones);
 		}
@@ -868,20 +868,20 @@ static uint32_t read_spiclkbase(hm2_rpspi_inst_t *inst)
 	char buf[16];
 	ssize_t err;
 
-	if((fd = rtapi_open_as_root(sysclkref, O_RDONLY)) < 0) {
+	if((fd = open(sysclkref, O_RDONLY)) < 0) {
 		// Failed VPU clock, try core clock
-		rtapi_print_msg(RPSPI_INFO, "hm2_rpspi: No VPU clock at '%s' (errno=%d), trying core clock as alternative.\n", sysclkref, errno);
+		gomc_log_infof(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: No VPU clock at '%s' (errno=%d), trying core clock as alternative.\n", sysclkref, errno);
 		sysclkref = RPSPI_SYS_CLKCORE;
-		if((fd = rtapi_open_as_root(sysclkref, O_RDONLY)) < 0) {
+		if((fd = open(sysclkref, O_RDONLY)) < 0) {
 			// Neither clock available, complain and use default setting
-			rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: Cannot open clock setting '%s' (errno=%d), using %d Hz\n", sysclkref, errno, inst->spiclk_base);
+			gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: Cannot open clock setting '%s' (errno=%d), using %d Hz\n", sysclkref, errno, inst->spiclk_base);
 			return inst->spiclk_base;
 		}
 	}
 
 	memset(buf, 0, sizeof(buf));
 	if((err = read(fd, buf, sizeof(buf)-1)) < 0) {
-		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: Cannot read clock setting '%s' (errno=%d), using %d Hz\n", sysclkref, errno, inst->spiclk_base);
+		gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: Cannot read clock setting '%s' (errno=%d), using %d Hz\n", sysclkref, errno, inst->spiclk_base);
 		close(fd);
 		return inst->spiclk_base;
 	}
@@ -892,12 +892,12 @@ static uint32_t read_spiclkbase(hm2_rpspi_inst_t *inst)
 		// There are probably too many digits in the number
 		// 250000000 (250 MHz) has 9 digits and there is a newline
 		// following the number
-		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: Read full buffer '%s' from '%s', number probably wrong or too large, using %d Hz\n", buf, sysclkref, inst->spiclk_base);
+		gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: Read full buffer '%s' from '%s', number probably wrong or too large, using %d Hz\n", buf, sysclkref, inst->spiclk_base);
 		return inst->spiclk_base;
 	}
 
 	if(1 != sscanf(buf, "%u", &rate)) {
-		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: Cannot interpret clock setting '%s' from '%s', using %d Hz\n", buf, sysclkref, inst->spiclk_base);
+		gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: Cannot interpret clock setting '%s' from '%s', using %d Hz\n", buf, sysclkref, inst->spiclk_base);
 		return inst->spiclk_base;
 	}
 	return rate;
@@ -917,14 +917,14 @@ static int probe_board(hm2_rpspi_t *board) {
 	if((ret = check_cookie(board)) < 0)
 		return ret;
 
-	rtapi_print_msg(RPSPI_INFO, "hm2_rpspi: SPI%d/CE%d Valid cookie matched\n", board->spidevid, board->spiceid);
+	gomc_log_infof(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: SPI%d/CE%d Valid cookie matched\n", board->spidevid, board->spiceid);
 
 	// Read the board identification.
 	// The IDROM address offset is returned in the cookie check and the
 	// board_name offset is added (see hm2_idrom_t in hostmot2.h)
 	// FIXME: should we not simply read the entire IDROM here?
 	if(!board->llio.read(&board->llio, (uint32_t)ret + 0x000c, ident, 8)) {
-		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: SPI%d/CE%d Board ident read failed\n", board->spidevid, board->spiceid);
+		gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: SPI%d/CE%d Board ident read failed\n", board->spidevid, board->spiceid);
 		return -EIO;	// Cookie could be read, so this is a comms error
 	}
 	ident[sizeof(ident)-1] = 0;	// Because it may be used in printf, regardless format limits
@@ -963,11 +963,11 @@ static int probe_board(hm2_rpspi_t *board) {
 			if(!isprint(ident[i]))
 				ident[i] = '?';
 		}
-		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: Unknown board at SPI%d/CE%d: %.8s\n", board->spidevid, board->spiceid, ident);
+		gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: Unknown board at SPI%d/CE%d: %.8s\n", board->spidevid, board->spiceid, ident);
 		return -1;
 	}
 
-	rtapi_print_msg(RPSPI_INFO, "hm2_rpspi: SPI%d/CE%d Base: %s.%d\n", board->spidevid, board->spiceid, base, board->nr);
+	gomc_log_infof(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: SPI%d/CE%d Base: %s.%d\n", board->spidevid, board->spiceid, base, board->nr);
 	snprintf(board->llio.name, sizeof(board->llio.name), "%s.%d", base, board->nr);
 	board->llio.comp_id = board->inst->comp_id;
 	board->llio.private = board;	// Self reference
@@ -983,8 +983,8 @@ static int peripheral_map(hm2_rpspi_inst_t *inst, uint32_t membase, uint32_t mem
 
 	inst->peripheralsize = memsize;
 
-	if((fd = rtapi_open_as_root("/dev/mem", O_RDWR | O_SYNC)) < 0) {
-		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: can't open /dev/mem\n");
+	if((fd = open("/dev/mem", O_RDWR | O_SYNC)) < 0) {
+		gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: can't open /dev/mem\n");
 		return -errno;
 	}
 
@@ -993,9 +993,9 @@ static int peripheral_map(hm2_rpspi_inst_t *inst, uint32_t membase, uint32_t mem
 	err = errno;
 	close(fd);
 	if(inst->peripheralmem == MAP_FAILED) {
-		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: Can't map peripherals: %s\n", strerror(err));
+		gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: Can't map peripherals: %s\n", strerror(err));
 		if (err == EPERM) {
-			rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: Try adding 'iomem=relaxed' to your kernel command-line.\n");
+			gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: Try adding 'iomem=relaxed' to your kernel command-line.\n");
 		}
 		return -err;
 	}
@@ -1004,7 +1004,7 @@ static int peripheral_map(hm2_rpspi_inst_t *inst, uint32_t membase, uint32_t mem
 	inst->spi  = (bcm2835_spi_t *)(inst->peripheralmem + (BCM2835_SPI_OFFSET  / sizeof(*inst->peripheralmem)));
 	inst->aux  = (bcm2835_aux_t *)(inst->peripheralmem + (BCM2835_AUX_OFFSET  / sizeof(*inst->peripheralmem)));
 
-	rtapi_print_msg(RPSPI_INFO, "hm2_rpspi: Mapped peripherals from 0x%08x (size 0x%08x) to gpio:0x%p, spi:0x%p, aux:0x%p\n",
+	gomc_log_infof(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: Mapped peripherals from 0x%08x (size 0x%08x) to gpio:0x%p, spi:0x%p, aux:0x%p\n",
 			membase, (uint32_t)inst->peripheralsize, inst->gpio, inst->spi, inst->aux);
 
 	return 0;
@@ -1159,7 +1159,7 @@ static void peripheral_restore(hm2_rpspi_inst_t *inst)
 }
 
 /*************************************************/
-static uint8_t *read_file(const char *fname, size_t maxsize, size_t minsize)
+static uint8_t *read_file(const gomc_rtapi_t *rtapi, const char *fname, size_t maxsize, size_t minsize)
 {
 	FILE *fp;
 	struct stat sb;
@@ -1167,37 +1167,37 @@ static uint8_t *read_file(const char *fname, size_t maxsize, size_t minsize)
 	size_t nn, fsize;
 
 	if(-1 == stat(fname, &sb)) {
-		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: Cannot stat '%s'\n", fname);
+		gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: Cannot stat '%s'\n", fname);
 		return NULL;
 	}
 
 	if((size_t)sb.st_size < minsize) {
-		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: Target file '%s' stat's less than minimum size of %zu bytes (st_size=%zu)\n", fname, minsize, (size_t)sb.st_size);
+		gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: Target file '%s' stat's less than minimum size of %zu bytes (st_size=%zu)\n", fname, minsize, (size_t)sb.st_size);
 		return NULL;
 	}
 
 	nn = (size_t)sb.st_size > maxsize ? maxsize : (size_t)sb.st_size;
-	if(!(buf = rtapi_malloc(nn+1))) {
-		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: No dynamic memory\n");
+	if(!(buf = rtapi->calloc(rtapi->ctx, nn+1))) {
+		gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: No dynamic memory\n");
 		return NULL;
 	}
 	memset(buf, 0, nn+1);
 	if(!(fp = fopen(fname, "r"))) {
-		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: Cannot open '%s' for read\n", fname);
-		rtapi_free(buf);
+		gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: Cannot open '%s' for read\n", fname);
+		rtapi->free(rtapi->ctx, buf);
 		return NULL;
 	}
 
 	fsize = fread(buf, 1, nn, fp);
 	fclose(fp);
 	if(!fsize) {
-		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: Nothing read from '%s' (errno=%d)\n", fname, errno);
-		rtapi_free(buf);
+		gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: Nothing read from '%s' (errno=%d)\n", fname, errno);
+		rtapi->free(rtapi->ctx, buf);
 		return NULL;
 	}
 	if(fsize < nn) {
-		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: Short read from '%s'; read=%zu required>=%zu\n", fname, fsize, nn);
-		rtapi_free(buf);
+		gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: Short read from '%s'; read=%zu required>=%zu\n", fname, fsize, nn);
+		rtapi->free(rtapi->ctx, buf);
 		return NULL;
 	}
 
@@ -1225,18 +1225,18 @@ static int hm2_rpspi_setup(hm2_rpspi_inst_t *inst)
 
 	// Set process-level message level if requested
 	if(inst->spi_debug >= RTAPI_MSG_NONE && inst->spi_debug <= RTAPI_MSG_ALL)
-		rtapi_set_msg_level(inst->spi_debug);
+		(void)inst->spi_debug; // TODO: per-module log level
 
 	// Info about the hardware platform
-	if(!(buf = read_file("/proc/device-tree/model", 4095, 0))) {
-		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: Unsupported Platform.\n");
+	if(!(buf = read_file(inst->env->rtapi, "/proc/device-tree/model", 4095, 0))) {
+		gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: Unsupported Platform.\n");
 		return -1;
 	}
-	rtapi_print_msg(RPSPI_INFO, "hm2_rpspi: Platform: %s\n", *buf ? (const char *)buf : "<no data from /proc/device-tree/model>");
-	rtapi_free(buf);
+	gomc_log_infof(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: Platform: %s\n", *buf ? (const char *)buf : "<no data from /proc/device-tree/model>");
+	inst->env->rtapi->free(inst->env->rtapi->ctx, buf);
 
-	if(!(buf = read_file("/proc/device-tree/soc/ranges", 4095, 12))) {
-		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: Cannot determine IO base address and size.\n");
+	if(!(buf = read_file(inst->env->rtapi, "/proc/device-tree/soc/ranges", 4095, 12))) {
+		gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: Cannot determine IO base address and size.\n");
 		return -1;
 	}
 
@@ -1244,38 +1244,38 @@ static int hm2_rpspi_setup(hm2_rpspi_inst_t *inst)
 	pmemsize = be32toh(((uint32_t *)buf)[2]);
 
 	if(!pmembase) {
-		rtapi_free(buf);
-		if(!(buf = read_file("/proc/device-tree/soc/ranges", 4095, 16))) {
-			rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: Cannot determine IO base address and size.\n");
+		inst->env->rtapi->free(inst->env->rtapi->ctx, buf);
+		if(!(buf = read_file(inst->env->rtapi, "/proc/device-tree/soc/ranges", 4095, 16))) {
+			gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: Cannot determine IO base address and size.\n");
 			return -1;
 		}
 		pmembase = be32toh(((uint32_t *)buf)[2]);
 		pmemsize = be32toh(((uint32_t *)buf)[3]);
 	}
-	rtapi_free(buf);
+	inst->env->rtapi->free(inst->env->rtapi->ctx, buf);
 
 	if(!pmembase || !pmemsize) {
-		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: IO base address (0x%08x) or size (0x%08x) are zero.\n", pmembase, pmemsize);
+		gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: IO base address (0x%08x) or size (0x%08x) are zero.\n", pmembase, pmemsize);
 		return -1;
 	}
-	rtapi_print_msg(RPSPI_INFO, "hm2_rpspi: Base address 0x%08x size 0x%08x\n", pmembase, pmemsize);
+	gomc_log_infof(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: Base address 0x%08x size 0x%08x\n", pmembase, pmemsize);
 
 
 	if(-1 == inst->spiclk_rate_rd)
 		inst->spiclk_rate_rd = inst->spiclk_rate;
 
 	if(inst->spiclk_rate < 30 || inst->spiclk_rate > 63000) {
-		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: SPI clock rate '%d' too slow/fast. Must be >= 30 kHz and <= 63000 kHz\n", inst->spiclk_rate);
+		gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: SPI clock rate '%d' too slow/fast. Must be >= 30 kHz and <= 63000 kHz\n", inst->spiclk_rate);
 		return -EINVAL;
 	}
 
 	if(inst->spiclk_rate_rd < 30 || inst->spiclk_rate_rd > 63000) {
-		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: SPI clock rate for reading '%d' too slow/fast. Must be >= 30 kHz and <= 63000 kHz\n", inst->spiclk_rate_rd);
+		gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: SPI clock rate for reading '%d' too slow/fast. Must be >= 30 kHz and <= 63000 kHz\n", inst->spiclk_rate_rd);
 		return -EINVAL;
 	}
 
 	if((retval = peripheral_map(inst, pmembase, pmemsize)) < 0) {
-		rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: cannot map peripheral memory.\n");
+		gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: cannot map peripheral memory.\n");
 		return retval;
 	}
 
@@ -1306,7 +1306,7 @@ static int hm2_rpspi_setup(hm2_rpspi_inst_t *inst)
 		inst->boards[j].spidevid    = iddev;
 		inst->boards[j].spiceid     = idce;
 
-		rtapi_print_msg(RPSPI_INFO, "hm2_rpspi: SPI%d/CE%d clock rate: %d/%d Hz, VPU clock rate: %u Hz\n",
+		gomc_log_infof(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: SPI%d/CE%d clock rate: %d/%d Hz, VPU clock rate: %u Hz\n",
 				iddev, idce, clkratew, clkrater, clkbase);
 		if(!iddev) {
 			switch(idce) {
@@ -1317,10 +1317,10 @@ static int hm2_rpspi_setup(hm2_rpspi_inst_t *inst)
 			inst->boards[j].llio.write = hm2_rpspi_write_spi0;
 			if(!(clkdiv = spi0_clkdiv_calc(clkbase, clkratew)))
 				clkdiv = 65536;
-			rtapi_print_msg(RPSPI_INFO, "hm2_rpspi: SPI%d/CE%d write clock rate calculated: %d Hz (clkdiv=%u)\n", iddev, idce, clkbase / clkdiv, clkdiv);
+			gomc_log_infof(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: SPI%d/CE%d write clock rate calculated: %d Hz (clkdiv=%u)\n", iddev, idce, clkbase / clkdiv, clkdiv);
 			if(!(clkdiv = spi0_clkdiv_calc(clkbase, clkrater)))
 				clkdiv = 65536;
-			rtapi_print_msg(RPSPI_INFO, "hm2_rpspi: SPI%d/CE%d read clock rate calculated: %d Hz (clkdiv=%u)\n", iddev, idce, clkbase / clkdiv, clkdiv);
+			gomc_log_infof(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: SPI%d/CE%d read clock rate calculated: %d Hz (clkdiv=%u)\n", iddev, idce, clkbase / clkdiv, clkdiv);
 		} else {
 			switch(idce) {
 			case 0: inst->boards[j].spice = AUX_SPI_CNTL0_CS_1 | AUX_SPI_CNTL0_CS_2; break;	// Set SPI1 CE_0
@@ -1330,9 +1330,9 @@ static int hm2_rpspi_setup(hm2_rpspi_inst_t *inst)
 			inst->boards[j].llio.read  = hm2_rpspi_read_spi1;
 			inst->boards[j].llio.write = hm2_rpspi_write_spi1;
 			clkdiv = 2 * (spi1_clkdiv_calc(clkbase, clkratew) + 1);
-			rtapi_print_msg(RPSPI_INFO, "hm2_rpspi: SPI%d/CE%d write clock rate calculated: %d Hz (clkdiv=%u)\n", iddev, idce, clkbase / clkdiv, clkdiv);
+			gomc_log_infof(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: SPI%d/CE%d write clock rate calculated: %d Hz (clkdiv=%u)\n", iddev, idce, clkbase / clkdiv, clkdiv);
 			clkdiv = 2 * (spi1_clkdiv_calc(clkbase, clkrater) + 1);
-			rtapi_print_msg(RPSPI_INFO, "hm2_rpspi: SPI%d/CE%d read clock rate calculated: %d Hz (clkdiv=%u)\n", iddev, idce, clkbase / clkdiv, clkdiv);
+			gomc_log_infof(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: SPI%d/CE%d read clock rate calculated: %d Hz (clkdiv=%u)\n", iddev, idce, clkbase / clkdiv, clkdiv);
 		}
 
 		if((retval = probe_board(&inst->boards[j])) < 0) {
@@ -1340,7 +1340,7 @@ static int hm2_rpspi_setup(hm2_rpspi_inst_t *inst)
 		}
 
 		if((retval = inst->core->register_board(inst->core->ctx, &inst->boards[j].llio, inst->config[j])) < 0) {
-			rtapi_print_msg(RPSPI_ERR, "hm2_rpspi: hm2_register() failed for SPI%d/CE%d.\n", iddev, idce);
+			gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "hm2_rpspi: hm2_register() failed for SPI%d/CE%d.\n", iddev, idce);
 			return retval;
 		}
 
@@ -1353,8 +1353,8 @@ static int hm2_rpspi_setup(hm2_rpspi_inst_t *inst)
 static int shell(char *command) {
     char *const argv[] = {"sh", "-c", command, NULL};
     pid_t pid;
-    int res = rtapi_spawn_as_root(&pid, "/bin/sh", NULL, NULL, argv, environ);
-    if(res < 0) perror("rtapi_spawn_as_root");
+    int res = posix_spawn(&pid, "/bin/sh", NULL, NULL, argv, environ);
+    if(res < 0) perror("posix_spawn");
     int status;
     waitpid(pid, &status, 0);
     if(WIFEXITED(status)) return WEXITSTATUS(status);
@@ -1422,9 +1422,10 @@ int New(const cmod_env_t *env, const char *name,
         int argc, const char **argv, cmod_t **out)
 {
 	const gomc_hal_t *hal = env->hal;
+    hm2_log = env->log;
 	int ret;
 
-	hm2_rpspi_inst_t *inst = rtapi_calloc(sizeof(*inst));
+	hm2_rpspi_inst_t *inst = env->rtapi->calloc(env->rtapi->ctx, sizeof(*inst));
 	if (!inst)
 		return -ENOMEM;
 
@@ -1446,7 +1447,7 @@ int New(const cmod_env_t *env, const char *name,
 	inst->core = hm2_core_api_get(env->api, "hostmot2");
 	if (!inst->core) {
 		gomc_log_errorf(env->log, name, "hm2_rpspi: hostmot2 core API not found (is hostmot2 loaded?)\n");
-		rtapi_free(inst);
+		inst->env->rtapi->free(inst->env->rtapi->ctx, inst);
 		return -1;
 	}
 
@@ -1468,7 +1469,7 @@ int New(const cmod_env_t *env, const char *name,
 
 fail:
 	hm2_rpspi_cleanup(inst);
-	rtapi_free(inst);
+	inst->env->rtapi->free(inst->env->rtapi->ctx, inst);
 	return ret;
 }
 
@@ -1479,5 +1480,5 @@ static void hm2_rpspi_destroy(cmod_t *self)
 	const gomc_hal_t *hal = inst->env->hal;
 	hm2_rpspi_cleanup(inst);
 	hal->exit(hal->ctx, inst->comp_id);
-	rtapi_free(inst);
+	inst->env->rtapi->free(inst->env->rtapi->ctx, inst);
 }

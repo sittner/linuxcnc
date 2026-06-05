@@ -28,7 +28,7 @@ static const void *hm2_log;
 
 #include <stdlib.h>
 
-int getbits(hm2_sserial_remote_t *chan, rtapi_u64 *val, int start, int len){
+int getbits(hm2_sserial_remote_t *chan, uint64_t *val, int start, int len){
     //load the bits from the registers in to bit 0+ of *val
     int i;
     
@@ -44,7 +44,7 @@ int getbits(hm2_sserial_remote_t *chan, rtapi_u64 *val, int start, int len){
 }
 
 
-int setbits(hm2_sserial_remote_t *chan, rtapi_u64 *val, int start, int len){
+int setbits(hm2_sserial_remote_t *chan, uint64_t *val, int start, int len){
     //load the bits from *val into the registers
     // Assumes that all registers are zeroed elsewhere as required
     int i;
@@ -78,13 +78,13 @@ int hm2_sserial_wait(hostmot2_t *hm2, hm2_sserial_instance_t *inst, long period)
 
 int hm2_sserial_waitfor(hostmot2_t *hm2, uint32_t addr, uint32_t mask, int ms){
     // standalone wait function
-    rtapi_u64 t1, t2;
+    uint64_t t1, t2;
     uint32_t d;
-    t1 = rtapi_get_time();
+    t1 = hm2->llio->rtapi->get_time(hm2->llio->rtapi->ctx);
     do { // wait for addr to clear
-        rtapi_delay(50000);
+        hm2->llio->rtapi->delay(hm2->llio->rtapi->ctx, 50000);
         hm2->llio->read(hm2->llio, addr, &d, sizeof(uint32_t));
-        t2 = rtapi_get_time();
+        t2 = hm2->llio->rtapi->get_time(hm2->llio->rtapi->ctx);
         if ((uint32_t)(t2 - t1) > 1000000L * ms) {
             HM2_ERR("hm2_sserial_waitfor: Timeout (%dmS) waiting for addr %x &"
                     "mask %x val %x\n", ms, addr, mask, d & mask);
@@ -310,7 +310,7 @@ void config_8i20(hostmot2_t *hm2, hm2_sserial_remote_t *chan){
     uint32_t buff;
     chan->num_modes=0;
     chan->num_confs = sizeof(hm2_8i20_params) / sizeof(hm2_sserial_data_t);
-    chan->confs = rtapi_calloc(sizeof(hm2_8i20_params));
+    chan->confs = hm2->llio->rtapi->calloc(hm2->llio->rtapi->ctx, sizeof(hm2_8i20_params));
     memcpy(chan->confs, hm2_8i20_params, sizeof(hm2_8i20_params));
 
     //8i20 has reprogrammable current scaling:
@@ -318,7 +318,7 @@ void config_8i20(hostmot2_t *hm2, hm2_sserial_remote_t *chan){
     hm2_sserial_get_bytes(hm2, chan, &buff, 0x8E8, 2);
     chan->confs[1].ParmMax = buff * 0.01;
     chan->confs[1].ParmMin = buff * -0.01;
-    chan->globals = rtapi_calloc(sizeof(hm2_8i20_globals));
+    chan->globals = hm2->llio->rtapi->calloc(hm2->llio->rtapi->ctx, sizeof(hm2_8i20_globals));
     memcpy(chan->globals, hm2_8i20_globals, sizeof(hm2_8i20_globals));
     chan->num_globals = sizeof(hm2_8i20_globals) / sizeof(hm2_sserial_data_t);
 }
@@ -327,7 +327,7 @@ void config_7i64(hostmot2_t *hm2, hm2_sserial_remote_t *chan){
     (void)hm2;
     chan->num_modes=0;
     chan->num_confs = sizeof(hm2_7i64_params) / sizeof(hm2_sserial_data_t);
-    chan->confs = rtapi_calloc(sizeof(hm2_7i64_params));
+    chan->confs = hm2->llio->rtapi->calloc(hm2->llio->rtapi->ctx, sizeof(hm2_7i64_params));
     memcpy(chan->confs, hm2_7i64_params, sizeof(hm2_7i64_params));
 }
 
@@ -509,7 +509,7 @@ int hm2_sserial_get_globals_list(hostmot2_t *hm2, hm2_sserial_remote_t *chan){
                            data.NameString, data.RecordType, data.DataType, data.DataDir, data.ParmAddr, data.DataLength);
                 chan->num_globals++;
                 chan->globals = (hm2_sserial_data_t *)
-                         rtapi_realloc(chan->globals,
+                         hm2->llio->rtapi->realloc(hm2->llio->rtapi->ctx, chan->globals,
                          chan->num_globals * sizeof(hm2_sserial_data_t));
                 chan->globals[chan->num_globals - 1] = data;
             }
@@ -521,7 +521,7 @@ int hm2_sserial_get_globals_list(hostmot2_t *hm2, hm2_sserial_remote_t *chan){
                 addr = hm2_sserial_get_bytes(hm2, chan, &mode, addr, 4);
                 addr = hm2_sserial_get_bytes(hm2, chan, &mode.NameString, addr, -1);
                 type = (mode.ModeType == 0x01)? "Software" : "Hardware";
-                rtapi_print("Board %s %s Mode %i = %s\n",
+                HM2_PRINT("Board %s %s Mode %i = %s\n",
                             chan->name,
                             type,
                             mode.ModeIndex,
@@ -701,10 +701,10 @@ int hm2_sserial_parse_md(hostmot2_t *hm2, int md_index){
 
             if (hm2->sserial.baudrate == 115200
                 && hm2->config.sserial_modes[i][c] != 'x') { //setup mode
-                rtapi_print("Setup mode\n");
+                HM2_PRINT("Setup mode\n");
                 if ((user1 & 0xFF00) == 0x4900){ //XiXXboard
 
-                    rtapi_print("found a %4s\n", (char*)&user1);
+                    HM2_PRINT("found a %4s\n", (char*)&user1);
 
                     inst->num_remotes += 1;
                     inst->tag |= 1<<c;
@@ -714,7 +714,7 @@ int hm2_sserial_parse_md(hostmot2_t *hm2, int md_index){
                     int crc_addr = getlocal8(hm2, inst, SSLBPCHANNELSTARTLOC)
                     + (c * lbpstride) + 30;
 
-                    rtapi_print("Looking for 8i20s, crc_addr = %i\n", crc_addr);
+                    HM2_PRINT("Looking for 8i20s, crc_addr = %i\n", crc_addr);
 
                     if (getlocal8(hm2, inst, SSLBPMINORREVISIONLOC) < 37 ){
                         HM2_PRINT("Unable to check for 8i20s with firmware < 37 "
@@ -730,7 +730,7 @@ int hm2_sserial_parse_md(hostmot2_t *hm2, int md_index){
                     else {
                         HM2READ(addr1, user1);
 
-                        rtapi_print("found a %4s\n", (char*)&user1);
+                        HM2_PRINT("found a %4s\n", (char*)&user1);
 
                         if ((user1 & 0xFF00) == 0x4900){ //XiXXboard
                             inst->num_remotes += 1;
@@ -951,7 +951,7 @@ int hm2_sserial_setup_remotes(hostmot2_t *hm2,
     int buff;
 
     inst->remotes =
-    (hm2_sserial_remote_t *)rtapi_calloc(inst->num_remotes*sizeof(hm2_sserial_remote_t));
+    (hm2_sserial_remote_t *)hm2->llio->rtapi->calloc(hm2->llio->rtapi->ctx, inst->num_remotes*sizeof(hm2_sserial_remote_t));
     if (inst->remotes == NULL) {
         HM2_ERR("out of memory!\n");
         return -ENOMEM;
@@ -1051,7 +1051,7 @@ int hm2_sserial_read_configs(hostmot2_t *hm2,  hm2_sserial_remote_t *chan){
         if (rectype == LBP_DATA) {
             c = chan->num_confs++;
             chan->confs = (hm2_sserial_data_t *)
-                            rtapi_realloc(chan->confs,
+                            hm2->llio->rtapi->realloc(hm2->llio->rtapi->ctx, chan->confs,
                                     chan->num_confs * sizeof(hm2_sserial_data_t));
             addr = hm2_sserial_get_bytes(hm2, chan, &chan->confs[c], addr, 14);
             if (addr < 0){ return -EINVAL;}
@@ -1078,7 +1078,7 @@ int hm2_sserial_read_configs(hostmot2_t *hm2,  hm2_sserial_remote_t *chan){
             chan->num_modes++;
             m = chan->num_modes - 1;
             chan->modes = (hm2_sserial_mode_t *)
-                            rtapi_realloc(chan->modes,
+                            hm2->llio->rtapi->realloc(hm2->llio->rtapi->ctx, chan->modes,
                                      chan->num_modes * sizeof(hm2_sserial_mode_t));
             addr = hm2_sserial_get_bytes(hm2, chan, &chan->modes[m], addr, 4);
             if (addr < 0){ return -EINVAL;}
@@ -1685,7 +1685,7 @@ fail1:
 void hm2_sserial_write_pins(hostmot2_t *hm2, hm2_sserial_instance_t *inst){
     int b, p, r, i;
     int bitcount;
-    rtapi_u64 buff;
+    uint64_t buff;
     double val;
 
     // the side effect of reporting this error will suffice
@@ -1763,15 +1763,15 @@ void hm2_sserial_write_pins(hostmot2_t *hm2, hm2_sserial_instance_t *inst){
                     case LBP_BITS:
                         buff = 0;
                         for (b = 0 ; b < conf->DataLength ; b++){
-                            buff |= ((rtapi_u64)(*pin->bit_pins[b] != 0) << b)
-                            ^ ((rtapi_u64)(pin->invert[b] != 0) << b);
+                            buff |= ((uint64_t)(*pin->bit_pins[b] != 0) << b)
+                            ^ ((uint64_t)(pin->invert[b] != 0) << b);
                         }
                         break;
                     case LBP_UNSIGNED:
                         val = *pin->float_pin;
                         if (val > pin->maxlim) val = pin->maxlim;
                         if (val < pin->minlim) val = pin->minlim;
-                        buff = (rtapi_u64)((val / pin->fullscale)
+                        buff = (uint64_t)((val / pin->fullscale)
                                      * (~0ull >> (64 - conf->DataLength)));
                         break;
                     case LBP_SIGNED:
@@ -1886,10 +1886,10 @@ void hm2_sserial_prepare_tram_write(hostmot2_t *hm2, long period){
 int hm2_sserial_read_pins(hm2_sserial_remote_t *chan){
     static int h_flag = 0, l_flag = 0;//these are the "memory" for 2-part
     static int bitshift = 1;               //Fanuc encoders where the full turns
-    static rtapi_u64 buff_store;             //and part turns are not contiguous
+    static uint64_t buff_store;             //and part turns are not contiguous
     int b, p, r;
     int bitcount = 0;
-    rtapi_u64 buff;
+    uint64_t buff;
     int32_t buff32;
     int64_t buff64;
     chan->status = *chan->reg_cs_read;
@@ -1913,7 +1913,7 @@ int hm2_sserial_read_pins(hm2_sserial_remote_t *chan){
             case LBP_UNSIGNED:
 
                 if (pin->graycode){
-                    rtapi_u64 mask;
+                    uint64_t mask;
                     for(mask = buff >> 1 ; mask != 0 ; mask = mask >> 1){
                         buff ^= mask;
                     }
@@ -1968,7 +1968,7 @@ int hm2_sserial_read_pins(hm2_sserial_remote_t *chan){
 
 
                 if (pin->graycode){
-                    rtapi_u64 mask;
+                    uint64_t mask;
                     for(mask = buff >> 1 ; mask != 0 ; mask = mask >> 1){
                         buff ^= mask;
                     }
@@ -2239,13 +2239,13 @@ void hm2_sserial_cleanup(hostmot2_t *hm2){
             if (hm2->sserial.instance[i].remotes){
                 for (r = 0 ; r < hm2->sserial.instance[i].num_remotes; r++){
                     if (hm2->sserial.instance[i].remotes[r].num_confs > 0){
-                        rtapi_free(hm2->sserial.instance[i].remotes[r].confs);
+                        hm2->llio->rtapi->free(hm2->llio->rtapi->ctx, hm2->sserial.instance[i].remotes[r].confs);
                     };
                     if (hm2->sserial.instance[i].remotes[r].num_modes > 0){
-                        rtapi_free(hm2->sserial.instance[i].remotes[r].modes);
+                        hm2->llio->rtapi->free(hm2->llio->rtapi->ctx, hm2->sserial.instance[i].remotes[r].modes);
                     }
                 }
-                rtapi_free(hm2->sserial.instance[i].remotes);
+                hm2->llio->rtapi->free(hm2->llio->rtapi->ctx, hm2->sserial.instance[i].remotes);
             }
         }
 

@@ -130,12 +130,24 @@ static int64_t gomc_rtapi_get_time_cb(void *ctx) {
     return (int64_t)rtapi_get_time();
 }
 
+static void gomc_rtapi_delay_cb(void *ctx, long nsec) {
+    rtapi_delay(nsec);
+}
+
+static long gomc_rtapi_delay_max_cb(void *ctx) {
+    return rtapi_delay_max();
+}
+
 static int64_t gomc_rtapi_pll_get_reference_cb(void *ctx) {
     return (int64_t)rtapi_task_pll_get_reference();
 }
 
 static int gomc_rtapi_pll_set_correction_cb(void *ctx, long value) {
     return rtapi_task_pll_set_correction(value);
+}
+
+static int gomc_rtapi_task_self_cb(void *ctx) {
+    return rtapi_task_self();
 }
 
 // --- INI callbacks (forward-declared, implemented in Go via //export) ---
@@ -184,8 +196,11 @@ static void gomc_rtapi_init_struct(gomc_rtapi_t *rtapi) {
     rtapi->realloc            = gomc_rtapi_realloc_cb;
     rtapi->free               = gomc_rtapi_free_cb;
     rtapi->get_time           = gomc_rtapi_get_time_cb;
+    rtapi->delay              = gomc_rtapi_delay_cb;
+    rtapi->delay_max          = gomc_rtapi_delay_max_cb;
     rtapi->pll_get_reference  = gomc_rtapi_pll_get_reference_cb;
     rtapi->pll_set_correction = gomc_rtapi_pll_set_correction_cb;
+    rtapi->task_self          = gomc_rtapi_task_self_cb;
 }
 
 static void gomc_api_init_struct(gomc_api_t *api) {

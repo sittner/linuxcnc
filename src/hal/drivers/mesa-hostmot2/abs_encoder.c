@@ -232,7 +232,7 @@ int hm2_absenc_setup_fabs(hostmot2_t *hm2, hm2_sserial_remote_t *chan,
 }
 
 
-int hm2_absenc_parse_format(hm2_sserial_remote_t *chan,  hm2_absenc_format_t *def){
+int hm2_absenc_parse_format(hm2_sserial_remote_t *chan, hm2_absenc_format_t *def, const gomc_rtapi_t *rtapi){
     char* AA64 = "%5pbatt_fail%1b%2ppos_invalid%1b%9plow%16l%2pencoder%16h%2pcomm%10u%7pcrc%5u";
     char* format = def->string;
     char name[HM2_SSERIAL_MAX_STRING_LENGTH+1] = "";
@@ -251,7 +251,7 @@ int hm2_absenc_parse_format(hm2_sserial_remote_t *chan,  hm2_absenc_format_t *de
             else if (strchr("bBuUsSeEfFpPgGhHlLmM", *format)){
                 hm2_sserial_data_t *conf;
                 chan->num_confs++;
-                chan->confs = (hm2_sserial_data_t *)rtapi_realloc(chan->confs,
+                chan->confs = (hm2_sserial_data_t *)rtapi->realloc(rtapi->ctx, chan->confs,
                         chan->num_confs * sizeof(hm2_sserial_data_t));
 
                 conf = &(chan->confs[chan->num_confs - 1]);
@@ -384,11 +384,11 @@ int hm2_absenc_parse_md(hostmot2_t *hm2, int md_index) {
 
     if (hm2->absenc.num_chans == 0) { // first time though
         hm2->absenc.clock_frequency = md->clock_freq;
-        hm2->absenc.ssi_busy_flags = rtapi_malloc(sizeof(uint32_t));
+        hm2->absenc.ssi_busy_flags = hm2->llio->rtapi->calloc(hm2->llio->rtapi->ctx, sizeof(uint32_t));
         *hm2->absenc.ssi_busy_flags = 0;
-        hm2->absenc.biss_busy_flags = rtapi_malloc(sizeof(uint32_t));
+        hm2->absenc.biss_busy_flags = hm2->llio->rtapi->calloc(hm2->llio->rtapi->ctx, sizeof(uint32_t));
         *hm2->absenc.biss_busy_flags = 0;
-        hm2->absenc.fabs_busy_flags = rtapi_malloc(sizeof(uint32_t));
+        hm2->absenc.fabs_busy_flags = hm2->llio->rtapi->calloc(hm2->llio->rtapi->ctx, sizeof(uint32_t));
         *hm2->absenc.fabs_busy_flags = 0;
     }
     
@@ -408,14 +408,14 @@ int hm2_absenc_parse_md(hostmot2_t *hm2, int md_index) {
             if (index == def->index && md->gtag == def->gtag){
                 has_format = true;
                 hm2->absenc.num_chans += 1;
-                hm2->absenc.chans = rtapi_realloc(hm2->absenc.chans,
+                hm2->absenc.chans = hm2->llio->rtapi->realloc(hm2->llio->rtapi->ctx, hm2->absenc.chans,
                         hm2->absenc.num_chans * sizeof(hm2_sserial_remote_t));
                 chan = &hm2->absenc.chans[hm2->absenc.num_chans - 1];
                 memset(chan, 0, sizeof(hm2_sserial_remote_t));
                 chan->index = index;
                 chan->myinst = md->gtag;
 
-                if (hm2_absenc_parse_format(chan, def) ) goto fail1;
+                if (hm2_absenc_parse_format(chan, def, hm2->llio->rtapi) ) goto fail1;
 
                 switch (md->gtag){
                 case HM2_GTAG_SSI:
@@ -652,10 +652,10 @@ void hm2_absenc_cleanup(hostmot2_t *hm2) {
     if (hm2->absenc.num_chans > 0) {
         for (i = 0 ; i < hm2->absenc.num_chans ; i++){
             if (hm2->absenc.chans[i].confs != NULL){
-                rtapi_free(hm2->absenc.chans[i].confs);
+                hm2->llio->rtapi->free(hm2->llio->rtapi->ctx, hm2->absenc.chans[i].confs);
             }
         }
-        rtapi_free(hm2->absenc.chans);
+        hm2->llio->rtapi->free(hm2->llio->rtapi->ctx, hm2->absenc.chans);
     }
 }
 

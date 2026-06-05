@@ -20,7 +20,13 @@
 
 #include "rtapi_pci.h"
 
+#if defined(__i386) || defined(__x86_64)
 #include <sys/io.h>
+#else
+#define inl(x) ((unsigned long)0)
+#define outl(x,y) ((void)(x), (void)(y))
+#define outb(x,y) ((void)(x), (void)(y))
+#endif
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>

@@ -31,6 +31,8 @@
 #include "hostmot2-serial.h"
 
 #include "gomc_env.h"
+#define HM2_LLIO_NAME "hm2_modbus"
+static const void *hm2_log;
 
 #include "hm2_modbus.h"
 
@@ -135,11 +137,11 @@ static inline unsigned mtypesize(unsigned mtype) {
 #ifndef DEBUG
 #define MSG_DBG(fmt...)		do{}while(0)
 #else
-#define MSG_DBG(fmt...)		do { rtapi_print_msg(RTAPI_MSG_DBG,  fmt); } while(0)
+#define MSG_DBG(fmt...)		do { gomc_log_debugf(hm2_log, HM2_LLIO_NAME, fmt); } while(0)
 #endif
-#define MSG_INFO(fmt...)	do { rtapi_print_msg(RTAPI_MSG_INFO, fmt); } while(0)
-#define MSG_ERR(fmt...)		do { rtapi_print_msg(RTAPI_MSG_ERR,  fmt); } while(0)
-#define MSG_WARN(fmt...)	do { rtapi_print_msg(RTAPI_MSG_WARN, fmt); } while(0)
+#define MSG_INFO(fmt...)	do { gomc_log_infof(hm2_log, HM2_LLIO_NAME, fmt); } while(0)
+#define MSG_ERR(fmt...)		do { gomc_log_errorf(hm2_log, HM2_LLIO_NAME, fmt); } while(0)
+#define MSG_WARN(fmt...)	do { gomc_log_warnf(hm2_log, HM2_LLIO_NAME, fmt); } while(0)
 
 // State-machine states
 enum {
@@ -2042,7 +2044,7 @@ static uint16_t crc_modbus(const uint8_t *buffer, size_t len)
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 // Userspace file read
-static ssize_t read_mbccb(const hm2_modbus_inst_t *inst, const char *fname, hm2_modbus_mbccb_header_t **pmbccb)
+static ssize_t read_mbccb(const hm2_modbus_inst_t *inst, const gomc_rtapi_t *rtapi, const char *fname, hm2_modbus_mbccb_header_t **pmbccb)
 {
 	if(!pmbccb)
 		return -EINVAL;
@@ -2067,7 +2069,7 @@ static ssize_t read_mbccb(const hm2_modbus_inst_t *inst, const char *fname, hm2_
 	}
 
 	// Allocate memory
-	*pmbccb = rtapi_calloc(sb.st_size);
+	*pmbccb = rtapi->calloc(rtapi->ctx, sb.st_size);
 	if(!*pmbccb) {
 		MSG_ERR("%s: error: Failed to allocate %zd bytes memory for mbccb buffer\n", inst->name, (ssize_t)sb.st_size);
 		close(fd);
@@ -2083,14 +2085,14 @@ retry_read:
 		if(errno == EINTR)
 			goto retry_read;	// Interrupted syscall
 		MSG_ERR("%s: error: Failed to read from '%s' (error %d)\n", inst->name, fname, errno);
-		rtapi_free(*pmbccb);
+		rtapi->free(rtapi->ctx, *pmbccb);
 		*pmbccb = NULL;
 		close(fd);
 		return rv;
 	}
 	if(err != (ssize_t)sb.st_size) {
 		MSG_ERR("%s: error: Read %zd bytes instead of %zd bytes from '%s', aborting\n", inst->name, err, (ssize_t)sb.st_size, fname);
-		rtapi_free(*pmbccb);
+		rtapi->free(rtapi->ctx, *pmbccb);
 		*pmbccb = NULL;
 		close(fd);
 		return -EIO;
@@ -2116,12 +2118,12 @@ static int check_htype(unsigned type)
 // Returns 0 on success and -errno on failure. A message has been printed in
 // case of error.
 //
-static int load_mbccb(hm2_modbus_inst_t *inst, const char *fname)
+static int load_mbccb(hm2_modbus_inst_t *inst, const gomc_rtapi_t *rtapi, const char *fname)
 {
 	int rv = -EINVAL;
 
 	hm2_modbus_mbccb_header_t *mbccb;
-	ssize_t mbccblen = read_mbccb(inst, fname, &mbccb);
+	ssize_t mbccblen = read_mbccb(inst, rtapi, fname, &mbccb);
 	if(mbccblen < 0)
 		return (int)mbccblen;
 
@@ -2525,7 +2527,7 @@ static int load_mbccb(hm2_modbus_inst_t *inst, const char *fname)
 	return 0;	// Success
 
 errout:
-	rtapi_free(mbccb);
+	rtapi->free(rtapi->ctx, mbccb);
 	return rv;
 }
 
@@ -2541,11 +2543,11 @@ static void docleanup(hm2_modbus_mod_t *mod)
 	if(mod->mb.insts) {
 		for(int i = 0; i < mod->mb.ninsts; i++) {
 			if(mod->mb.insts[i].cmds)
-				rtapi_free(mod->mb.insts[i].cmds);
+				mod->env->rtapi->free(mod->env->rtapi->ctx, mod->mb.insts[i].cmds);
 			if(mod->mb.insts[i].mbccb)
-				rtapi_free(mod->mb.insts[i].mbccb);
+				mod->env->rtapi->free(mod->env->rtapi->ctx, mod->mb.insts[i].mbccb);
 		}
-		rtapi_free(mod->mb.insts);
+		mod->env->rtapi->free(mod->env->rtapi->ctx, mod->mb.insts);
 	}
 }
 
@@ -2575,7 +2577,7 @@ static int hm2_modbus_init(hm2_modbus_mod_t *mod)
 
 	// Only touch the message level if requested
 	if(mod->debug >= 0)
-		rtapi_set_msg_level(mod->debug);
+		(void)mod->debug; // TODO: per-module log level
 
 	if(!mod->ports[0]) {
 		MSG_ERR(COMP_NAME": The component requires at least one valid pktuart port, eg ports=\"hm2_5i25.0.pktuart.7\"\n");
@@ -2591,7 +2593,7 @@ static int hm2_modbus_init(hm2_modbus_mod_t *mod)
 	// Count the instances.
 	for(mod->mb.ninsts = 0; mod->mb.ninsts < MAX_PORTS && mod->ports[mod->mb.ninsts]; mod->mb.ninsts++) {}
 	// Allocate memory for the instances
-	if(!(mod->mb.insts = (hm2_modbus_inst_t *)rtapi_calloc(mod->mb.ninsts * sizeof(*mod->mb.insts)))) {
+	if(!(mod->mb.insts = (hm2_modbus_inst_t *)mod->env->rtapi->calloc(mod->env->rtapi->ctx, mod->mb.ninsts * sizeof(*mod->mb.insts)))) {
 		MSG_ERR(COMP_NAME": Allocate instance memory failed\n");
 		mod->env->hal->exit(mod->env->hal->ctx, mod->comp_id);
 		return -ENOMEM;
@@ -2613,7 +2615,7 @@ static int hm2_modbus_init(hm2_modbus_mod_t *mod)
 			MSG_WARN("%s: warning: The 'mbccb' file path '%s' for instance %d in 'mbccbs' argument is not absolute\n", inst->name, mod->mbccbs[i], i);
 		}
 
-		if((retval = load_mbccb(inst, mod->mbccbs[i])) < 0) {
+		if((retval = load_mbccb(inst, mod->env->rtapi, mod->mbccbs[i])) < 0) {
 			// Messages printed in load function
 			goto errout;
 		}
@@ -2639,7 +2641,7 @@ static int hm2_modbus_init(hm2_modbus_mod_t *mod)
 
 		if(inst->ninit > 0) {
 			// Allocate inits memory
-			if(!(inst->_init = rtapi_calloc(inst->ninit * sizeof(*inst->_init)))) {
+			if(!(inst->_init = mod->env->rtapi->calloc(mod->env->rtapi->ctx, inst->ninit * sizeof(*inst->_init)))) {
 				MSG_ERR("%s: error: Failed to allocate init commands memory\n", inst->name);
 				retval = -ENOMEM;
 				goto errout;
@@ -2647,7 +2649,7 @@ static int hm2_modbus_init(hm2_modbus_mod_t *mod)
 		}
 
 		// Allocate commands memory
-		if(!(inst->_cmds = rtapi_calloc(inst->ncmds * sizeof(*inst->_cmds)))) {
+		if(!(inst->_cmds = mod->env->rtapi->calloc(mod->env->rtapi->ctx, inst->ncmds * sizeof(*inst->_cmds)))) {
 			MSG_ERR("%s: error: Failed to allocate commands memory\n", inst->name);
 			retval = -ENOMEM;
 			goto errout;
@@ -2964,7 +2966,8 @@ int New(const cmod_env_t *env, const char *name,
         int argc, const char **argv, cmod_t **out)
 {
     (void)name;
-    hm2_modbus_mod_t *mod = rtapi_calloc(sizeof(*mod));
+    hm2_log = env->log;
+    hm2_modbus_mod_t *mod = env->rtapi->calloc(env->rtapi->ctx, sizeof(*mod));
     if (!mod) return -ENOMEM;
     mod->env = env;
     mod->comp_id = -1;
@@ -2974,7 +2977,7 @@ int New(const cmod_env_t *env, const char *name,
 
     int ret = hm2_modbus_init(mod);
     if (ret != 0) {
-        rtapi_free(mod);
+        mod->env->rtapi->free(mod->env->rtapi->ctx, mod);
         return ret;
     }
 
@@ -2988,6 +2991,6 @@ static void hm2_modbus_destroy(cmod_t *self)
 {
 	hm2_modbus_mod_t *mod = self->priv;
 	docleanup(mod);
-	rtapi_free(mod);
+	mod->env->rtapi->free(mod->env->rtapi->ctx, mod);
 }
 // vim: syn=c ts=4

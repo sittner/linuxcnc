@@ -65,7 +65,7 @@ int hm2_led_parse_md(hostmot2_t *hm2, int md_index) {
         r = -ENOMEM;
         goto fail0;
     }
-    hm2->led.led_reg = (uint32_t *)rtapi_malloc( sizeof(uint32_t));
+    hm2->led.led_reg = (uint32_t *)hm2->llio->rtapi->calloc(hm2->llio->rtapi->ctx,  sizeof(uint32_t));
     if (hm2->led.led_reg == NULL) {
         HM2_ERR("out of memory!\n");
         r = -ENOMEM;
@@ -90,7 +90,7 @@ int hm2_led_parse_md(hostmot2_t *hm2, int md_index) {
 
     fail1:
 
-        rtapi_free(hm2->led.led_reg);
+        hm2->llio->rtapi->free(hm2->llio->rtapi->ctx, hm2->led.led_reg);
 
     fail0:
         return r;
@@ -117,7 +117,7 @@ void hm2_led_write(hostmot2_t *hm2) {
 
 void hm2_led_cleanup(hostmot2_t *hm2) {
     if (hm2->led.led_reg != NULL) {
-	rtapi_free(hm2->led.led_reg);
+	hm2->llio->rtapi->free(hm2->llio->rtapi->ctx, hm2->led.led_reg);
 	hm2->led.led_reg = NULL;
     }
 }

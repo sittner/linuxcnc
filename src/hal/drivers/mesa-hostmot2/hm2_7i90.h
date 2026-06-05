@@ -21,7 +21,7 @@
 
 #define HM2_LLIO_NAME "hm2_7i90"
 
-#include "hal_parport.h"
+#include "rtapi_parport.h"
 
 
 
@@ -53,7 +53,7 @@
 struct hm2_7i90_inst;  // forward declaration
 
 typedef struct {
-    hal_parport_t port;
+    rtapi_parport_t port;
     int epp_wide;
 
     hm2_lowlevel_io_t llio;

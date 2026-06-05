@@ -41,7 +41,7 @@
 int hm2_register_tram_read_region(hostmot2_t *hm2, uint16_t addr, uint16_t size, uint32_t **buffer) {
     hm2_tram_entry_t *tram_entry;
 
-    tram_entry = rtapi_malloc(sizeof(hm2_tram_entry_t));
+    tram_entry = hm2->llio->rtapi->calloc(hm2->llio->rtapi->ctx, sizeof(hm2_tram_entry_t));
     if (tram_entry == NULL) {
         HM2_ERR("out of memory!\n");
         return -ENOMEM;
@@ -60,7 +60,7 @@ int hm2_register_tram_read_region(hostmot2_t *hm2, uint16_t addr, uint16_t size,
 int hm2_register_tram_write_region(hostmot2_t *hm2, uint16_t addr, uint16_t size, uint32_t **buffer) {
     hm2_tram_entry_t *tram_entry;
 
-    tram_entry = rtapi_malloc(sizeof(hm2_tram_entry_t));
+    tram_entry = hm2->llio->rtapi->calloc(hm2->llio->rtapi->ctx, sizeof(hm2_tram_entry_t));
     if (tram_entry == NULL) {
         HM2_ERR("out of memory!\n");
         return -ENOMEM;
@@ -101,7 +101,7 @@ int hm2_allocate_tram_regions(hostmot2_t *hm2) {
         hm2->tram_write_size
     );
 
-    hm2->tram_read_buffer = (uint32_t *)rtapi_realloc(hm2->tram_read_buffer, hm2->tram_read_size);
+    hm2->tram_read_buffer = (uint32_t *)hm2->llio->rtapi->realloc(hm2->llio->rtapi->ctx, hm2->tram_read_buffer, hm2->tram_read_size);
     if (hm2->tram_read_buffer == NULL) {
         HM2_ERR("Error while (re)allocating Translation RAM read buffer (%d bytes)\n", hm2->tram_read_size);
         return -ENOMEM;
@@ -109,7 +109,7 @@ int hm2_allocate_tram_regions(hostmot2_t *hm2) {
     if(hm2->tram_read_size>old_tram_read_size)
         memset((char*)hm2->tram_read_buffer+old_tram_read_size, 0, hm2->tram_read_size-old_tram_read_size);
     
-    hm2->tram_write_buffer = (uint32_t *)rtapi_realloc(hm2->tram_write_buffer, hm2->tram_write_size);
+    hm2->tram_write_buffer = (uint32_t *)hm2->llio->rtapi->realloc(hm2->llio->rtapi->ctx, hm2->tram_write_buffer, hm2->tram_write_size);
     if (hm2->tram_write_buffer == NULL) {
         HM2_ERR("Error while (re)allocating Translation RAM write buffer (%d bytes)\n", hm2->tram_write_size);
         return -ENOMEM;
@@ -214,17 +214,17 @@ void hm2_tram_cleanup(hostmot2_t *hm2) {
         struct rtapi_list_head *te_ptr = hm2->tram_read_entries.next;
         hm2_tram_entry_t *te = rtapi_list_entry(te_ptr, hm2_tram_entry_t, list);
         rtapi_list_del(te_ptr);
-        rtapi_free(te);
+        hm2->llio->rtapi->free(hm2->llio->rtapi->ctx, te);
     }
     while (hm2->tram_write_entries.next != &hm2->tram_write_entries) {
         struct rtapi_list_head *te_ptr = hm2->tram_write_entries.next;
         hm2_tram_entry_t *te = rtapi_list_entry(te_ptr, hm2_tram_entry_t, list);
         rtapi_list_del(te_ptr);
-        rtapi_free(te);
+        hm2->llio->rtapi->free(hm2->llio->rtapi->ctx, te);
     }
 
     // free the tram buffers
-    if (hm2->tram_read_buffer != NULL) rtapi_free(hm2->tram_read_buffer);
-    if (hm2->tram_write_buffer != NULL) rtapi_free(hm2->tram_write_buffer);
+    if (hm2->tram_read_buffer != NULL) hm2->llio->rtapi->free(hm2->llio->rtapi->ctx, hm2->tram_read_buffer);
+    if (hm2->tram_write_buffer != NULL) hm2->llio->rtapi->free(hm2->llio->rtapi->ctx, hm2->tram_write_buffer);
 }
 

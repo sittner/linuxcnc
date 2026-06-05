@@ -48,9 +48,16 @@ typedef struct {
     // Monotonic time in nanoseconds.
     int64_t (*get_time)(void *ctx);
 
+    // Busy-wait delay (nanoseconds).
+    void    (*delay)(void *ctx, long nsec);
+    long    (*delay_max)(void *ctx);
+
     // Task PLL functions for RT thread synchronisation.
     int64_t (*pll_get_reference)(void *ctx);
     int     (*pll_set_correction)(void *ctx, long value);
+
+    // Returns >= 0 if called from a RT task, < 0 otherwise.
+    int     (*task_self)(void *ctx);
 } gomc_rtapi_t;
 
 // ---------------------------------------------------------------------------

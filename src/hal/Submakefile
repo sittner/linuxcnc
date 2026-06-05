@@ -7,8 +7,7 @@ HALLIBSRCS := \
   hal/hal_lib.c \
   rtapi/uspace_rtapi_lib.c \
   rtapi/uspace_rtapi_string.c \
-  rtapi/rtapi_pci.c \
-  rtapi/uspace_rtapi_parport.c
+  rtapi/rtapi_pci.c
 
 $(call TOOBJSDEPS, $(HALLIBSRCS)): EXTRAFLAGS += -fPIC $(ULAPI_CFLAGS) $(LIBUDEV_CFLAGS)
 USERSRCS += $(HALLIBSRCS)
@@ -47,3 +46,20 @@ $(RTAPI_PCI_LIB).0: $(call TOOBJS, $(RTAPI_PCI_SRCS))
 	$(Q)$(CC) $(LDFLAGS) -Wl,-soname,$(notdir $@) -shared -o $@ $^ $(LIBUDEV_LIBS)
 
 TARGETS += $(RTAPI_PCI_LIB) ../lib/librtapi_pci.so.0
+
+# Standalone parport library (x86_64 only, no hal/rtapi dependency)
+ifeq ($(X86ARCH),true)
+RTAPI_PARPORT_SRCS := rtapi/parport/rtapi_parport.c
+$(call TOOBJSDEPS, $(RTAPI_PARPORT_SRCS)): EXTRAFLAGS += -fPIC
+USERSRCS += $(RTAPI_PARPORT_SRCS)
+
+RTAPI_PARPORT_LIB := ../lib/librtapi_parport.so
+
+$(RTAPI_PARPORT_LIB).0: $(call TOOBJS, $(RTAPI_PARPORT_SRCS))
+	$(ECHO) Creating shared library $(notdir $@)
+	@mkdir -p ../lib
+	@rm -f $@
+	$(Q)$(CC) $(LDFLAGS) -Wl,-soname,$(notdir $@) -shared -o $@ $^
+
+TARGETS += $(RTAPI_PARPORT_LIB) ../lib/librtapi_parport.so.0
+endif

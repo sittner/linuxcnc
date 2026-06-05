@@ -27,12 +27,10 @@
 #include <unistd.h>
 #include <endian.h>
 
-#include <rtapi.h>
-#include <rtapi_bool.h>
-#include <hal.h>
-
 #include "gomc_env.h"
 #include "hm2_core_api.h"
+#define HM2_LLIO_NAME "hm2_spi"
+static const void *hm2_log;
 #include "hostmot2-lowlevel.h"
 #include "hostmot2.h"
 
@@ -221,8 +219,7 @@ static int do_pending(hm2_spi_t *this) {
     }
     int r = ioctl(this->fd, SPI_IOC_MESSAGE(1), &t);
     if(r < 0) {
-        rtapi_print_msg(RTAPI_MSG_ERR,
-            "hm2_spi: SPI_IOC_MESSAGE: %s\n", strerror(errno));
+        gomc_log_errorf(hm2_log, HM2_LLIO_NAME,             "hm2_spi: SPI_IOC_MESSAGE: %s\n", strerror(errno));
         this->nbuf = 0;
         return -errno;
     }
@@ -385,8 +382,8 @@ static int check_cookie(hm2_spi_t *board) {
     if(r < 0) return -errno;
 
     if(memcmp(cookie, xcookie, sizeof(cookie))) {
-        rtapi_print_msg(RTAPI_MSG_ERR, "Invalid cookie\n");
-        rtapi_print_msg(RTAPI_MSG_ERR, "Read: %08x %08x %08x %08x\n",
+        gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "Invalid cookie\n");
+        gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "Read: %08x %08x %08x %08x\n",
             cookie[0], cookie[1], cookie[2], cookie[3]);
         return -ENODEV;
     }
@@ -462,7 +459,7 @@ static int probe(hm2_spi_inst_t *inst, char *dev, int rate) {
         int i=0;
         for(i=0; (size_t)i<sizeof(ident); i++)
             if(!isprint(ident[i])) ident[i] = '?';
-        rtapi_print_msg(RTAPI_MSG_ERR, "Unknown board: %.8s\n", ident);
+        gomc_log_errorf(hm2_log, HM2_LLIO_NAME, "Unknown board: %.8s\n", ident);
         goto fail;
     }
 
@@ -512,6 +509,7 @@ int New(const cmod_env_t *env, const char *name,
         int argc, const char **argv, cmod_t **out)
 {
     const gomc_hal_t *hal = env->hal;
+    hm2_log = env->log;
     int ret;
     int i=0;
 

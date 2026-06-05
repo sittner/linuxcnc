@@ -156,17 +156,17 @@ static int hm2_7i43_epp_clear_timeout(hm2_7i43_t *board) {
 //
 
 // FIXME: this is bogus
-static void hm2_7i43_nanosleep(unsigned long int nanoseconds) {
+static void hm2_7i43_nanosleep(const gomc_rtapi_t *rtapi, unsigned long int nanoseconds) {
     long int max_ns_delay;
 
-    max_ns_delay = rtapi_delay_max();
+    max_ns_delay = rtapi->delay_max(rtapi->ctx);
 
     while (nanoseconds > (unsigned long int)max_ns_delay) {
-        rtapi_delay(max_ns_delay);
+        rtapi->delay(rtapi->ctx, max_ns_delay);
         nanoseconds -= max_ns_delay;
     }
 
-    rtapi_delay(nanoseconds);
+    rtapi->delay(rtapi->ctx, nanoseconds);
 }
 
 
@@ -250,7 +250,7 @@ int hm2_7i43_program_fpga(hm2_lowlevel_io_t *this, const bitfile_t *bitfile) {
     //
 
     inst->debug_epp = 0;
-    start_time = rtapi_get_time();
+    start_time = inst->env->rtapi->get_time(inst->env->rtapi->ctx);
 
     // select the CPLD's data address
     hm2_7i43_epp_addr8(0, board);
@@ -259,7 +259,7 @@ int hm2_7i43_program_fpga(hm2_lowlevel_io_t *this, const bitfile_t *bitfile) {
         hm2_7i43_epp_write(bitfile_reverse_bits(*firmware), board);
     }
 
-    end_time = rtapi_get_time();
+    end_time = inst->env->rtapi->get_time(inst->env->rtapi->ctx);
     inst->debug_epp = orig_debug_epp;
 
 
@@ -315,6 +315,7 @@ int hm2_7i43_program_fpga(hm2_lowlevel_io_t *this, const bitfile_t *bitfile) {
 // return 0 if the board has been reset, -errno if not
 int hm2_7i43_reset(hm2_lowlevel_io_t *this) {
     hm2_7i43_t *board = this->private;
+    hm2_7i43_inst_t *inst = board->inst;
     uint8_t byte;
 
 
@@ -339,11 +340,11 @@ int hm2_7i43_reset(hm2_lowlevel_io_t *this) {
 
     // bring the Spartan3's PROG_B line low for 1 us (the specs require 300-500 ns or longer)
     hm2_7i43_epp_write(0x00, board);
-    hm2_7i43_nanosleep(1000);
+    hm2_7i43_nanosleep(inst->env->rtapi, 1000);
 
     // bring the Spartan3's PROG_B line high and wait for 2 ms before sending firmware (required by spec)
     hm2_7i43_epp_write(0x01, board);
-    hm2_7i43_nanosleep(2 * 1000 * 1000);
+    hm2_7i43_nanosleep(inst->env->rtapi, 2 * 1000 * 1000);
 
     // make sure the FPGA is not asserting its /DONE bit
     byte = hm2_7i43_epp_read(board);
@@ -491,16 +492,16 @@ static void hm2_7i43_parse_argv(hm2_7i43_inst_t *inst, int argc, const char **ar
             inst->config[cfg_idx] = inst->cfg_bufs[cfg_idx];
             cfg_idx++;
         } else if (strncmp(argv[i], "ioaddr=", 7) == 0 && io_idx < HM2_7I43_MAX_BOARDS) {
-            inst->ioaddr[io_idx] = simple_strtol(argv[i] + 7, NULL, 0);
+            inst->ioaddr[io_idx] = strtol(argv[i] + 7, NULL, 0);
             io_idx++;
         } else if (strncmp(argv[i], "ioaddr_hi=", 10) == 0 && iohi_idx < HM2_7I43_MAX_BOARDS) {
-            inst->ioaddr_hi[iohi_idx] = simple_strtol(argv[i] + 10, NULL, 0);
+            inst->ioaddr_hi[iohi_idx] = strtol(argv[i] + 10, NULL, 0);
             iohi_idx++;
         } else if (strncmp(argv[i], "epp_wide=", 9) == 0 && ew_idx < HM2_7I43_MAX_BOARDS) {
-            inst->epp_wide[ew_idx] = simple_strtol(argv[i] + 9, NULL, 0);
+            inst->epp_wide[ew_idx] = strtol(argv[i] + 9, NULL, 0);
             ew_idx++;
         } else if (strncmp(argv[i], "debug_epp=", 10) == 0) {
-            inst->debug_epp = simple_strtol(argv[i] + 10, NULL, 0);
+            inst->debug_epp = strtol(argv[i] + 10, NULL, 0);
         }
     }
 }
@@ -509,9 +510,10 @@ int New(const cmod_env_t *env, const char *name,
         int argc, const char **argv, cmod_t **out)
 {
     const gomc_hal_t *hal = env->hal;
+    hm2_log = env->log;
     int r = 0;
 
-    hm2_7i43_inst_t *inst = rtapi_calloc(sizeof(*inst));
+    hm2_7i43_inst_t *inst = env->rtapi->calloc(env->rtapi->ctx, sizeof(*inst));
     if (!inst) return -ENOMEM;
     inst->env = env;
 
@@ -527,13 +529,13 @@ int New(const cmod_env_t *env, const char *name,
     inst->core = hm2_core_api_get(env->api, "hostmot2");
     if (!inst->core) {
         gomc_log_errorf(env->log, name, "hm2_7i43: hostmot2 core API not found (is hostmot2 loaded?)\n");
-        rtapi_free(inst);
+        inst->env->rtapi->free(inst->env->rtapi->ctx, inst);
         return -1;
     }
 
     r = hal->init(hal->ctx, HM2_LLIO_NAME, env->dl_handle, GOMC_HAL_COMP_REALTIME);
     if (r < 0) {
-        rtapi_free(inst);
+        inst->env->rtapi->free(inst->env->rtapi->ctx, inst);
         return r;
     }
     inst->comp_id = r;
@@ -542,7 +544,7 @@ int New(const cmod_env_t *env, const char *name,
     if (r) {
         hm2_7i43_cleanup(inst);
         hal->exit(hal->ctx, inst->comp_id);
-        rtapi_free(inst);
+        inst->env->rtapi->free(inst->env->rtapi->ctx, inst);
     } else {
         hal->ready(hal->ctx, inst->comp_id);
     }
@@ -562,6 +564,6 @@ static void hm2_7i43_destroy(cmod_t *self) {
     hm2_7i43_cleanup(inst);
     hal->exit(hal->ctx, inst->comp_id);
     LL_PRINT("driver unloaded\n");
-    rtapi_free(inst);
+    inst->env->rtapi->free(inst->env->rtapi->ctx, inst);
 }
 

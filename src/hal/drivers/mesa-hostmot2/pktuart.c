@@ -256,13 +256,13 @@ static int config_tx(const char *name, const hostmot2_t* hm2, hm2_pktuart_instan
 	int r;
 
 	if(hm2->pktuart.tx_version >= 2) {
-		bitrate = (rtapi_u64)cfg->baudrate * 16777216ul / inst->clock_freq; // 24 bits in v2+
+		bitrate = (uint64_t)cfg->baudrate * 16777216ul / inst->clock_freq; // 24 bits in v2+
 		if(!bitrate)
 			bitrate = 1;
 		if(bitrate > 0x00ffffff)
 			bitrate = 0x00ffffff;
 	} else {
-		bitrate = (rtapi_u64)cfg->baudrate * 1048576ul / inst->clock_freq;  // 20 bits in v0 & v1
+		bitrate = (uint64_t)cfg->baudrate * 1048576ul / inst->clock_freq;  // 20 bits in v0 & v1
 	}
 
 	if(cfg->ifdelay > 0xff) {
@@ -333,7 +333,7 @@ static int config_rx(const char *name, const hostmot2_t *hm2, hm2_pktuart_instan
 	filter = inst->clock_freq / filter;
 	if(hm2->pktuart.rx_version >= 2) {
 		if(filter > 0xFFFF) filter = 0xFFFF;
-		bitrate = (rtapi_u64)cfg->baudrate * 16777216ul / inst->clock_freq; // 24 bits in v2+
+		bitrate = (uint64_t)cfg->baudrate * 16777216ul / inst->clock_freq; // 24 bits in v2+
 		if(!bitrate)
 			bitrate = 1;
 		if(bitrate > 0x00ffffff)
@@ -342,7 +342,7 @@ static int config_rx(const char *name, const hostmot2_t *hm2, hm2_pktuart_instan
 		// Low 8 filter bits set below
 	} else {
 		if(filter > 0xFF) filter = 0xFF;
-		bitrate = (rtapi_u64)cfg->baudrate * 1048576ul / inst->clock_freq;  // 20 bits in v0 & v1
+		bitrate = (uint64_t)cfg->baudrate * 1048576ul / inst->clock_freq;  // 20 bits in v0 & v1
 		// Low 8 filter bits set below
 	}
 	if(cfg->ifdelay > 0xff) {

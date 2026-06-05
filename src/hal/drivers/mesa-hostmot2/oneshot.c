@@ -464,7 +464,7 @@ int hm2_oneshot_parse_md(hostmot2_t *hm2, int md_index) {
 
 
 fail1:
-    rtapi_free(hm2->oneshot.control_reg);
+    hm2->llio->rtapi->free(hm2->llio->rtapi->ctx, hm2->oneshot.control_reg);
 
 fail0:
     hm2->oneshot.num_instances = 0;
@@ -477,7 +477,7 @@ fail0:
 void hm2_oneshot_cleanup(hostmot2_t *hm2) {
     if (hm2->oneshot.num_instances <= 0) return;
     if (hm2->oneshot.control_reg != NULL) {
-        rtapi_free(hm2->oneshot.control_reg);
+        hm2->llio->rtapi->free(hm2->llio->rtapi->ctx, hm2->oneshot.control_reg);
         hm2->oneshot.control_reg = NULL;
     }
     hm2->oneshot.num_instances = 0;

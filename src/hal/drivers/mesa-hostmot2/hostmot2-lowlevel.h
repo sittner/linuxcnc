@@ -67,6 +67,7 @@ struct hm2_lowlevel_io_struct {
     int comp_id;
     const void *log;  // gomc_log handle
     const gomc_hal_t *hal;  // gomc_hal handle
+    const gomc_rtapi_t *rtapi;  // gomc_rtapi handle
 
     // these two are required
     // on success these two return TRUE (not zero)
