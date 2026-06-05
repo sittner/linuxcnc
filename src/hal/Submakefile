@@ -21,16 +21,7 @@ $(HALLIB).0: $(call TOOBJS, $(HALLIBSRCS))
 	@rm -f $@
 	$(Q)$(CC) $(LDFLAGS) -Wl,-soname,$(notdir $@) -shared -o $@ $^ $(HALLIB_LIBS) $(ULAPI_LDFLAGS)
 
-HALMODULESRCS := hal/halmodule.cc
-PYSRCS += $(HALMODULESRCS)
-
-HALMODULE := ../lib/python/_hal.so
-$(HALMODULE): $(call TOOBJS, $(HALMODULESRCS)) $(HALLIB)
-	$(ECHO) Linking python module $(notdir $@)
-	$(Q)$(CXX) $(LDFLAGS) -shared -o $@ $^
-
 TARGETS += $(HALLIB) ../lib/liblinuxcnchal.so.0
-PYTARGETS += $(HALMODULE)
 
 # Standalone PCI + firmware library (no hal/rtapi dependency)
 RTAPI_PCI_SRCS := rtapi/pci/rtapi_pci.c
