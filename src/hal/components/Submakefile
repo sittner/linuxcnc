@@ -361,14 +361,14 @@ modules: $(CMOD_USER_TARGETS)
 # matrix_kb.so — hand-written cmod (not .comp)
 ../cmod/matrix_kb.so: hal/components/matrix_kb.c \
                       $(wildcard gomc/pkg/cmodule/gomc_*.h) \
-                      | headers ../lib/liblinuxcnchal.so
+                      | headers
 	$(ECHO) "Compiling cmod matrix_kb.so"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -fPIC -Os -Wall -Wextra -shared \
 	    -DUSPACE -D_GNU_SOURCE -Drealtime \
 	    -I. -I../include -Igomc/pkg/cmodule \
 	    -o $@ hal/components/matrix_kb.c \
-	    $(LDFLAGS) -llinuxcnchal -lm
+	    $(LDFLAGS) -lm
 
 TARGETS += ../cmod/matrix_kb.so
 modules: ../cmod/matrix_kb.so

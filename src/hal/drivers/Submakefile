@@ -11,30 +11,32 @@ GPIO_CMOD_CFLAGS := \
     -DUSPACE -D_GNU_SOURCE -Drealtime \
     -fno-strict-aliasing -fwrapv \
     -I. -I../include \
+    -Irtapi/parport \
     -I$(GPIO_DIR) \
     -Igomc/pkg/cmodule
 
-GPIO_CMOD_LDFLAGS = $(LDFLAGS) -llinuxcnchal -lm
+GPIO_CMOD_LDFLAGS = $(LDFLAGS) -lm
 
-# hal_parport.so
+# hal_parport.so (x86 only — uses sys/io.h + librtapi_parport)
+ifeq ($(X86ARCH),true)
 ../cmod/hal_parport.so: $(GPIO_DIR)/hal_parport.c \
-                        hal/hal_parport.h \
                         $(wildcard gomc/pkg/cmodule/gomc_*.h) \
-                        | headers ../lib/liblinuxcnchal.so
+                        | headers ../lib/librtapi_parport.so
 	$(ECHO) "Compiling cmod hal_parport.so"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(GPIO_CMOD_CFLAGS) \
 	    -o $@ $(GPIO_DIR)/hal_parport.c \
-	    $(GPIO_CMOD_LDFLAGS)
+	    $(GPIO_CMOD_LDFLAGS) -lrtapi_parport
 
 TARGETS += ../cmod/hal_parport.so
 modules: ../cmod/hal_parport.so
+endif
 
 # hal_bb_gpio.so
 ../cmod/hal_bb_gpio.so: $(GPIO_DIR)/hal_bb_gpio.c \
                         $(GPIO_DIR)/beaglebone_gpio.h \
                         $(wildcard gomc/pkg/cmodule/gomc_*.h) \
-                        | headers ../lib/liblinuxcnchal.so
+                        | headers
 	$(ECHO) "Compiling cmod hal_bb_gpio.so"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(GPIO_CMOD_CFLAGS) \
@@ -50,7 +52,7 @@ modules: ../cmod/hal_bb_gpio.so
                         $(GPIO_DIR)/bcm2835.h \
                         $(GPIO_DIR)/cpuinfo.h \
                         $(wildcard gomc/pkg/cmodule/gomc_*.h) \
-                        | headers ../lib/liblinuxcnchal.so
+                        | headers
 	$(ECHO) "Compiling cmod hal_pi_gpio.so"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(GPIO_CMOD_CFLAGS) \
@@ -64,7 +66,7 @@ modules: ../cmod/hal_pi_gpio.so
 ifdef LIBGPIOD_VER
 ../cmod/hal_gpio.so: $(GPIO_DIR)/hal_gpio.c \
                      $(wildcard gomc/pkg/cmodule/gomc_*.h) \
-                     | headers ../lib/liblinuxcnchal.so
+                     | headers
 	$(ECHO) "Compiling cmod hal_gpio.so"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(GPIO_CMOD_CFLAGS) \
@@ -81,36 +83,38 @@ endif
 # ---------------------------------------------------------------------------
 ../cmod/hal_gm.so: hal/drivers/hal_gm.c \
                    $(wildcard gomc/pkg/cmodule/gomc_*.h) \
-                   | headers ../lib/liblinuxcnchal.so
+                   | headers ../lib/librtapi_pci.so
 	$(ECHO) "Compiling cmod hal_gm.so"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -fPIC -Os -Wall -Wextra -shared \
 	    -DUSPACE -D_GNU_SOURCE -Drealtime \
 	    -fno-strict-aliasing -fwrapv \
-	    -I. -I../include -Igomc/pkg/cmodule \
+	    -I. -I../include -Igomc/pkg/cmodule -Irtapi/pci \
 	    -o $@ hal/drivers/hal_gm.c \
-	    $(LDFLAGS) -llinuxcnchal -lm
+	    $(LDFLAGS) -lrtapi_pci -lm
 
 TARGETS += ../cmod/hal_gm.so
 modules: ../cmod/hal_gm.so
 
 # ---------------------------------------------------------------------------
-# hal_ppmc — Universal PWM Controller (EPP parallel port)
+# hal_ppmc — Universal PWM Controller (EPP parallel port, x86 only)
 # ---------------------------------------------------------------------------
+ifeq ($(X86ARCH),true)
 ../cmod/hal_ppmc.so: hal/drivers/hal_ppmc.c \
                     $(wildcard gomc/pkg/cmodule/gomc_*.h) \
-                    | headers ../lib/liblinuxcnchal.so
+                    | headers ../lib/librtapi_parport.so
 	$(ECHO) "Compiling cmod hal_ppmc.so"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -fPIC -Os -Wall -Wextra -shared \
 	    -DUSPACE -D_GNU_SOURCE -Drealtime \
 	    -fno-strict-aliasing -fwrapv \
-	    -I. -I../include -Igomc/pkg/cmodule -Ihal \
+	    -I. -I../include -Igomc/pkg/cmodule -Irtapi/parport -Ihal \
 	    -o $@ hal/drivers/hal_ppmc.c \
-	    $(LDFLAGS) -llinuxcnchal -lm
+	    $(LDFLAGS) -lrtapi_parport -lm
 
 TARGETS += ../cmod/hal_ppmc.so
 modules: ../cmod/hal_ppmc.so
+endif
 
 endif # BUILD_GOLANG
 
