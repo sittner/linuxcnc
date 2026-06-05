@@ -54,3 +54,18 @@ $(RTAPI_PARPORT_LIB).0: $(call TOOBJS, $(RTAPI_PARPORT_SRCS))
 
 TARGETS += $(RTAPI_PARPORT_LIB) ../lib/librtapi_parport.so.0
 endif
+
+# Standalone core RT library (memory + timing, no hal dependency)
+RTAPI_CORE_SRCS := rtapi/core/rtapi_core.c
+$(call TOOBJSDEPS, $(RTAPI_CORE_SRCS)): EXTRAFLAGS += -fPIC
+USERSRCS += $(RTAPI_CORE_SRCS)
+
+RTAPI_CORE_LIB := ../lib/librtapi_core.so
+
+$(RTAPI_CORE_LIB).0: $(call TOOBJS, $(RTAPI_CORE_SRCS))
+	$(ECHO) Creating shared library $(notdir $@)
+	@mkdir -p ../lib
+	@rm -f $@
+	$(Q)$(CC) $(LDFLAGS) -Wl,-soname,$(notdir $@) -shared -o $@ $^ -lrt
+
+TARGETS += $(RTAPI_CORE_LIB) ../lib/librtapi_core.so.0

@@ -40,12 +40,12 @@ MOTMOD_CMOD_CFLAGS := \
                    gomc/generated/gmi/mot/mot_api.h \
                    gomc/generated/gmi/motctl/motctl_api.h \
                    gomc/generated/gmi/motstat/motstat_api.h \
-                   | headers
+                   | headers ../lib/librtapi_core.so
 	$(ECHO) "Compiling cmod motmod.so"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -shared $(MOTMOD_CMOD_CFLAGS) \
 	    -o $@ $(MOTMOD_CMOD_SRCS) \
-	    -lm
+	    $(LDFLAGS) -lrtapi_core -lm
 
 TARGETS += ../cmod/motmod.so
 modules: ../cmod/motmod.so

@@ -446,7 +446,7 @@ gm_pci_probe(struct rtapi_pci_dev *dev, const struct rtapi_pci_device_id *id)
 
 	if (pDevice == 0) {
 	  gomc_log_errorf(gm_log, "hal_gm", "General Mechatronics: ERROR: gm_hal->malloc(gm_hal->ctx, ) failed.\n");
-	  hal_exit(pci_bridge_inst->driver.comp_id);
+	  pci_bridge_inst->env->hal->exit(pci_bridge_inst->env->hal->ctx, pci_bridge_inst->driver.comp_id);
 	  return(-ENOMEM);
 	}
 
@@ -469,7 +469,7 @@ gm_pci_probe(struct rtapi_pci_dev *dev, const struct rtapi_pci_device_id *id)
 	
 	if ( (pDevice->cardID & IDmask_card) != cardVersion1 ) {
 	  gomc_log_errorf(gm_log, "hal_gm", "General Mechatronics: ERROR, unknown card detected.\nPlease, download the latest driver.\n");
-	  hal_exit(pci_bridge_inst->driver.comp_id);
+	  pci_bridge_inst->env->hal->exit(pci_bridge_inst->env->hal->ctx, pci_bridge_inst->driver.comp_id);
 	  return(-ENODEV);
 	}
 
@@ -492,7 +492,7 @@ gm_pci_probe(struct rtapi_pci_dev *dev, const struct rtapi_pci_device_id *id)
 
 	if(error){
 	  gomc_log_errorf(gm_log, "hal_gm", "General Mechatronics: Error exporting pins and parameters.\n");
-	  hal_exit(pci_bridge_inst->driver.comp_id);
+	  pci_bridge_inst->env->hal->exit(pci_bridge_inst->env->hal->ctx, pci_bridge_inst->driver.comp_id);
 	  return -EINVAL;
 	}
 
