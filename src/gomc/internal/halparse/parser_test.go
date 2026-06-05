@@ -78,16 +78,6 @@ func TestTokenizeLine(t *testing.T) {
 	}
 }
 
-// --- TestParseLoadUSRError ---
-
-func TestParseLoadUSRError(t *testing.T) {
-	loc := SourceLoc{File: "test.hal", Line: 1}
-	_, err := parseLine([]string{"loadusr", "-W", "myprog"}, loc)
-	if err == nil {
-		t.Error("expected error for loadusr, got nil")
-	}
-}
-
 // --- TestParseLoad ---
 
 func TestParseLoad(t *testing.T) {
@@ -1099,21 +1089,6 @@ func TestSingleFileParser(t *testing.T) {
 		}
 		if len(result.HALCmd) != 3 {
 			t.Errorf("HALCmd count = %d, want 3", len(result.HALCmd))
-		}
-	})
-
-	t.Run("loadusr returns parse error", func(t *testing.T) {
-		files := map[string]string{
-			"test.hal": "loadusr myprog",
-		}
-		sp := &SingleFileParser{
-			readFile: func(path string) (string, error) {
-				return files[path], nil
-			},
-		}
-		_, err := sp.Parse("test.hal")
-		if err == nil {
-			t.Fatal("expected error for loadusr, got nil")
 		}
 	})
 

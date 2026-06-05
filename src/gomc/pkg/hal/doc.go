@@ -118,7 +118,6 @@ HAL components written in Go integrate seamlessly with the rest of LinuxCNC:
   - Use 'halcmd show comp' to see loaded components
   - Use 'halcmd show pin' to see exported pins
   - Use 'halcmd net' to connect pins to signals
-  - Use 'halcmd loadusr -W' to wait for component to be ready
 
 # Signal Handling
 

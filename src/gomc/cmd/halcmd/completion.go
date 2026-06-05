@@ -141,7 +141,7 @@ func splitWords(s string) []string {
 var subcommands = []string{
 	"show", "list", "status", "getp", "setp", "gets", "sets", "ptype", "stype",
 	"newsig", "delsig", "net", "linksp", "linkps", "linkpp", "unlinkp",
-	"load", "loadusr", "unloadusr", "waitusr", "unload",
+	"load", "unload",
 	"newthread", "delthread", "addf", "delf", "start", "stop",
 	"alias", "unalias", "lock", "unlock", "debug", "save",
 	"retain", "unretain",
@@ -241,10 +241,6 @@ func completeArg(cmd string, argPos int, prefix string, prevArgs []string) []str
 		}
 
 	// Module loading
-	case "unloadusr", "waitusr":
-		if argPos == 1 {
-			return completeUsrComponents(prefix)
-		}
 	case "unload":
 		if argPos == 1 {
 			return completeComponents(prefix)
@@ -415,21 +411,6 @@ func completeComponents(prefix string) []string {
 	names := make([]string, 0, len(comps))
 	for _, c := range comps {
 		names = append(names, c.Name)
-	}
-	return names
-}
-
-func completeUsrComponents(prefix string) []string {
-	pattern := prefix + "*"
-	comps, err := client.ListComponents(&pattern)
-	if err != nil {
-		return nil
-	}
-	var names []string
-	for _, c := range comps {
-		if c.Pid != nil && *c.Pid != 0 {
-			names = append(names, c.Name)
-		}
 	}
 	return names
 }

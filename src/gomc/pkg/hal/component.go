@@ -68,8 +68,7 @@ func NewComponent(name string) (*Component, error) {
 // Ready marks the component as ready for operation.
 //
 // This must be called after all pins and parameters have been created,
-// but before the component enters its main loop. It allows halcmd's
-// 'loadusr -W' to wait until the component is ready.
+// but before the component enters its main loop.
 //
 // This calls hal_ready() via CGO.
 func (c *Component) Ready() error {
