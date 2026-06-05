@@ -1,6 +1,6 @@
 TARGETS += ../bin/rs274
 #  builtin_modules.cc
-SAISRCS := $(addprefix emc/sai/, saicanon.cc driver.cc dummyemcstat.cc sai_tooltable.cc)
+SAISRCS := $(addprefix emc/sai/, saicanon.cc driver.cc sai_tooltable.cc)
 USERSRCS += $(SAISRCS)
 
 # interp_internal.hh transitively includes canon_api.h via canon_interface.hh
