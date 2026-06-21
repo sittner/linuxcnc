@@ -2,6 +2,7 @@
 # Blending trajectory planner for LinuxCNC motion controller
 
 @api tp
+@author "Fred Proctor & Will Shackleford (tp.h)"
 @author "Sascha Ittner <sascha.ittner@modusoft.de>"
 @license "GPL Version 2"
 @version 1
