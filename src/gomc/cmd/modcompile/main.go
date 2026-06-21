@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sascha Ittner <sascha.ittner@modusoft.de>
+// License: GPL Version 2
 // modcompile compiles .comp files into cmod .so plugins for gomc-server,
 // and manages the package registry for compiled-in Go modules.
 //

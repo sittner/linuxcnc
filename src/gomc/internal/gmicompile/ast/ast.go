@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sascha Ittner <sascha.ittner@modusoft.de>
+// License: GPL Version 2
 // Package ast defines the AST types for GMI (GOMC Interface Definition) files.
 //
 // A GMI file describes an API with types, enums, and functions that can be

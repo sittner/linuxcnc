@@ -1,3 +1,7 @@
+/*
+ * Copyright (C) 2026 Sascha Ittner <sascha.ittner@modusoft.de>
+ * License: GPL Version 2
+ */
 // gomc_ini.h — INI configuration access API for gomc C modules.
 //
 // Provides read-only access to the parsed INI file through callbacks

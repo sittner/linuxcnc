@@ -1,3 +1,7 @@
+/*
+ * Copyright (C) 2026 Sascha Ittner <sascha.ittner@modusoft.de>
+ * License: GPL Version 2
+ */
 // gomc_log.h — Structured logging API for gomc C modules.
 //
 // All log messages (RT and non-RT) are enqueued into a lock-free ring buffer.

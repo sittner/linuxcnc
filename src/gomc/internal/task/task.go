@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sascha Ittner <sascha.ittner@modusoft.de>
+// License: GPL Version 2
 // Package task implements the milltask gomod — the CNC task controller
 // that coordinates motion, I/O, and the G-code interpreter.
 //
