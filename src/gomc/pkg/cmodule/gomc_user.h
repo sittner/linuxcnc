@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2026 Sascha Ittner <sascha.ittner@modusoft.de>
- * License: GPL Version 2
+ * License: LGPL Version 2.1
  */
 // gomc_user.h — Userspace module helpers for gomc C modules.
 //
