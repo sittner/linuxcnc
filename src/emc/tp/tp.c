@@ -9,6 +9,7 @@
 * System: Linux
 *
 * Copyright (c) 2004 All rights reserved.
+* Copyright (C) 2026 Sascha Ittner <sascha.ittner@modusoft.de> — cmod port
 ********************************************************************/
 #include "posemath.h"           /* Geometry types & functions */
 #include "emcpose.h"
