@@ -5,6 +5,8 @@
 # program editing, variable monitoring, and run control for UI clients.
 
 @api classicladder
+@author "Sascha Ittner <sascha.ittner@modusoft.de>"
+@license "GPL Version 2"
 @version 1
 @prefix "classicladder"
 @rest_export true

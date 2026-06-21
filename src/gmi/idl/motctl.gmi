@@ -26,6 +26,8 @@
 #   probe_jog_err_inhibit, probe_home_err_inhibit
 
 @api motctl
+@author "Sascha Ittner <sascha.ittner@modusoft.de>"
+@license "GPL Version 2"
 @version 1
 @rest_export false
 

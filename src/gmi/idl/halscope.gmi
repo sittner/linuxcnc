@@ -8,6 +8,8 @@
 # is NOT part of this API — it runs in the HAL thread context.
 
 @api halscope
+@author "Sascha Ittner <sascha.ittner@modusoft.de>"
+@license "GPL Version 2"
 @version 1
 @prefix "halscope"
 @rest_export true

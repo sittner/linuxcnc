@@ -42,7 +42,9 @@ type API struct {
 	Version    int    // Version from @version directive
 	Prefix     string // REST path prefix from @prefix directive
 	RestExport bool   // Whether to expose via REST from @rest_export directive
-	Pos        Pos    // Position of @api directive
+	Authors    []string // Authors from @author directives
+	License    string   // License from @license directive
+	Pos        Pos      // Position of @api directive
 
 	Consts        []Const
 	Enums         []Enum

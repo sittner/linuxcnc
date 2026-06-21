@@ -8,6 +8,8 @@
 # HAL handshake completes and return success/error directly.
 
 @api emcio
+@author "Sascha Ittner <sascha.ittner@modusoft.de>"
+@license "GPL Version 2"
 @version 1
 @prefix emcio
 @rest_export false

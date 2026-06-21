@@ -1128,6 +1128,10 @@ func processGMIFile(file string, m gmiMode, outputPath string) error {
 		return fmt.Errorf("parse failed")
 	}
 
+	if api.License == "" {
+		return fmt.Errorf("%s: missing required @license annotation", file)
+	}
+
 	switch m {
 	case gmiModeParse:
 		enc := json.NewEncoder(os.Stdout)

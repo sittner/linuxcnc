@@ -12,6 +12,8 @@
 # access without copying the full struct.
 
 @api motstat
+@author "Sascha Ittner <sascha.ittner@modusoft.de>"
+@license "GPL Version 2"
 @version 1
 @rest_export false
 
