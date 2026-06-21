@@ -3,7 +3,11 @@
 *   Implementation of the motstat GMI status API.
 *   Reads from emcmot_status_t and converts to GMI types.
 *
+*   Derived from a work by Fred Proctor & Will Shackleford
+*
 * License: GPL Version 2
+* Copyright (c) 2004 All rights reserved.
+* Copyright (C) 2026 Sascha Ittner <sascha.ittner@modusoft.de> — cmod GMI port
 ********************************************************************/
 
 #include <string.h>

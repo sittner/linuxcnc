@@ -4,7 +4,11 @@
 *   Each handler fills an emcmot_command_t and sends it to the RT
 *   side via the shared command buffer.
 *
+*   Derived from a work by Fred Proctor & Will Shackleford
+*
 * License: GPL Version 2
+* Copyright (c) 2004 All rights reserved.
+* Copyright (C) 2026 Sascha Ittner <sascha.ittner@modusoft.de> — cmod GMI port
 ********************************************************************/
 
 #include <string.h>
