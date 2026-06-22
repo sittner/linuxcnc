@@ -17,7 +17,6 @@
 #include "motion_struct.h"
 #include "mot_priv.h"
 #include "axis.h"
-#include "state_tag.h"
 
 #define MOTSTAT_API_CGO
 #include "motstat_api.h"
@@ -52,17 +51,6 @@ static inline motstat_pose_t pose_to_motstat(const EmcPose *p)
     r.x = p->tran.x; r.y = p->tran.y; r.z = p->tran.z;
     r.a = p->a; r.b = p->b; r.c = p->c;
     r.u = p->u; r.v = p->v; r.w = p->w;
-    return r;
-}
-
-static inline motstat_state_tag_t tag_to_motstat(const struct state_tag_t *t)
-{
-    motstat_state_tag_t r;
-    for (int i = 0; i < MOTSTAT_TAG_FIELDS_FLOAT && i < GM_FIELD_FLOAT_MAX_FIELDS; i++)
-        r.fields_float[i] = t->fields_float[i];
-    for (int i = 0; i < MOTSTAT_TAG_FIELDS_INT && i < GM_FIELD_MAX_FIELDS; i++)
-        r.fields[i] = t->fields[i];
-    r.packed_flags = t->packed_flags;
     return r;
 }
 
@@ -129,11 +117,10 @@ static int32_t h_get_status(void *ctx, motstat_motion_status_t *status)
     status->tcqlen       = s.tcqlen;
 
     /* Current motion */
-    status->id            = s.id;
+    status->id = s.id;
     status->motion_type   = s.motionType;
     status->distance_to_go = s.distance_to_go;
     status->dtg           = pose_to_motstat(&s.dtg);
-    status->tag           = tag_to_motstat(&s.tag);
 
     /* Probe */
     status->probe.val        = s.probeVal;
