@@ -1,0 +1,50 @@
+@api persist
+@author "Sascha Ittner <sascha.ittner@modusoft.de>"
+@license "GPL Version 2"
+@version 1
+@prefix persist
+@rest_export true
+
+type Entry {
+    namespace: string
+    key: string
+    value: string
+    updated: i64
+}
+
+type SetResult {
+    ok: bool
+}
+
+type DeleteResult {
+    ok: bool
+    count: i32
+}
+
+@method GET
+@path /
+func get_namespaces() -> []string
+
+@method GET
+@path /{namespace}
+func get_entries(namespace: string) -> []Entry
+
+@method GET
+@path /{namespace}/{key}
+func get_entry(namespace: string, key: string) -> Entry
+
+@method PUT
+@path /{namespace}/{key}
+func set_entry(namespace: string, key: string, value: string) -> SetResult
+
+@method DELETE
+@path /{namespace}/{key}
+func delete_entry(namespace: string, key: string) -> DeleteResult
+
+@method PUT
+@path /{namespace}
+func set_entries(namespace: string, entries: []Entry) -> SetResult
+
+@method DELETE
+@path /{namespace}
+func delete_namespace(namespace: string) -> DeleteResult
