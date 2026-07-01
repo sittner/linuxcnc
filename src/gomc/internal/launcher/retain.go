@@ -273,13 +273,20 @@ static int retain_save_vars(retain_state_t *st) {
         st->persist->set_entries(st->persist->ctx, st->handle, entries, count);
     }
 
-cleanup:
     for (size_t i = 0; i < count; i++) {
         free(value_bufs[i]);
     }
     free(value_bufs);
     free(entries);
     return 0;
+
+cleanup:
+    for (size_t i = 0; i < count; i++) {
+        free(value_bufs[i]);
+    }
+    free(value_bufs);
+    free(entries);
+    return -1;
 }
 */
 import "C"

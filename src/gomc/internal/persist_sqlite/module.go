@@ -143,6 +143,10 @@ func (m *module) Open(namespace string) (*persist.OpenResult, error) {
 		db.Close()
 		return nil, fmt.Errorf("set WAL on %s: %w", dbPath, err)
 	}
+	if _, err := db.Exec("PRAGMA busy_timeout = 5000"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("set busy_timeout on %s: %w", dbPath, err)
+	}
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS entries (
 		key     TEXT PRIMARY KEY,
 		value   TEXT NOT NULL DEFAULT '',
