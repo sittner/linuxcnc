@@ -53,6 +53,8 @@ func factory(ini *inifile.IniFile, logger *slog.Logger, name string, args []stri
 			m.ioInstance = v
 		case "tooltable_instance":
 			m.ttInstance = v
+		case "persist_instance":
+			m.persistInstance = v
 		}
 	}
 
@@ -118,6 +120,7 @@ type milltaskModule struct {
 	motInstance       string                     // motion module instance name (default "motmod")
 	ioInstance        string                     // io controller instance name (default "iocontrol")
 	ttInstance        string                     // tooltable instance name (default "tooltable")
+	persistInstance   string                     // persist instance name (default "persistence")
 	iniAccessorHandle cgo.Handle                 // CGo handle for the INI accessor (must be freed)
 	ttClient          *tooltable.TooltableClient // tooltable GMI client
 	paramIO           *interpParamIOPersist      // persist-backed parameter I/O (nil = file-based)
@@ -315,9 +318,9 @@ func (m *milltaskModule) initInterpreter() error {
 	interp.SetTaskMode(1)
 
 	// Set up persist-backed parameter I/O (required).
-	persistInstance := "persistence"
-	if ps := m.ini.Get("RS274NGC", "PERSIST_INSTANCE"); ps != "" {
-		persistInstance = ps
+	persistInstance := m.persistInstance
+	if persistInstance == "" {
+		persistInstance = "persistence"
 	}
 	reg := apiserver.DefaultRegistry()
 	persistCbs, err := reg.GetAPIFor(m.name, "persist", persistInstance, 1)

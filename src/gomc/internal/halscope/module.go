@@ -77,6 +77,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -140,9 +141,9 @@ func newHalscope(ini *inifile.IniFile, logger *slog.Logger, name string, args []
 	C.hal_ready(compID)
 
 	persistInstance := "persistence"
-	if ini != nil {
-		if pi := ini.Get("HAL", "SCOPE_PERSIST_INSTANCE"); pi != "" {
-			persistInstance = pi
+	for _, arg := range args {
+		if k, v, ok := strings.Cut(arg, "="); ok && k == "persist_instance" {
+			persistInstance = v
 		}
 	}
 

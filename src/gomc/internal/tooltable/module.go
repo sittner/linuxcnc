@@ -46,7 +46,7 @@ type module struct {
 func newTooltable(ini *inifile.IniFile, logger *slog.Logger, name string, args []string) (gomc.Module, error) {
 	persistInst := "persistence"
 	for _, arg := range args {
-		if k, v, ok := strings.Cut(arg, "="); ok && k == "persistence" {
+		if k, v, ok := strings.Cut(arg, "="); ok && k == "persist_instance" {
 			persistInst = v
 		}
 	}

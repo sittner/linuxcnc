@@ -790,13 +790,14 @@ func init() {
 }
 
 type ngcPreview struct {
-	logger         *slog.Logger
-	name           string  // module instance name
-	linearUnits    float64 // from [TRAJ]LINEAR_UNITS: 1.0 for mm, 1/25.4 for inch
-	ttInstanceName string  // tooltable instance to look up (default "tooltable")
-	ttClient       *tooltable.TooltableClient
-	allowedDirs    []string       // resolved absolute paths where get_file may read
-	persistCbs     unsafe.Pointer // persist_callbacks_t* for read-only param I/O
+	logger              *slog.Logger
+	name                string  // module instance name
+	linearUnits         float64 // from [TRAJ]LINEAR_UNITS: 1.0 for mm, 1/25.4 for inch
+	ttInstanceName      string  // tooltable instance to look up (default "tooltable")
+	ttClient            *tooltable.TooltableClient
+	persistInstanceName string         // persist instance name (default "persistence")
+	allowedDirs         []string       // resolved absolute paths where get_file may read
+	persistCbs          unsafe.Pointer // persist_callbacks_t* for read-only param I/O
 }
 
 func parseLinearUnits(s string) float64 {
@@ -817,11 +818,14 @@ func newNgcPreview(ini *inifile.IniFile, logger *slog.Logger, name string, args 
 	// Allow overriding INI namespace via "namespace=xxx" argument.
 	ns := name
 	ttInst := "tooltable"
+	persistInst := "persistence"
 	for _, arg := range args {
 		if strings.HasPrefix(arg, "namespace=") {
 			ns = strings.TrimPrefix(arg, "namespace=")
 		} else if strings.HasPrefix(arg, "tooltable_instance=") {
 			ttInst = strings.TrimPrefix(arg, "tooltable_instance=")
+		} else if strings.HasPrefix(arg, "persist_instance=") {
+			persistInst = strings.TrimPrefix(arg, "persist_instance=")
 		}
 	}
 	nsIni := ini.WithNamespace(ns)
@@ -829,7 +833,7 @@ func newNgcPreview(ini *inifile.IniFile, logger *slog.Logger, name string, args 
 	// Build allowed directories for get_file path restriction
 	iniDir := filepath.Dir(ini.SourceFile())
 	allowedDirs := collectAllowedDirs(nsIni, iniDir)
-	m := &ngcPreview{logger: logger, name: name, linearUnits: linearUnits, ttInstanceName: ttInst, allowedDirs: allowedDirs}
+	m := &ngcPreview{logger: logger, name: name, linearUnits: linearUnits, ttInstanceName: ttInst, persistInstanceName: persistInst, allowedDirs: allowedDirs}
 	ngcpreview.RegisterNgcpreviewAPI(apiserver.DefaultRegistry(), name, m)
 	logger.Info("ngcpreview module loaded and API registered", "instance", name)
 	return m, nil
@@ -846,10 +850,9 @@ func (m *ngcPreview) Start() error {
 	}
 
 	// Look up persist API for read-only parameter loading (required).
-	persistInstance := "persistence"
-	persistCbs, err := reg.GetAPIFor(m.name, "persist", persistInstance, 1)
+	persistCbs, err := reg.GetAPIFor(m.name, "persist", m.persistInstanceName, 1)
 	if err != nil {
-		return fmt.Errorf("ngcpreview: persist API lookup (%s): %w", persistInstance, err)
+		return fmt.Errorf("ngcpreview: persist API lookup (%s): %w", m.persistInstanceName, err)
 	}
 	m.persistCbs = persistCbs
 	return nil
