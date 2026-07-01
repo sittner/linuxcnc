@@ -920,6 +920,35 @@ int Interp::init()
 
   } // end INI accessor path
 
+  // Build the persist parameters list: start from the hardcoded required
+  // set, then merge any [RS274NGC]PERSIST= entries from the INI file.
+  {
+      // Find the end of _required_parameters (terminated by RS274NGC_MAX_PARAMETERS sentinel)
+      const int *rp = _required_parameters;
+      while (*rp != RS274NGC_MAX_PARAMETERS) rp++;
+      std::set<int> pset(_required_parameters, rp);
+
+      if (_setup.ini_accessor.get_nth != NULL) {
+          for (int n = 1; ; n++) {
+              const char *val = _setup.ini_accessor.get_nth(
+                  _setup.ini_accessor.ctx, "RS274NGC", "PERSIST", n);
+              if (val == NULL) break;
+              // Parse "N" or "N-M" range
+              int lo, hi;
+              if (sscanf(val, "%d-%d", &lo, &hi) == 2) {
+                  if (lo > 0 && hi >= lo && hi < RS274NGC_MAX_PARAMETERS)
+                      for (int p = lo; p <= hi; p++)
+                          pset.insert(p);
+              } else if (sscanf(val, "%d", &lo) == 1) {
+                  if (lo > 0 && lo < RS274NGC_MAX_PARAMETERS)
+                      pset.insert(lo);
+              }
+          }
+      }
+      _persist_parameters.assign(pset.begin(), pset.end());
+      _persist_parameters.push_back(RS274NGC_MAX_PARAMETERS); // terminator
+  }
+
   _setup.length_units = _setup.canon.get_external_length_unit_type();
   _setup.canon.use_length_units(_setup.length_units);
   CHP(restore_parameters());
@@ -1668,7 +1697,7 @@ int Interp::save_parameters(const double parameters[])
     return INTERP_OK;
   FORCE_LC_NUMERIC_C;
   CHKS((param_io == NULL), _("No parameter I/O backend configured"));
-  int rc = param_io->save(param_io->ctx, parameters, _required_parameters);
+  int rc = param_io->save(param_io->ctx, parameters, _persist_parameters.data());
   CHKS((rc != 0), _("Unable to save parameters"));
   return INTERP_OK;
 }
