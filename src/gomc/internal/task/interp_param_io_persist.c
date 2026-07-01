@@ -16,6 +16,7 @@
 
 typedef struct {
     const persist_callbacks_t *persist;
+    int32_t handle;
 } param_io_persist_ctx_t;
 
 static int persist_restore(void *ctx, double parameters[INTERP_PARAM_MAX])
@@ -31,7 +32,7 @@ static int persist_restore(void *ctx, double parameters[INTERP_PARAM_MAX])
 
     // Get all entries from the ngc_vars namespace.
     persist_get_entries_result_t res = pctx->persist->get_entries(
-        pctx->persist->ctx, PARAM_IO_NAMESPACE);
+        pctx->persist->ctx, pctx->handle);
 
     if (res.data == NULL)
         return 0; // no data yet, OK
@@ -87,14 +88,13 @@ static int persist_save(void *ctx, const double parameters[INTERP_PARAM_MAX],
         required = required_params[i];
         snprintf(keys[i], 8, "%d", required);
         snprintf(vals[i], 32, "%f", parameters[required]);
-        entries[i].namespace = PARAM_IO_NAMESPACE;
         entries[i].key = keys[i];
         entries[i].value = vals[i];
         entries[i].updated = 0;
     }
 
     persist_set_result_t res = pctx->persist->set_entries(
-        pctx->persist->ctx, PARAM_IO_NAMESPACE, entries, count);
+        pctx->persist->ctx, pctx->handle, entries, count);
 
     free(entries);
     free(keys);
@@ -108,6 +108,10 @@ interp_param_io_t interp_param_io_persist_create(const persist_callbacks_t *pers
 {
     param_io_persist_ctx_t *pctx = (param_io_persist_ctx_t *)malloc(sizeof(param_io_persist_ctx_t));
     pctx->persist = persist;
+
+    // Open the ngc_vars namespace.
+    persist_open_result_t open_res = persist->open(persist->ctx, PARAM_IO_NAMESPACE);
+    pctx->handle = open_res.handle;
 
     interp_param_io_t io;
     memset(&io, 0, sizeof(io));

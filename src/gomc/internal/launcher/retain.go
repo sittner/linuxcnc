@@ -45,6 +45,7 @@ package launcher
 typedef struct {
     _Atomic uint32_t action;
     const persist_callbacks_t *persist;
+    int32_t handle;
 } retain_state_t;
 
 static retain_state_t *retain_state_create(void) {
@@ -53,6 +54,11 @@ static retain_state_t *retain_state_create(void) {
 
 static void retain_state_destroy(retain_state_t *st) {
     free(st);
+}
+
+static int32_t retain_open_namespace(retain_state_t *st, const char *ns) {
+    persist_open_result_t res = st->persist->open(st->persist->ctx, ns);
+    return res.handle;
 }
 
 // retain_sync is the RT function exported as "retain.sync".
@@ -150,7 +156,7 @@ static int retain_load_vars(retain_state_t *st) {
     if (st->persist == NULL) return -1;
 
     persist_get_entries_result_t res = st->persist->get_entries(
-        st->persist->ctx, "hal_retain");
+        st->persist->ctx, st->handle);
     if (res.len == 0) {
         if (res.data) free(res.data);
         return 0;
@@ -256,7 +262,6 @@ static int retain_save_vars(retain_state_t *st) {
         }
 
         value_bufs[count] = strdup(vbuf);
-        entries[count].namespace = "hal_retain";
         entries[count].key = sig->name;
         entries[count].value = value_bufs[count];
         entries[count].updated = 0;
@@ -265,7 +270,7 @@ static int retain_save_vars(retain_state_t *st) {
     rtapi_mutex_give(&(hd->mutex));
 
     if (count > 0) {
-        st->persist->set_entries(st->persist->ctx, "hal_retain", entries, count);
+        st->persist->set_entries(st->persist->ctx, st->handle, entries, count);
     }
 
 cleanup:
@@ -363,13 +368,18 @@ func (l *Launcher) loadRetain() error {
 	if ps := l.ini.Get("RETAIN", "PERSIST_INSTANCE"); ps != "" {
 		persistInstance = ps
 	}
-	persistCbs, err := reg.GetAPIFor("retain", "persist", persistInstance, 1)
+	persistCbs, err := reg.GetAPIFor("retain", "persist", persistInstance, 2)
 	if err != nil {
 		C.hal_exit(C.int(compID))
 		C.retain_state_destroy(state)
 		return fmt.Errorf("retain: persist API lookup (%s): %w", persistInstance, err)
 	}
 	state.persist = (*C.persist_callbacks_t)(persistCbs)
+
+	// Open the hal_retain namespace.
+	cNs := C.CString("hal_retain")
+	state.handle = C.retain_open_namespace(state, cNs)
+	C.free(unsafe.Pointer(cNs))
 
 	// Determine the poll period.
 	pollPeriod := retainDefaultPollPeriod

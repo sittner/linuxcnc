@@ -323,7 +323,7 @@ func (m *milltaskModule) initInterpreter() error {
 		persistInstance = "persistence"
 	}
 	reg := apiserver.DefaultRegistry()
-	persistCbs, err := reg.GetAPIFor(m.name, "persist", persistInstance, 1)
+	persistCbs, err := reg.GetAPIFor(m.name, "persist", persistInstance, 2)
 	if err != nil {
 		interp.Destroy()
 		ct.release()

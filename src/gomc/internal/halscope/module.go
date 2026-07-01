@@ -104,6 +104,7 @@ type halscope struct {
 	functName       string                 // HAL function name: name + ".sample"
 	persist         *persist.PersistClient // nil = persistence disabled
 	persistInstance string
+	persistHandle   int32
 }
 
 func newHalscope(ini *inifile.IniFile, logger *slog.Logger, name string, args []string) (gomc.Module, error) {
@@ -184,12 +185,19 @@ func (m *halscope) Start() error {
 	// Look up persist API (non-fatal if unavailable).
 	reg := apiserver.DefaultRegistry()
 	if reg != nil {
-		cbs, err := reg.GetAPIFor(m.name, "persist", m.persistInstance, 1)
+		cbs, err := reg.GetAPIFor(m.name, "persist", m.persistInstance, 2)
 		if err != nil {
 			m.logger.Warn("halscope: persist API not available, state will not be saved",
 				"instance", m.persistInstance, "err", err)
 		} else {
 			m.persist = persist.NewPersistClient(unsafe.Pointer(cbs))
+			res, err := m.persist.Open(persistNamespace)
+			if err != nil {
+				m.logger.Warn("halscope: persist open failed", "err", err)
+				m.persist = nil
+			} else {
+				m.persistHandle = res.Handle
+			}
 		}
 	}
 
@@ -787,7 +795,7 @@ func (m *halscope) saveState() error {
 		return fmt.Errorf("marshal: %w", err)
 	}
 
-	_, err = m.persist.SetEntry(persistNamespace, persistKey, string(data))
+	_, err = m.persist.SetEntry(m.persistHandle, persistKey, string(data))
 	if err != nil {
 		return fmt.Errorf("persist set: %w", err)
 	}
@@ -799,7 +807,7 @@ func (m *halscope) saveState() error {
 // are silently skipped.
 // Must be called before any captures start (during Start).
 func (m *halscope) loadState() error {
-	entry, err := m.persist.GetEntry(persistNamespace, persistKey)
+	entry, err := m.persist.GetEntry(m.persistHandle, persistKey)
 	if err != nil {
 		return fmt.Errorf("persist get: %w", err)
 	}

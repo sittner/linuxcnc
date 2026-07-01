@@ -64,7 +64,7 @@ func (m *module) importTbl(path string) error {
 		return err
 	}
 	if len(entries) > 0 {
-		if _, err := m.db.SetEntries(persistNamespace, entries); err != nil {
+		if _, err := m.db.SetEntries(m.dbHandle, entries); err != nil {
 			return err
 		}
 	}

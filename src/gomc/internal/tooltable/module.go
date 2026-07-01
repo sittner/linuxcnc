@@ -40,6 +40,7 @@ type module struct {
 	ini             *inifile.IniFile
 	persistInstance string
 	db              *persist.PersistClient
+	dbHandle        int32
 	mu              sync.RWMutex
 }
 
@@ -71,14 +72,21 @@ func newTooltable(ini *inifile.IniFile, logger *slog.Logger, name string, args [
 func (m *module) Start() error {
 	// Look up the persist API.
 	reg := apiserver.DefaultRegistry()
-	cbs, err := reg.GetAPIFor(m.name, "persist", m.persistInstance, 1)
+	cbs, err := reg.GetAPIFor(m.name, "persist", m.persistInstance, 2)
 	if err != nil {
 		return fmt.Errorf("tooltable: persist API lookup (%s): %w", m.persistInstance, err)
 	}
 	m.db = persist.NewPersistClient(unsafe.Pointer(cbs))
 
+	// Open the tooltable namespace.
+	res, err := m.db.Open(persistNamespace)
+	if err != nil {
+		return fmt.Errorf("tooltable: persist open namespace: %w", err)
+	}
+	m.dbHandle = res.Handle
+
 	// Import legacy .tbl if namespace is empty.
-	entries, _ := m.db.GetEntries(persistNamespace)
+	entries, _ := m.db.GetEntries(m.dbHandle)
 	if len(entries) == 0 {
 		m.tryImportLegacy()
 	}
@@ -117,7 +125,7 @@ func (m *module) ListTools() ([]tooltable.ToolEntry, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	entries, err := m.db.GetEntries(persistNamespace)
+	entries, err := m.db.GetEntries(m.dbHandle)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +146,7 @@ func (m *module) GetTool(toolno int32) (*tooltable.ToolEntry, error) {
 	defer m.mu.RUnlock()
 
 	key := strconv.FormatInt(int64(toolno), 10)
-	entry, err := m.db.GetEntry(persistNamespace, key)
+	entry, err := m.db.GetEntry(m.dbHandle, key)
 	if err != nil {
 		return &tooltable.ToolEntry{}, nil
 	}
@@ -161,7 +169,7 @@ func (m *module) PutTool(toolno int32, entry tooltable.ToolEntry) (*tooltable.Pu
 	}
 
 	key := strconv.FormatInt(int64(toolno), 10)
-	if _, err := m.db.SetEntry(persistNamespace, key, string(data)); err != nil {
+	if _, err := m.db.SetEntry(m.dbHandle, key, string(data)); err != nil {
 		return nil, err
 	}
 	return &tooltable.PutToolResult{Ok: true, Index: toolno}, nil
@@ -172,7 +180,7 @@ func (m *module) DeleteTool(toolno int32) (*tooltable.DeleteResult, error) {
 	defer m.mu.Unlock()
 
 	key := strconv.FormatInt(int64(toolno), 10)
-	res, err := m.db.DeleteEntry(persistNamespace, key)
+	res, err := m.db.DeleteEntry(m.dbHandle, key)
 	if err != nil {
 		return nil, err
 	}

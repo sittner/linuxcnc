@@ -19,7 +19,7 @@ type interpParamIOPersist struct {
 
 // newInterpParamIOPersist creates a persist-backed parameter IO and
 // installs it on the interpreter. The persist pointer comes from
-// reg.GetAPIFor("milltask", "persist", instance, 1).
+// reg.GetAPIFor("milltask", "persist", instance, 2).
 func newInterpParamIOPersist(persistCbs unsafe.Pointer) *interpParamIOPersist {
 	p := &interpParamIOPersist{
 		io: C.interp_param_io_persist_create(persistCbs),

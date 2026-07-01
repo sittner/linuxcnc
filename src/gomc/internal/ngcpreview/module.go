@@ -23,6 +23,7 @@ package ngcpreview
 
 typedef struct {
     const persist_callbacks_t *persist;
+    int32_t handle;
 } preview_param_io_ctx_t;
 
 static int preview_param_restore(void *ctx, double parameters[INTERP_PARAM_MAX]) {
@@ -31,7 +32,7 @@ static int preview_param_restore(void *ctx, double parameters[INTERP_PARAM_MAX])
     for (k = 0; k < INTERP_PARAM_MAX; k++)
         parameters[k] = 0;
     persist_get_entries_result_t res = pctx->persist->get_entries(
-        pctx->persist->ctx, "ngc_vars");
+        pctx->persist->ctx, pctx->handle);
     if (res.data == NULL)
         return 0;
     for (size_t i = 0; i < res.len; i++) {
@@ -55,6 +56,8 @@ static int preview_param_save_noop(void *ctx, const double parameters[INTERP_PAR
 static interp_param_io_t preview_param_io_persist_create(const persist_callbacks_t *persist) {
     preview_param_io_ctx_t *pctx = (preview_param_io_ctx_t *)malloc(sizeof(preview_param_io_ctx_t));
     pctx->persist = persist;
+    persist_open_result_t open_res = persist->open(persist->ctx, "ngc_vars");
+    pctx->handle = open_res.handle;
     interp_param_io_t io;
     memset(&io, 0, sizeof(io));
     io.restore = preview_param_restore;
@@ -850,7 +853,7 @@ func (m *ngcPreview) Start() error {
 	}
 
 	// Look up persist API for read-only parameter loading (required).
-	persistCbs, err := reg.GetAPIFor(m.name, "persist", m.persistInstanceName, 1)
+	persistCbs, err := reg.GetAPIFor(m.name, "persist", m.persistInstanceName, 2)
 	if err != nil {
 		return fmt.Errorf("ngcpreview: persist API lookup (%s): %w", m.persistInstanceName, err)
 	}
