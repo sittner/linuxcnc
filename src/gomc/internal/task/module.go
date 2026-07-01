@@ -120,6 +120,7 @@ type milltaskModule struct {
 	ttInstance        string                     // tooltable instance name (default "tooltable")
 	iniAccessorHandle cgo.Handle                 // CGo handle for the INI accessor (must be freed)
 	ttClient          *tooltable.TooltableClient // tooltable GMI client
+	paramIO           *interpParamIOPersist      // persist-backed parameter I/O (nil = file-based)
 }
 
 func (m *milltaskModule) Start() error {
@@ -251,6 +252,10 @@ func (m *milltaskModule) Destroy() {
 		m.interp.Destroy()
 		m.interp = nil
 	}
+	if m.paramIO != nil {
+		m.paramIO.destroy()
+		m.paramIO = nil
+	}
 	if m.iniAccessorHandle != 0 {
 		FreeIniAccessor(m.iniAccessorHandle)
 		m.iniAccessorHandle = 0
@@ -309,10 +314,27 @@ func (m *milltaskModule) initInterpreter() error {
 	// This enables save_parameters to actually write the var file.
 	interp.SetTaskMode(1)
 
+	// Set up persist-backed parameter I/O (required).
+	persistInstance := "persistence"
+	if ps := m.ini.Get("RS274NGC", "PERSIST_INSTANCE"); ps != "" {
+		persistInstance = ps
+	}
+	reg := apiserver.DefaultRegistry()
+	persistCbs, err := reg.GetAPIFor(m.name, "persist", persistInstance, 1)
+	if err != nil {
+		interp.Destroy()
+		ct.release()
+		return fmt.Errorf("interpreter: persist API lookup (%s): %w", persistInstance, err)
+	}
+	m.paramIO = newInterpParamIOPersist(persistCbs)
+	m.paramIO.install(interp)
+
 	// Initialize interpreter state.
 	if err := interp.Init(); err != nil {
 		interp.Destroy()
 		ct.release()
+		m.paramIO.destroy()
+		m.paramIO = nil
 		return fmt.Errorf("interpreter init: %w", err)
 	}
 
