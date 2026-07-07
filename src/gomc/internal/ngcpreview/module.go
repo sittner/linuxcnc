@@ -585,9 +585,22 @@ static void pc_set_tool_table_entry(void *ctx, int32_t pocket, int32_t toolno,
     (void)diameter; (void)frontangle; (void)backangle; (void)orientation;
 }
 
+// Thread-local storage for user-defined M-code P parameter (M199).
+// Safe in multi-instance: cgo pins each goroutine to an OS thread.
+static _Thread_local double tls_user_m_p = 0.0;
+
+static void preview_user_defined_function(int num, double arg1, double arg2) {
+    (void)num; (void)arg2;
+    tls_user_m_p = arg1;
+}
+
+static void setup_preview_user_m_functions(interp_handle_t *h) {
+    interp_shim_setup_user_m_functions(h, preview_user_defined_function);
+}
+
 static double pc_get_user_defined_result(void *ctx) {
     (void)ctx;
-    return 0.0;
+    return tls_user_m_p;
 }
 
 // Build the preview canon callback table
@@ -944,18 +957,42 @@ func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode stri
 		}, nil
 	}
 
+	// Register handlers for user-defined M-codes (M100-M199).
+	// Required for expression evaluation via M199 (touch off).
+	C.setup_preview_user_m_functions(h)
+
 	// Open file first (sets up parameter file, subroutine paths, etc.)
-	cFile := C.CString(filename)
-	rc = C.interp_shim_open(h, cFile)
-	C.free(unsafe.Pointer(cFile))
-	if rc != C.INTERP_SHIM_OK {
-		errText := shimErrorText(h, rc)
-		return &ngcpreview.PreviewResult{
-			Error: fmt.Sprintf("open failed: %d (%s)", rc, errText),
-		}, nil
+	// When filename is empty, skip open — this is an expression-only
+	// evaluation (e.g. touch off uses initcodes to evaluate expressions).
+	if filename != "" {
+		cFile := C.CString(filename)
+		rc = C.interp_shim_open(h, cFile)
+		C.free(unsafe.Pointer(cFile))
+		if rc != C.INTERP_SHIM_OK {
+			errText := shimErrorText(h, rc)
+			return &ngcpreview.PreviewResult{
+				Error: fmt.Sprintf("open failed: %d (%s)", rc, errText),
+			}, nil
+		}
 	}
 
-	// Execute initcodes after open (matches gcodemodule behavior)
+	// Execute unitcode before initcodes (matches gcodemodule behavior:
+	// unitcode is the main code, initcodes terminates with M2)
+	if unitcode != "" {
+		cCode := C.CString(unitcode)
+		rc = C.interp_shim_read_string(h, cCode)
+		C.free(unsafe.Pointer(cCode))
+		if rc == C.INTERP_SHIM_OK {
+			rc = C.interp_shim_execute(h)
+		}
+		if rc != C.INTERP_SHIM_OK && rc != C.INTERP_SHIM_EXIT && rc != C.INTERP_SHIM_ENDFILE {
+			return &ngcpreview.PreviewResult{
+				Error: fmt.Sprintf("unitcode execution failed: %d", rc),
+			}, nil
+		}
+	}
+
+	// Execute initcodes after unitcode
 	if initcodes != "" {
 		for _, line := range strings.Split(initcodes, "\n") {
 			line = strings.TrimSpace(line)
@@ -976,48 +1013,35 @@ func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode stri
 		}
 	}
 
-	// Execute unitcode after initcodes
-	if unitcode != "" {
-		cCode := C.CString(unitcode)
-		rc = C.interp_shim_read_string(h, cCode)
-		C.free(unsafe.Pointer(cCode))
-		if rc == C.INTERP_SHIM_OK {
-			rc = C.interp_shim_execute(h)
-		}
-		if rc != C.INTERP_SHIM_OK {
-			return &ngcpreview.PreviewResult{
-				Error: fmt.Sprintf("unitcode execution failed: %d", rc),
-			}, nil
-		}
-	}
-
-	// Read/execute loop
+	// Read/execute loop — only when a file was opened
 	var maxLine int32
 	var readCount, execCount int
 	var lastReadRC, lastExecRC C.int
-	for {
-		rc = C.interp_shim_read(h)
-		lastReadRC = rc
-		if rc == C.INTERP_SHIM_ENDFILE {
-			break
-		}
-		if rc != C.INTERP_SHIM_OK {
-			break
-		}
-		readCount++
-		rc = C.interp_shim_execute(h)
-		lastExecRC = rc
-		if rc != C.INTERP_SHIM_OK && rc != C.INTERP_SHIM_ENDFILE && rc != C.INTERP_SHIM_EXIT {
-			break
-		}
-		if rc == C.INTERP_SHIM_EXIT {
+	if filename != "" {
+		for {
+			rc = C.interp_shim_read(h)
+			lastReadRC = rc
+			if rc == C.INTERP_SHIM_ENDFILE {
+				break
+			}
+			if rc != C.INTERP_SHIM_OK {
+				break
+			}
+			readCount++
+			rc = C.interp_shim_execute(h)
+			lastExecRC = rc
+			if rc != C.INTERP_SHIM_OK && rc != C.INTERP_SHIM_ENDFILE && rc != C.INTERP_SHIM_EXIT {
+				break
+			}
+			if rc == C.INTERP_SHIM_EXIT {
+				execCount++
+				break
+			}
 			execCount++
-			break
-		}
-		execCount++
-		seq := int32(C.interp_shim_sequence_number(h))
-		if seq > maxLine {
-			maxLine = seq
+			seq := int32(C.interp_shim_sequence_number(h))
+			if seq > maxLine {
+				maxLine = seq
+			}
 		}
 	}
 
@@ -1119,6 +1143,9 @@ func (m *ngcPreview) GenPreview(filename string, initcodes string, unitcode stri
 	}
 	result.XyRotation = float64(ctx.xy_rotation)
 	result.Plane = int32(ctx.plane)
+	// Read parameter #5399: the interpreter stores get_user_defined_result()
+	// there after executing a user M-code (M199 P[expr] for touch-off).
+	result.UserDefinedNumber = float64(C.interp_shim_get_parameter(h, 5399))
 
 	return result, nil
 }

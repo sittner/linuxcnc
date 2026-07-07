@@ -57,6 +57,11 @@ void interp_shim_set_param_io(interp_handle_t *h,
 void interp_shim_error_text(interp_handle_t *h, int error_code,
                             char *buf, int buf_size);
 
+// Register a handler for all user-defined M-codes (M100-M199).
+// Must be called after init to allow expression evaluation with M199.
+void interp_shim_setup_user_m_functions(interp_handle_t *h,
+    void (*fn)(int num, double arg1, double arg2));
+
 // Interpreter return codes
 #define INTERP_SHIM_OK       0
 #define INTERP_SHIM_EXIT     1

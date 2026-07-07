@@ -82,6 +82,10 @@ def parse(filename, canon, *args):
         print(f"gcode_rest: {result.error}", file=sys.stderr)
         return 5, result.max_line
 
+    # Store user-defined M-code result (M199 P[expr] for expression evaluation)
+    if hasattr(result, 'user_defined_number'):
+        canon.number = result.user_defined_number
+
     # Set active G5x and G92 offsets in the canon so that
     # rotate_and_translate converts program coords to machine coords
     # (matching what the old in-process interpreter did).

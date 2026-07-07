@@ -95,4 +95,12 @@ void interp_shim_set_param_io(interp_handle_t *h,
     }
 }
 
+void interp_shim_setup_user_m_functions(interp_handle_t *h,
+    void (*fn)(int num, double arg1, double arg2)) {
+    if (!h || !h->interp || !fn) return;
+    for (int i = 0; i < USER_DEFINED_FUNCTION_NUM; i++) {
+        h->interp->_setup.user_defined_function[i] = fn;
+    }
+}
+
 } // extern "C"

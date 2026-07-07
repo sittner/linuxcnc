@@ -79,6 +79,8 @@ type PreviewResult {
     xy_rotation: f64
     # Active plane (1=XY, 2=YZ, 3=XZ) for arc linearization
     plane: i32
+    # User-defined M-code result (P parameter from M199, used for expression eval)
+    user_defined_number: f64
 }
 
 # ─── Functions ───
