@@ -4,7 +4,7 @@
 # (test_mcode_handler) registers an M101 handler via register_handler(); we
 # drive M101 P Q through the remote (rsh2gmi.py) interface and confirm the
 # handler was dispatched with the right P/Q and ran to completion.
-set -x
+set -xe
 rm -f server.log sim.var sim.var.bak
 gomc-server -r sim.ini >server.log 2>&1 &
 SRV=$!
@@ -25,10 +25,14 @@ sleep 0.5
 # Do NOT send 'shutdown': `set wait done` returns before the async M101 handler
 # finishes its ~0.5s of work, and shutting down here would abort the in-flight
 # handler (it logs "aborted" instead of "completed").  Wait for the handler to
-# finish (checkresult greps server.log for it); the EXIT trap tears the server down.
-for i in $(seq 100); do
-    grep -qE 'M101 (completed|aborted)' server.log && break
+# finish (checkresult greps server.log for it); the EXIT trap tears the server
+# down.  30s budget (loaded CI runners), and FAIL LOUD if it never appears —
+# falling through silently just moves the failure to checkresult with no
+# diagnostics.
+for i in $(seq 300); do
+    grep -qE 'M101 (completed|aborted)' server.log && exit 0
     sleep 0.1
 done
-
-exit 0
+echo "mcode-handler: M101 handler never completed within 30s; server.log tail:" >&2
+tail -30 server.log >&2
+exit 1

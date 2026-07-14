@@ -171,7 +171,9 @@ jobs:
         eatmydata ./autogen.sh
         eatmydata ./configure --with-realtime=uspace --disable-check-runtime-deps --enable-build-documentation=html
         eatmydata make -O -j$((1+$(nproc))) manpages
-        eatmydata make -O -j$((1+$(nproc))) translateddocs
+        # translateddocs is skipped: po4a.cfg still lists master manpages of
+        # tools this fork removed (e.g. man1/halmeter.1), and translations are
+        # not maintained here. Re-enable after pruning docs/src/po4a.cfg.
         eatmydata make -O -j$((1+$(nproc))) docs
         # Note that the package build covers html docs
 
