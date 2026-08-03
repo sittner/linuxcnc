@@ -16,7 +16,7 @@ INCLUDES += emc/sai
 ../bin/rs274: $(call TOOBJS, $(SAISRCS)) ../lib/librs274.so.0 \
 	../lib/libiniparse.so.0
 	$(ECHO) Linking $(notdir $@)
-	$(Q)$(CXX) -rdynamic -o $@ $(filter %.o,$^) -L../lib -lrs274 -liniparse $(ULFLAGS) $(READLINE_LIBS) $(LDFLAGS)
+	$(Q)$(CXX) -rdynamic -o $@ $(filter %.o,$^) -L../lib -l:librs274.so.0 -l:libiniparse.so.0 $(ULFLAGS) $(READLINE_LIBS) $(LDFLAGS)
 
 $(patsubst ./emc/sai/%,../include/%,$(wildcard ./emc/sai/*.h)): ../include/%.h: ./emc/sai/%.h
 	cp $^ $@
