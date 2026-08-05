@@ -1,3 +1,8 @@
+> [!IMPORTANT]
+> **This repository is archived.** Development has moved to
+> **[@stratuMAK/stratumak](https://github.com/stratuMAK/stratumak)**.
+> Please head there for the latest sources, issues, and pull requests.
+
 # stratuMAK — Machine Controller
 
 > stratuMAK is an effort to push the high-value but aged concepts of
@@ -71,7 +76,7 @@ criticized for:
 |---|---|
 | Hardware | Beckhoff C6030 industrial PC |
 | Kernel | Debian 13, `6.12.95+deb13-rt-amd64` (PREEMPT_RT) |
-| Boot parameters | `isolcpus=2,3 nohz_full=2,3 rcu_nocbs=2,3 irqaffinity=0,1 intel_idle.max_cstate=1 processor.max_cstate=1 cpufreq.default_governor=performance nmi_watchdog=0 nosoftlockup consoleblank=0` |
+| Boot parameters | `isolcpus=2,3 nohz_full=2,3 rcu_nocbs=2,3 irqaffinity=0,1 intel_idle.max_cstate=1 processor.max_cstate=1 cpufreq.default_governor=performance nmi_watchdog=0 nosoftlockup console=tty0` |
 | RT thread | 1 ms servo thread, SCHED_FIFO on isolated CPU |
 | Duration | 8,000,000 cycles ≈ 2 h 13 min |
 | **Max jitter** | **34.95 µs** |
